@@ -17,6 +17,21 @@ export function voicePlaybackPublications(state: ChannelSnapshot | null, session
   return [...selected.values()];
 }
 
+export type RoomVoiceStatus = "joining" | "connected" | "joined";
+
+/**
+ * What one joined room's voice can claim from membership and the audio this page plays.
+ * One microphone may play through a sibling room's publication, so playing is matched by speaker.
+ */
+export function roomVoiceStatus(state: ChannelSnapshot, sessionId: string | null, roomId: string,
+  playing: readonly ChannelPublication[]): RoomVoiceStatus {
+  const members = state.voice.filter(voice => voice.roomId === roomId);
+  if (members.some(voice => voice.sessionId === sessionId && voice.deafened)) return "joined";
+  const speakers = members.filter(voice => voice.sessionId !== sessionId && !voice.muted);
+  if (speakers.some(voice => playing.some(publication => publication.sessionId === voice.sessionId))) return "connected";
+  return speakers.length ? "joining" : "joined";
+}
+
 /** Retain the current audible publication without choosing or changing any route. */
 export function useVoicePlayback(state: ChannelSnapshot | null, sessionId: string | null, streams: ReadonlyMap<string, MediaStream>) {
   const [previous, setPrevious] = useState<readonly string[]>([]);

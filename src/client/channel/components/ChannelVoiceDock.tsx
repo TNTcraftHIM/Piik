@@ -7,6 +7,8 @@ import { useCopy } from "../../ui/copy";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
+import type { ChannelPublication } from "../protocol";
+import { roomVoiceStatus } from "../use-voice-playback";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
 import { useCallback, useContext, useEffect, useId, useState } from "react";
@@ -21,8 +23,9 @@ import { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
-export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
-  channel: ChannelController; selected: string; onSelect: (id: string) => void; onBrowse: (id: string) => void;
+export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrowse }: {
+  channel: ChannelController; selected: string; playing: readonly ChannelPublication[];
+  onSelect: (id: string) => void; onBrowse: (id: string) => void;
 }) {
   const { t } = useCopy();
   const state = channel.state;
@@ -45,12 +48,13 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  const status = roomVoiceStatus(state, channel.sessionId, roomId, playing);
   const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > .01) : [];
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
       <div className="c3-voice-room-info">
-        <small>{t("channel.voiceDock.voiceJoined")}</small>
+        <small data-status={status}>{t(VOICE_STATUS_LABEL[status])}</small>
         <div className="c3-voice-room-choice">
           <Tooltip className="c3-voice-room" overflow={{ text: roomName, selector: "button, select" }}>
             {multipleRooms ? <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
@@ -112,6 +116,12 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     </div>
   </section>;
 }
+
+const VOICE_STATUS_LABEL = {
+  joining: "channel.voiceDock.voiceConnecting",
+  connected: "channel.voiceDock.voiceConnected",
+  joined: "channel.voiceDock.voiceJoined",
+} as const;
 
 function VoiceOverlayChatSettings({ session }: { session: RoomInteractionSession }) {
   const { t } = useCopy();

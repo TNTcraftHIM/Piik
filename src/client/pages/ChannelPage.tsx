@@ -628,7 +628,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             onSend={channel.sendMessage} onDiscardSend={channel.discardMessageRetry} floating={roomToolOpen} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {(layout !== "quick" || roomToolOpen) && joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
-          </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
+          </section><ChannelVoiceDock channel={channel} selected={voiceFocus} playing={voiceStreams} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
       </div>
     </main>
   </div></LayerHistory.Provider>;

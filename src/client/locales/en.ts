@@ -485,6 +485,8 @@ export const en: Record<CopyKey, string> = {
   "channel.voiceDock.adjustOverlay": "Adjust voice overlay",
   "channel.voiceDock.pinOverlay": "Pin voice overlay",
   "channel.voiceDock.voiceJoined": "Voice joined",
+  "channel.voiceDock.voiceConnecting": "Connecting voice…",
+  "channel.voiceDock.voiceConnected": "Voice connected",
   "channel.voiceDock.selectRoom": "Choose a voice room to control",
   "channel.voiceDock.openRoom": "Open {name}",
   "channel.invitationLink.copied": "Copied",

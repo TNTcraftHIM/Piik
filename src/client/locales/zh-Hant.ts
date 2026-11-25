@@ -374,6 +374,8 @@ export const zhHant = {
   "channel.voiceDock.adjustOverlay": "調整語音浮層",
   "channel.voiceDock.pinOverlay": "固定語音浮層",
   "channel.voiceDock.voiceJoined": "已加入語音",
+  "channel.voiceDock.voiceConnecting": "正在接通語音…",
+  "channel.voiceDock.voiceConnected": "語音已接通",
   "channel.voiceDock.selectRoom": "選擇要控制的語音房間",
   "channel.voiceDock.openRoom": "開啟「{name}」",
   "channel.invitationLink.copied": "已複製",

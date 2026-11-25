@@ -375,6 +375,8 @@ export const ko = {
   "channel.voiceDock.adjustOverlay": "음성 오버레이 조정",
   "channel.voiceDock.pinOverlay": "음성 오버레이 고정",
   "channel.voiceDock.voiceJoined": "음성 참여 중",
+  "channel.voiceDock.voiceConnecting": "음성 연결 중…",
+  "channel.voiceDock.voiceConnected": "음성 연결됨",
   "channel.voiceDock.selectRoom": "제어할 음성 방을 선택하세요",
   "channel.voiceDock.openRoom": "{name} 열기",
   "channel.invitationLink.copied": "복사됨",

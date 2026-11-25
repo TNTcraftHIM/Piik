@@ -114,6 +114,7 @@
 .c3-voice-destination { min-width: 0; flex: 1 1 8ch; display: flex; align-items: center; gap: 8px; }
 .c3-voice-room-info { min-width: 0; flex: 1; }
 .c3-voice-destination small { display: block; color: var(--live-ink); font-size: 11px; margin-bottom: 2px; white-space: nowrap; }
+.c3-voice-destination small[data-status="joining"] { color: var(--busy); }
 .c3-voice-room-choice { display: flex; align-items: center; gap: 4px; }
 .c3-voice-room { display: block; min-width: 0; max-width: 100%; }
 .c3-voice-room-choice > .c3-voice-room { flex: 1; }

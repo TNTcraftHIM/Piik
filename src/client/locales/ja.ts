@@ -374,6 +374,8 @@ export const ja = {
   "channel.voiceDock.adjustOverlay": "通話オーバーレイを調整",
   "channel.voiceDock.pinOverlay": "通話オーバーレイを固定",
   "channel.voiceDock.voiceJoined": "通話に参加中",
+  "channel.voiceDock.voiceConnecting": "通話に接続中…",
+  "channel.voiceDock.voiceConnected": "通話に接続済み",
   "channel.voiceDock.selectRoom": "操作する通話ルームを選択",
   "channel.voiceDock.openRoom": "「{name}」を開く",
   "channel.invitationLink.copied": "コピーしました",
