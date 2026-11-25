@@ -69,6 +69,7 @@ impl Fixture {
             },
             port: address.port(),
             token: "owned-token".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::from([(SITE.into(), permission.clone())]),

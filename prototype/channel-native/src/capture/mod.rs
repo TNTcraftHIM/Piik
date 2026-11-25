@@ -46,8 +46,6 @@ mod frame_dropper;
 mod frames;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod gpu;
-#[cfg(all(feature = "capture", target_os = "windows"))]
-mod job;
 #[cfg(all(feature = "capture", target_os = "linux"))]
 mod linux;
 #[cfg(all(feature = "capture", target_os = "macos"))]

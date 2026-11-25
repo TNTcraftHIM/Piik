@@ -43,9 +43,8 @@ these boundaries:
    rejected from unknown, and a copy sent to an observer is separate from the
    requester's reply. Idempotency is scoped by operation: chat already has
    durable nonces, and an invitation rotation is recovered by reading current
-   state. A history page as one bounded batch is measured against the present
-   101 signed replies per page: 50 messages, 50 reaction snapshots and one
-   terminator. A released client that reads an unknown outcome as success
+   state. History uses one signed, bounded page containing messages and their
+   reaction snapshots. A released client that reads an unknown outcome as success
    cannot be corrected from the domain.
 3. **Storage.** The first public format of each store is recorded as release
    fixtures. A concrete transactional upgrade is added when a format actually
@@ -64,9 +63,9 @@ these boundaries:
 
 ### Deferred until a consumer needs it
 
-- **Schema source.** First a bounded proof: generate the types for
-  `UserInfo.avatar` and `SetProfile.avatar`, keep required, omitted and null
-  semantics and runtime validation, and remove the old owner if it works.
+- **Schema source.** Defer a generation chain until a concrete consumer reduces
+  overall ownership. Generated types must preserve required, omitted and null
+  semantics and runtime validation, and replace their old owner.
 - **State revision.** Reopens when a delta or resume consumer needs it.
   Readers already accept an added top-level field.
 - **Activity envelope.** Dispatch over the owned kinds is exhaustive now. A

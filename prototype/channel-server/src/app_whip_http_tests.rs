@@ -28,6 +28,7 @@ fn fixture() -> (
         },
         port: 39721,
         token: "fixture".into(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites: sites::Sites::open(directory.path()).unwrap(),
             approvals: BTreeMap::from([(ORIGIN.into(), Arc::new(Permission::new(Uuid::new_v4())))]),

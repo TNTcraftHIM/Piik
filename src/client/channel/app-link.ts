@@ -117,8 +117,8 @@ export class AppPage implements AppPagePort {
   private sourceListeners = new Set<() => void>();
   constructor(readonly id: string, public url: string, private request: (command: AppCommand, signal: AbortSignal) => Promise<unknown>,
     private dispose: () => void, private changed: () => void) {}
-  private command(type: string, values: Record<string, unknown> = {}): Promise<unknown> {
-    return this.request({ type, pageId: this.id, ...values }, this.lifetime.signal);
+  private command(type: string, values: Record<string, unknown> = {}, signal?: AbortSignal): Promise<unknown> {
+    return this.request({ type, pageId: this.id, ...values }, signal ? AbortSignal.any([this.lifetime.signal, signal]) : this.lifetime.signal);
   }
   async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).strict().parse(await this.command("page_prepare", { url: this.url })); }
   private owners = 1;
@@ -144,9 +144,9 @@ export class AppPage implements AppPagePort {
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
   async hide(): Promise<void> { await this.command("page_hide"); }
-  async mediaSources(candidateId?: string): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
+  async mediaSources(candidateId?: string, signal?: AbortSignal): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
     return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
-      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources", { candidateId }));
+      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources", { candidateId }, signal));
   }
   async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal, candidateId?: string): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
     const range = nativePageMetadataReadSchema.parse({ choiceId, offset, length });

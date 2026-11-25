@@ -489,7 +489,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
           {page.candidates.map((candidate, index) => {
             const name = candidate.title || t("watch.videoNumber", { number: String(index + 1) });
             return <div key={candidate.id} className="c3-watch-source-choice" role="group" aria-label={name}>
-              <CaptureSourceCard title={name} action={activityId ? t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) }) : t("watch.browserSource.title")}
+              <CaptureSourceCard title={name} action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })}
                 icon="play" disabled={busy}
                 onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false, activityId ? undefined : "choose-source"), committed => { if (committed) onClose(); }); }} />
               {!activityId && <div className="c3-share-title-actions lr-embedded-actions">

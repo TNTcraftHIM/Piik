@@ -214,11 +214,9 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         .unwrap();
     let forwarded = relay(&mut network, reader, owner, &history);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
-    assert!(replies.iter().any(|reply| matches!(&reply.record, ConversationRecord::HistoryMessage { message } if message.id == confirmed.unwrap())));
-    assert!(matches!(
-        replies.last().unwrap().record,
-        ConversationRecord::HistoryEnd { count: 1, .. }
-    ));
+    assert_eq!(replies.len(), 1);
+    assert!(matches!(&replies[0].record, ConversationRecord::HistoryPage { messages, .. }
+        if messages.len() == 1 && messages[0].message.id == confirmed.unwrap()));
     rejected(
         &mut network,
         outsider,

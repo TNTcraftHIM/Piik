@@ -541,13 +541,11 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
             send_frame(&mut writer, Message::Close(None)).await;
         };
         let reading = async {
-            let mut last_seen = tokio::time::Instant::now();
             loop {
-                let incoming = tokio::select! {
-                    _ = tokio::time::sleep_until(last_seen + Duration::from_secs(20)) => break,
-                    incoming = reader.next() => incoming,
+                let incoming = match tokio::time::timeout(Duration::from_secs(20), reader.next()).await {
+                    Ok(incoming) => incoming,
+                    Err(_) => break,
                 };
-                last_seen = tokio::time::Instant::now();
                 match incoming {
                     Some(Ok(Message::Text(text))) => match Request::parse(&text) {
                         Ok(value) => dispatch_request(&state, connection, value).await,

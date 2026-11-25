@@ -2,7 +2,7 @@
 use crate::{
     attachment::AttachmentDescriptor,
     file_delivery::FileControl,
-    history::{HistoryRequest, HistoryResult, MessageReactionSnapshot, MessageReactions},
+    history::{HistoryRequest, HistoryResult, MessageReactionSnapshot, MessageReactions, StoredMessage},
     wire::ChatMessage,
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
@@ -411,16 +411,13 @@ pub enum ConversationRecord {
         message: ChatMessage,
         inserted: bool,
     },
-    HistoryMessage {
-        message: ChatMessage,
-    },
     HistorySeekResult {
         after: u64,
         seq: Option<u64>,
     },
-    HistoryEnd {
-        #[serde(deserialize_with = "history_count")]
-        count: usize,
+    HistoryPage {
+        #[serde(deserialize_with = "history_messages")]
+        messages: Vec<StoredMessage>,
         has_more: bool,
         oldest_seq: Option<u64>,
         before: Option<u64>,
@@ -449,12 +446,21 @@ impl ConversationRecord {
     }
 }
 
-fn history_count<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<usize, D::Error> {
-    let count = usize::deserialize(deserializer)?;
-    if count > crate::history::HISTORY_PAGE {
-        return Err(serde::de::Error::custom("invalid history count"));
+fn history_messages<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<StoredMessage>, D::Error> {
+    let messages = Vec::<StoredMessage>::deserialize(deserializer)?;
+    if messages.len() > crate::history::HISTORY_PAGE
+        || messages
+            .iter()
+            .map(|message| message.message.seq)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != messages.len()
+    {
+        return Err(serde::de::Error::custom("invalid history page"));
     }
-    Ok(count)
+    Ok(messages)
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -560,29 +566,15 @@ impl ConversationAddress {
                 oldest_seq,
                 before,
             })) => {
-                let count = messages.len();
-                if count > crate::history::HISTORY_PAGE {
+                if messages.len() > crate::history::HISTORY_PAGE {
                     return Err("invalid_conversation_result");
                 }
-                let mut records: Vec<_> = messages
-                    .into_iter()
-                    .flat_map(|message| {
-                        let snapshot = message.reaction_snapshot();
-                        [
-                            ConversationRecord::HistoryMessage {
-                                message: message.message,
-                            },
-                            ConversationRecord::MessageReactions { snapshot },
-                        ]
-                    })
-                    .collect();
-                records.push(ConversationRecord::HistoryEnd {
-                    count,
+                vec![ConversationRecord::HistoryPage {
+                    messages,
                     has_more,
                     oldest_seq,
                     before,
-                });
-                records
+                }]
             }
             Ok(ConversationResult::History(HistoryResult::Attachment { .. })) => {
                 return Err("invalid_conversation_result")
@@ -724,32 +716,20 @@ mod tests {
             .map(|reaction| ((*reaction).to_owned(), u64::MAX))
             .collect();
         message.reactions.revision = u64::MAX;
-        let messages = (0..crate::history::HISTORY_PAGE)
-            .map(|index| {
-                let mut message = message.clone();
-                message.message.id = Uuid::new_v4();
-                message.message.seq = index as u64 + 1;
-                message
-            })
-            .collect();
-        let replies = request
-            .address
-            .replies(Ok(ConversationResult::History(HistoryResult::Page {
-                messages,
-                has_more: true,
-                oldest_seq: Some(1),
-                before: Some(101),
-            })))
-            .unwrap();
-        assert_eq!(replies.len(), 101);
-        assert!(matches!(
-            replies.last().unwrap().record,
-            ConversationRecord::HistoryEnd {
-                count: crate::history::HISTORY_PAGE,
-                ..
-            }
-        ));
-        assert!(serde_json::from_value::<ConversationRecord>(serde_json::json!({"type":"history_end","count":101,"hasMore":false,"oldestSeq":null,"before":null})).is_err());
+        // Read through the byte-bounded page owner, including an oversized
+        // first row. It keeps the accepted large message reachable on its own page.
+        let mut page = crate::history::HistoryPage::default();
+        assert!(!page.push(message.clone()).unwrap());
+        let replies = request.address.replies(Ok(ConversationResult::History(
+            page.finish(Some(1), Some(101)),
+        ))).unwrap();
+        assert_eq!(replies.len(), 1);
+        assert!(matches!(&replies[0].record, ConversationRecord::HistoryPage { messages, .. }
+            if messages.len() == 1));
+        let invalid = serde_json::json!({"type":"history_page","messages":vec![message.clone(); 51],"hasMore":false,"oldestSeq":null,"before":null});
+        assert!(serde_json::from_value::<ConversationRecord>(invalid).is_err());
+        let duplicate = serde_json::json!({"type":"history_page","messages":[message.clone(), message],"hasMore":false,"oldestSeq":null,"before":null});
+        assert!(serde_json::from_value::<ConversationRecord>(duplicate).is_err());
         for reply in replies {
             let packet = signer.sign(reply.address.sender, &reply).unwrap();
             let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();

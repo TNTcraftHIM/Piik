@@ -102,7 +102,7 @@ async function startFixtureApp(session: ChannelSession) {
 }
 
 async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"], storage: "saved" | "throws" | "ignores-write" = "saved", Session = ChannelSession) {
-  vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
+  vi.stubGlobal("location", new URL(`https://channel.test/${hash ? `#${hash}` : ""}`));
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
     if (storage === "throws") throw new Error("storage unavailable");
@@ -138,13 +138,8 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
       } } });
     },
     page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1, bindingId = "binding") {
-      for (const message of messages) {
-        peer.reply(request, { type: "history_message", message }, bindingId);
-        peer.reply(request, { type: "message_reactions", snapshot: {
-          messageId: message.id, messageSeq: message.seq, ...(message.reactions ?? { revision: 0, counts: {} }),
-        } }, bindingId);
-      }
-      peer.reply(request, { type: "history_end", count: messages.length, hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null }, bindingId);
+      peer.reply(request, { type: "history_page", messages: messages.map(message => ({ ...message, reactions: message.reactions ?? { revision: 0, counts: {} } })),
+        hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null }, bindingId);
     },
     live(message: ChannelMessage, roomId = "first", bindingId = "binding") {
       deliver({ roomId, bindingId, sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message: messageSchema.parse(message) } });
@@ -604,7 +599,7 @@ test.each(["new identity", "closed session retry"])("personal feedback reactivat
 
 test("a rejected initial join closes personal feedback until the session is retried", async () => {
   const { document, contexts } = stubFeedbackAudio();
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+  vi.stubGlobal("location", new URL("https://channel.test/"));
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   try {
@@ -690,7 +685,7 @@ test("restoring the viewed room does not turn its navigation state into an invit
     const entering = socket.sent.find(command => command.type === "enter_room")!;
     expect(entering).toMatchObject({ roomId: "first", inviteKey: "room-link" });
     socket.receive({ type: "ack", requestId: entering.requestId });
-    await vi.waitFor(() => expect(history.replaceState).toHaveBeenCalledWith({ piikChannelRoom: "second" }, "", "/__channel-preview#room=first"));
+    await vi.waitFor(() => expect(history.replaceState).toHaveBeenCalledWith({ piikChannelRoom: "second" }, "", "/#room=first"));
     expect(location.hash).toBe("#room=first");
   } finally { session.close(); }
 });
@@ -714,8 +709,8 @@ test("a saved owner credential retires only the consumed owner URL parameter and
     const socket = ChannelSocket.current; await socket.onopen?.();
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
     socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner-credential", sessionId: "endpoint", state });
-    expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
-    await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe("https://channel.test/__channel-preview"));
+    expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/?theme=dark#room=first&invite=friend-link&other=keep");
+    await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe("https://channel.test/"));
     expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
     vi.useFakeTimers();
     socket.close(); await vi.advanceTimersByTimeAsync(1000);
@@ -803,7 +798,7 @@ test("opening the site creates identity before independently applying a room inv
     socket.receive({ type: "ack", requestId: next.requestId });
     await expect(entering).resolves.toBe("second");
     expect(session.getSnapshot().connection).toBe("connected");
-    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/__channel-preview#room=second");
+    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/#room=second");
     expect(location.hash).toBe("#room=second");
     expect(socket.sent.filter(command => command.type === "join")).toHaveLength(1);
     const state = session.getSnapshot().state!;
@@ -923,7 +918,7 @@ test("room admission succeeds when History rejects invitation cleanup", async ()
 test("a browser without WebAssembly reports its capability failure before joining", async () => {
   vi.mocked(ChannelConversation.prototype.initialize).mockRestore();
   vi.stubGlobal("WebAssembly", undefined);
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+  vi.stubGlobal("location", new URL("https://channel.test/"));
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   try {
@@ -1141,11 +1136,7 @@ test("history assembles early live reaction snapshots and preserves the newer pr
     const older = session.loadHistory("first"), request = await peer.next();
     peer.reply({ ...request, requestId: "live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { heart: 1 }) });
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3), message(4)]);
-    peer.reply(request, { type: "history_message", message: message(1) });
-    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(1, 1, { wave: 1 }) });
-    peer.reply(request, { type: "history_message", message: message(2) });
-    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(2, 0) });
-    peer.reply(request, { type: "history_end", count: 2, hasMore: false, oldestSeq: 1, before: 3 });
+    peer.page(request, [{ ...message(1), reactions: { revision: 1, counts: { wave: 1 } } }, message(2)], false, 1);
     await older;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([{ ...message(1), reactions: { revision: 3, counts: { heart: 1 } } }, message(2)]);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
@@ -1445,7 +1436,7 @@ test("room invitation rotations stay pending until their own final reply and kee
 test("site addresses and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
+  vi.stubGlobal("location", new URL("https://channel.test/?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
   try {
     for (const invitationOrigin of ["https://friends.example", undefined]) {
       session.reconnect();
@@ -1454,14 +1445,14 @@ test("site addresses and room invitations use the current Welcome origin without
       socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state,
         ...(invitationOrigin ? { invitationOrigin } : {}) });
       const origin = invitationOrigin ?? "https://channel.test";
-      await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe(`${origin}/__channel-preview`));
+      await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe(`${origin}/`));
       const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
       socket.receive({ type: "ack", requestId: browse.requestId });
       peer.page(await peer.next(), [], false, null);
       const creating = session.createRoomInvite("first");
       const request = socket.sent.findLast(command => command.type === "room_invite")!;
       socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "invite", key: "room-invite" } });
-      await expect(creating).resolves.toBe(`${origin}/__channel-preview#room=first&invite=room-invite`);
+      await expect(creating).resolves.toBe(`${origin}/#room=first&invite=room-invite`);
     }
   } finally { session.close(); }
 });
@@ -5971,35 +5962,20 @@ test("screen audio waits for negotiated encodings and updates bitrate and pause 
   } finally { transport.close(); }
 });
 
-test.each([
-  ["missing record", [2]],
-  ["duplicate sequence", [2, 2]],
-  ["missing snapshot", [2, 3]],
-] as const)("an incomplete peer history page (%s) preserves messages and permits a complete retry", async (_fault, sequences) => {
+test("a failed peer history read preserves messages and permits a complete retry", async () => {
   const { session, peer } = await setup();
   try {
     await peer.history([message(1)]);
     const existing = session.getSnapshot().messagesByRoom.first;
     const incomplete = session.loadLatestHistory("first");
-    const rejected = expect(incomplete).rejects.toThrow("incomplete_history");
-    const request = await peer.next();
-    for (const seq of sequences) {
-      peer.reply(request, { type: "history_message", message: message(seq) });
-      if (_fault !== "missing snapshot") peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(seq, 0) });
-    }
-    peer.reply(request, { type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
+    const rejected = expect(incomplete).rejects.toThrow("storage_failed");
+    peer.reply(await peer.next(), { type: "error", code: "storage_failed" });
     await rejected;
     expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
-    expect(existing).toEqual([message(1)]);
-
     const complete = session.loadLatestHistory("first");
     const retry = await peer.next();
-    peer.reply(retry, { type: "history_message", message: message(2) });
-    peer.reply(retry, { type: "history_message", message: message(3) });
-    peer.reply(retry, { type: "message_reactions", snapshot: reactionSnapshot(2, 0) });
-    peer.reply(retry, { type: "message_reactions", snapshot: reactionSnapshot(3, 0) });
     expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
-    peer.reply(retry, { type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
+    peer.page(retry, [message(2), message(3)], false, 2);
     await complete;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(2), message(3)]);
   } finally { session.close(); }
@@ -11671,7 +11647,7 @@ test.each([{ state: "missing" }, { state: "available", key: "private-room-key" }
     expect(request).toMatchObject({ roomId: "first" });
     socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "invite_state", invitation } });
     await expect(reading).resolves.toEqual(invitation.state === "available"
-      ? { state: "available", url: "https://channel.test/__channel-preview#room=first&invite=private-room-key" } : invitation);
+      ? { state: "available", url: "https://channel.test/#room=first&invite=private-room-key" } : invitation);
     expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
   } finally { session.close(); }
 });
@@ -11686,8 +11662,8 @@ test("reopening the room invitation can read while the dismissed panel's read is
     for (const [index, key] of [[1, "current-key"], [0, "previous-read-key"]] as const) {
       socket.receive({ type: "room_reply", roomId: "first", requestId: reads[index].requestId, result: { type: "invite_state", invitation: { state: "available", key } } });
     }
-    await expect(reopened).resolves.toEqual({ state: "available", url: "https://channel.test/__channel-preview#room=first&invite=current-key" });
-    await expect(dismissed).resolves.toMatchObject({ url: "https://channel.test/__channel-preview#room=first&invite=previous-read-key" });
+    await expect(reopened).resolves.toEqual({ state: "available", url: "https://channel.test/#room=first&invite=current-key" });
+    await expect(dismissed).resolves.toMatchObject({ url: "https://channel.test/#room=first&invite=previous-read-key" });
     expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
   } finally { session.close(); }
 });
@@ -14600,6 +14576,52 @@ test("App admission waits for Native readiness and cancelling the last intent pe
   } finally { session.close(); }
 });
 
+
+test.each(["sources", "share-page", "watch-page", "external", "capture"] as const)("cancelling %s during App admission releases the caller and permits retry", async kind => {
+  const { session, socket } = await setup(1000, false);
+  const approved = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, token: "owned", port: 8793, pagePlayer: true, externalScreenInputAvailable: true } as const;
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(approved);
+  const reader = new AbortController();
+  const activity = { id: "website-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+    source: { kind: "website" as const, url: "https://website.test/episode" },
+    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+  const begin = {
+    sources: () => session.nativeSources(reader.signal),
+    "share-page": () => session.prepareWatchPage("first", activity.source.url),
+    "watch-page": () => session.prepareWatchPage("first", activity.source.url, activity.id),
+    external: () => session.startExternalScreen("first"),
+    capture: () => session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Owned fixture" }, audio: false, showCaptureBorder: false }),
+  };
+  const result = begin[kind]().catch(error => error);
+  try {
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const first = ChannelSocket.current;
+    await first.onopen?.();
+    const hello = first.sent.at(-1)!.id;
+    expect(first.sent.map(command => command.type)).toEqual(["hello"]);
+    const pendingKey = kind === "watch-page" ? `watch-video:${activity.id}` : kind === "sources" ? undefined : "screen:first";
+    if (pendingKey) expect(session.getSnapshot().pending.has(pendingKey)).toBe(true);
+    if (kind === "sources") reader.abort();
+    else if (kind === "watch-page") session.cancelWatchPage(activity.id);
+    else await session.cancelScreenSelection("first");
+    await vi.waitFor(() => expect(first.readyState).toBe(3), { timeout: 200 });
+    expect(await result).toMatchObject({ name: "AbortError" });
+    if (pendingKey) expect(session.getSnapshot().pending.has(pendingKey)).toBe(false);
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
+    const retried = session.activateApp(approved);
+    const next = ChannelSocket.current;
+    expect(next).not.toBe(first);
+    await next.onopen?.();
+    first.receive({ id: hello, result: null });
+    expect(session.getSnapshot().appConnected).toBe(false);
+    next.receive({ id: next.sent.at(-1)!.id, result: null });
+    await retried;
+    expect(session.getSnapshot()).toMatchObject({ appConnected: true, error: null });
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+  } finally { session.close(); await result; }
+});
 
 test("App activation cannot acknowledge success before Domain admission", async () => {
   const { session, socket } = await setup();

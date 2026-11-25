@@ -1522,7 +1522,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
         )
         .unwrap();
     send_request(&mut socket, json!({"type":"conversation", "packet":packet})).await;
-    let (mut messages, mut reactions, mut frames) = (0, 0, 0);
+    let (mut messages, mut frames) = (0, 0);
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut socket).await {
@@ -1533,10 +1533,9 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                     }
                     frames += 1;
                     match reply.record {
-                        ConversationRecord::HistoryMessage { .. } => messages += 1,
-                        ConversationRecord::MessageReactions { .. } => reactions += 1,
-                        ConversationRecord::HistoryEnd { count, .. } => {
-                            assert_eq!(count, 50);
+                        ConversationRecord::HistoryPage { messages: rows, .. } => {
+                            messages = rows.len();
+                            assert_eq!(messages, 50);
                             break;
                         }
                         _ => panic!("unexpected history record"),
@@ -1549,7 +1548,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
     })
     .await
     .unwrap();
-    assert_eq!((frames, messages, reactions), (101, 50, 50));
+    assert_eq!((frames, messages), (1, 50));
     send_request(
         &mut socket,
         json!({"type":"set_profile","avatar":null, "name":"Still connected"}),
@@ -1877,7 +1876,7 @@ async fn room_conversation(
                     let finished = matches!(
                         reply.record,
                         ConversationRecord::Confirmed { .. }
-                            | ConversationRecord::HistoryEnd { .. }
+                            | ConversationRecord::HistoryPage { .. }
                     );
                     records.push(reply.record);
                     if finished {
@@ -2126,7 +2125,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         ConversationCommand::History { before: None },
     )
     .await;
-    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryMessage {message} if message.text == "After manager left")));
+    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryPage {messages, ..} if messages.iter().any(|message| message.message.text == "After manager left"))));
     let (_, _, stranger) = connect(address, "invite", "Stranger").await;
     assert!(!stranger.channel.rooms.iter().any(|r| r.id == room.id));
     let (mut operator, _, state) = connect(address, "owner", "Operator").await;
@@ -2466,9 +2465,9 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
                 ConversationCommand::History { before: None },
             )
             .await;
-            assert!(history.iter().any(|record| matches!(record, ConversationRecord::HistoryMessage { message } if message.text == "Retained history")));
+            assert!(history.iter().any(|record| matches!(record, ConversationRecord::HistoryPage { messages, .. } if messages.iter().any(|message| message.message.text == "Retained history"))));
             assert!(
-                matches!(history.last(), Some(ConversationRecord::HistoryEnd { count, .. }) if *count == expected as usize)
+                matches!(history.last(), Some(ConversationRecord::HistoryPage { messages, .. }) if messages.len() == expected as usize)
             );
             assert!(
                 !task.is_finished(),
@@ -3220,19 +3219,16 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         ConversationCommand::History { before: None },
     )
     .await;
-    assert!(matches!(history.as_slice(), [
-        ConversationRecord::HistoryMessage { message },
-        ConversationRecord::MessageReactions { snapshot },
-        ConversationRecord::HistoryMessage { message: response },
-        ConversationRecord::MessageReactions { .. },
-        ConversationRecord::HistoryEnd { count: 2, .. },
-    ] if message.id != message_id && message.user_id != source_author && message.user_id != room.creator_id
+    let [ConversationRecord::HistoryPage { messages, .. }] = history.as_slice() else { panic!("one history page expected") };
+    let [stored, response] = messages.as_slice() else { panic!("two retained messages expected") };
+    let message = &stored.message;
+    assert!(message.id != message_id && message.user_id != source_author && message.user_id != room.creator_id
         && message.archived_author_name.as_deref() == Some("Source author")
-        && response.reply.as_ref().is_some_and(|reply| reply.user_id == message.user_id
+        && response.message.reply.as_ref().is_some_and(|reply| reply.user_id == message.user_id
             && reply.archived_author_name.as_deref() == Some("Source author"))
         && message.text == "Copied history"
         && message.inline_images.get(&image_id).is_some_and(|image| image.data == thumbnail)
-        && snapshot.message_id == message.id && snapshot.reactions.counts.get("wave") == Some(&1)));
+        && stored.reactions.counts.get("wave") == Some(&1));
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
 }
@@ -3354,4 +3350,79 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
             .as_array().unwrap().contains(&json!(id))),
         "confirmed failure must clear the reservation after a session resumes");
 
+}
+
+#[tokio::test]
+async fn room_writer_work_does_not_spend_the_socket_read_timeout() {
+    use piik_channel_native::session::HostCommand;
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open_with_options(
+        folder.path(), "owner", "http://localhost".into(), None, vec![],
+        RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
+    ).unwrap();
+    let (writer, mut commands) = mpsc::channel(1);
+    domain.set_room_commands(Some(writer));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let service = tokio::spawn(domain.clone().serve(listener, Router::new(), async {
+        let _ = stopped.await;
+    }));
+    let (mut socket, _, _) = connect(address, "owner", "Owner").await;
+    socket.send(Message::Text(json!({
+        "type":"create_room", "requestId":"create", "room":{
+            "id":"delayed","name":"Living room","icon":"couch","creatorId":Uuid::nil(),
+            "access":"public","hidden":false,"hasPassword":false
+        }
+    }).to_string().into())).await.unwrap();
+    socket.send(Message::Text(json!({
+        "type":"set_profile", "requestId":"profile", "name":"After creation"
+    }).to_string().into())).await.unwrap();
+    let client = tokio::spawn(async move {
+        let mut pings = 0;
+        let mut outcomes = Vec::new();
+        loop {
+            match socket.next().await {
+                Some(Ok(Message::Ping(bytes))) => {
+                    pings += 1;
+                    if socket.send(Message::Pong(bytes)).await.is_err() {
+                        return (false, pings, outcomes);
+                    }
+                }
+                Some(Ok(Message::Text(text))) => {
+                    let event: Event = serde_json::from_str(&text).unwrap();
+                    match event {
+                        Event::Error { request_id: Some(id), code } if id == "create" => {
+                            assert_eq!(code, "room_busy");
+                            outcomes.push(id);
+                        }
+                        Event::Ack { request_id } if request_id == "profile" => {
+                            outcomes.push(request_id);
+                            let _ = socket.close(None).await;
+                            return (true, pings, outcomes);
+                        }
+                        _ => {}
+                    }
+                }
+                Some(Ok(Message::Pong(_))) => {}
+                _ => return (false, pings, outcomes),
+            }
+        }
+    });
+    let HostCommand::Open(open) = tokio::time::timeout(Duration::from_secs(5), commands.recv())
+        .await.unwrap().unwrap() else { panic!("expected room create"); };
+    // The server's own writer takes longer than the 20-second socket read timeout.
+    // The single client keeps answering Ping while its next command waits in order.
+    tokio::time::sleep(Duration::from_secs(21)).await;
+    assert_eq!(domain.hub.lock().unwrap().authority.owner_name().as_deref(), Some("Owner"));
+    assert!(open.result.send(Err("room_busy".into())).is_ok());
+    let outcome = tokio::time::timeout(Duration::from_secs(5), client).await;
+    let _ = stop.send(());
+    tokio::time::timeout(Duration::from_secs(5), service).await.unwrap().unwrap().unwrap();
+    let (alive, pings, outcomes) = outcome.unwrap().unwrap();
+    eprintln!("delayed writer: alive={alive}, answered_pings={pings}, outcomes={outcomes:?}");
+    assert!(pings >= 4, "client answered the server's heartbeats during the writer wait");
+    assert!(alive, "server work must not make the responsive client idle");
+    assert_eq!(outcomes, ["create", "profile"], "commands remain ordered");
 }

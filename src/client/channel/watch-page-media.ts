@@ -30,7 +30,7 @@ export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publis
         dirty = false;
         try {
           signal.throwIfAborted();
-          const { choices, indexedCandidates, mpdCandidates } = await page.mediaSources(candidateId);
+          const { choices, indexedCandidates, mpdCandidates } = await page.mediaSources(candidateId, signal);
           signal.throwIfAborted();
           if (dirty) continue;
           inspecting = new AbortController();

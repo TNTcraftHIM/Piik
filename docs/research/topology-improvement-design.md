@@ -181,6 +181,13 @@ use the best trees found. The harness reports exactness separately.
   across snapshots.
   A leaf that moves can leave its parent childless, and that parent becomes a
   movable leaf, permitting further rearrangement on the wider graph.
+- **Keeping released pairs closes little.** If the pool kept every pair it had
+  confirmed while both ends stay, leaf moves would close 19, 16 and 11% of the
+  gap to the best tree on all connectable pairs at 8, 16 and 32 viewers, against
+  15, 12 and 7% on the pairs confirmed at that moment and 80, 93 and 98% with
+  one pair attempt. The pool releases 4 to 8% of confirmed pairs. The missing
+  pairs were never tried. A kept pair never fails in this model, which
+  flatters keeping it.
 - **A refused viewer whose linked parents are all full is rare** at a limit
   of two or more. "Placed deeper while a parent was full" is true of almost
   every viewer and cannot serve as evidence.
