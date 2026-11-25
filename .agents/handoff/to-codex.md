@@ -96,8 +96,9 @@ Checked against the canon, for your judgement:
 - **Browser voice is reported ready without delivered audio**
   (`media.ts:371-373`).
 - **Standby connections exist without an activity asking** (`discovery.rs:668`,
-  `:711`). ADR-0018 keeps that ownership, so this is the canon's wording to
-  settle with the owner, not code for you to change.
+  `:711`). The owner settled this in the canon, which was too tight: when
+  idle, the pool may build and check connections ahead of need. No code
+  changes.
 - **Simple sharing creates a room on every start** and leaves it when the
   picker is cancelled (`ChannelPage.tsx:230-244`). Mine to propose.
 
