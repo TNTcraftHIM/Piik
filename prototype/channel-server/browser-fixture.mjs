@@ -611,9 +611,11 @@ async function capturedScreen(index, roomId) {
   return current.state.publications.find(publication => publication.sessionId === current.sessionId && publication.roomId === roomId && publication.kind === "screen").id;
 }
 const sample = index => evaluate(index, "window.__channelProbe.sample()");
-async function audioProgressing(index, publicationId) {
+const audioProgressing = (index, publicationId) => audioAdvancing(index, publicationId, ["samples", "energy"], "decodes");
+const audioReceiving = (index, publicationId) => audioAdvancing(index, publicationId, ["bytes", "packets"], "receives");
+async function audioAdvancing(index, publicationId, fields, stage) {
   let previous = null;
-  return until(`browser ${index} receives advancing audio ${publicationId}`, () => evaluate(index, `(async () => {
+  return until(`browser ${index} ${stage} advancing audio ${publicationId}`, () => evaluate(index, `(async () => {
     const current = () => ${hook}.snapshot().streams.get(${JSON.stringify(publicationId)});
     const track = current()?.getAudioTracks().find(track => track.readyState === 'live');
     if (!track) return null;
@@ -625,12 +627,12 @@ async function audioProgressing(index, publicationId) {
     if (pc.connectionState !== 'connected' || !current()?.getAudioTracks().includes(track)) return null;
     return { trackId: track.id, reports: [...stats.values()]
       .filter(report => report.type === 'inbound-rtp' && report.kind === 'audio' && report.isRemote !== true)
-      .map(report => ({ id: report.id, samples: report.totalSamplesReceived, energy: report.totalAudioEnergy })) };
+      .map(report => ({ id: report.id, bytes: report.bytesReceived, packets: report.packetsReceived,
+        samples: report.totalSamplesReceived, energy: report.totalAudioEnergy })) };
   })()`), current => {
     const advancing = current && previous?.trackId === current.trackId && current.reports.some(report => {
       const before = previous.reports.find(before => before.id === report.id);
-      return before && Number.isFinite(report.samples) && Number.isFinite(report.energy)
-        && report.samples > before.samples && report.energy > before.energy;
+      return before && fields.every(field => Number.isFinite(report[field]) && report[field] > before[field]);
     });
     previous = current;
     return advancing;
@@ -643,5 +645,5 @@ async function assertNoError(index, flow) {
     error: current.error, protocol: (await sample(index)).protocol,
   })}`);
 }
-return { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, assertNoError };
+return { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, audioReceiving, assertNoError };
 }

@@ -10,6 +10,32 @@ remains in the [network model](./channel-network-design.md); pending
 work remains in [TODO](../todo.md). The laboratory does not authorize NAT or
 adaptation changes.
 
+## Browser Relay After Local Unwatch
+
+A Chrome 152.0.7977.82 control used four independent Browser sessions and real
+WebRTC, with synthetic capture, one source output and a relay feeding two
+viewers. After the relay started and stopped its own screen, then stopped local
+watching, received frames could continue while its decoded frames and
+jitter-buffer output stopped. The downstream pictures also stopped, with the
+pair identities and live sender tracks retained. The ordering is timing-sensitive;
+an initial passing transition did not establish stable recovery.
+
+Separately bypassing the relay's or the source's encoding pool did not resolve
+the failure. Frame-isolation variants passed an initial comparison but failed
+later warm/cold controls and were rejected. A metadata-only ring of 307 source
+outputs had increasing RTP timestamps without duplicates or backward jumps;
+producer identity stayed stable. Keyframe requests and removing the ancillary
+hidden video did not establish a repair. Source ownership, browser receive
+consumers and the exact stop/unwatch transition still require investigation.
+The private wire/storage batch passed its separate matching-format checks;
+this media acceptance failure remains open.
+
+The same acceptance run exposed a different measurement error after deafen:
+an unplayed audio track can receive RTP while decoded-sample counters stop.
+A focused control retained two relay outputs and increasing downstream audio
+samples while local listening was disabled. The fixture now checks received
+bytes/packets at the deafened node and decoded samples at actual listeners.
+
 ## Design And References
 
 Reviewed on 2026-10-13:

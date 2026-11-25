@@ -21,13 +21,13 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Private contract subtraction.** Remove duplicate delivery-failure
-  projections, the unused Browse capacity argument and constant room limits.
-  Return invitation results in the correlated reply and require an explicit
-  HostInput hosting mode. Set attachment-entry semantics before removing its
-  capability, and settle archive validity before deriving the invitation hash
-  solely from its key. Name each private format at its owner and batch the
-  private protocol change with its consumers.
+- [ ] **Browser relay stalls after local activity ends.** On Chrome 152, a
+  four-participant control with two downstream viewers can stop decoding at the
+  relay after it stops its own screen and local watching. Received frames keep
+  advancing while decoded frames, jitter-buffer output and downstream pictures
+  stop. Reproduce through the receiver and sender consumers before changing
+  forwarding; separately bypassing either encoding pool did not resolve it.
+  [Controlled evidence](./research/network-lab.md#browser-relay-after-local-unwatch)
 - [ ] **Native companion-audio retry.** Identify the released resource before
   narrowing the existing cross-pair retry.
 - [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
@@ -367,11 +367,11 @@ the feedback period; they do not delay that delivery.
   lower layer with encoding full-size output at the granted rate. Reuse existing
   encoder grants and prove readability, cadence and resource cost before changing
   layer preference.
-- [ ] **Native send-consent lifetime.** Complete the Windows WebView control of
-  the integrated SDK's RFC 7675 correction in both negotiation roles. Preserve
-  permitted paths during ICE restart and reject retired credentials independently
-  of candidate viability. Reuse the completed Native/Chrome controls.
-  Keep transport consent and Piik route recovery with their existing owners.
+- [ ] **Native send-consent lifetime.** Preserve recoverable ICE disconnection
+  and retire unauthorized paths from the SDK's own permission and wakeups
+  ([packet control](./research/nat-traversal.md#native-ice-disconnection-and-send-consent)).
+  Complete Native adapter and Windows WebView checks in both negotiation roles.
+  Keep consent expiry separate from candidate viability and Piik route recovery.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify
   source-issued media grants, supported commercial live sources, target Browsers
