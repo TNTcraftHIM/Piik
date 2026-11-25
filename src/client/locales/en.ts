@@ -289,7 +289,7 @@ export const en: Record<CopyKey, string> = {
   "screen.returnToGrid": "Return to grid",
   "screen.sharingControls": "Sharing controls: {title}",
   "screen.stopSharing": "Stop sharing {title}",
-  "screen.shareEnded": "{name} ended this share",
+  "screen.shareEnded": "{name}'s share has ended",
   "screen.stopWatching": "Stop watching {title}",
   "screen.availableScreens": "Available screens",
   "screen.availableToWatch": "Available to watch",

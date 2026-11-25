@@ -215,7 +215,7 @@ export const zhHant = {
   "screen.returnToGrid": "返回並排",
   "screen.sharingControls": "{title}的分享控制",
   "screen.stopSharing": "停止分享 {title}",
-  "screen.shareEnded": "{name} 已停止這路分享",
+  "screen.shareEnded": "{name} 的這路分享已結束",
   "screen.stopWatching": "停止觀看 {title}",
   "screen.availableScreens": "可觀看的畫面",
   "screen.availableToWatch": "正在分享",
