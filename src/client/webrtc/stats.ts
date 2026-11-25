@@ -371,29 +371,6 @@ export function decodedVideoFrameSamples(
   }));
 }
 
-export function maxEncodedVideoFrames(
-  report: RTCStatsReport,
-  trackIdentifier: string,
-): number | null {
-  // An absent current-track counter is unknown, not a fresh encoder at zero.
-  let frames: number | null = null;
-  report.forEach((raw) => {
-    const record = raw as StatsRecord;
-    if (
-      record.type === "outbound-rtp" &&
-      record.kind === "video" &&
-      record.isRemote !== true &&
-      mediaTrackIdentifier(report, record, "send") === trackIdentifier
-    ) {
-      const encodedFrames = numberValue(record, "framesEncoded");
-      if (encodedFrames !== null) {
-        frames = Math.max(frames ?? 0, encodedFrames);
-      }
-    }
-  });
-  return frames;
-}
-
 function transportRecord(
   report: RTCStatsReport,
   media: StatsRecord | null,

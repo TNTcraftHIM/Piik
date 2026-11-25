@@ -2,10 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ConnectionSummaryCells, MetricCells } from "../src/client/components/living/Metrics";
-import { ViewerOverview } from "../src/client/components/living/ViewerOverview";
 import { EMPTY_METRICS } from "../src/client/types";
 import { setCopy, t } from "../src/client/ui/copy";
-import { STATUS_CATALOG } from "../src/client/ui/media-status";
 
 beforeEach(() => setCopy({ lang: "en" }));
 
@@ -54,19 +52,4 @@ describe("observed metric presentation", () => {
     expect(render("future-limit")).not.toContain(t("en", "stats.quality.normal"));
   });
 
-  it("retains overview units and labels without inventing values for missing samples", () => {
-    const html = renderToStaticMarkup(createElement(ViewerOverview, {
-      entries: [
-        { key: "measured", name: "Friend", status: STATUS_CATALOG.connected, route: "p2p",
-          metrics: { ...EMPTY_METRICS, framesPerSecond: 59.8, bitrateKbps: 7200, rttMs: 24 } },
-        { key: "unknown", name: "Joining", status: STATUS_CATALOG.joining, route: null, metrics: null },
-      ],
-      selectedKey: null, onSelect() {}, pictureActive: true,
-    }));
-    expect(html).toContain("59.8 fps");
-    expect(html).toContain("7200 kbps");
-    expect(html).toContain("24 ms");
-    expect(html).not.toContain("— fps");
-    expect(html).not.toContain("— kbps");
-  });
 });

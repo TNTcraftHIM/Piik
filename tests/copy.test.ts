@@ -140,7 +140,7 @@ describe("copy catalog", () => {
     const copy = await import("../src/client/ui/copy");
     saved = "zh-Hant";
     onStorage({ key: "piik:ui-lang" });
-    expect(copy.currentLang()).toBe("zh-Hant");
+    expect(copy.say("common.copied")).toBe(copy.t("zh-Hant", "common.copied"));
     expect(document.documentElement.lang).toBe("zh-Hant");
     expect(setItem).not.toHaveBeenCalled();
   });
@@ -153,14 +153,14 @@ describe("copy catalog", () => {
       addEventListener: () => {},
     });
     const copy = await import("../src/client/ui/copy");
-    expect(copy.currentLang()).toBe("ja");
+    expect(copy.say("common.copied")).toBe(copy.t("ja", "common.copied"));
     copy.applyWindowCopy("en");
-    expect(copy.currentLang()).toBe("en");
+    expect(copy.say("common.copied")).toBe(copy.t("en", "common.copied"));
     expect(copy.hasCopyPreference()).toBe(false);
     expect(setItem).not.toHaveBeenCalled();
     copy.setCopy({ lang: "zh" });
     copy.applyWindowCopy("en");
-    expect(copy.currentLang()).toBe("zh");
+    expect(copy.say("common.copied")).toBe(copy.t("zh", "common.copied"));
     expect(copy.hasCopyPreference()).toBe(true);
     expect(setItem).toHaveBeenCalledExactlyOnceWith("piik:ui-lang", "zh");
   });
@@ -182,7 +182,7 @@ describe("copy catalog", () => {
     });
     const copy = await import("../src/client/ui/copy");
     const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/app-launch");
-    expect(copy.currentLang()).toBe(lang);
+    expect(copy.say("common.copied")).toBe(copy.t(lang, "common.copied"));
     expect(document.documentElement.lang).toBe(registry.locales[lang].tag);
     const presentation = { lang, theme: null };
     window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;

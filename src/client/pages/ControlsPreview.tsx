@@ -27,7 +27,6 @@ import previewRelease from "./preview-release.json";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
 import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls, VideoCodecControl } from "../components/living/QualityPresets";
-import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import { MAX_AUDIO_SEND_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import { POSTER, SOURCES, previewCameras, previewSource } from "./preview-sources";
 import { Tooltip } from "../components/living/Tooltip";
@@ -38,7 +37,6 @@ import { useCopy } from "../ui/copy";
 import { PeoplePreview } from "./PeoplePreview";
 import { ChannelConnectionsPreview } from "./ChannelConnectionsPreview";
 import { RemoteControlsPreview } from "./RemoteControlsPreview";
-import { useRoomVoicePreview } from "./RoomVoicePreview";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import "./controls-preview.css";
 
@@ -88,7 +86,6 @@ export function ControlsPreview() {
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [roomCode, setRoomCode] = useState("6020");
   const [feedback, setFeedback] = useState("");
-  const [dial, setDial] = useState("60");
   const [theater, setTheater] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
@@ -249,7 +246,6 @@ export function ControlsPreview() {
         <div className="cp-tools"><RoomCodePlaceholder /><RoomCodePlaceholder onCreate={notify} />
           <RoomCodePlaceholder onCreate={notify} disabled busy />
           <RoomChip roomId={roomCode} onReplace={() => setRoomCode(code => code === "6020" ? "2048" : "6020")} /></div>
-        <RoomCodeInput value={dial} onChange={setDial} />
       </section>
       <section id="feedback-preview" className="cp-card">
         <header><span className="cp-number">04</span><h2>{en ? "Clear feedback" : "每种反馈，都说清楚。"}</h2></header>
@@ -393,7 +389,7 @@ export function ControlsPreview() {
     <BookmarkPreview />
     <section id="interaction-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">09</span><div><h2>{en ? "A little company" : "聊两句，丢个番茄。"}</h2>
-        <p>{en ? "Chat, reactions and room voice share one window. This catalogue simulates voice controls without opening your microphone." : "聊天、表情与房间语音共用一个窗口。这里的语音控件仅作演示，不会打开麦克风。"}</p></div></header>
+        <p>{en ? "Chat and reactions share one window." : "聊天与表情共用一个窗口。"}</p></div></header>
       <InteractionControlsPreview />
     </section>
     <RemoteControlsPreview />
@@ -414,7 +410,6 @@ function InteractionControlsPreview() {
   const [viewer, setViewer] = useState(false);
   const { session, receiveSample } = usePreviewInteractions(viewer);
   const [crowded, setCrowded] = useState(false);
-  const voice = useRoomVoicePreview(viewer, crowded);
   const [reaction, setReaction] = useState<ReactionId>("heart");
   const [theater, setTheater] = useTheaterMode();
   const video = useRef<HTMLVideoElement>(null);
@@ -441,7 +436,7 @@ function InteractionControlsPreview() {
       theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
       overlayAction={<RoomChatToggle session={session} />}
       overlaySettings={session && <RoomChatOverlaySettings session={session} />} />
-  </StageTv><RoomInteractions session={session} voice={voice} voiceState={voice.room}
+  </StageTv><RoomInteractions session={session}
     view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
         key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Piik friend",

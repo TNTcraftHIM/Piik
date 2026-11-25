@@ -1,4 +1,3 @@
-import { createOpaqueId } from "../lib/opaque-id";
 import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import { captureMetrics, collectConnectionMetricsFromReport, createStatsAccumulator } from "../webrtc/stats";
@@ -54,7 +53,7 @@ export class BrowserEncodingPool {
     profile: VideoSenderProfile, encoded: BrowserEncodingOutput, configureCarrier: Member["configureCarrier"], requestKey: Member["requestKey"],
     onFatal: () => void): BrowserPooledSender | null {
     if (this.disposed || this.failedSources.has(source) || source.kind !== "video" || source.readyState !== "live") return null;
-    const member: Member = { id: createOpaqueId(), source, sender, connection, profile: { ...profile }, encoded, configureCarrier, requestKey, onFatal,
+    const member: Member = { id: crypto.randomUUID(), source, sender, connection, profile: { ...profile }, encoded, configureCarrier, requestKey, onFatal,
       paused: !source.enabled, disabled: false, abort: new AbortController(),
       get disposed() { return this.abort.signal.aborted; }, mixed: false, carrier: encoded.snapshot().frames === 0,
       encoderStats: createStatsAccumulator() };

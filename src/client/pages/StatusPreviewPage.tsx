@@ -4,8 +4,6 @@ import { AppHeader, LedStrip } from "../components/living/Header";
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { Couch } from "../components/living/Couch";
 import { StatusIndicator } from "../components/living/StatusIndicator";
-import { ShareFailureHelp } from "../components/living/ShareFailureHelp";
-import { hostFailureChecks } from "./host-page-notices";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { StartupFailure } from "../components/living/StartupFailure";
 import { Pill } from "../components/living/primitives";
@@ -23,17 +21,6 @@ import "./status-preview.css";
 import { usePreviewAnchor } from "./use-preview-anchor";
 import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
 import { ChannelEntryPreview } from "./ChannelEntryPreview";
-
-const SHARING_FAILURES = [
-  ["native.fail.captureStart", "app/start-share/rejected", "source-failed"],
-  ["native.fail.requestTimeout", "app/start-share/timeout", "source-failed"],
-  ["native.fail.controlDisconnected", "app/start-share/disconnected", "route-failed"],
-  ["native.fail.edge", "app/browser-media/connection", "route-failed"],
-  ["api.originNotAllowed", "site/http-403", "warning"],
-  ["host.capture.cancelled", "browser/NotAllowedError", "hint-capture-browser"],
-  ["host.camera.denied", "camera/NotAllowedError", "source-failed"],
-  ["host.roomInvalid", "status/unknown", "room-not-found"],
-] as const;
 
 function StatusMark({ status }: { status: StatusDescriptor }) {
   const { t } = useCopy();
@@ -59,9 +46,6 @@ function StatusCatalog() {
   usePreviewReducedMotion(reducedMotion);
   const [couchView, setCouchView] = useState<"host" | "viewer">("viewer");
   const [loadingLabel, setLoadingLabel] = useState<CopyKey | "">("client.launch.starting");
-  const [failureIndex, setFailureIndex] = useState(0);
-  const [failureKey, failureCode, failureHint] = SHARING_FAILURES[failureIndex]!;
-  const failureTone = failureCode.endsWith("NotAllowedError") ? "warn" : "bad";
   const scenario = STATUS_SCENARIOS.find((item) => item.id === selected)!;
   const presentation = deriveViewerPresentation(scenario.state);
   const status = deriveViewerStatus(presentation, scenario.state.signal,
@@ -84,21 +68,6 @@ function StatusCatalog() {
     <div className="lr-app sp-page" data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader appControl={null} diagnosticControl={null} homeHref="/__status-preview" />
       <main className="sp-main">
-        <section className="sp-catalog" id="sharing-troubleshooting">
-          <header><h2>分享失败排查</h2><p>出错时，电视下沿的状态灯会主动展开图示提示。点按状态灯查看排查方法。</p></header>
-          <label className="sp-failure-choice">错误示例
-            <select className="lr-input" value={failureIndex} onChange={event => setFailureIndex(Number(event.target.value))}>
-              {SHARING_FAILURES.map(([key, code], index) => <option key={code} value={index}>{t(key)}</option>)}
-            </select>
-          </label>
-          <div className="sp-failure-stage">
-            <StageTv label={t("host.stageAria")} indicator={<ShareFailureHelp key={failureCode}
-              status={{ icon: "alert", tone: failureTone, tooltip: failureHint, labelKey: failureKey }}
-              label={t(failureKey)} code={failureCode} checks={hostFailureChecks(failureCode)} />}>
-              <StageOverlay icon="alert" message={t(failureKey)} />
-            </StageTv>
-          </div>
-        </section>
         <header className="sp-heading">
           <div><p className="sp-kicker">Piik · 状态语义</p><h1>同一事实，各有分寸。</h1>
             <p>标题说正在做什么，顶部说明信令，电视下沿图标说明画面；悬停查看图示与文字说明。</p></div>

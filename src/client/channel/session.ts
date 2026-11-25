@@ -44,7 +44,6 @@ import { RoomInteractionSession, type Rejection, type RoomInteraction } from "..
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
 import { FeedbackAudio, type FeedbackCue } from "./feedback-audio";
 import { validateCustomFeedbackClip } from "./feedback-clip";
-import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 import { prepareHostedRoomArchive, readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
@@ -1548,7 +1547,7 @@ export class ChannelSession {
               : { type: "publication" as const, publicationId: message.contentTarget.publicationId })
               : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
         if (!command) return false;
-        const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
+        const requestId = message.type === "send-room-interaction" ? message.requestId : crypto.randomUUID();
         if (command.type === "interaction_ready") current.interactionReadyRequestId = requestId;
         void this.conversation.send(command, requestId).catch(() => {
           if (this.readings.get(reading.roomId) !== current || current.interaction !== interaction) return;
@@ -1612,16 +1611,15 @@ export class ChannelSession {
     const preparationSignal = preparation && signal ? AbortSignal.any([preparation.signal, signal]) : preparation?.signal ?? signal;
     let prepared = retry?.files ?? [];
     if (!retry && files.length) {
-      const lifetime = new AbortController();
-      const unsubscribe = this.subscribe(() => {
-        if (this.closed || this.view.sessionId !== sessionId) lifetime.abort(new Error("disconnected"));
-        else if (this.conversationBinding(roomId) !== bindingId) lifetime.abort(new Error("room_unavailable"));
+      const lifetime = this.abortWhenStale(() => {
+        if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
+        if (this.conversationBinding(roomId) !== bindingId) throw new Error("room_unavailable");
       });
       const fileSignal = preparationSignal ? AbortSignal.any([preparationSignal, lifetime.signal]) : lifetime.signal;
       try {
         prepared = await this.attachments.describe(files, fileSignal, preparation?.progress);
         fileSignal.throwIfAborted();
-      } finally { unsubscribe(); }
+      } finally { lifetime.dispose(); }
     }
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
     preparationSignal?.throwIfAborted();
@@ -1810,6 +1808,13 @@ export class ChannelSession {
     };
   }
 
+  /** A signal that aborts with the check's error once a view change makes the check throw. */
+  private abortWhenStale(check: () => void): { signal: AbortSignal; dispose: () => void } {
+    const controller = new AbortController();
+    const dispose = this.subscribe(() => { try { check(); } catch (error) { controller.abort(error); } });
+    return { signal: controller.signal, dispose };
+  }
+
   private connectionContext(roomId: string, publicationId?: string) {
     const selection = this.roomId;
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
@@ -1945,10 +1950,9 @@ export class ChannelSession {
 
   private async exportRoomArchive(roomId: string, includeFiles: boolean, surface?: AbortSignal, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
     const owner = await this.backupOwner(roomId);
-    const lifetime = new AbortController();
+    const lifetime = this.abortWhenStale(owner.current);
     const signal = surface ? AbortSignal.any([surface, lifetime.signal]) : lifetime.signal;
     const current = () => { signal.throwIfAborted(); owner.current(); };
-    const unsubscribe = this.subscribe(() => { try { owner.current(); } catch (error) { lifetime.abort(error); } });
     let snapshot: BrowserRoomSnapshot | undefined;
     try {
       current();
@@ -1983,7 +1987,7 @@ export class ChannelSession {
       }
       if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };
       return await this.writeRoomSnapshot(snapshot!, metadata, retained, current, signal);
-    } finally { unsubscribe(); await snapshot?.close(); }
+    } finally { lifetime.dispose(); await snapshot?.close(); }
   }
 
   private waitForState(ready: () => boolean): Promise<void> {
@@ -2238,15 +2242,14 @@ export class ChannelSession {
         const hosted = this.hostedRooms.get(target);
         // The transaction retires the durable writer. Keep the old host alive
         // until commit so a storage rollback needs no competing registration.
-        const cancel = new AbortController();
-        const unsubscribe = this.subscribe(() => { try { check(); } catch { cancel.abort(); } });
+        const cancel = this.abortWhenStale(check);
         try {
           if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
           else await stage.replace(cancel.signal);
           committed = true;
           if (!owner) requestBrowserRoomPersistence();
         }
-        finally { unsubscribe(); }
+        finally { cancel.dispose(); }
         if (hosted && this.hostedRooms.get(target) === hosted) {
           this.hostedRooms.delete(target);
           if (hosted.bindingId) this.write({ type: "host_stop", roomId: target, bindingId: hosted.bindingId });
@@ -2335,12 +2338,7 @@ export class ChannelSession {
     return { dataRemoved };
   }, false);
 
-  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
-    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
-    if (!room?.canManage) return Promise.reject(new Error("forbidden"));
-    if (!Number.isInteger(voiceBitrate) || voiceBitrate < 6_000 || voiceBitrate > 320_000) return Promise.reject(new Error("invalid_audio_bitrate"));
-    return this.updateRoom(roomId, { voiceBitrate });
-  };
+  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => this.updateRoom(roomId, { voiceBitrate });
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }), false);
   private roomInvitationURL(roomId: string, key: string): string {
     const url = new URL(location.pathname, this.invitationOrigin);
@@ -3689,7 +3687,6 @@ export class ChannelSession {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");
     if (this.view.connection !== "connected") throw new Error("disconnected");
-    if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > MAX_RELAY_CAPACITY)) throw new Error("invalid_relay_capacity");
     const key = "direct-limit:" + publicationId;
     if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
       await this.action(key, () => this.request({ type: "set_screen_direct_limit", publicationId, limit }, undefined, publication.roomId), false);
@@ -3702,7 +3699,6 @@ export class ChannelSession {
     if (!publication) throw new Error("publication_unavailable");
     if (this.view.connection !== "connected") throw new Error("disconnected");
     const normalized = title?.trim() || null;
-    if (normalized && normalized.length > 64) throw new Error("invalid_title");
     if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
       await this.action(`title:${publicationId}`, () => this.request({ type: "set_title", publicationId, title: normalized }, undefined, publication.roomId), false);
     } else if (this.app?.screens.has(publicationId)) {

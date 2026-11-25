@@ -854,7 +854,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-viewer-self-slot .lr-name-tag { flex: 0 1 auto; width: auto; }
 .lr-name-hint { min-width: 0; max-width: 100%; }
-.lr-comic-tip-wrap.lr-overview-row-hint { display: flex; width: 100%; }
 .lr-source-option-hint { min-width: 0; }
 .lr-source-option-hint > .lr-source-option { width: 100%; height: 100%; }
 .lr-invite-hint { width: 100%; min-width: 0; max-width: 340px; flex: 1 1 240px; }
@@ -1002,7 +1001,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   background: var(--live);
   vertical-align: 1px;
 }
-@keyframes lr-pop { 50% { transform: scale(1.06); } }
 
 /* Sliding switch; its thumb stays inside the track at either end. */
 .lr-switch {
@@ -1230,18 +1228,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-metrics-more svg { transition: transform var(--motion-control) ease; }
 .lr-metrics-more.is-open svg { transform: rotate(180deg); }
 
-/* per-viewer detail row */
-.lr-pawn-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.lr-pawn-mini { display: grid; place-items: center; }
-.lr-pawn-mini svg { width: 28px; height: 34px; display: block; }
-.lr-pawn-detail-name {
-  min-width: 0;
-  max-width: 100%;
-  flex: 1 1 160px;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-  font-weight: 800;
-}
 .lr-connection-details { container: connection-details / inline-size; display: grid; flex: none; width: 100%; gap: 12px; min-width: 0; }
 .lr-connection-details-body { display: grid; min-width: 0; }
 .lr-connection-notice { padding-block: 4px; }
@@ -1258,7 +1244,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-connection-summary > .lr-media-detail-head .lr-cap { white-space: nowrap; }
 .lr-media-detail-head .lr-meter-cell { padding: 4px 6px; background: none; }
 .lr-media-detail-head .lr-meter-cell b { font-size: 10px; }
-.lr-media-detail-via { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .lr-media-detail > :not(.lr-media-detail-head) { grid-column: 2; }
 .lr-media-detail > .lr-connection-paths { display: grid; grid-column: 1 / -1; min-width: 0; margin-top: 6px; padding-inline-start: 12px; border-inline-start: 2px solid var(--line); }
 .lr-connection-details .lr-meter { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
@@ -1353,99 +1338,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   outline: none;
 }
 @keyframes lr-flow { to { stroke-dashoffset: -24; } }
-
-/* Dense Host overview: one aligned row per Viewer, not a card wall. */
-.lr-viewer-overview {
-  width: 100%;
-  min-width: 0;
-}
-.lr-viewer-overview-scroll {
-  overflow-x: auto;
-  border: 2.5px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--paper);
-  scrollbar-color: var(--route-sfu) transparent;
-  scrollbar-width: thin;
-}
-.lr-viewer-overview-head,
-.lr-viewer-overview-row {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-}
-.lr-viewer-overview.has-picture :is(.lr-viewer-overview-head, .lr-viewer-overview-row) { min-width: 820px; grid-template-columns: minmax(170px, 1.5fr) 76px 116px 78px 98px 88px 76px; }
-.lr-viewer-overview.has-voice:not(.has-picture) :is(.lr-viewer-overview-head, .lr-viewer-overview-row) { min-width: 720px; grid-template-columns: minmax(170px, 1.5fr) 132px 90px 78px 90px 76px; }
-.lr-viewer-overview.has-picture.has-voice :is(.lr-viewer-overview-head, .lr-viewer-overview-row) { min-width: 970px; grid-template-columns: minmax(170px, 1.5fr) 76px 116px 78px 98px 88px 76px 140px; }
-.lr-viewer-overview-voice { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.lr-viewer-overview-voice > span { display: grid; gap: 3px; text-align: start; }
-.lr-viewer-overview-voice small { font-size: 10px; }
-.lr-viewer-overview-voice[data-tone="busy"] { color: var(--route-pending); }
-.lr-viewer-overview-voice[data-tone="warn"] { color: var(--warn); }
-.lr-viewer-overview-voice[data-tone="bad"] { color: var(--danger); }
-.lr-viewer-overview-head {
-  color: var(--muted);
-  background: var(--wall-2);
-  font-size: 10px;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-.lr-viewer-overview-head > span:not(:first-child),
-.lr-viewer-overview-row > span:not(:first-child) { text-align: center; }
-.lr-viewer-overview-row {
-  width: 100%;
-  border: 0;
-  border-top: 1.5px solid var(--wall-2);
-  background: transparent;
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 11px;
-  transition: background var(--motion-feedback) ease, color var(--motion-feedback) ease;
-}
-.lr-viewer-overview-row:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
-.lr-viewer-overview-row.is-selected { background: color-mix(in srgb, var(--ink) 14%, transparent); }
-.lr-viewer-overview-row:focus-visible { outline: 3px solid var(--action); outline-offset: -3px; }
-.lr-viewer-overview-person {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-}
-.lr-viewer-overview-person-copy {
-  display: grid;
-  min-width: 0;
-  line-height: 1.15;
-  text-align: left;
-}
-.lr-viewer-overview-person-copy > b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lr-viewer-overview-person-copy > small { font-size: 9px; font-weight: 600; opacity: .58; }
-.lr-viewer-overview-pawn { position: relative; flex: 0 0 auto; }
-.lr-viewer-overview-pawn svg { display: block; width: 24px; height: 29px; }
-.lr-viewer-overview-pawn i {
-  top: 0;
-  left: auto;
-  right: -2px;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--paper);
-}
-.lr-viewer-overview-route {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-.lr-viewer-overview-route.is-p2p { color: var(--route-p2p); }
-.lr-viewer-overview-route.is-sfu { color: var(--route-sfu); }
-.lr-viewer-overview-route.is-pending { color: var(--route-pending); }
 
 /* ---------- advanced door ---------- */
 
@@ -1653,37 +1545,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-join-site { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; }
 .lr-join-door { color: var(--ink); }
-.lr-dials-wrap.is-shake { animation: lr-shake var(--motion-emphasis) ease; }
-@keyframes lr-shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-7px); }
-  50% { transform: translateX(6px); }
-  75% { transform: translateX(-4px); }
-}
-.lr-dials-wrap { position: relative; max-width: 100%; }
-.lr-dials-wrap:focus-within { outline: 3px solid var(--action); outline-offset: 2px; border-radius: 14px; }
-.lr-dials { display: flex; gap: 12px; }
-.lr-dial {
-  display: grid;
-  width: 64px; height: 78px;
-  place-items: center;
-  border: 3px solid var(--ink);
-  border-radius: 14px;
-  background: var(--paper);
-  font-family: var(--mono);
-  font-size: 34px;
-  font-weight: 700;
-  transition: border-color var(--motion-feedback) ease, transform var(--motion-control) var(--spring), box-shadow var(--motion-feedback) ease;
-}
-.lr-dial.is-active { border-color: var(--action); transform: translateY(-4px); box-shadow: 0 6px 0 -2px color-mix(in srgb, var(--action) 20%, transparent); }
-.lr-dial.is-filled { background: var(--ink); color: var(--paper); animation: lr-pop var(--motion-control) ease; }
-.lr-dials-wrap input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: text;
-  font-size: 40px;
-}
 .lr-join-go {
   display: grid;
   width: 68px; height: 68px;
@@ -1815,7 +1676,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-invite-hint, .lr-invite-url { flex: 0 1 auto; max-width: none; min-height: 44px; }
   .lr-invite-field { flex: none; width: 100%; }
   .lr-door-body { padding: 12px; }
-  .lr-dial { width: 54px; height: 66px; font-size: 28px; }
   .lr-tv-screen.has-entry { aspect-ratio: auto; min-height: 292px; }
   .lr-tv-screen:has(.lr-source-picker) { aspect-ratio: auto; height: min(520px, 76svh); min-height: 300px; }
   .lr-tv-big { width: 72px; height: 72px; }
@@ -2133,13 +1993,13 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
      Scoped to the containers that hold adjacent wrapped triggers; the guard
      keys on the component-owned focus state, so plain mouse clicks (no panel
      held open) never suppress anything. */
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions, .lr-pawns, .lr-route, .lr-header-controls, .lr-playback):has(.lr-comic-tip-wrap.is-focus-open)
+  :is(.lr-row-group, .lr-entry-actions, .lr-pawns, .lr-route, .lr-header-controls, .lr-playback):has(.lr-comic-tip-wrap.is-focus-open)
     .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip {
     opacity: 0;
     pointer-events: none;
     transition-delay: 0s;
   }
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions, .lr-pawns, .lr-route, .lr-header-controls, .lr-playback):has(.lr-comic-tip-wrap.is-focus-open)
+  :is(.lr-row-group, .lr-entry-actions, .lr-pawns, .lr-route, .lr-header-controls, .lr-playback):has(.lr-comic-tip-wrap.is-focus-open)
     .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip * {
     animation-play-state: paused !important;
   }
@@ -2214,13 +2074,6 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 .lr-input.is-password { min-width: min(260px, 100%); }
 
 @media (max-width: 640px) {
-  /* Pawn drill-down: the shared .lr-row column stack breaks this card —
-     column + wrap fans the children into off-screen side-by-side columns and
-     the meter's 100% flex-basis inflates the block axis. Keep it row-wrapped
-     so the meter takes its own full-width line at natural height and the
-     more/close buttons stay in flow inside the card. */
-  .lr-pawn-detail { flex-direction: row; align-items: center; }
-  .lr-pawn-detail .lr-meter { flex: 1 1 100%; align-content: start; }
   /* Action row: let the buttons wrap to two rows once three-across can no
      longer hold each label on a single line (stops orphan-character wraps). */
   .lr-group-actions .lr-comic-tip-wrap,

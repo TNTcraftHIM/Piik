@@ -34,8 +34,6 @@
 .cp-sync-caption { max-width: 12ch; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.7; }
 .cp-sync small { color: var(--muted); font-size: 11px; }
 .cp-connection-panel { padding: 12px; border: 1px solid var(--control-edge); border-radius: 22px; background: var(--paper); }
-.cp-disclosure { margin-top: 12px; }
-.cp-disclosure summary { padding: 12px 0; cursor: pointer; }
 .cp-stage { max-width: 780px; margin: 22px auto; }
 .cp-interaction-room .lr-tv { max-width: 780px; margin: 22px auto; }
 .cp-poster { width: 100%; height: 100%; object-fit: cover; }

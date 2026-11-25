@@ -1,4 +1,4 @@
-import type { WatchMedia, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
+import { waitForWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 import { youtubeEmbedURL, youtubeVideoId } from "./watch-youtube-source";
 
 interface YouTubePlayer {
@@ -90,17 +90,8 @@ export class YouTubeMedia implements WatchMedia {
     return abortable(this.presentationReady, AbortSignal.any([signal, this.lifetime.signal]));
   }
 
-  async ready(signal: AbortSignal): Promise<void> {
-    const lifetime = AbortSignal.any([signal, this.lifetime.signal]);
-    await abortable(this.sdk, lifetime);
-    await new Promise<void>((resolve, reject) => {
-      const finish = (error?: Error) => { unlisten(); lifetime.removeEventListener("abort", cancel); error ? reject(error) : resolve(); };
-      const cancel = () => finish(lifetime.reason);
-      const check = () => { if (this.failure) finish(this.failure); else if (this.played) finish(); };
-      const unlisten = this.listen(check);
-      lifetime.addEventListener("abort", cancel, { once: true });
-      if (lifetime.aborted) cancel(); else check();
-    });
+  ready(signal: AbortSignal): Promise<void> {
+    return waitForWatchMedia(this, AbortSignal.any([signal, this.lifetime.signal]), this.sdk);
   }
   playbackAvailable(): boolean { return this.visible && this.automaticPlayback; }
   playbackRates(): readonly number[] { return this.apiReady ? this.player!.getAvailablePlaybackRates() : [1]; }

@@ -12,8 +12,6 @@ import {
   needsStartupVideoProfile,
   QUALITY_PROFILES,
   QUALITY_RESOLUTIONS,
-  qualitySettingsEqual,
-  qualityResolutionLabel,
   videoQualitySettingsEqual,
   screenAudioBitrate,
   screenVideoCeiling,
@@ -190,11 +188,8 @@ describe("realtime quality controls", () => {
   it("compares deserialized size values without treating audio edits as new video", () => {
     const profile = QUALITY_PROFILES["1080p30"];
     const restored = JSON.parse(JSON.stringify(profile));
-    expect(qualitySettingsEqual(profile, restored)).toBe(true);
     expect(videoQualitySettingsEqual(profile, { ...restored, maxAudioBitrate: 256_000 })).toBe(true);
     expect(videoQualitySettingsEqual(profile, { ...restored, resolution: { width: 1920, height: 1200 } })).toBe(false);
-    expect(qualityResolutionLabel(restored.resolution)).toBe("1080p");
-    expect(qualityResolutionLabel({ width: 1920, height: 1200 })).toBe("1920×1200");
   });
 
   it("leaves capture constraints with the owner of a remote track", async () => {
@@ -272,16 +267,10 @@ describe("realtime quality controls", () => {
       ...QUALITY_PROFILES["1080p60"],
       maxAudioBitrate: 64000,
     } as const;
-    const {
-      maxAudioBitrate: _maxAudioBitrate,
-      ...legacySettings
-    } = QUALITY_PROFILES["1080p60"];
 
     expect(matchingQualityProfileId(saver)).toBe("1080p60");
-    expect(qualitySettingsEqual(saver, QUALITY_PROFILES["1080p60"])).toBe(false);
-    expect(
-      qualitySettingsEqual(legacySettings, QUALITY_PROFILES["1080p60"]),
-    ).toBe(true);
+    expect(screenAudioBitrate(undefined))
+      .toBe(screenAudioBitrate(QUALITY_PROFILES["1080p60"].maxAudioBitrate));
   });
 
   it("reads back every requested sender control after setParameters", async () => {

@@ -1,5 +1,4 @@
 import { parse, write } from "sdp-transform";
-import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent } from "../lib/debug";
 import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
@@ -18,7 +17,7 @@ import { waitForConnectionOperation } from "../webrtc/connection-operation";
 const LOCAL_CONNECTION_TIMEOUT_MS = 8_000;
 
 export class BrowserEncodingProducer {
-  readonly id = createOpaqueId();
+  readonly id = crypto.randomUUID();
   private send: RTCPeerConnection | null = null;
   private receive: RTCPeerConnection | null = null;
   private readonly releaseDebug: Array<() => void> = [];

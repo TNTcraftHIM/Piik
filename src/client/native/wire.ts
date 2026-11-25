@@ -40,7 +40,6 @@ const nativePageMpdTrackSchema = z.object({
   width: z.number().int().positive().safe().nullable(), height: z.number().int().positive().safe().nullable(),
   bandwidth: z.number().int().positive().safe().nullable(), frameRate: z.number().finite().positive().nullable(),
 }).strict();
-export type NativePageMpdTrack = z.infer<typeof nativePageMpdTrackSchema>;
 export const nativePageMpdCatalogSchema = z.object({ sourceId: z.uuid(), tracks: z.array(nativePageMpdTrackSchema).min(1) }).strict();
 export type NativePageMpdCatalog = z.infer<typeof nativePageMpdCatalogSchema>;
 export const nativePageMpdSelectionSchema = z.object({ sourceId: z.uuid(), videoId: z.uuid(), audioId: z.uuid().optional() })
