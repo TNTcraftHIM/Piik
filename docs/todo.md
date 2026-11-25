@@ -28,10 +28,7 @@ the feedback period; they do not delay that delivery.
   capability, and settle archive validity before deriving the invitation hash
   solely from its key. Deduplicate new-room policy defaults and name each private
   format at its owner. Batch the private protocol change with its consumers.
-- [ ] **Native admission and negotiation owners.** Integrate the Hello-first
-  App control loop and remove the unreachable room-offer recovery branch.
-  Preserve socket cancellation, failed admission retries and the external-input
-  transport's receive-only contract. Share equivalent primary-media failure
+- [ ] **Native flow failure ownership.** Share equivalent primary-media failure
   predicates; identify the released resource before narrowing companion-audio retry.
 - [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
   steady selected media on a controlled link. Record the SDK estimate, media,
@@ -289,6 +286,7 @@ the feedback period; they do not delay that delivery.
   readers and writers. Move owner-seed initialization into the Domain before
   removing the App copy; retain consent scope and cache namespaces. Remove the
   unused limits route and replace preview-alias callers together with the alias.
+  Consolidate startup environment reads and control reply writers at their owners.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.

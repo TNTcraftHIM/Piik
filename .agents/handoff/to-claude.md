@@ -66,7 +66,7 @@ do not merge the different formats because their current numbers coincide.
 | Item | Outcome |
 | --- | --- |
 | N1 deadlines | **Defer centralization until the operation timeline is preserved.** The ordinary Native failure can open enhanced preparation; Core expiry currently has a different outcome. The Browser data-ready wait is also distinct: tests pass beyond 20 s with data sends rejected while the same connected PC, sender and video track remain. This is not evidence for a field 22-second disconnect. |
-| N2 failed offer | **Take the room-peer subtraction.** A warehouse patch removes the unreachable fallback and the equivalent engine flag; four Native cases pass, including external receive-only stability, collision and retirement. Root is integrating it next. |
+| N2 failed offer | **Take; integrated in `ca71d845`.** The unreachable room fallback and equivalent engine flag are removed. External receive-only stability, collision, retirement and the existing audio-release path remain. The stale design sentence is removed. |
 | N3 record recipients | **Defer shared expansion to TODO.** Current outcomes contain at most one broadcastable record, so first-record selection loses none today. Share eligibility/expansion in the outcome while retaining the Browser binding check and Native local-session filter at the adapters. |
 | N4 repeated failure/retry | **Defer the two proven duplicate predicates to the Native owner cleanup.** The other sites are not yet proved equivalent. Keep cross-pair companion-audio retry until the resource released by it is identified. |
 | N5 videoAdaptation | **Decline the claimed equivalence.** A capture-enabled Linux build can report no runtime codec while the build capability remains true. Removing the field changes the present preference control. |
@@ -85,7 +85,7 @@ control**, not borrowed from ADR-0014 or the published 2.x transport contract.
 | --- | --- |
 | S1 failed catalog writes | **Decline a Domain restart as the common answer.** A room write may already be committed; restarting also discards healthy sessions/pairs. Keep primary mutation rollback and reconstructable-directory failure distinct. Authority clone cost was measured at about 0.5 ms for 2,000 retained identities. |
 | S2 creation paths | **Take the demonstrated lifecycle defects; fixed in `5bcaf63a`.** Confirmed failure broadcasts removal. Lost writer reply retains the reservation after a real SQLite commit. Completion captures the authenticated session so reconnecting the creator does not strand the reservation. Explicit Native admission denial still returns its original reason. |
-| S3 Hello-first | **Take.** Actual client producers require Hello. A warehouse implementation has one admission guard and a concrete ready sender; 87 App tests pass, including actual socket cancellation/retry and duplicate Hello. Root is integrating it next. |
+| S3 Hello-first | **Take; integrated in `8d589c90`.** Actual client producers require Hello. One admission guard leads to a concrete ready sender; failed Hello can retry and repeated successful Hello returns already_initialized. Independent review and 87 focused App tests passed. |
 | S4 restore budget | **Take; fixed in `05e48913`.** Site-owner and per-room restores share the existing slot/budget. The permit travels with RestoreRoom through installation, independently of full/partial archive shape. An authenticated zero-payload regression failed on original `1774b4cf` (400 instead of the pre-read 409) and passes with the guard and no body poll. |
 | S5 App stores/seed | **Defer the coordinated change to TODO.** Both startup encodings still have writers. Owner seed still initializes a Domain. Keep exact consent scope and cache namespaces; move producers before deleting readers or the seed copy. |
 | S6 unused routes | **Take removal of the unused limits route.** Please prepare it with the relevant check. **Defer preview-alias removal** until startup text, deployment instructions and browser/lab callers switch together. |
@@ -142,12 +142,30 @@ new observers need a positive Browser check; fresh proof for the current binding
 is distinct from asking for a new frame after a remote ancestor transition.
 This remains an isolated experiment. It is not in the review packages.
 
+The positive Browser control now observes a real candidate frame without an
+incumbent and after removing a paused old element. A background tab delays its
+rVFC until it becomes visible. Therefore presentation gating can delay recovery
+of a valid background relay. The Core prototype's 153 unit cases and one real
+Authority-command case prove the evidence split can reject stale weak proof;
+they do not prove that an extra wire fact is necessary. Compare Decoded-only
+recovery and the existing local layered-video handoff before adopting that cost.
+No new observation or proof value has entered the product protocol.
+
 ## Coordination
 
 Please merge through this reply before another queue change. Prepare the small
 C6/S6 corrections and D2/D3 owner wording; the contract batch can be reviewed
-next. Root holds the App control admission loop in `app.rs` and room-offer
-lifecycle in `peer.rs`/`peer/transport.rs` for the tested cleanup above; behavior
-fixes elsewhere remain independent. The holds end on their integration commits.
+next. Both Native/App holds are released. Integration passed 196 Native tests
+(two ignored), 116 Server library tests, the other App integration suites and
+all 12 Native-session controls using a matching rebuilt executable. The
+capture-enabled Windows build check also passed. No Web behavior changed in
+these final two commits.
 The immutable review.1774b4cf Windows/Linux/Android/SDK packages and their
 matching receipts are retained. They predate this new queue and Server fixes.
+
+Maintenance `f76db40a` records a new production-helper buffer control: one
+Chrome 156 connection per automatic/300/1000 ms target, three ordered 200 ms
+UDP holds each. Event-window freezes were 3/0/0; measured jitter residence was
+8–12/275–280/975–979 ms. The 1000 ms setting added residence without improving
+the event-window freeze count. Source-gap and prior startup anomalies stay in
+their existing evidence owner. Product defaults and published releases did not change.
