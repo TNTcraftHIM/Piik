@@ -725,6 +725,20 @@ test("a saved owner credential retires only the consumed owner URL parameter and
   } finally { session.close(); reloaded?.close(); }
 });
 
+test("a consumed App launch ticket retires after welcome even if Browser storage is unavailable", async () => {
+  const { session, socket } = await setup(3, false, "launch=one-use", true, undefined, "ignores-write");
+  try {
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "one-use" });
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner", sessionId: "endpoint", state: session.getSnapshot().state! });
+    expect(location.hash).toBe("");
+    vi.useFakeTimers();
+    socket.close(); await vi.advanceTimersByTimeAsync(1000); await ChannelSocket.current.onopen?.();
+    const join = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(join).toMatchObject({ credential: "personal-owner" });
+    expect(join).not.toHaveProperty("ownerKey");
+  } finally { session.close(); }
+});
+
 test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverable when Browser storage %s", async failure => {
   const { session, socket } = await setup(3, false, "owner=owner-secret&other=keep", true, undefined, failure);
   const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
@@ -11943,7 +11957,7 @@ test.each([
         expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
         return;
       }
-      expect(session.getSnapshot().state?.publications[0].predecessor).toEqual({ kind: "watch", id: middle.id });
+      expect(session.getSnapshot().state?.publications.find(publication => publication.kind === "screen")?.predecessor).toEqual({ kind: "watch", id: middle.id });
       await vi.waitFor(() => expect(subscriptions()).toHaveLength(1));
       current.receive({ type: "room_reply", roomId: screen.roomId, requestId: subscriptions()[0].requestId, result: { type: "done" } });
       current.receive({ type: "state", state: { ...final, subscriptions: [latest.id] } });

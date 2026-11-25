@@ -342,9 +342,11 @@ two overrides above are unset. On macOS, keep this same layout inside the bundle
 use the shared [packaging entry points](../../docs/deployment.md#build-host).
 
 Both modes start one domain with a local owner entry and a separate advertised
-invitation entry. Only the loopback launcher receives the owner bootstrap; neither
-the LAN nor public listener exposes App approval or control. Returning to the
-launcher reopens the same running domain. Startup continues if that page closes;
+invitation entry. Each navigation from the local launcher uses a short-lived,
+single-use ticket for the existing owner identity. The private bootstrap seed
+stays in the domain; reconnect uses the personal credential returned on entry.
+Neither the LAN nor public listener exposes App approval or control. Returning
+to the launcher reopens the same running domain. Startup continues if that page closes;
 a failed attempt releases its resources before the next retry.
 
 On a running domain, click **App** and approve the site on that local page.

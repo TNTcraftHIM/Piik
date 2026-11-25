@@ -531,6 +531,7 @@ pub async fn serve(
             post(diagnostics::export),
         )
         .route("/api/client-launcher/launch", post(hosted::launch))
+        .route("/api/client-launcher/owner-entry", post(hosted::owner_entry))
         .route("/api/client-launcher/site", post(approve))
         .route("/api/client-launcher/startup-site", post(startup))
         .fallback_service(assets)
@@ -596,7 +597,15 @@ pub async fn serve(
                     action => {
                         if action != terminal::Command::Refresh && opening.is_some() { continue; }
                         let url = if action == terminal::Command::Launcher {
-                            Some(format!("http://127.0.0.1:{}/client", app.port))
+                            format!("http://127.0.0.1:{}/client", app.port)
+                        } else if action == terminal::Command::Site {
+                            match hosted::owner_target(&app).await {
+                                Ok(target) => target,
+                                Err((_, error)) => {
+                                    terminal.as_ref().unwrap().message(error["detail"].as_str().unwrap_or("Site is not ready"));
+                                    continue;
+                                }
+                            }
                         } else {
                             let state = tokio::select! {
                                 _ = &mut stop => break,
@@ -610,22 +619,13 @@ pub async fn serve(
                                 }
                                 state = launcher_view(&app) => state,
                             };
-                            match state {
-                                Ok(state) if action == terminal::Command::Site => {
-                                    state["target"].as_str().map(str::to_owned)
-                                }
-                                state => {
-                                    terminal.as_mut().unwrap().show(state, true);
-                                    continue;
-                                }
-                            }
+                            terminal.as_mut().unwrap().show(state, true);
+                            continue;
                         };
-                        if let Some(url) = url {
-                            match terminal::open_browser(url) {
-                                Ok(request) => opening = Some(request),
-                                Err(error) => eprintln!("Could not open Browser: {error}"),
-                            }
-                        } else { terminal.as_ref().unwrap().message("Site is not ready; open the launcher. / 站点尚未就绪，请打开启动页。"); }
+                        match terminal::open_browser(url) {
+                            Ok(request) => opening = Some(request),
+                            Err(error) => eprintln!("Could not open Browser: {error}"),
+                        }
                     }
                 },
                 result = async { match report.as_mut() {
@@ -4289,6 +4289,7 @@ mod lifecycle_tests {
         let router = Router::new()
             .route("/api/client-launcher", get(launcher))
             .route("/api/client-launcher/launch", post(hosted::launch))
+        .route("/api/client-launcher/owner-entry", post(hosted::owner_entry))
             .route("/api/client-launcher/site", post(approve))
             .route("/api/client-launcher/startup-site", post(startup))
             .route("/health", get(health))

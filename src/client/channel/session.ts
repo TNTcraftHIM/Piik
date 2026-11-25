@@ -218,7 +218,8 @@ export class ChannelSession {
   private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
   private invitationOrigin = location.origin;
-  private ownerKey = new URLSearchParams(location.hash.slice(1)).get("owner") ?? undefined;
+  private ownerKey = new URLSearchParams(location.hash.slice(1)).get("launch")
+    ?? new URLSearchParams(location.hash.slice(1)).get("owner") ?? undefined;
   private roomId = selectedRoom();
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
@@ -525,13 +526,14 @@ export class ChannelSession {
       const saved = stored(credentialKey, event.credential) === event.credential;
       const parameters = new URLSearchParams(location.hash.slice(1));
       const owner = event.state.sessions.find(session => session.id === event.sessionId)?.userId === event.state.channel.ownerId;
-      if (saved && owner && parameters.has("owner") && parameters.get("owner") === this.ownerKey && typeof history !== "undefined") {
-        parameters.delete("owner");
+      const bootstrap = parameters.has("launch") ? "launch" : "owner";
+      if ((saved || bootstrap === "launch") && owner && parameters.get(bootstrap) === this.ownerKey) {
+        this.ownerKey = undefined;
+        parameters.delete(bootstrap);
         const hash = parameters.toString();
         try {
           history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
-          this.ownerKey = undefined;
-        } catch { /* The saved credential still owns recovery if URL editing is unavailable. */ }
+        } catch { /* The welcome credential owns reconnect even if URL editing is unavailable. */ }
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
