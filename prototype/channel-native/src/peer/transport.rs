@@ -1886,6 +1886,7 @@ impl Engine {
         while self.turn_setup.try_recv().is_ok() {}
         self.close_turn();
         self.discovery_routes.clear();
+        self.state.store(PeerState::Closed as u8, Ordering::Release);
         self.rtc.disconnect();
         self.udp_send_failures
             .flush((!self.events.local()).then_some(self.handle.pair));
