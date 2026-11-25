@@ -946,11 +946,18 @@ window.runBrowserRoomCheck = async () => {
         check(await fileStore.saveReceipt({ key: fullKey, sha256: attachment.sha256, receipt: crypto.randomUUID() }, () => true),
           "native save receipt enters the browser index");
       }
+      const stale = { ...attachment, sha256: "b".repeat(64) };
+      const previousTab = new FileStore(fileScope);
+      const key = { roomId, messageSeq: 2, attachmentId: attachment.id };
+      await previousTab.remove(key, stale, { forgetReceipt: true });
       await fileStore.removeMessages(roomId, seq => seq <= 1);
       const reopened = new FileStore(fileScope);
       check((await reopened.list([roomId])).map(entry => entry.key.messageSeq).join() === "2"
         && (await reopened.receipts([roomId])).map(entry => entry.key.messageSeq).join() === "2",
       "clear removes scoped cached bytes and saved-file receipts through the boundary");
+      await previousTab.remove(key, attachment, { forgetReceipt: true });
+      check(!(await reopened.list([roomId])).length && !(await reopened.receipts([roomId])).length,
+        "retiring the matching attachment removes its file and receipt");
       check((await reopened.list([otherRoom])).length === 1 && (await reopened.receipts([otherRoom])).length === 1,
         "clear preserves independently cached attachments and receipts in other rooms");
     } finally {

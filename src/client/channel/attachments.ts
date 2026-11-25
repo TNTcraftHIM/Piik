@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { downloadBlob, type DownloadOutcome, type DownloadProgress } from "../lib/download";
-import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile, type SavedReceipt } from "./file-store";
+import { FileStore, sameContent, type FileScope, type FileRetentionLimits, type RetainedFile, type SavedReceipt } from "./file-store";
 import { loadRoomHosting } from "./hosting";
 import type { AttachmentHash, FileDelivery } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { attachmentSchema, fileKeyString, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair, type ImageRendition } from "./protocol";
@@ -23,13 +23,13 @@ type Effect =
   | { type: "failed"; key: ChannelFileKey; code: string };
 interface Runtime { module: Hosting; delivery: FileDelivery; lifetime: AbortController }
 interface Sink {
-  attachment: ChannelAttachment; lifetime: AbortController;
+  lifetime: AbortController;
   file: FileSystemFileHandle; directory: FileSystemDirectoryHandle; name: string;
   writer: FileSystemWritableFileStream; complete: boolean;
   tail: Promise<void>; promise: Promise<File>; resolve(file: File): void; reject(error: Error): void;
 }
 export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
-interface PendingSink { key: ChannelFileKey; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress | null; receive?: symbol }
+interface PendingSink { key: ChannelFileKey; attachment: ChannelAttachment; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress | null; receive?: symbol }
 export function isNativeSavePending(outcome?: DownloadOutcome): boolean {
   return outcome === "requested" || outcome === "started";
 }
@@ -41,12 +41,11 @@ export function attachmentDownloadDocument(surface?: Document | null): Document 
   return surface ?? undefined;
 }
 
-interface Download { key: ChannelFileKey; controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
+interface Download { key: ChannelFileKey; attachment: ChannelAttachment; controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
 interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; storage: "original" | "retained" | "session-cache"; offer?: Promise<void> }
 interface CacheClear { revision: number; pending?: Promise<void> }
 const idle: Download["status"] = { busy: false, error: null };
 const cacheRoom = (scope: FileScope, roomId: string) => JSON.stringify([scope.domainId, scope.userId, roomId]);
-const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
 function throwStorageError(error: unknown, fallback?: string): never {
   if (error instanceof DOMException && error.name === "QuotaExceededError") throw new Error("file_storage_full");
@@ -83,8 +82,10 @@ export class ChannelAttachments {
     private cancelChunks?: (peer: string, request: string) => void) {}
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  status = (key: ChannelFileKey) => {
-    const download = this.downloads.get(fileKeyString(key))?.status, source = this.sources.get(fileKeyString(key))?.status;
+  status = (key: ChannelFileKey, attachment?: ChannelAttachment) => {
+    const id = fileKeyString(key), entry = this.downloads.get(id), holder = this.sources.get(id);
+    const download = entry && (!attachment || sameContent(entry.attachment, attachment)) ? entry.status : undefined;
+    const source = holder && (!attachment || sameContent(holder.attachment, attachment)) ? holder.status : undefined;
     if (download && (download.busy || download.outcome || download.error)) return download;
     return source?.error ? source : download ?? idle;
   };
@@ -116,8 +117,8 @@ export class ChannelAttachments {
         if (previous?.status.error === "reveal_saved_copy_failed") previous.status = { ...previous.status, error: null };
       } else {
         const status = { busy: false, error: result === "failed" ? "reveal_saved_copy_failed" : "saved_copy_missing" };
-        if (previous) previous.status = status;
-        else this.downloads.set(id, { key, controller: new AbortController(), promise: Promise.resolve(), status });
+        if (previous && sameContent(previous.attachment, attachment)) previous.status = status;
+        else this.downloads.set(id, { key, attachment, controller: new AbortController(), promise: Promise.resolve(), status });
       }
     }
     this.changed();
@@ -181,10 +182,14 @@ export class ChannelAttachments {
         changed = true;
         continue;
       }
-      if (!entry.progress || entry.progress.state === "finishing") continue;
       const matches = (plan: ChannelFilePlan) => plan.roomId === entry.key.roomId && plan.messageSeq === entry.key.messageSeq
         && plan.attachment.id === entry.key.attachmentId;
       const plan = plans.find(matches);
+      if (plan && !sameContent(plan.attachment, entry.attachment)) {
+        void this.stopSink(entry, new Error("attachment_unavailable"));
+        continue;
+      }
+      if (!entry.progress || entry.progress.state === "finishing") continue;
       let state = entry.progress.state;
       if (!plan?.sourceId) state = "waiting-source";
       else if (!plan.upstream) state = "connecting";
@@ -302,7 +307,7 @@ export class ChannelAttachments {
     if (this.sources.get(fileKeyString(key)) !== source) return;
     this.sources.delete(fileKeyString(key));
     void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: false }).catch(() => {});
-    if (removeStored) void this.store?.remove(key).catch(() => {});
+    if (removeStored) void this.store?.remove(key, source.attachment).catch(() => {});
   }
   private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File, ownsFile?: () => boolean): Promise<File | null> {
     const store = this.store, scope = this.scope;
@@ -317,7 +322,7 @@ export class ChannelAttachments {
       const limits: FileRetentionLimits = await this.limits();
       if (!allowed()) return null;
       const retained = await store.retain({ key, attachment, file }, limits, allowed);
-      if (this.messageRemoved(key)) { await store.remove(key); return null; }
+      if (this.messageRemoved(key)) { await store.remove(key, attachment); return null; }
       if (this.store !== store) return null;
       for (const key of retained.evicted) {
         const source = this.sources.get(fileKeyString(key));
@@ -391,7 +396,14 @@ export class ChannelAttachments {
     }, () => {}); // Local storage errors are delivered to the sink's consumers.
   }
   private installSource(source: Source): void {
-    this.sources.set(fileKeyString(source.key), source);
+    const id = fileKeyString(source.key), download = this.downloads.get(id);
+    // A confirmed send or restored original supersedes the previous platform save.
+    // A retained cache candidate still awaits the writer's verification.
+    if (source.storage === "original" && download && !sameContent(download.attachment, source.attachment)) {
+      this.downloads.delete(id);
+      download.controller.abort();
+    }
+    this.sources.set(id, source);
     this.reofferKey(source.key);
     this.changed();
   }
@@ -410,8 +422,8 @@ export class ChannelAttachments {
       if (!current()) return;
       if (source.storage === "retained" && errorOf(error).message === "attachment_unavailable") {
         this.sources.delete(id);
-        this.savedReceipts.delete(id);
-        void this.store?.remove(key, { forgetReceipt: true }).catch(() => {});
+        if (this.hasSavedCopy(key, source.attachment)) this.savedReceipts.delete(id);
+        void this.store?.remove(key, source.attachment, { forgetReceipt: true }).catch(() => {});
       } else source.status = { busy: false, error: "file_offer_failed" };
       this.changed();
     });
@@ -503,10 +515,10 @@ export class ChannelAttachments {
   download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: ImageRendition, surface?: Element): Promise<void> {
     const id = fileKeyString(key), previous = this.downloads.get(id), store = this.store, scope = this.scope;
     const cacheRevision = scope ? this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision : undefined;
-    if (previous && !previous.controller.signal.aborted
+    if (previous && sameContent(previous.attachment, attachment) && !previous.controller.signal.aborted
       && (previous.status.busy || isNativeSavePending(previous.status.outcome))) return previous.promise;
     previous?.controller.abort();
-    const download: Download = { key, controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
+    const download: Download = { key, attachment, controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
     this.downloads.set(id, download); this.changed();
     download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => {
       download.controller.signal.throwIfAborted();
@@ -571,11 +583,16 @@ export class ChannelAttachments {
     if (this.messageRemoved(key)) throw new Error("attachment_unavailable");
     const room = this.rooms.find(room => room.id === key.roomId);
     if (!this.current(runtime) || !room?.authorized) throw new Error("room_unavailable");
+    if (!this.matchesPlan({ key, attachment })) throw new Error("attachment_unavailable");
     let entry = this.sinks.get(id);
+    if (entry && !sameContent(entry.attachment, attachment)) {
+      void this.stopSink(entry, new Error("attachment_unavailable"));
+      entry = undefined;
+    }
     if (!entry) {
       if (!room.available) throw new Error("room_unavailable");
       const consumers = new Set<symbol>();
-      entry = { key, consumers, ready: this.createSink(runtime, key, attachment, consumers),
+      entry = { key, attachment, consumers, ready: this.createSink(runtime, key, consumers),
         progress: { received: 0, total: attachment.size, state: "waiting" } };
       this.sinks.set(id, entry);
       this.requestReceive(entry);
@@ -599,7 +616,7 @@ export class ChannelAttachments {
       if (signal.aborted) cancel();
     });
   }
-  private async createSink(runtime: Runtime, key: ChannelFileKey, attachment: ChannelAttachment, consumers: Set<symbol>): Promise<Sink> {
+  private async createSink(runtime: Runtime, key: ChannelFileKey, consumers: Set<symbol>): Promise<Sink> {
     const storage = this.transferStorage ??= openTransferStorage();
     const { directory } = await storage.catch(error => {
       if (this.transferStorage === storage) this.transferStorage = undefined;
@@ -613,7 +630,7 @@ export class ChannelAttachments {
     let resolve!: (file: File) => void, reject!: (error: Error) => void;
     const promise = new Promise<File>((yes, no) => { resolve = yes; reject = no; });
     void promise.catch(() => {});
-    const sink: Sink = { attachment, lifetime: new AbortController(), directory, name, file, writer, complete: false, tail: Promise.resolve(), promise, resolve, reject };
+    const sink: Sink = { lifetime: new AbortController(), directory, name, file, writer, complete: false, tail: Promise.resolve(), promise, resolve, reject };
     if (!this.current(runtime) || !consumers.size || this.sinks.get(fileKeyString(key))?.consumers !== consumers) {
       await this.disposeSink(sink, aborted()); throw aborted();
     }
@@ -702,15 +719,15 @@ export class ChannelAttachments {
               const file = await sink.file.getFile();
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;
-              if (file.size !== sink.attachment.size) throw new Error("file_size_mismatch");
+              if (file.size !== entry.attachment.size) throw new Error("file_size_mismatch");
               sink.complete = true;
-              const retained = await this.retain(key, sink.attachment, file,
+              const retained = await this.retain(key, entry.attachment, file,
                 () => this.sinks.get(fileKeyString(key)) === entry);
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry || this.messageRemoved(key)) return;
               const readable = retained ?? file;
               entry.progress = null;
-              this.installSource({ key, attachment: sink.attachment, file: readable, status: idle, storage: retained ? "retained" : "session-cache" });
+              this.installSource({ key, attachment: entry.attachment, file: readable, status: idle, storage: retained ? "retained" : "session-cache" });
               void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {}); sink.resolve(readable);
               if (retained) {
                 try {

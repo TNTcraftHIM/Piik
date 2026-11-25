@@ -6338,7 +6338,8 @@ test("retained source content and availability follow the current authenticated 
     socket.receive({ type: "state", state });
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, sha256: attachment.sha256, available: false }));
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, sha256: attachment.sha256, available: false }));
-    expect(remove).toHaveBeenCalledWith(key); expect(remove).toHaveBeenCalledWith(changedKey);
+    expect(remove).toHaveBeenCalledWith(key, attachment);
+    expect(remove).toHaveBeenCalledWith(changedKey, { ...attachment, id: changedId });
   } finally { session.close(); }
 });
 

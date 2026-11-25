@@ -58,7 +58,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const key = { roomId, messageSeq, attachmentId: file.id };
   const downloadSurface = useRef<HTMLDivElement>(null);
   const surfaceDocument = useSurfaceDocument();
-  const downloadStatus = () => client.status(key);
+  const downloadStatus = () => client.status(key, file);
   const savedStatus = () => client.hasSavedCopy(key, file);
   const originalStatusSnapshot = () => client.originalAvailability(key, file, inlineImage?.original === true);
   const transferProgress = () => client.progress(key);
