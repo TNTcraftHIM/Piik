@@ -76,13 +76,37 @@ audits reached the same point from the code in every row marked †.
 
 ## Where The Tree Knows More Than The Designs
 
-- **Reaching a home-run site.** All three designs assume a port mapping, IPv6
-  or a certificate for a bare address, and all three name a host behind
-  carrier-grade NAT as their largest unsolved risk. The tree reaches such a
-  host through a tunnel for signaling. Media then has to punch through, which
-  is why the tree's hole punching goes further than any of the designs. All
-  three reject port prediction, but on the assumption that a site endpoint is
-  always directly reachable. That assumption is the tree's to accept or not.
+- **Reaching a home-run site, and why direct paths matter.** All three designs
+  assume a port mapping, IPv6 or a certificate for a bare address, and all
+  three name a host behind carrier-grade NAT as their largest unsolved risk.
+  The tree reaches such a host through a tunnel for signaling. Media then has
+  to punch through, which is why the tree's hole punching goes further than
+  any of the designs.
+
+  All three reject port prediction. None argues that it is unreliable. Each
+  says only that a forwarder always exists, so a failed pair is routed through
+  it. That rests on two things the tree does not accept. The first is the
+  reachability assumption above. The second is a gap in the brief: it allowed
+  the site to forward and did not state that Piik is meant to be decentralized,
+  with no machine carrying a room. Every pair that fails to connect directly
+  costs a forwarder the full stream, about 1.35 GB an hour for one viewer at
+  3 Mbps, and the designs' own arithmetic has the site endpoint saturating
+  first.
+
+  The evidence favours the techniques for the cases they target. Carrier-grade
+  NATs allocate ports sequentially in 22 to 26% of networks and randomly in 36
+  to 45% ([Richter et al., 2016](https://arxiv.org/abs/1605.05606)).
+  Port prediction raised hole-punching success from 44.6% to 84.3% in one
+  measurement ([Guha and Francis, 2005](https://www.usenix.org/legacy/event/imc05/tech/full_papers/guha/guha_html/)).
+  A port search against one hard NAT succeeds about 64% of the time after 256
+  probes and 98% after 1,024, and against two hard NATs effectively never
+  ([Tailscale](https://tailscale.com/blog/how-nat-traversal-works)). Mesh VPNs
+  that skip these techniques have a funded relay network to fall back on.
+  Piik does not, so they are how it replaces relay capacity.
+
+  What the designs do contribute is the shape: a predicted or searched address
+  is a candidate for the one ICE agent, not a second traversal procedure
+  beside it.
 - **Handoff proof.** The tree commits a route change only on the receiver's
   decoded-frame proof. The designs assume a link that connects also carries
   media.
@@ -119,7 +143,10 @@ could have seen:
 
 ## Decisions This Leaves Open
 
-1. How a home-run site is reached decides whether port prediction stays.
+1. Decided by the owner on 2026-11-25: Piik is meant to be decentralized and
+   usable by anyone, so traversal of difficult NATs stays and a relay is the
+   fallback. What remains is its shape, and measuring how many pairs each
+   technique rescues in the field.
 2. Whether a Browser may relay by re-encoding.
 3. Whether a site may read the content of a room it does not store.
 4. Whether the desktop shell bundles its browser engine.

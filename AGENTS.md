@@ -59,8 +59,11 @@ and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
 
 The standard is a polished experience and clear engineering, across interface,
 interaction, functional boundaries, lifecycle and code. Working behaviour alone
-does not meet it. Media stays automatic and P2P-first, and adaptation belongs
-to Browser WebRTC, the Native RTC SDK and accepted encoder policies. Changing
+does not meet it. Piik is meant to be decentralized and usable by anyone:
+anyone can host, and no single machine should have to carry a room. A direct
+path is therefore worth real effort, including through difficult NATs, and a
+relay is the fallback. Media stays automatic and P2P-first, and adaptation
+belongs to Browser WebRTC, the Native RTC SDK and accepted encoder policies. Changing
 that, for example with a custom quality score, a ladder, an all-pairs probe,
 periodic rebalancing or a hand-built SFU representation, takes a new accepted
 decision backed by primary evidence.
