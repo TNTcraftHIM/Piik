@@ -1,5 +1,7 @@
 //! The local Server experiment's metadata and confirmed room history.
 //! Media sessions and routes never enter this database.
+mod domain;
+pub use domain::DomainStorage;
 use crate::{
     backup::{DeletedHistoryRow, HistoryImport, HistoryRow, LiveHistoryRow},
     history::{
@@ -55,6 +57,21 @@ fn read_error(error: rusqlite::Error) -> Box<dyn std::error::Error + Send + Sync
 const LAST_SEQ: &str = "SELECT max(coalesce((SELECT max(seq) FROM message WHERE room_id=?1),0),
     coalesce((SELECT max(seq) FROM deleted_message WHERE room_id=?1),0))";
 
+fn open_connection(path: &Path, flags: OpenFlags) -> StoreResult<Connection> {
+    // Resolve the existing directory before SQLite creates the file and its journals.
+    let normalized = match path.file_name() {
+        Some(name) if path != Path::new(":memory:") => {
+            let parent = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            Some(std::fs::canonicalize(parent)?.join(name))
+        }
+        _ => None,
+    };
+    Ok(Connection::open_with_flags(normalized.as_deref().unwrap_or(path), flags)?)
+}
+
 pub struct Storage {
     connection: Connection,
 }
@@ -78,18 +95,7 @@ impl Storage {
     }
 
     fn open_with_flags(path: &Path, flags: OpenFlags, no_wait: bool) -> StoreResult<Self> {
-        // Resolve the existing directory before SQLite creates the file and its journals.
-        let normalized = match path.file_name() {
-            Some(name) if path != Path::new(":memory:") => {
-                let parent = path
-                    .parent()
-                    .filter(|parent| !parent.as_os_str().is_empty())
-                    .unwrap_or(Path::new("."));
-                Some(std::fs::canonicalize(parent)?.join(name))
-            }
-            _ => None,
-        };
-        let connection = Connection::open_with_flags(normalized.as_deref().unwrap_or(path), flags)?;
+        let connection = open_connection(path, flags)?;
         if no_wait {
             connection.busy_timeout(std::time::Duration::ZERO)?;
         }
@@ -656,6 +662,11 @@ mod tests {
             store.save(&checkpoint)?;
             drop(store);
             assert_eq!(Storage::open(&path)?.load()?, Some(checkpoint));
+            let domain_path = directory.join("channel.sqlite");
+            let domain = crate::Authority::new("owner".into(), vec![]).unwrap();
+            DomainStorage::open(&domain_path)?.save_header(&domain)?;
+            let restored = DomainStorage::open(&domain_path)?.load()?.unwrap().into_authority(vec![]).unwrap();
+            assert_eq!(restored.identity(), domain.identity());
             Ok(())
         })();
         std::fs::remove_dir_all(root).unwrap();

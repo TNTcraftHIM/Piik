@@ -176,7 +176,7 @@ async fn app_http(
 
 #[tokio::test]
 async fn committed_domain_restore_reports_native_restart_failure_without_rolling_back_authority() {
-    use piik_channel_core::{backup::DomainMetadata, storage::Storage};
+    use piik_channel_core::{backup::DomainMetadata, storage::DomainStorage};
     use piik_channel_native::peer::server_udp::ServerUdp;
     use piik_channel_prototype::{domain::Domain as ServerDomain, serve_server};
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -279,14 +279,7 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
     );
     assert_eq!(status, 409);
     assert_eq!(body["error"], "domain_restored_connection_failed");
-    let saved: DomainMetadata = serde_json::from_value(
-        Storage::open(&directory.path().join("channel.sqlite"))
-            .unwrap()
-            .load()
-            .unwrap()
-            .unwrap(),
-    )
-    .unwrap();
+    let saved: DomainMetadata = DomainStorage::open(&directory.path().join("channel.sqlite")).unwrap().load().unwrap().unwrap();
     assert_ne!(identity, old_identity);
     assert_eq!(saved.owner_key, "restored-owner");
     assert_eq!(saved.into_authority(vec![]).unwrap().identity(), identity);
@@ -1654,7 +1647,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 #[tokio::test]
 async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
     use piik_channel_core::conversation::SessionSigner;
-    use piik_channel_core::{backup::DomainMetadata, storage::Storage};
+    use piik_channel_core::{backup::DomainMetadata, storage::DomainStorage};
     use piik_channel_prototype::{app, web};
     use rtc_stun::{
         fingerprint::FINGERPRINT,
@@ -1915,14 +1908,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             "a running domain cannot be moved by a repeated launch request"
         );
         let identity = saved_identity();
-        let metadata: DomainMetadata = serde_json::from_value(
-            Storage::open(&folder.join("domain/channel.sqlite"))
-                .unwrap()
-                .load()
-                .unwrap()
-                .unwrap(),
-        )
-        .unwrap();
+        let metadata: DomainMetadata = DomainStorage::open(&folder.join("domain/channel.sqlite")).unwrap().load().unwrap().unwrap();
         let owner = metadata.owner_key.as_str();
         if attempt == 1 {
             assert_ne!(

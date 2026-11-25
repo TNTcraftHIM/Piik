@@ -23,6 +23,15 @@ pub struct User {
 }
 
 impl User {
+    pub(crate) fn stored(&self) -> StoredUser {
+        StoredUser {
+            id: self.id,
+            name: self.name.clone(),
+            avatar: self.avatar.clone(),
+            credential: self.credential,
+        }
+    }
+
     pub fn summary(&self) -> crate::wire::UserSummary {
         crate::wire::UserSummary {
             id: self.id,
@@ -344,12 +353,7 @@ impl Identity {
     pub fn export_users(&self) -> Vec<StoredUser> {
         self.users
             .values()
-            .map(|u| StoredUser {
-                id: u.id,
-                name: u.name.clone(),
-                avatar: u.avatar.clone(),
-                credential: u.credential,
-            })
+            .map(User::stored)
             .collect()
     }
 

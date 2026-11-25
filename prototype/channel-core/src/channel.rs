@@ -613,24 +613,28 @@ impl Channel {
 
     pub fn export_state(&self) -> DurableState {
         DurableState {
-            version: 6,
+            version: DurableState::VERSION,
             users: self.identity.export_users(),
-            header: DomainStateHeader {
-                hosting_mode: self.hosting_mode,
-                room_creation_policy: self.room_creation_policy,
-                restorable_rooms: self.restorable_rooms.clone(),
-                pending_room_deletions: self.pending_room_deletions.clone(),
-                id: self.id,
-                name: self.name.clone(),
-                icon: self.icon.clone(),
-                owner_id: self.identity.owner_id,
-                hosted_rooms: self
-                    .remote
-                    .iter()
-                    .filter(|(_, room)| room.reservation.is_none())
-                    .map(|(id, room)| (id.clone(), room.summary.clone()))
-                    .collect(),
-            },
+            header: self.export_header(),
+        }
+    }
+
+    pub(crate) fn export_header(&self) -> DomainStateHeader {
+        DomainStateHeader {
+            hosting_mode: self.hosting_mode,
+            room_creation_policy: self.room_creation_policy,
+            restorable_rooms: self.restorable_rooms.clone(),
+            pending_room_deletions: self.pending_room_deletions.clone(),
+            id: self.id,
+            name: self.name.clone(),
+            icon: self.icon.clone(),
+            owner_id: self.identity.owner_id,
+            hosted_rooms: self
+                .remote
+                .iter()
+                .filter(|(_, room)| room.reservation.is_none())
+                .map(|(id, room)| (id.clone(), room.summary.clone()))
+                .collect(),
         }
     }
 
@@ -686,7 +690,7 @@ impl Channel {
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 6 {
+        if state.version != DurableState::VERSION {
             return Err("invalid_state");
         }
         state.header.validate()?;
@@ -2373,6 +2377,8 @@ pub struct DomainStateHeader {
 }
 
 impl DurableState {
+    pub(crate) const VERSION: u32 = 6;
+
     pub fn hosting_mode(&self) -> HostingMode {
         self.header.hosting_mode
     }

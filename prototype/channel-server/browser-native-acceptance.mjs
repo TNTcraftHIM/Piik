@@ -150,7 +150,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const domain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
     try {
       assert.equal(stored.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 1);
-      assert.equal(domain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+      assert.equal(domain.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='table' AND name='message'").get().count, 0);
     } finally { stored.close(); domain.close(); }
     assert.equal(await evaluate(1, `(async () => {
       for (const database of await indexedDB.databases()) {
@@ -659,7 +659,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     const domain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
     try {
       assert.equal(stored.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 1);
-      assert.equal(domain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+      assert.equal(domain.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='table' AND name='message'").get().count, 0);
     } finally { stored.close(); domain.close(); }
 
     await evaluate(2, `window.__channelProbe.blockPeer(${JSON.stringify(pairs[1].peerId)})`);
@@ -759,7 +759,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     const fileDomain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
     try {
       assert.equal(fileStore.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='attachment'").get().count, 0);
-      assert.equal(fileDomain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+      assert.equal(fileDomain.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='table' AND name='message'").get().count, 0);
     } finally { fileStore.close(); fileDomain.close(); }
 
     await browser(2, "click", `.c3-room-link[aria-label="${name}"]`);

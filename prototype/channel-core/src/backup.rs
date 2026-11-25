@@ -113,9 +113,9 @@ impl DomainArchiveMetadata {
         }
         check.finish()?;
         let metadata = DomainMetadata {
-            version: 2,
+            version: DomainMetadata::VERSION,
             state: DurableState {
-                version: 6,
+                version: DurableState::VERSION,
                 header: self.state,
                 users,
             },
@@ -126,8 +126,10 @@ impl DomainArchiveMetadata {
 }
 
 impl DomainMetadata {
+    pub(crate) const VERSION: u32 = 2;
+
     pub fn archive_metadata(&self) -> Result<DomainArchiveMetadata, &'static str> {
-        if self.version != 2 || self.state.version != 6 {
+        if self.version != Self::VERSION || self.state.version != DurableState::VERSION {
             return Err("unsupported_backup_version");
         }
         let metadata = DomainArchiveMetadata {
@@ -155,7 +157,7 @@ impl DomainMetadata {
         self,
         ice_servers: Vec<serde_json::Value>,
     ) -> Result<Authority, &'static str> {
-        if self.version != 2 {
+        if self.version != Self::VERSION {
             return Err("unsupported_backup_version");
         }
         let mut authority = Authority::new(self.owner_key, ice_servers)?;

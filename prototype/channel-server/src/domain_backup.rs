@@ -258,13 +258,11 @@ pub(super) async fn create_copy(
 pub(super) async fn export_domain(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {
     let metadata: DomainMetadata = {
         let (_, hub) = owner(&domain, &headers)?;
-        let checkpoint = hub
+        hub
             .storage
             .load()
             .map_err(|error| backup::error(StatusCode::INTERNAL_SERVER_ERROR, error))?
-            .expect("opened domain has a checkpoint");
-        serde_json::from_value(checkpoint)
-            .map_err(|error| backup::error(StatusCode::INTERNAL_SERVER_ERROR, error))?
+            .expect("opened domain has a checkpoint")
     };
     Ok(backup::archive("domain.piik.zip", move |writer| {
         piik_channel_native::backup::write_domain(&metadata, writer)

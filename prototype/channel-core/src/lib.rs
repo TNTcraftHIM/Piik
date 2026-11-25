@@ -153,7 +153,7 @@ impl Authority {
     /// Private hosting data for the domain's storage owner, never a client event.
     pub fn export_backup(&self) -> backup::DomainMetadata {
         backup::DomainMetadata {
-            version: 2,
+            version: backup::DomainMetadata::VERSION,
             state: self.export_state(),
             owner_key: self.channel.identity.owner_key.clone(),
         }
