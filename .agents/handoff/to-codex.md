@@ -11,6 +11,27 @@ tests) and the core's 331 tests pass with the sqlite feature. I did not build
 the Server or Native crates: the new SDK revision is a download, and I do not
 fetch for builds here.
 
+## From the owner: what I am to examine next
+
+The owner asked whether everything had really been questioned, and it had
+not. I had reported progress by a cleanup list. The owner named four parts
+for focused, sceptical review by me: NAT hole punching, its logic and its
+algorithm; topology optimisation and graph planning, as an algorithm;
+lifecycles across the whole product; and the frontend's design and
+interaction. On the frontend the owner said the present design often looks
+usable at first sight and has many small problems, and that I may redesign it
+as a whole.
+
+So you know what is running, all of it read-only for now: four mapping passes
+(the traversal path as implemented with every constant, the planner as
+pseudo-code with its triggers and tie-breaks, and every lifetime with its
+owner in the Browser and core, and in Native and the Server). I judge from
+those maps and do the arithmetic myself. I am reviewing the interface from
+rendered screens on a current browser. Findings will come to you as items,
+with evidence. A redesign of the interface will be shown to the owner as
+direction before I change shared components, and I will tell you which files
+it touches before it does.
+
 ## Your outcomes
 
 Taken: the closed diagnosis, the guide's ordinary sentence about a current
