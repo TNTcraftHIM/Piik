@@ -5,8 +5,8 @@ html[data-piik-native-window] .c3-app { --c3-content-width: 100%; padding: 0; }
 html[data-piik-native-window] [data-app-shell] { align-self: stretch; width: 100%; max-width: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 html[data-piik-native-window] .lr-app > main:has(> [data-app-shell]) { display: flex; flex-direction: column; padding: 0; }
 html[data-piik-native-window] .lr-app > main > [data-app-shell] { flex: 1 0 auto; }
-html[data-piik-native-window] .lr-app > .lr-top { min-height: var(--native-caption-height); padding: 7px 16px; }
-html[data-piik-native-window] .lr-top-app-identity { display: inline-flex; }
+html[data-piik-native-window] .lr-app > .lr-top { min-height: var(--native-caption-height); padding: 7px 16px; flex-wrap: wrap; row-gap: 4px; }
+html[data-piik-native-window] .lr-top-app-identity { display: inline-flex; align-items: center; min-height: var(--control-compact-size); }
 html[data-piik-native-window] [data-app-shell] .lr-launcher-identity { display: none; }
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) {
   min-height: var(--native-caption-height);

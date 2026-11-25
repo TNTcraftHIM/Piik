@@ -13,7 +13,7 @@ consumer. [Versioning](../standards/versioning.md) promises that an older App
 keeps working with a newer site within a major version, and that forward
 upgrades preserve durable authority. The code does not yet say how:
 
-- `Join` requires the protocol number to equal 46
+- `Join` requires the protocol number to match the current wire version
   (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
   reader accepts additions; no rule says which additions a reader may ignore.
 - The review at `35034f34` found that Browser accepts any `room_reply.result.type`

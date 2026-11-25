@@ -118,7 +118,9 @@ export function AppLauncherPage() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let restoredSettings = false;
-    let enterOnReady = new URLSearchParams(window.location.search).get("start") === "1";
+    const params = new URLSearchParams(window.location.search);
+    const openOwned = params.has("enter");
+    let enterOnReady = openOwned || params.get("start") === "1";
     const readState = () => {
       if (stateRead.current && !stateRead.current.signal.aborted) return;
       clearTimeout(timer);
@@ -146,10 +148,10 @@ export function AppLauncherPage() {
           : state.target || previous?.kind === "load" ? null : previous);
         setLoading(false);
         // External startup is opened by the launcher's site-navigation controls.
-        if (state.startupSite && !state.startupMode) enterOnReady = false;
+        if (!openOwned && state.startupSite && !state.startupMode) enterOnReady = false;
         if (enterOnReady && (state.target || state.detail)) {
           enterOnReady = false;
-          if (state.target) void enterOwnedSite(launchURL(state.target, { debug: state.debug === true, controlPort: state.controlPort }), state.windowNavigation);
+          if (state.target) void enterOwnedSite(state.windowNavigation, { debug: state.debug === true, controlPort: state.controlPort });
         }
         if (state.starting) timer = setTimeout(() => void readState(), 750);
       })
@@ -225,10 +227,17 @@ export function AppLauncherPage() {
     return clientLaunchURL(target, presentation, settings.debug, settings.controlPort);
   }
 
-  async function enterOwnedSite(url: string, integrated: boolean): Promise<void> {
-    if (!integrated) { window.location.replace(url); return; }
-    try { await openLauncherSite(url); }
-    catch { setError({ kind: "launch" }); setLaunching(false); }
+  async function enterOwnedSite(integrated: boolean, settings = { debug: appDebug === true, controlPort }): Promise<void> {
+    try {
+      const response = await fetch("/api/client-launcher/owner-entry", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!response.ok) throw new Error("site_unavailable");
+      const { target } = launcherResultSchema.parse(await response.json());
+      const url = launchURL(target, settings);
+      if (integrated) await openLauncherSite(url);
+      else window.location.replace(url);
+    } catch { setError({ kind: "launch" }); setLaunching(false); }
   }
 
   function changeMode(next: AppMode): void {
@@ -269,8 +278,7 @@ export function AppLauncherPage() {
         setLaunching(false);
         return;
       }
-      const result = launcherResultSchema.parse(await response.json());
-      await enterOwnedSite(launchURL(result.target), windowNavigation);
+      await enterOwnedSite(windowNavigation);
     } catch {
       setError({ kind: "launch" });
       setLaunching(false);
@@ -430,7 +438,7 @@ export function AppLauncherPage() {
           bookmarks={navigation.bookmarks} bookmarksError={navigation.loadError} onRetryBookmarks={navigation.retry}
           onOpenBookmark={navigation.open} onManageBookmarks={navigation.manage}
           ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}
-          localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)} onClick={event => { event.preventDefault(); void enterOwnedSite(event.currentTarget.href, windowNavigation); }}>
+          localSiteAction={target ? <a className="lr-btn is-primary" href="/client?enter=1" onClick={event => { event.preventDefault(); void enterOwnedSite(windowNavigation); }}>
             <Glyph name="arrowRight" size={19} /><span className="lr-cap">{t("client.connect.continue")}</span>
           </a> : <Btn icon="arrowRight" title="client.launch.configure" cap="client.launch.configure" busy={starting} disabled={starting}
             onClick={() => setPanel("launch")} />}
@@ -454,8 +462,8 @@ export function AppLauncherPage() {
       {homeReady && panel === "launch" && <ChannelSettingsDialog title={t("client.launch.room")} closeDisabled={starting} onClose={() => setPanel(undefined)}>
         {starting ? <LoadingStatus label="client.launch.starting" waitingCaption /> : <form className="c3-settings-panels lr-client-launch-panel" onSubmit={launch}>
           <SiteStartControls mode={mode} onModeChange={changeMode} roomError={roomError}
-            target={target} localCertificate={localCertificate} entryURL={launchURL}
-            onOpen={event => { event.preventDefault(); void enterOwnedSite(event.currentTarget.href, windowNavigation); }}
+            target={target && "/client?enter=1"} localCertificate={localCertificate}
+            onOpen={event => { event.preventDefault(); void enterOwnedSite(windowNavigation); }}
             port={sitePort === undefined ? undefined : { value: sitePort, onChange: setPortDraft }}
             publicEntry={localAddress ? { ...publicEntry, localAddress,
               error: publicEntryError ? t("client.launch.invalidPublicAddress") : undefined,

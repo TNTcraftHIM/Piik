@@ -14,7 +14,7 @@ import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, t
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
 }
-interface RoomRecord { id: string; policy: string; bindingId?: string; clearedThrough?: number }
+interface RoomRecord { id: string; policy: string; historyLineage: string; bindingId?: string; clearedThrough?: number }
 function savedRoom(record: RoomRecord, id: string): RoomHost {
   const room = new RoomHost(record.policy);
   if (room.room_id() === id) return room;
@@ -60,7 +60,7 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 7);
+    const request = indexedDB.open(name, 8);
     let unsupported = false;
     request.onupgradeneeded = event => {
       if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }
@@ -169,7 +169,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
     } finally { room.free(); }
   }
 
-  private install(target: RoomRecord, create: boolean, signal?: AbortSignal): Promise<void> {
+  private install(target: Pick<RoomRecord, "id" | "policy">, create: boolean, signal?: AbortSignal): Promise<void> {
     return this.turn(["backup", "rooms", "messages"], "readwrite", (tx, abort) => {
       const rooms = tx.objectStore("rooms"), messages = tx.objectStore("messages");
       read<RoomRecord | undefined>(rooms.get(target.id), record => {
@@ -180,7 +180,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
         read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(0, true)), cursor => {
           if (!cursor) {
             const clearedThrough = firstLive === undefined ? lastSeq : firstLive - 1;
-            const installed = { ...target, clearedThrough };
+            const installed = { ...target, historyLineage: crypto.randomUUID(), clearedThrough };
             // Retire the prior durable write binding in the same commit as the data.
             if (create) rooms.add(installed);
             else rooms.put(installed);
@@ -249,7 +249,7 @@ export class BrowserRoomHost implements HostedRoom {
         const rooms = tx.objectStore("rooms");
         read(rooms.get(id), value => {
           saved = value;
-          if (!saved && room) rooms.add({ id, policy: room.policy() });
+          if (!saved && room) rooms.add({ id, policy: room.policy(), historyLineage: crypto.randomUUID() } satisfies RoomRecord);
         }, abort);
       }, () => {}, { durability: room ? "strict" : undefined });
       if (saved) { const previous = room; room = savedRoom(saved, id); previous?.free(); }
@@ -318,7 +318,7 @@ export class BrowserRoomHost implements HostedRoom {
             if (this.bindingId !== bindingId) {
               replacement = savedRoom(record, this.roomId);
               read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]), "prev"), cursor => {
-                replacement!.seed_history(BigInt(cursor?.value.seq ?? 0));
+                replacement!.seed_history(record.historyLineage, BigInt(cursor?.value.seq ?? 0));
               }, abort);
             }
             if (record.bindingId !== bindingId) rooms.put({ ...record, bindingId });

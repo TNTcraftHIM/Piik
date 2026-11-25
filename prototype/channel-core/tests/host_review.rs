@@ -1961,3 +1961,114 @@ fn relay_candidates_admit_the_writer_and_voice_member_within_the_room_grant() {
         .any(|(socket, e)| matches!(e,Event::State{state}
         if *socket==voice_socket && state.voice.iter().any(|v| v.session_id==speaker))));
 }
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn registered_writer_reloads_lineage_across_summary_change_and_full_install() {
+    use piik_channel_core::{
+        host::RoomSummary,
+        wire::{Event, Request},
+        Authority, Effects, StoredRoomHost,
+    };
+
+    fn host_input(effects: Effects) -> HostInput {
+        effects
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .expect("domain issued a writer turn")
+    }
+    let mut domain = Authority::new("owner".into(), vec![]).unwrap();
+    let connection = Uuid::new_v4();
+    review_admit(&mut domain, connection, "owner");
+    let owner = domain.identity().1;
+    let directory = std::env::temp_dir().join(format!("piik-binding-{}", Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("room.sqlite");
+    let id = "registered";
+    let policy = RoomState::new(
+        id.into(),
+        id.into(),
+        Default::default(),
+        owner,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    let mut host = StoredRoomHost::create(&path, policy).unwrap();
+    let archive = host
+        .snapshot(&directory.join("archive.sqlite"), domain.identity().0, None)
+        .unwrap();
+    let request = |core: &mut Authority, command| {
+        core.handle(
+            connection,
+            Request {
+                request_id: None,
+                command,
+            },
+            1,
+        )
+    };
+    let register = |core: &mut Authority, room: RoomSummary, resume_binding| {
+        host_input(request(
+            core,
+            Command::HostRegister {
+                room,
+                resume_binding,
+            },
+        ))
+    };
+    request(
+        &mut domain,
+        Command::AdmitRoom {
+            room: host.summary(),
+        },
+    );
+    let initial = register(&mut domain, host.summary(), None);
+    let binding = initial.binding_id;
+    let output = host.dispatch(initial).unwrap();
+    let g = output.projection.history_lineage;
+    let accepted = |effects: Effects| {
+        assert!(!effects
+            .events
+            .iter()
+            .any(|(_, e)| matches!(e, Event::Error { .. })))
+    };
+    accepted(review_host_turn(&mut domain, connection, id, output));
+
+    // The writer committed the rename before its reply reached the domain.
+    let rename = Request::parse(&serde_json::json!({"type":"update_room","roomId":id,"name":"Changed","icon":"couch","access":"public","hidden":false}).to_string()).unwrap();
+    let rename = host_input(domain.handle(connection, rename, 2));
+    host.dispatch(rename).unwrap();
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert_eq!(host.summary().name, "Changed");
+    let resumed = register(&mut domain, host.summary(), Some(binding));
+    assert_eq!(resumed.binding_id, binding);
+    let resumed = host.dispatch(resumed).unwrap();
+    assert_eq!(resumed.projection.history_lineage, g);
+    accepted(review_host_turn(
+        &mut domain,
+        connection,
+        id,
+        resumed.clone(),
+    ));
+
+    host.replace(&archive).unwrap();
+    let fresh = register(&mut domain, host.summary(), None);
+    assert_ne!(fresh.binding_id, binding);
+    let output = host.dispatch(fresh).unwrap();
+    assert_ne!(output.projection.history_lineage, g);
+    accepted(review_host_turn(&mut domain, connection, id, output));
+    let stale = review_host_turn(&mut domain, connection, id, resumed);
+    assert!(stale
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
+    drop((host, archive));
+    std::fs::remove_dir_all(directory).unwrap();
+}

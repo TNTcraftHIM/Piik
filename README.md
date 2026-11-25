@@ -33,10 +33,10 @@ on your own server.
 
 - **Watch without installing.** Friends join by invitation in a desktop or mobile browser.
 - **Share from Piik App or an existing Piik site.** Choose a screen, window, browser tab or camera; available sources and audio depend on the platform.
-- **Direct connections first.** Media travels between participants where possible (P2P). Published 2.x servers can provide SFU fallback; [3.0 Server forwarding](./prototype/channel-server/README.md#rooms-conversation-and-media) currently serves Server-hosted rooms.
+- **Direct connections first.** Media travels between participants where possible (P2P). Piik Server can provide SFU fallback.
 - **Rooms you control.** Invitations, room codes and optional room passwords, for one host and up to 20 viewers.
 - **Talk and chat together.** Join room voice, send messages and reactions, or enable on-screen chat.
-- **Hand control to friends.** Share an App window or screen and approve remote control. Allow friends to play together with shared keyboard/mouse or supported gamepads; take control back at any time. [Setup guide](./docs/guide/remote-control.md).
+- **Hand control to friends.** Share an App window or screen and approve remote control. Allow friends to play together with shared keyboard/mouse or supported gamepads; take control back at any time. [Remote control and playing together](https://piik.tv/docs/remote-control.html).
 - **Flexible viewing.** Light and dark themes, playback controls, picture-in-picture and a connection topology view.
 - **One program to host a site.** Web UI, room management and optional media forwarding are packaged together.
 
@@ -49,6 +49,8 @@ on your own server.
 </p>
 
 ## Get started
+
+These steps use the published **2.x** release. If you received a 3.0 test package or invitation, see [Piik 3.0 test documentation](./docs/guide/README.md).
 
 **To watch:** open the invitation your friend sends you. Select **Play** if the
 picture does not start automatically.
@@ -64,17 +66,18 @@ you can also create a room in the online version.
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 
 1. Select **Start sharing**, then choose the picture and audio to share.
-2. Select **Copy invite link** and send it to your friends. Keep the sharing tab open.
+2. Under **Admission**, select **Copy** and send it to your friends. Keep the sharing tab open.
 
 Open **Interact → Voice** to talk together, with or without picture sharing.
 The Host opens voice; everyone joins to listen and chooses when to turn on their microphone.
 
-Piik follows your system language: Chinese or English, with English as the fallback.
-Use **中 / EN / ✦** in the header to switch language or try the visual mode.
+Piik uses your browser's language when supported and falls back to English.
+Use **中** or **EN** in the header. Open the dropdown beside them for more
+languages or **Visual only**.
 The App can create a local room or temporary public invitation, and stays
 available to supply capture for an approved site. Keep it running while sharing.
 
-[**Illustrated getting started →**](./docs/guide/getting-started.md) · [**Troubleshooting →**](./docs/guide/troubleshooting.md)
+[Your first Piik room](https://piik.tv/docs/getting-started.html) · [Troubleshooting](https://piik.tv/docs/troubleshooting.html)
 
 Choose a download beginning with **`piik-app`**. The guide covers installation,
 source selection and invitations.
@@ -82,7 +85,7 @@ source selection and invitations.
 Browser capture requires HTTPS or `localhost`.
 The App's temporary public link and the online version use P2P and need a usable
 UDP connection between participants. For campus
-networks, failed media connections or virtual LANs, see [network checks and connection options](./docs/guide/network.md).
+networks, failed media connections or virtual LANs, see [Advanced network checks](https://piik.tv/docs/network.html).
 
 ## Self-hosting
 

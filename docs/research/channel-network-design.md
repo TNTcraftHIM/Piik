@@ -104,8 +104,9 @@ on the room's peer paths.
 Use short-lived session signing keys, bound to admitted sessions and the current
 room-host binding through authenticated domain rendezvous. Sign the original
 payload bytes with a maintained Ed25519 implementation, verify before parsing,
-and resolve the author and permissions from current trusted domain facts. A
-carrier cannot substitute its identity or supply its own permission snapshot.
+and resolve the author and permissions from current domain facts. Participants
+trust the domain to bind sessions to the correct keys and supply current grants.
+A forwarding session gains no authority from carrying a packet.
 Long-lived admission credentials are not conversation payloads.
 
 Forwarded requests use the same room authorization and storage operations as local

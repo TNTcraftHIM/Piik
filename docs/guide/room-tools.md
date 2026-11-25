@@ -5,7 +5,7 @@ This guide covers the 3.0 internal test. For the published version, use the [roo
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
 Choose a room you can enter from the sidebar to read chat, join voice, share your screen or watch a friend.
-The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. To read messages in a private room, the site owner needs access to it too. Access controls what Piik shows; it is not encryption. The site carries chat between people, so whoever operates the site can read what passes through it, and a Server-hosted room keeps its records on the operator's machine.
+The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. The site owner needs access to open a private room in Piik. The site operator can read the chat text and inline images the site forwards. A Server-hosted room also stores its records on the operator's machine.
 
 - **The couch** shows who is in the current room, including people who are just reading chat.
 - **Under a room name on the left**, you see people in voice, sharing, watching or transferring files, including anyone forwarding to others. The icons beside their names show what they are doing.
@@ -42,11 +42,14 @@ in place. The tabs show the tasks available to you:
   without access** hides a private room from people who have not been admitted.
   Under **Users with access**, **Remove room access** ends that user's access and
   activities in this room. Someone who still has the room's invitation link or
-  password can enter again. To keep them out, reset the invitation and change
-  the password.
+  password can enter again. To prevent re-entry with those credentials, first
+  reset the invitation and change or remove any room password, then remove the
+  person's access.
 - **Connection:** Choose how many people this device helps forward to in this room.
-- **Records:** Export loaded chat text. Room owners can also export a full backup
-  or a copy that someone else can use to create a new room.
+- From **Records**, export loaded chat text or select **Clear local room cache**
+  to remove this identity's cached attachments on this device. Room history and
+  saved downloads are kept. Save any file this device holds as the only copy
+  before clearing its cache.
 
 Invitations open beside the room title. Copy the link there or use the QR button
 below the copy action. Public rooms share a direct link; private invitations
@@ -60,9 +63,18 @@ The site operator opens settings by selecting the site name above the room list.
 
 ### Back up or copy a room
 
-To preserve the original room, use **Records → Export full backup**. To restore
-it, choose **Restore full backup**, select the ZIP and confirm the replacement.
-In a Server-hosted room, its creator uses this room’s Records panel. The site owner can remove rooms from the site. To read private room content, they need access to that room. They can export full backups of rooms they created. Other admitted members can export the chat text loaded on their page. The backup includes settings, full history and thumbnails. Select **Include file originals from this device** to add originals your browser can read locally.
+The room owner selects **Room settings → Records → Export room backup**. The ZIP
+keeps the room's identity, owner, access settings and full chat history, including
+images stored in messages. **Include file originals from this device** adds
+originals the current device can read locally.
+
+- To replace the saved data in an available room, select **Restore room backup**
+  under **Room settings → Records**. Choose the ZIP and confirm the replacement.
+  A Server-hosted room remains available while its Server runs, even when its
+  creator is offline.
+- In a lightweight site that allows you to create rooms, open **Create room** and
+  expand **Restore a room backup**. Select **Restore room backup**, choose the ZIP
+  and confirm to recover the original room and saved account.
 
 To give someone a copy, choose **Export room copy**, optionally including room
 information. They select **Create room → Load a room copy**, choose the new name

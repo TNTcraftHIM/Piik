@@ -877,7 +877,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 7);
+      const request = indexedDB.open(database, 8);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -946,11 +946,18 @@ window.runBrowserRoomCheck = async () => {
         check(await fileStore.saveReceipt({ key: fullKey, sha256: attachment.sha256, receipt: crypto.randomUUID() }, () => true),
           "native save receipt enters the browser index");
       }
+      const stale = { ...attachment, sha256: "b".repeat(64) };
+      const previousTab = new FileStore(fileScope);
+      const key = { roomId, messageSeq: 2, attachmentId: attachment.id };
+      await previousTab.remove(key, stale, { forgetReceipt: true });
       await fileStore.removeMessages(roomId, seq => seq <= 1);
       const reopened = new FileStore(fileScope);
       check((await reopened.list([roomId])).map(entry => entry.key.messageSeq).join() === "2"
         && (await reopened.receipts([roomId])).map(entry => entry.key.messageSeq).join() === "2",
       "clear removes scoped cached bytes and saved-file receipts through the boundary");
+      await previousTab.remove(key, attachment, { forgetReceipt: true });
+      check(!(await reopened.list([roomId])).length && !(await reopened.receipts([roomId])).length,
+        "retiring the matching attachment removes its file and receipt");
       check((await reopened.list([otherRoom])).length === 1 && (await reopened.receipts([otherRoom])).length === 1,
         "clear preserves independently cached attachments and receipts in other rooms");
     } finally {
@@ -963,7 +970,7 @@ window.runBrowserRoomCheck = async () => {
     await checkImageHistoryBudget();
     await checkTransferStorage();
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 8);
+      const upgrade = indexedDB.open(database, db.version + 1);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {

@@ -318,8 +318,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});
         } : undefined}
         onNative={selection => start(() => startNativeScreen(roomId, selection))}
-        onPreview={channel.nativePreview} onRefresh={refresh} nativeFailureMessage={sources.kind === "failed" && sources.error
-          ? channelErrorPresentation(sources.error, t, "host.sourcePicker.failed").message ?? undefined : undefined} onCancel={() => {
+        onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}
     </div>

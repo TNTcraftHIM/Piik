@@ -6,6 +6,7 @@ import { expect, it, vi } from "vitest";
 import { PLAYER_CONTROLS_IDLE_MS } from "../src/client/ui/control-timing";
 import { REMOTE_TOUCH_HOLD_MS } from "../src/client/remote-control/touchpad";
 import { RemoteDirectionPad } from "../src/client/components/living/RemoteDirectionPad";
+import { onDocumentInactive } from "../src/client/ui/document-active";
 
 // Exercise the actual component callbacks without adding a DOM runtime. Native
 // click generation and pointer capture ordering still require Browser acceptance.
@@ -29,7 +30,7 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
   const owner = { hidden: false, activeElement: null,
     addEventListener: (type: string, callback: () => void) => listeners.set(type, callback),
     removeEventListener: (type: string) => listeners.delete(type),
-    defaultView: { addEventListener: vi.fn(), removeEventListener: vi.fn() } };
+    defaultView: Object.assign(new EventTarget(), { piikNativeActive: true }) };
   const layer = { clientWidth: 400, clientHeight: 300 };
   const positionRef = { current: layer };
   const widget = { offsetLeft: left, offsetTop: 100, offsetWidth: 44, offsetHeight: 56,
@@ -60,7 +61,7 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
       if (changed(current.deps, deps)) { current.deps = deps; current.value = callback; }
       return current.value;
     },
-    useEffect: effect, useLayoutEffect: effect, Glyph: () => null, RemoteDirectionPad,
+    onDocumentInactive, useEffect: effect, useLayoutEffect: effect, Glyph: () => null, RemoteDirectionPad,
   });
   const nodes = (element: Element): Element[] => [element, ...[element.props.children].flat(Infinity)
     .filter((child): child is Element => Boolean(child && typeof child === "object" && "props" in child)).flatMap(nodes)];
@@ -222,6 +223,19 @@ it("tucks only an idle edge mini and cancels the timer on interaction, expansion
   } finally { view.dispose(); vi.useRealTimers(); }
 });
 
+it.each(["onPointerCancel", "onLostPointerCapture"])("tucks the idle mini after %s", end => {
+  vi.useFakeTimers();
+  const view = mouse(0);
+  try {
+    view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
+    view.find("lr-remote-mouse").props[end](view.event());
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS);
+    view.render();
+    expect(view.docked()).toBe("left");
+    expect(view.pointer.button).not.toHaveBeenCalled();
+  } finally { view.dispose(); vi.useRealTimers(); }
+});
+
 it("distinguishes wheel taps, scrolling and held middle dragging and retires its timer and button", () => {
   vi.useFakeTimers();
   const view = mouse();
@@ -265,6 +279,13 @@ it("distinguishes wheel taps, scrolling and held middle dragging and retires its
     expect(view.pointer.button.mock.calls).toEqual([[1, true], [1, false]]);
     expect(vi.getTimerCount()).toBe(0);
     view.pointer.button.mockClear(); view.owner.hidden = false;
+    start();
+    view.owner.defaultView.piikNativeActive = false;
+    view.owner.defaultView.dispatchEvent(new Event("piik-window-activity"));
+    vi.advanceTimersByTime(REMOTE_TOUCH_HOLD_MS);
+    expect(view.pointer.button).not.toHaveBeenCalled();
+    view.owner.defaultView.piikNativeActive = true;
+    view.owner.defaultView.dispatchEvent(new Event("piik-window-activity"));
     start(); expect(vi.getTimerCount()).toBe(1);
     view.dispose(); vi.advanceTimersByTime(REMOTE_TOUCH_HOLD_MS);
     expect(view.pointer.button).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);

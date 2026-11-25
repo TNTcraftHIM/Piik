@@ -97,12 +97,12 @@ impl Storage {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(read_error)?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0)).map_err(read_error)?;
-        if version != 9
+        if version != 10
             && (version != 0 || existing || !flags.contains(OpenFlags::SQLITE_OPEN_CREATE))
         {
             return Err(StorageDataError("unsupported_storage_version".into()).into());
         }
-        if version == 9 {
+        if version == 10 {
             let tables: u32 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','deleted_message')", [], |row| row.get(0)).map_err(read_error)?;
             if tables != 3 {
                 return Err(StorageDataError("invalid_storage_schema".into()).into());
@@ -112,7 +112,7 @@ impl Storage {
         if version == 0 {
             connection.execute_batch(
             "BEGIN IMMEDIATE;
-             CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+             CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL, history_lineage TEXT);
              CREATE TABLE message (
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, id TEXT NOT NULL UNIQUE,
                user_id TEXT NOT NULL, nonce TEXT NOT NULL, text TEXT NOT NULL,
@@ -124,11 +124,49 @@ impl Storage {
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, retry_key TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,retry_key)
              );
-             PRAGMA user_version=9;
+             PRAGMA user_version=10;
              COMMIT;",
         )?;
         }
         Ok(Self { connection })
+    }
+
+    pub(crate) fn create_room(&self, policy: &crate::RoomState, lineage: Uuid) -> StoreResult<()> {
+        self.connection.execute(
+            "INSERT INTO checkpoint(id,body,history_lineage) VALUES(1,?1,?2)",
+            params![serde_json::to_string(policy)?, lineage.to_string()],
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn history_lineage(&self) -> StoreResult<Uuid> {
+        let value: String = self.connection
+            .query_row("SELECT history_lineage FROM checkpoint WHERE id=1", [], |row| row.get(0))
+            .map_err(read_error)?;
+        Ok(Uuid::parse_str(&value).map_err(|e| StorageDataError(e.into()))?)
+    }
+
+    /// Install one frozen, locally validated SQLite room in a single transaction.
+    pub(crate) fn install_room(&mut self, source: &Self, lineage: Uuid) -> StoreResult<()> {
+        let path = source.connection.path().ok_or("invalid_backup_path")?;
+        self.connection.execute("ATTACH DATABASE ?1 AS frozen", [path])?;
+        let result = (|| -> StoreResult<()> {
+            let tx = self.connection.transaction()?;
+            tx.execute_batch("DELETE FROM main.message; DELETE FROM main.deleted_message; DELETE FROM main.checkpoint;
+                INSERT INTO main.message SELECT * FROM frozen.message;
+                INSERT INTO main.deleted_message SELECT * FROM frozen.deleted_message;")?;
+            let installed = tx.execute(
+                "INSERT INTO main.checkpoint(id,body,history_lineage) SELECT id,body,?1 FROM frozen.checkpoint",
+                [lineage.to_string()],
+            )?;
+            if installed != 1 {
+                return Err("room_not_found".into());
+            }
+            tx.commit()?;
+            Ok(())
+        })();
+        self.connection.execute_batch("DETACH DATABASE frozen")?;
+        result
     }
 
     pub fn load(&self) -> StoreResult<Option<Value>> {

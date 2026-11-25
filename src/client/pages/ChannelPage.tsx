@@ -138,15 +138,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [sourceView, setView] = useState<{
     focus: { roomId: string; focusedId: string | null } | null;
     snapshot: ChannelController["state"]; sessionId: string | null;
+    waitingWatches: ChannelController["waitingWatchPages"];
     waiting: Array<Omit<WaitingStageSource, "onClose" | "hidden"> & { roomId: string }>;
-  }>({ focus: null, snapshot: state, sessionId, waiting: [] });
+  }>({ focus: null, snapshot: state, sessionId, waitingWatches: channel.waitingWatchPages, waiting: [] });
   function setSourceView(focus: typeof sourceView.focus) { setView(previous => ({ ...previous, focus })); }
   function closeWaiting(id: string) {
     if (channel.watchPlayers.has(id) || channel.waitingWatchPages?.has(id)) run(channel.leaveWatch(id));
     else if (state?.publications.some(p => p.id === id && p.kind === "screen") && channel.pending.has(`watch:${id}`)) run(channel.unwatch(id));
     setView(previous => ({ ...previous, waiting: previous.waiting.filter(source => source.id !== id) }));
   }
-  if (sourceView.snapshot !== state || sourceView.sessionId !== sessionId) {
+  if (sourceView.snapshot !== state || sourceView.sessionId !== sessionId || sourceView.waitingWatches !== channel.waitingWatchPages) {
     const old = sourceView.snapshot;
     const sameSession = old && state && old.channel.id === state.channel.id && sourceView.sessionId === sessionId;
     const waiting = sameSession ? sourceView.waiting.filter(source =>
@@ -155,7 +156,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       && !(state.watchActivities.some(live => live.id === source.id && live.roomId === source.roomId) && (state.watchSubscriptions.some(sub => sub.id === source.id) || channel.waitingWatchPages?.has(source.id)))) : [];
     if (sameSession) {
       const viewed = [...old.publications.filter(p => p.kind === "screen").filter(p => old.subscriptions.includes(p.id)),
-        ...old.watchActivities.filter(w => old.watchSubscriptions.some(s => s.id === w.id))];
+        ...old.watchActivities.filter(w => sourceView.waitingWatches?.has(w.id) || old.watchSubscriptions.some(s => s.id === w.id))];
       for (const source of viewed) {
         const room = state.channel.rooms.find(r => r.id === source.roomId && r.authorized);
         if (!room || source.sessionId === sessionId || [...state.publications, ...state.watchActivities].some(live => live.id === source.id)) continue;
@@ -172,7 +173,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     const focus = sourceView.focus;
     const successor = focus?.focusedId && (state?.watchActivities.find(a => a.roomId === focus.roomId && a.predecessor?.id === focus.focusedId)
       ?? state?.publications.find(p => p.kind === "screen" && p.roomId === focus.roomId && p.predecessor?.id === focus.focusedId));
-    setView({ ...sourceView, focus: successor ? { roomId: successor.roomId, focusedId: successor.id } : sourceView.focus, snapshot: state, sessionId, waiting });
+    setView({ ...sourceView, focus: successor ? { roomId: successor.roomId, focusedId: successor.id } : sourceView.focus, snapshot: state, sessionId, waitingWatches: channel.waitingWatchPages, waiting });
   }
   const previousOwnedScreens = useRef<ReadonlySet<string>>(new Set(channel.ownedScreens));
   const [voiceFocus, setVoiceFocus] = useState("");

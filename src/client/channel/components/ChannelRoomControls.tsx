@@ -19,6 +19,7 @@ import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
 import { messageAuthorName, userProfile } from "../presentation";
 import { fileSize, type AttachmentLimits } from "../attachments";
 import { protectRoomComposition, useRoomFormFocus } from "./room-form-interaction";
+import { readBrowserRoomPersistence } from "../browser-room-persistence";
 
 export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly Pick<ChannelUser, "id" | "name">[] }) {
   const { t } = useCopy();
@@ -247,6 +248,19 @@ function RoomMemberAccess({ channel, roomId, userId, disabled }: {
   </div>;
 }
 
+function BrowserRoomPersistence() {
+  const { t } = useCopy();
+  const [persisted, setPersisted] = useState<boolean | null>();
+  useEffect(() => {
+    let current = true;
+    void readBrowserRoomPersistence().then(value => { if (current) setPersisted(value); });
+    return () => { current = false; };
+  }, []);
+  if (persisted === undefined) return null;
+  return <p role="status">{t(persisted === null ? "room.settings.browserStorageUnknown"
+    : persisted ? "room.settings.browserStoragePersistent" : "room.settings.browserStorageBestEffort")}</p>;
+}
+
 function RoomSettings({ channel, room, onClose }: {
   channel: ChannelController; room: ChannelRoom; onClose(): void;
 }) {
@@ -272,6 +286,7 @@ function RoomSettings({ channel, room, onClose }: {
   const connected = channel.connection === "connected";
   const site = channel.state?.channel;
   const serverHosted = site?.hostingMode === "hosted";
+  const browserHostsRoom = room.canManage && !!channel.sessionId && room.delivery?.hostSessionId === channel.sessionId;
   const deleteData = serverHosted || room.available;
   const canPurge = room.authorized && (room.canManage || (!!channel.self && channel.self.id === site?.ownerId));
   const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
@@ -330,6 +345,7 @@ function RoomSettings({ channel, room, onClose }: {
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{t("room.settings.recordsTitle")}</h3>
+          {selected === "data" && browserHostsRoom && <BrowserRoomPersistence />}
           {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={[...(channel.state?.users ?? []), ...channel.profiles.values()]} />}
           {room.authorized && <section className="c3-backup-controls">
             <p>{t("room.settings.localCacheScope")}</p>

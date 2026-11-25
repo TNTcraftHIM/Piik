@@ -30,8 +30,8 @@ For a blocked Mac build, follow the [Mac opening steps](../../docs/guide/trouble
 
 ## Modes
 
-Choose **Local network** or **Public invite**, then **Open Piik**. This starts
-one site containing your rooms. Anyone opening its address can create a room;
+Select **Set up and start**, choose **Local network** or **Public invite**,
+then select **Open Piik**. To return to a running site, select **Continue**. Anyone opening its address can create a room;
 a private room needs its own invitation or password.
 
 The launcher's mode preference stays in the current interface. An App-owned startup
@@ -48,7 +48,7 @@ If several addresses appear, choose one on the network your friends use.
 
 Friends open the full HTTPS invitation on that address. On their first visit,
 compare the [local certificate fingerprint](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
-with **Local connection details** below **Open Piik** in the launcher (or
+with **Local connection details** below **Continue** in the launcher (or
 **Certificate SHA-256** in a desktop terminal). Send friends the selected site
 address or room link instead of a `localhost` address.
 
@@ -76,9 +76,12 @@ To make a room, open your own or another **3.0** site and select
   this page closes, while the App remains running.
 - **Hosted by this page:** the browser saves the room; closing this page pauses
   hosting. Connecting App later does not move that room automatically.
+- In a hosted site, the Server saves the room. The room remains available
+  while the Server runs, even when its creator is offline.
 
 People admitted to a room can chat, join voice, share and watch. See
-[sharing controls](../../docs/guide/sharing.md) and [room tools](../../docs/guide/room-tools.md).
+[Sharing and playback](../../docs/guide/sharing.md) and
+[Chat, voice and remote control](../../docs/guide/room-tools.md).
 
 ### Approved Site
 

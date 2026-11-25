@@ -442,6 +442,7 @@ impl RemoteRoom {
                 available: discoverable,
                 reading: false,
                 participant_session_ids: Vec::new(),
+                history_lineage: None,
                 last_message_seq: 0,
                 file_activity: Vec::new(),
                 file_availability: None,

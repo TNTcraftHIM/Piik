@@ -22,7 +22,8 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   const context = { connection: ownerSocket, sessionId: owner, requestId: "preference", now: 100 };
   const preference = (allowed: boolean) => ({ type: "command", context, command: { type: "update_room", roomId: policy.id, ...settings, allowServiceRelay: allowed } });
   try {
-    turn({ type: "sync" });
+    const initial = turn({ type: "sync" });
+    expect(initial.projection.historyLineage).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(turn(preference(true), [], false).reply.result).toEqual({ type: "error", code: "storage_failed" });
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(false);
     expect(turn(preference(true)).reply.result.type).toBe("done");

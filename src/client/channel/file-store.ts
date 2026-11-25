@@ -1,5 +1,7 @@
 import { fileKeyString, type ChannelAttachment, type ChannelFileKey } from "./protocol";
 
+export const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
+
 export interface FileScope { domainId: string; userId: string }
 export interface FileRetentionLimits { maxRetainedBytes: number; maxRetainedFiles: number }
 export interface RetainedFile { key: ChannelFileKey; attachment: ChannelAttachment; file: File }
@@ -134,13 +136,21 @@ export class FileStore {
     return evicted ? { file, evicted } : { file: null, evicted: [] };
   }
 
-  remove(key: ChannelFileKey, { forgetReceipt = false } = {}): Promise<void> {
-    return this.transaction(forgetReceipt ? ["files", "receipts"] : "files", "readwrite", (transaction, done) => {
-      const store = transaction.objectStore("files");
+  remove(key: ChannelFileKey, attachment: ChannelAttachment, { forgetReceipt = false } = {}): Promise<void> {
+    return this.transaction<void>(forgetReceipt ? ["files", "receipts"] : "files", "readwrite", transaction => {
       const id = fileKeyString(key);
-      if (forgetReceipt) transaction.objectStore("receipts").delete(id);
-      const request = store.index("key").getKey(id);
-      request.onsuccess = () => { if (request.result !== undefined) store.delete(request.result); done(); };
+      const file = transaction.objectStore("files").index("key").openCursor(id);
+      file.onsuccess = () => {
+        const cursor = file.result;
+        if (cursor && sameContent(cursor.value.attachment, attachment)) cursor.delete();
+      };
+      if (forgetReceipt) {
+        const receipt = transaction.objectStore("receipts").openCursor(id);
+        receipt.onsuccess = () => {
+          const cursor = receipt.result;
+          if (cursor && cursor.value.sha256 === attachment.sha256.toLowerCase()) cursor.delete();
+        };
+      }
     });
   }
 
