@@ -74,6 +74,7 @@
 .c3-watch-position { display: flex; align-items: center; gap: 6px; min-width: 0; padding-inline: 2px; font-size: 12px; line-height: 1.2; }
 .c3-watch-status { flex: none; white-space: nowrap; font-weight: 650; }
 .c3-watch-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.c3-watch-time[data-live] { white-space: normal; text-overflow: clip; }
 .c3-watch-position[data-seeking] .c3-watch-time { color: var(--action); }
 .c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
 .c3-mini-player[data-thumbnail] .c3-mini-controls:not(.c3-watch-controls) .lr-playback-window { display: none; }
