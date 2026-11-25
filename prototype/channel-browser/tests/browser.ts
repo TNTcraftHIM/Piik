@@ -405,6 +405,20 @@ window.runBrowserRoomCheck = async () => {
         request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
       });
     }
+    const newerDatabase = `${database}-schema-newer`;
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(newerDatabase, 9);
+      request.onsuccess = () => { request.result.close(); resolve(); }; request.onerror = () => reject(request.error);
+    });
+    try {
+      try { await BrowserRoomHost.storedRoomIds(newerDatabase); throw new Error("newer schema accepted"); }
+      catch (error) { check(String(error).includes("unsupported_storage_version"), "a newer private schema is reported as an unsupported version"); }
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(newerDatabase);
+        request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
+      });
+    }
     await bindHost();
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 128;

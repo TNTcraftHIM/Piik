@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { diagnoseChannelFact } from "../src/client/channel/diagnosis";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { roomOpenFailure } from "../src/client/channel/types";
 
 describe("diagnosis using the current operation", () => {
   it("explains when an operation requires peer transport", () => {
@@ -24,11 +25,30 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "screen", paused: false, deliveryFailed: false })).toBeNull();
   });
 
+  it("explains a picture with no route yet without offering a retry, and lets failures and pause take precedence", () => {
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true }))
+      .toEqual({ message: "diagnosis.noRoute", topic: "picture" });
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true, deliveryFailed: true }))
+      .toMatchObject({ message: "diagnosis.noPicture", next: "screen.retryPicture" });
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true, playbackError: 3 })?.message).toBe("screen.decodeFailed");
+    expect(diagnoseChannelFact({ area: "screen", paused: true, awaitingRoute: true })).toBeNull();
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: false })).toBeNull();
+  });
+
   it("keeps source permissions, failed reads and incompatible storage tied to their own operations", () => {
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_access_denied" })?.message).toBe("watch.mediaAccessDenied");
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_timeout" })).toMatchObject({ message: "watch.forward.readTimeout", topic: "webpage" });
     expect(diagnoseChannelFact({ area: "error", code: "capture_targets_failed" })?.topic).toBe("capture");
     expect(diagnoseChannelFact({ area: "error", code: "unsupported_storage_version" })?.topic).toBe("storage");
     expect(diagnoseChannelFact({ area: "error", code: "unsupported_backup_version" })).toBeNull();
+  });
+
+  it("names why a room this device holds could not open, from what the Browser store reports", () => {
+    expect(roomOpenFailure(new Error("unsupported_storage_version"))).toBe("unsupported_version");
+    for (const error of [new Error("invalid_room_policy"), new Error("owner_mismatch"), new Error("storage_failed"),
+      new DOMException("Unreadable", "UnknownError"), "invalid_request"]) expect(roomOpenFailure(error)).toBe("unreadable");
+    expect(diagnoseChannelFact({ area: "roomOpen", failure: "unsupported_version" }))
+      .toEqual({ message: "channel.error.unsupportedStorageVersion", topic: "storage" });
+    expect(diagnoseChannelFact({ area: "roomOpen", failure: "unreadable" })).toEqual({ message: "room.unopened.unreadable", topic: "storage" });
   });
 });

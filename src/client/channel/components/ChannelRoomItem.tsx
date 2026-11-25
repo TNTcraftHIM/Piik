@@ -8,16 +8,18 @@ import { participantViewingLabel, viewingAppearance, type ParticipantViewing } f
 import { ChannelIdentityMark } from "./ChannelIdentity";
 import "./channel-room-item.css";
 
-/** Room navigation and room management are separate actions on the same item. */
+/** Room navigation and room management are separate actions on the same item.
+ * An unavailable room this device should host but could not open is not described as offline. */
 export function ChannelRoomItem({ room, selected, voice = false, sharing = false, viewing,
-  sourceCount = 0, settingsOpen = false, unread = false, participantDisclosure, onSelect, onManage }: {
-  room: ChannelRoom; selected: boolean; voice?: boolean; sharing?: boolean; viewing?: ParticipantViewing;
+  sourceCount = 0, settingsOpen = false, unread = false, unopened = false, participantDisclosure, onSelect, onManage }: {
+  room: ChannelRoom; selected: boolean; voice?: boolean; sharing?: boolean; viewing?: ParticipantViewing; unopened?: boolean;
   sourceCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
 }) {
   const { t, lang } = useCopy();
   const unreadId = useId(), offlineId = useId(), activityId = useId();
   const settingsLabel = t("room.item.settings", { name: room.name });
+  const offlineLabel = t(unopened ? "room.item.unopened" : "room.item.offline");
   const activity = sharing ? t("channel.roomParticipants.sharing") : viewing ? participantViewingLabel(viewing, t)
     : sourceCount > 0 ? `${t("screen.sharedScreens")} ${sourceCount}` : "";
   const activityLabel = joinItems(lang, [
@@ -39,7 +41,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         <strong>{room.name}</strong>
         <span className="c3-room-activity" aria-hidden="true">
           {room.access === "private" && <Glyph name="lock" size={13} />}
-          {!room.available && <span>{t("room.item.offline")}</span>}
+          {!room.available && <span>{offlineLabel}</span>}
           {voice && <Glyph name="headphones" size={14} />}
           {sharing ? <Glyph name="cast" size={14} /> : viewing ? <Glyph name={viewingAppearance[viewing].icon} size={14} />
             : sourceCount > 0 ? <span>{sourceCount}<Glyph name="tv" size={13} /></span> : null}
@@ -47,7 +49,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
       </button>
     </Tooltip>
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
-    {!room.available && <span id={offlineId} className="visually-hidden">{t("room.item.offline")}</span>}
+    {!room.available && <span id={offlineId} className="visually-hidden">{offlineLabel}</span>}
     {activityLabel && <span id={activityId} className="visually-hidden">{activityLabel}</span>}
     {(room.authorized || room.canManage) && <span className="c3-room-manage">
       <Btn icon="sliders" size="dense" quiet title={{ text: settingsLabel }} textTooltip

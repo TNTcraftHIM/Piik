@@ -18,6 +18,9 @@ import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-lin
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
+/** A share start owner with no result, as the page supplies before any start. */
+const idleStart = { error: null, run: async () => {}, clearError() {} };
+
 vi.mock("react", async importOriginal => {
   const actual = await importOriginal<typeof import("react")>();
   return { ...actual, useState: vi.fn(actual.useState) };
@@ -140,7 +143,7 @@ describe("shared App connection entry", () => {
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
     } });
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(false);
     expect(button.toLowerCase().includes("popovertarget=")).toBe(true);
@@ -173,22 +176,22 @@ describe("shared App connection entry", () => {
         { id: "mine", roomId: "room", kind: "screen", userId: "self" },
       ], voice: [], watchActivities: [], watchSubscriptions: [] },
     } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
     expect(html.match(/<button\b/g)).toHaveLength(3);
     expect(html).toContain('aria-label="Close"');
     expect(html).toMatch(/aria-label="(?:Share settings in Friday|Friday的分享设置)"/);
-    const header = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }));
+    const header = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
     expect(header).toContain('aria-label="Switch source in Friday"');
     expect(header).toContain('aria-label="Share settings in Friday"');
     expect(screenQuality.mock.calls).toEqual([["mine"], ["mine"]]);
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", publicationId: "retired", disabled: false }))).toBe("");
-    const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "other", disabled: false }));
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "retired", disabled: false }))).toBe("");
+    const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "other", publicationId: "mine", disabled: false }))).toBe("");
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "other", publicationId: "mine", disabled: false }))).toBe("");
     ownedScreens.clear();
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", publicationId: "mine", disabled: false }))).toBe("");
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }))).toContain(`aria-label="${t("en", "host.start")}"`);
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "mine", disabled: false }))).toBe("");
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }))).toContain(`aria-label="${t("en", "host.start")}"`);
   });
 });
 
@@ -201,12 +204,29 @@ describe("Native sharing capabilities", () => {
       browserCapturePreparation: () => phase, sourceSelectionCommitting: () => false,
       nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
     } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false, onWatch() {} }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, channel, roomId: "room", disabled: false, onWatch() {} }));
     expect(html).toContain('role="status" aria-live="polite"');
     expect(html).toContain(t("en", phase === "picker" ? "host.capture.chooseInSystem" : "host.capture.preparingPicture"));
     expect(html).toContain(t("en", "host.capture.cancelPreparationHint"));
     const cancel = html.match(/<button\b[^>]*aria-label="Cancel preparation"[^>]*>/)![0];
     expect(cancel).not.toContain("disabled");
+  });
+
+  it("shows a failed start in the share control's wait slot until the next preparation", () => {
+    setCopy({ lang: "en" });
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, pending: new Set(), appConnected: false,
+      browserCapturePreparation: (): "picker" | undefined => undefined, sourceSelectionCommitting: () => false,
+      nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
+    };
+    const startAction = { ...idleStart, error: "capture_failed" };
+    const render = () => renderToStaticMarkup(createElement(ChannelShareControl, { startAction, channel: channel as unknown as ChannelController, roomId: "room", disabled: false, onWatch() {} }));
+    const failed = render();
+    expect(failed.split('class="c3-share-wait c3-share-failure"')[1]).toContain(t("en", "channel.error.captureFailed"));
+    expect(failed).toContain(`aria-label="${t("en", "notice.dismiss")}"`);
+    channel.browserCapturePreparation = () => "picker";
+    const preparing = render();
+    expect(preparing).toContain(t("en", "host.capture.chooseInSystem"));
+    expect(preparing).not.toContain(t("en", "channel.error.captureFailed"));
   });
 
   it("derives Native availability from the selected codec and applied source audio", async () => {
@@ -226,7 +246,7 @@ describe("Native sharing capabilities", () => {
       vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
         .mockReturnValueOnce([false, vi.fn()])
         .mockReturnValueOnce([sources, vi.fn()]);
-      return renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel: channel as unknown as ChannelController,
+      return renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel: channel as unknown as ChannelController,
         roomId: "room", publicationId: channel.ownedScreens.has("mine") ? "mine" : undefined, disabled: false }));
     };
     expect(render(true)).not.toContain('aria-label="Encoding method"');
@@ -979,7 +999,7 @@ it("keeps forwarding settings reachable for main playback with a retained Page s
   } as unknown as ChannelController;
   const render = () => {
     vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([true, vi.fn()]);
-    return renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }));
+    return renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
   };
   expect(render()).toContain('aria-label="Stop forwarding"');
   activity.byteSource = null;

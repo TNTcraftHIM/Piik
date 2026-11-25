@@ -13,6 +13,7 @@
 .c3-monitor-offer strong, .c3-monitor-source strong { display: block; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-monitor-offer small, .c3-monitor-source small { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
 .c3-monitor-offer .lr-btn { flex: none; }
+.c3-monitor-offer > .c3-picture-failure { flex-basis: 100%; }
 .c3-monitor-heading { flex: none; justify-content: space-between; gap: 8px 16px; font-size: 13px; font-weight: 650; }
 .c3-monitor-heading > div:first-child { min-width: 0; }
 .c3-monitor-layout { min-width: 0; flex: 1; justify-content: flex-end; }
@@ -80,8 +81,15 @@
 }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 .c3-monitor-wait-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed] { padding: 8px; gap: 4px; text-align: center; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed] > svg { display: none; }
+/* The failure hangs at the lower edge so the centred status and Retry picture do not move. */
+.c3-monitor-wait:has(> .c3-picture-failure) { position: relative; }
+.c3-monitor-wait > .c3-picture-failure { position: absolute; inset-inline: 12px; bottom: 12px; justify-content: center; text-align: center; }
+/* A thumbnail has no room below Retry picture, so its failure takes the status line's place there. */
+.c3-monitor-tile.is-thumbnail .c3-monitor-wait > .c3-picture-failure { position: static; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-wait:has(> .c3-picture-failure) > [role="status"] { display: none; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-wait:has(> .c3-picture-failure) > .c3-monitor-wait-actions { order: 1; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-wait:is([data-failed], :has(> .c3-picture-failure)) { padding: 8px; gap: 4px; text-align: center; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-wait:is([data-failed], :has(> .c3-picture-failure)) > :is(svg, .lr-brand-loader) { display: none; }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */
 .c3-app:has(.c3-monitor.is-theater) .c3-shell { visibility: hidden; }
 .c3-shell:has(.c3-monitor.is-theater) { container-type: normal; }

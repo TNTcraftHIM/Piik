@@ -61,6 +61,14 @@ export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
 
+/** Why this device could not open a room whose saved data it holds. */
+export type RoomOpenFailure = "unsupported_version" | "unreadable";
+
+/** Name a Browser room store failure. A missing room is not a failure; the caller skips it. */
+export function roomOpenFailure(error: unknown): RoomOpenFailure {
+  return error instanceof Error && error.message === "unsupported_storage_version" ? "unsupported_version" : "unreadable";
+}
+
 export interface ChannelView {
   waitingWatchPages?: ReadonlySet<string>;
   watchPlayers: ReadonlyMap<string, WatchPlayer>;
@@ -101,6 +109,8 @@ export interface ChannelView {
   remoteControls: ReadonlyMap<string, ChannelRemoteControlState>;
   error: string | null;
   errorRoomId?: string;
+  /** Rooms this device should host but could not open, owned by its local hosting runtime. */
+  roomOpenFailures: ReadonlyMap<string, RoomOpenFailure>;
   siteURL: string | null;
   pending: ReadonlySet<string>;
 }
@@ -119,6 +129,13 @@ export interface ChatAttachmentPreparation {
   /** Clear the cancellable preparation before submitting the message. */
   progress(percent: number | null): void;
 }
+
+/**
+ * Whether the page banner reports an operation's failure. A control that shows
+ * its own failure passes a function, asked when the failure happens, so a
+ * result its owner can no longer receive still reaches the banner.
+ */
+export type ReportError = boolean | (() => boolean);
 
 export interface ChannelActions {
   startWatch(roomId: string, url: string, reportError?: boolean): Promise<void>;
@@ -205,23 +222,23 @@ export interface ChannelActions {
   createRoomInvite(roomId: string): Promise<string>;
   getRoomInvite(roomId: string): Promise<RoomInvitationState>;
   revokeRoomAccess(roomId: string, userId: string, reportError?: boolean): Promise<void>;
-  startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;
+  startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string, reportError?: ReportError): Promise<void>;
   cameraPreviews: typeof loadCameraPreviews;
   nativeSources(signal?: AbortSignal): Promise<NativeCaptureSources>;
   externalInput(roomId: string): (NativeExternalInput & { publicationId: string }) | undefined;
-  startExternalScreen(roomId: string): Promise<void>;
+  startExternalScreen(roomId: string, reportError?: ReportError): Promise<void>;
   cancelExternalScreen(roomId: string): Promise<void>;
   nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   nativeCaptureSelection(roomId: string): (NativeCaptureSelection & { current: boolean }) | undefined;
-  startNativeScreen(roomId: string, selection: NativeCaptureSelection): Promise<void>;
+  startNativeScreen(roomId: string, selection: NativeCaptureSelection, reportError?: ReportError): Promise<void>;
   sourceSelectionCommitting(roomId: string): boolean;
   browserCapturePreparation(roomId: string): "picker" | "preparing" | undefined;
   cancelScreenSelection(roomId: string): Promise<void>;
   stopScreen(publicationId: string, successorWatchId?: string): Promise<void>;
-  watch(publicationId: string): Promise<void>;
+  watch(publicationId: string, reportError?: ReportError): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
-  retryPicture(publicationId: string): Promise<void>;
+  retryPicture(publicationId: string, reportError?: ReportError): Promise<void>;
   screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation, playbackError?: ScreenPlaybackError): void;
   screenPlaybackError(publicationId: string): ScreenPlaybackError | undefined;
   inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void>;

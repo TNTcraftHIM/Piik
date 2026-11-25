@@ -78,3 +78,18 @@ test("room navigation and private entry use host availability, not the creator's
   expect(entry()).toContain(t("en", "room.offline.access"));
   expect(entry().match(/<input\b[^>]*>/)?.[0]).toContain('disabled');
 });
+
+test("a room this device could not open says so instead of offline, and only while it is unavailable", () => {
+  setCopy({ lang: "en" });
+  const room = { id: "room", name: "Own room", creatorId: "self", icon: "couch", access: "public", hasPassword: false,
+    authorized: true, canManage: true, available: false, fileActivity: [], participantSessionIds: [], lastMessageSeq: 0,
+    hidden: false, voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, reading: false, capabilities: { attachments: true } } as ChannelRoom;
+  const channel = { connection: "connected", pending: new Set(), readByRoom: {}, ownedScreens: new Set(), profiles: new Map(),
+    state: { channel: { rooms: [room] }, users: [], sessions: [], publications: [], voice: [], watchActivities: [], subscriptions: [], watchSubscriptions: [] } } as unknown as ChannelController;
+  const list = (unopened: boolean) => renderToStaticMarkup(createElement(ChannelRoomListItem, { channel, room, selected: false, settingsOpen: false, unopened, onSelect() {}, onManage() {} }));
+  expect(list(false)).toContain(t("en", "room.item.offline"));
+  expect(list(true)).toContain(t("en", "room.item.unopened"));
+  expect(list(true)).not.toContain(`>${t("en", "room.item.offline")}<`);
+  room.available = true;
+  expect(list(true)).not.toContain(t("en", "room.item.unopened"));
+});

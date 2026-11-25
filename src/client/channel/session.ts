@@ -24,7 +24,7 @@ import { userProfile } from "./presentation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, roomOpenFailure, type ChannelActions, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type RoomOpenFailure, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -196,7 +196,7 @@ export class ChannelSession {
     ownedScreens: new Set(),
     localScreens: new Set(),
     state: null, sessionId: null, self: null, profiles: new Map(), connection: "connecting", messagesByRoom: {}, historyChangesByRoom: {}, historyByRoom: {}, readByRoom: {},
-    streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, siteURL: null, pending: new Set(),
+    streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, roomOpenFailures: new Map(), siteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
   private profileLoads = new Map<string, Promise<void>>();
@@ -885,6 +885,7 @@ export class ChannelSession {
       this.hostedRooms.delete(id);
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
     }
+    for (const id of this.view.roomOpenFailures.keys()) if (!state.channel.rooms.some(room => room.id === id)) this.setRoomOpenFailure(id);
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
       if (!restoring && room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)) this.voice.resumed(state, room.id);
       if (room.id !== this.roomId && room.reading && room.authorized && room.available
@@ -1200,6 +1201,7 @@ export class ChannelSession {
   private releaseHosts(): void {
     const hosts = [...this.hostedRooms.values()];
     this.hostedRooms.clear();
+    if (this.view.roomOpenFailures.size) this.patch({ roomOpenFailures: new Map() });
     const app = this.app;
     this.app = undefined;
     app?.close();
@@ -1344,7 +1346,7 @@ export class ChannelSession {
     const storage = await this.browserStorage(state.channel.id, self.id);
     const retained = new Set(await storage.storedRoomIds());
     if (!current()) return;
-    let storageFailed = false;
+    for (const id of this.view.roomOpenFailures.keys()) if (!retained.has(id)) this.setRoomOpenFailure(id);
     for (const [id, hosted] of this.hostedRooms) if (!retained.has(id)) {
       if (!current()) return;
       this.hostedRooms.delete(id);
@@ -1372,11 +1374,12 @@ export class ChannelSession {
           this.hostedRooms.delete(id);
           await hosted.host.close();
         }
-        if (!(error instanceof Error && error.message === "room_not_found")) storageFailed = true;
+        this.setRoomOpenFailure(id, error instanceof Error && error.message === "room_not_found" ? undefined : roomOpenFailure(error));
         continue;
       }
       if (!current()) return;
       if (this.hostedRooms.get(id) !== hosted) continue;
+      this.setRoomOpenFailure(id);
       try { await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId }); }
       catch (error) {
         if (!current()) return;
@@ -1387,7 +1390,6 @@ export class ChannelSession {
       }
     }
     if (!current()) return;
-    if (storageFailed) this.patch({ error: "storage_failed" });
     for (const room of this.view.state?.channel.rooms ?? []) {
       if (room.delivery?.hostSessionId === sessionId && !this.hostedRooms.has(room.id)) {
         this.write({ type: "host_stop", roomId: room.id, bindingId: room.delivery.bindingId });
@@ -1395,7 +1397,16 @@ export class ChannelSession {
     }
   }
 
-  private async action<T>(key: string, work: () => Promise<T>, reportError: boolean | (() => boolean) = true, options: { clearError?: boolean } = {}): Promise<T> {
+  /** The local hosting runtime's record of a room it could not open; an omitted failure clears it. */
+  private setRoomOpenFailure(roomId: string, failure?: RoomOpenFailure): void {
+    if (this.view.roomOpenFailures.get(roomId) === failure) return;
+    const failures = new Map(this.view.roomOpenFailures);
+    if (failure) failures.set(roomId, failure);
+    else failures.delete(roomId);
+    this.patch({ roomOpenFailures: failures });
+  }
+
+  private async action<T>(key: string, work: () => Promise<T>, reportError: ReportError = true, options: { clearError?: boolean } = {}): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
     const socket = this.socket;
     const ownsError = () => typeof reportError === "function" ? reportError() : reportError;
@@ -1800,6 +1811,7 @@ export class ChannelSession {
   private async registerBrowserHost(roomId: string, host: HostedRoom, current: () => void): Promise<void> {
     try { current(); } catch (error) { await host.close(); throw error; }
     this.hostedRooms.set(roomId, { host });
+    this.setRoomOpenFailure(roomId);
     const summary = await host.summary();
     current();
     if (this.hostedRooms.get(roomId)?.host !== host) throw new Error("disconnected");
@@ -2372,7 +2384,7 @@ export class ChannelSession {
     return this.roomInvitationURL(roomId, key);
   };
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
-  watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
+  watch = (publicationId: string, roomId?: string, signal?: AbortSignal, reportError: ReportError = true): Promise<void> => {
     const watch: ScreenWatch = {};
     const operation = this.action(`watch:${publicationId}`, async () => {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
@@ -2405,7 +2417,7 @@ export class ChannelSession {
         if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
         throw error;
       }
-    });
+    }, reportError);
     watch.operation = operation;
     return operation.finally(() => { watch.operation = undefined; }).then(() => { void this.syncAppWatching(); });
   };
@@ -2428,7 +2440,7 @@ export class ChannelSession {
       if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
     });
   };
-  retryPicture = (publicationId: string): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
+  retryPicture = (publicationId: string, reportError: ReportError = true): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
     const current = this.sessionContext();
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     const watch = this.watching.get(publicationId);
@@ -2464,7 +2476,7 @@ export class ChannelSession {
       this.browseRooms();
     }
     void this.syncAppWatching();
-  });
+  }, reportError);
   clearError = (): void => this.patch({ error: null });
 
   async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
@@ -2575,7 +2587,7 @@ export class ChannelSession {
     this.patch({});
   };
 
-  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = "", reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
     const { share, selection, current } = this.selectScreen(roomId);
     let context = this.local.get(share.id)?.audio?.outputGainAvailable ? null : HostAudio.activate();
@@ -2721,7 +2733,7 @@ export class ChannelSession {
       releaseCandidate();
       this.finishSourceSelection(roomId, selection);
     }
-  });
+  }, reportError);
   private retireWatchPlayer(id: string, reason?: string): void {
     const player = this.watchPlayers.get(id);
     if (player?.owner && reason) {
@@ -3376,7 +3388,7 @@ export class ChannelSession {
       this.patch({});
     });
   };
-  startExternalScreen = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startExternalScreen = (roomId: string, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     try {
       const app = await this.connectApp();
@@ -3385,7 +3397,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
       this.patch({});
     } finally { this.finishSourceSelection(roomId, selection); }
-  });
+  }, reportError);
   private async commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
     const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
     if (!entry) return;
@@ -3638,7 +3650,7 @@ export class ChannelSession {
     }).finally(() => { share.audioChange = undefined; this.patch({}); });
     return share.audioChange;
   };
-  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     const signal = selection.controller.signal;
     const native = { target, audio, renderEndpointId, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
@@ -3674,7 +3686,7 @@ export class ChannelSession {
       if (ownsPreparation) await app?.cancelCapture(share.id).catch(() => {});
       throw error;
     } finally { this.finishSourceSelection(roomId, selection); }
-  });
+  }, reportError);
   setScreenDirectLimit = async (publicationId: string, limit: number | null): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");

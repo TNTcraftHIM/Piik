@@ -79,7 +79,9 @@
 .c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
 .c3-mini-player[data-thumbnail] .c3-mini-controls:not(.c3-watch-controls) .lr-playback-window { display: none; }
 .c3-mini-player[data-thumbnail] > .lr-remote-input-surface,
-.c3-mini-player[data-thumbnail]:not(.c3-watch-player) > .c3-mini-message:not([data-source-paused]) { display: none; }
+/* A thumbnail drops the waiting status but keeps a failure: Retry picture stays reachable there. */
+.c3-mini-player[data-thumbnail]:not(.c3-watch-player) > .c3-mini-message:not([data-source-paused], :has(> .c3-picture-failure)),
+.c3-mini-player[data-thumbnail]:not(.c3-watch-player) > .c3-mini-message:not([data-source-paused]) > .c3-frame-wait { display: none; }
 .c3-watch-player[data-thumbnail] > .c3-mini-message {
   inset: 6px 8px 42px;
   text-align: center;
@@ -180,6 +182,11 @@
   pointer-events: none;
 }
 .c3-mini-message .lr-btn { pointer-events: auto; }
+/* A picture's failure keeps its message and dismissal on one line, wherever the picture is. */
+.c3-picture-failure { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; font-size: 12px; }
+.c3-picture-failure > .c3-settings-error { margin: 0; overflow-wrap: anywhere; }
+.c3-mini-message:has(> .c3-picture-failure) { align-content: center; gap: 8px; }
+.c3-mini-message > .c3-picture-failure { max-width: calc(100% - 24px); padding: 4px 4px 4px 14px; border-radius: var(--c3-inset-radius); background: var(--paper); }
 .c3-mini-message .c3-frame-wait {
   display: flex;
   align-items: center;

@@ -481,3 +481,23 @@ it.each([
   expect(html.includes('aria-label="' + t("en", "screen.retryPicture") + '"')).toBe(!paused && (deliveryFailed || !awaitingRoute));
   expect(html).not.toContain(t("en", "channel.previewPage.reconnecting"));
 });
+
+it("offers picture help and stopping, but no retry, while a watched screen has no route yet", () => {
+  setCopy({ lang: "en" });
+  const render = (awaitingRoute: boolean) => renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()],
+    sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
+      source: { kind: "screen", name: null }, title: null, owned: false, localSource: false,
+      subscribed: true, paused: false, audience: [], awaitingRoute, deliveryFailed: false }],
+    focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
+    onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
+  }));
+  const unrouted = render(true);
+  expect(unrouted).toContain(t("en", "screen.waitingRoute"));
+  expect(unrouted).not.toContain('data-failed="true"');
+  expect(unrouted).toContain('aria-label="' + t("en", "screen.pictureHelp") + '"');
+  expect(unrouted).not.toContain('aria-label="' + t("en", "screen.retryPicture") + '"');
+  expect(unrouted).toContain('aria-label="Stop watching Shared screen"');
+  const connecting = render(false);
+  expect(connecting).toContain(t("en", "screen.connectingPicture"));
+  expect(connecting).not.toContain(t("en", "screen.waitingRoute"));
+});

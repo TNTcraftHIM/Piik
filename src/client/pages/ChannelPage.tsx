@@ -12,13 +12,14 @@ import { Glyph } from "../ui/icons";
 import { joinItems, useCopy } from "../ui/copy";
 import { useChannel } from "../channel/use-channel";
 import { channelErrorPresentation } from "../channel/error-presentation";
+import { diagnoseChannelFact } from "../channel/diagnosis";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { useRoomPane } from "../channel/use-room-pane";
 import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
-import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, useKeyedSettingsAction, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
 import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -42,6 +43,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
+import { ChannelDiagnosisHelp } from "../channel/components/ChannelDiagnosisHelp";
 import { roomHasUnread, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
@@ -330,6 +332,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const failure = channelErrorPresentation(channel.error, t);
   // Name the failed room only when it is not the one on screen; a removed room has no name left to show.
   const errorRoomName = channel.errorRoomId && channel.errorRoomId !== roomId ? rooms.find(value => value.id === channel.errorRoomId)?.name : undefined;
+  const openFailure = room && channel.roomOpenFailures.get(room.id);
+  const roomOpenFailure = openFailure ? diagnoseChannelFact({ area: "roomOpen", failure: openFailure }) : null;
   useEffect(() => {
     if (!state) return;
     channel.browse(roomId);
@@ -366,6 +370,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     return () => document.removeEventListener("keydown", escape);
   }, [mobilePane, sidebarsInline, setMobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
+  // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
+  // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
+  const pictureAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]));
+  // A share start reports here: the picker closes first, and the room's share control moves to the tile once sharing starts.
+  const shareStart = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId, connected]));
+  const attemptPicture = (id: string, operation: (reportError: () => boolean) => Promise<void>) => {
+    void pictureAction.run(id, signal => operation(() => signal.aborted));
+  };
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
   const [hlsSupported, setHlsSupported] = useState(false);
   const inspectHls = stageWatches.some(activity => activity.sessionId !== sessionId && activity.byteSource?.format === "hls")
@@ -400,7 +413,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         browserSource, pending: busy("watch-video", activity.id), disabled: !connected,
         onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
         onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
-      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} />,
+      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} startAction={shareStart} />,
       hidden: activity.roomId !== roomId,
       paused: activity.playback.paused, player, available,
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
@@ -477,7 +490,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 {t(available ? "channel.people.online" : "channel.people.offline")}<span>{groupedRooms.length}</span>
               </h3>,
               ...groupedRooms.map((value, index) => <ChannelRoomListItem key={`room-${value.id}`} channel={channel} room={value}
-                selected={roomId === value.id} settingsOpen={managedRoomId === value.id}
+                selected={roomId === value.id} settingsOpen={managedRoomId === value.id} unopened={channel.roomOpenFailures.has(value.id)}
                 ordering={orderingRooms && groupedRooms.length > 1 ? { index, total: groupedRooms.length,
                   active: activeDrag?.available === available && activeDrag.id !== value.id,
                   onDrag: () => setDraggedRoom({ id: value.id, available }), onEnd: () => setDraggedRoom(null),
@@ -510,7 +523,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <div className="c3-room-toolbar"><div className="c3-room-actions">
             {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
               <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-                openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} />}
+                openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />}
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
@@ -527,7 +540,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {state && !connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span className="c3-notice-message">{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" hint="hint-reconnect" size="compact" onClick={channel.reconnect} />}
         </div>}
-        {room?.authorized && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
+        {room && !room.available && roomOpenFailure ? <div className="c3-notice is-error" role="status"><Glyph name="couch" size={20} />
+          <span className="c3-notice-message">{t(roomOpenFailure.message)}</span><ChannelDiagnosisHelp diagnosis={roomOpenFailure} /></div>
+          : room?.authorized && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
           <span className="c3-notice-message">{t(channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty")}</span></div>}
         {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={t("channel.previewPage.ongoingScreens")}>
           {otherScreens.map(source => {
@@ -556,7 +571,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 <ChannelSettingsError error={quickStart.error} /></div>
             </div></StageTv> : rooms.length ? <><h2><BrandMark size={30} motion="once" />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
-              unread={roomHasUnread(value, channel.readByRoom[value.id])}
+              unread={roomHasUnread(value, channel.readByRoom[value.id])} unopened={channel.roomOpenFailures.has(value.id)}
               onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div></>
               : <div className="c3-first-room"><span className="c3-room-start-mark"><ChannelIdentityMark icon="couch" size={46} /></span>
                 <h2>{t(canCreateRoom ? "channel.previewPage.startWithARoom" : "channel.previewPage.noRoomsAvailableYet")}</h2>
@@ -571,7 +586,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !roomToolOpen ? "" : " chat-collapsed"}`} hidden={overview}>
           {layout === "quick" && room?.authorized && room.available && !visibleScreens.length && <div className="c3-quick-entry-tv"><StageTv hasEntry label={t("channel.previewPage.shareAScreen")}>
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-              openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} /></div>
+              openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} /></div>
           </StageTv></div>}
           <ChannelStage theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),
@@ -582,10 +597,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
               roomId={publication.roomId} publicationId={publication.id} onWatch={() => setWatchRoomId(publication.roomId)} compact
-              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} />,
+              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            pictureFailure: pictureAction.errors.get(publication.id), clearPictureFailure: () => pictureAction.clearError(publication.id),
             playbackError: channel.screenPlaybackError(publication.id),
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
             deliveryScope: JSON.stringify([roomId, sessionId, publication.sessionId,
@@ -615,8 +631,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id) || busy("retry-picture", publication.id),
           })), ...watchSources, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id)).map(source => ({ ...source, hidden: source.roomId !== roomId, onClose: () => closeWaiting(source.id) }))]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
-            onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
-            onRetryPicture={id => run(channel.retryPicture(id))}
+            onWatch={id => { showSource(roomId, id); attemptPicture(id, reportError => channel.watch(id, reportError)); }} onUnwatch={id => run(channel.unwatch(id))}
+            onRetryPicture={id => attemptPicture(id, reportError => channel.retryPicture(id, reportError))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />

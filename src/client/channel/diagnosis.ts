@@ -1,5 +1,6 @@
 import type { CopyKey } from "../locales";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
+import type { RoomOpenFailure } from "./types";
 
 const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
@@ -40,8 +41,9 @@ export interface ChannelDiagnosis {
 export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible";
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
-  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; playbackError?: ScreenPlaybackError }
-  | { area: "error"; code: string | null | undefined };
+  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; awaitingRoute?: boolean; playbackError?: ScreenPlaybackError }
+  | { area: "error"; code: string | null | undefined }
+  | { area: "roomOpen"; failure: RoomOpenFailure };
 
 /** Read the current operation or selected subscription. A peer transport event alone never diagnoses it. */
 export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null {
@@ -53,11 +55,16 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
       default: return null;
     }
   }
+  if (fact.area === "roomOpen") return {
+    message: fact.failure === "unsupported_version" ? "channel.error.unsupportedStorageVersion" : "room.unopened.unreadable", topic: "storage",
+  };
   if (fact.area === "screen") {
     if (fact.paused) return null;
     const message = fact.playbackError === 3 ? "screen.decodeFailed" : fact.playbackError === 4 ? "screen.unplayable"
       : fact.deliveryFailed ? "diagnosis.noPicture" : null;
-    return message ? { message, next: "screen.retryPicture", topic: "picture" } : null;
+    if (message) return { message, next: "screen.retryPicture", topic: "picture" };
+    // An unplaced viewer has no failure and no deadline; retrying would not place it sooner.
+    return fact.awaitingRoute ? { message: "diagnosis.noRoute", topic: "picture" } : null;
   }
 
   switch (fact.code) {
