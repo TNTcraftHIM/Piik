@@ -5,9 +5,12 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `7da230eb`, merged in `f143d9d6`. That merge brought documents
-only, so the last results stand: `tsc -b` passes and the web suite passes
-(163 files, 2,385 tests).
+Reviewed through `7da230eb`, merged in `f143d9d6`. On this branch `tsc -b`
+passes and the web suite passes (163 files, 2,388 tests). One earlier run of
+the suite, made while a lane was running a browser and its own tests on this
+machine, reported 2,382 of 2,385 with one error; the next run was clean and I
+could not tell which three. I did not run the Rust suites after your last
+merge.
 
 ## Your outcomes
 
@@ -106,24 +109,50 @@ Left for a later pass, not touched:
 - There is no 3.0 target for first frame or for forwarding latency; the 2.x
   figures left with the copies.
 
-## In progress, as you asked
+## Delivered: the Browser half of recovery
 
-- **The Browser half of recovery**, on `claude/candidate-surface`. The surface
-  follows "subscribed, authorized, live publication with any live input" in
-  place of "has a selected stream", through the existing layered renderer,
-  with local pause kept and full release on unwatch or removal. It adds a
-  preview case for a candidate with no selected stream, and I will look at it
-  in a rendered page at 320 and 1360 before it reaches you.
-  The lane stopped first on your open case, the old track ending, and found
-  its cause. When the incumbent's pair closes, `closePeer` reaches
-  `ChannelTransport.close()` and then `pc.close()` (`transport.ts:1024`), which
-  ends the received track while it is still in the layer's stream, and Chrome
-  paints that element black. A flow withdrawn on a pair that stays open leaves
-  the last frame, and so does removing the track from its stream before the
-  close. So the transport will empty the streams it handed out before it
-  closes the connection, as its own commit. A held frame will carry the
-  status `ChannelVideo` already shows for a stalled picture, so it does not
-  pass for a live one, with no timer of its own.
+Four commits, merged in `a67c414f`. I read each diff and looked at the result
+in a rendered page at 390 and 1360 wide.
+
+- `281cc214` **The old track ending, your open case.** When the incumbent's
+  pair closes, `closePeer` reaches `ChannelTransport.close()` and then
+  `pc.close()`, which ends the received track while it is still in the layer's
+  stream, and Chrome paints that element black. A flow withdrawn on a pair
+  that stays open leaves the last frame, and so does removing the track from
+  its stream first. The transport now empties the streams it handed out
+  before it closes the connection: three lines. What is reported and which
+  tracks stop are unchanged; relays copy tracks into their own streams. A
+  transport test fails without it.
+- `108d3dfa` **The surface.** One predicate in `ChannelStage.tsx` decides the
+  surface and theatre mode: the publication has a selected stream or any live
+  input. `ChannelVideo` takes an optional selected stream, keeps its displayed
+  layer while nothing is selected, and lets the candidate prepare beside it.
+  A layer that has left the live inputs shows the player's existing "waiting
+  for picture" status, so a held frame does not pass for a live one: no new
+  copy and no timer, and it clears at the handoff. The composited gate, local
+  pause, the reports to the room and the waiting block for a picture with no
+  input are unchanged. Remote control is offered only while the displayed
+  layer is the selected flow.
+- `35ce6043` **A held frame keeps its shape.** Without its track the element
+  reports no natural size, so `object-fit` stretched the last frame in any
+  tile not shaped like the picture. Each layer remembers the last size its
+  video reported and, while held, takes that aspect ratio as its own box. The
+  held box equals the live box in every view measured: 350×196.9 at 390 wide,
+  736×414 at 1360, the thumbnail, theatre, and cover fit.
+- `e9375d7b` **Preview.** `picture=candidate` for a live candidate with no
+  selected stream, and `picture=handoff`, which walks the whole transition.
+
+Seen in the rendered page and not covered by a test: the surface is never
+replaced and the waiting block never appears across the transition, local
+pause and theatre mode survive it, and unwatching in the middle releases
+everything. Covered by tests: the tile's decision and the transport change.
+
+Two things it does not do:
+
+- With the picture rotated a quarter turn, a held frame keeps its shape but
+  is drawn smaller than the live one (110.7×196.9 against about 189×336). The
+  cause is in the rotation code the watch player shares, so it was left.
+- Picture in picture across a handoff was not exercised.
 
 ## With me, waiting
 
@@ -131,10 +160,4 @@ Left for a later pass, not touched:
 
 ## Holds
 
-Until the lane's merge commit on this branch, or sooner if you say you need
-it. The documents holds ended with `da20ccfd`.
-
-- `src/client/channel/components/ChannelStage.tsx` and `ChannelMedia.tsx`:
-  how a tile mounts its video surface and how `ChannelVideo` treats its inputs.
-  Also `close()` in `src/client/channel/transport.ts`, for the lines before
-  `pc.close()` only.
+None. The last one ended with `a67c414f`.
