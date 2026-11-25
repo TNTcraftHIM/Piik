@@ -699,8 +699,10 @@ App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to
 the local domain's lifetime; Browser and Native participants receive the same
 discovery configuration. Public invitations and approved external sites retain
-their domain's configured ICE servers. An individual rejected ICE candidate
-does not retire the connection or its other candidate paths.
+their domain's configured ICE servers. An individual rejected ICE candidate is
+disposable input: it does not retire the connection or its other candidate paths,
+and transport state and the operation's deadline own failure. A Browser
+lifecycle error, such as a missing description, still fails that operation.
 Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
 an unavailable address family does not disable the other. Wildcard listeners
 exclude loopback interfaces from ICE/STUN discovery. Explicit loopback listeners

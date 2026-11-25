@@ -376,6 +376,17 @@ After updating the 3.0 test App, refresh the Web page you use. An incompatible
 App Link shows the existing update prompt; [versioning](../../docs/standards/versioning.md)
 owns interface compatibility.
 
+A reachable App with an incompatible control protocol is distinct from an absent
+App. Without a selected port, discovery keeps looking for a compatible process
+before it reports the mismatch, and Browser capture stays available. Discovery
+has one bounded deadline, which starts once the Browser's local-network consent
+is no longer pending; a failed fetch alone does not establish that consent was
+denied. An explicit App action waits for that consent. Automatic checks do not:
+while local App access still needs consent or is denied, they treat the App as
+unavailable and ask again on a later attempt. Loopback pages, including App Local,
+need no cross-address-space consent, and Browsers without a permission query keep
+the bounded discovery.
+
 **Start sharing** reuses the product source picker for Browser capture and the
 App's available sources, with small Native window/display thumbnails. Closing
 the picker cancels its pending thumbnails. App capture publishes through that same Native participant;
@@ -531,6 +542,15 @@ separating other candidates and unresolved paths without retaining endpoint addr
 Windows shared-sound configuration records distinguish default-output, process-tree
 inclusion and process-tree exclusion, with the selected and Native process IDs.
 They contain no window titles, program paths, device identifiers or audio samples.
+
+A Browser page collects its own report only after **Help → Debug** or `?debug=1`;
+this does not enable App or Server collection. The page keeps up to 8,192 events
+and 8 MiB of compact event data in memory, so reloading or closing it loses that
+history. **Help → Web report** downloads the report, which DevTools can also
+produce with `await window.__PIIK_DEBUG__.export()`. Tokens, passwords, cookies,
+authorization headers, invitation grants, ICE credentials, SDP and private keys
+are filtered before export, but technical identifiers, IP addresses and device
+details may remain. A report is not anonymous: review it before sharing.
 
 On Windows, `capture-frames.json` lists active window and screen captures by
 an anonymous number. Compare two reports from the same App process to see how

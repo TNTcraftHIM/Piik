@@ -32,7 +32,10 @@ range independently of that sender setting. Published older pages can join
 without the optional bitrate extension; their senders and negotiated receive
 limits may retain the earlier 32 kbps bound.
 
-3.0 room voice keeps a 64 kbps default ceiling. With voice processing off it
+3.0 room voice keeps a 64 kbps default ceiling. That ceiling is room policy:
+someone who can manage the room sets it from 6 to 320 kbps in the voice
+settings. Changing it does not open voice, activate microphones or replace
+routes. With voice processing off it
 requests stereo input; actual device channels remain platform-owned.
 [Microphone fidelity](../research/media-fidelity.md#30-room-microphone) owns the
 measured platform scope. Its local microphone modes are open, push to talk and
@@ -487,6 +490,17 @@ commentary from 0% to 200%, starting at 100% for each share. Browser gain preced
 outgoing fanout; native gain precedes the shared Opus encoder. Source replacement
 preserves the level, and room voice remains independent. Viewer volume adds only
 local listening gain.
+
+Viewer volume starts on native audio output. An explicit setting away from 100%
+switches to a local Web Audio stream source and gain, from silence to 200%
+amplitude; this also avoids iPhone's system-owned `video.volume`. That output
+owns the sound while it runs, follows video pause and user mute, and rebinds
+when the audio track changes. It never modifies the received track or the
+stream relayed downstream, and unmounting closes the graph. Browsers without
+gain support keep 0–100%, and video-only system fullscreen hands sound back to
+the native controls at no more than 100% rather than running two outputs. The
+[Web Audio stream-source and gain nodes](https://www.w3.org/TR/webaudio/) scale
+amplitude, so loud source peaks can clip above 100%.
 
 Piik supports mono and stereo Opus content through the existing audio
 track. Mono inputs remain valid; Browser and Native mixing use a stereo output.
