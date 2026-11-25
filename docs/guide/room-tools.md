@@ -66,7 +66,9 @@ The site operator opens settings by selecting the site name above the room list.
 The room owner selects **Room settings → Records → Export room backup**. The ZIP
 keeps the room's identity, owner, access settings and full chat history, including
 images stored in messages. **Include file originals from this device** adds
-originals the current device can read locally.
+originals the current device can read locally. A room's history is kept by
+whoever hosts the room, and restoring a backup replaces it with what the backup
+holds.
 
 - To replace the saved data in an available room, select **Restore room backup**
   under **Room settings → Records**. Choose the ZIP and confirm the replacement.
