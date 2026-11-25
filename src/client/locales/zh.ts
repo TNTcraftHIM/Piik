@@ -36,7 +36,7 @@ export const zh = {
   "watch.forward.choose": "选择原始视频资源。确认后开始使用本机上传带宽。",
   "watch.forward.enableNamed": "转发 {name}",
   "watch.forward.shareFile": "分享这个视频",
-  "watch.forward.shareFileHelp": "观众可用浏览器或 App 优先从网站播放。如果他们选择从你的 App 接收视频，会使用你的上传带宽。",
+  "watch.forward.shareFileHelp": "房间成员会收到视频链接，可从网站直接播放；从你的 App 接收时会使用你的上传带宽。",
   "watch.forward.none": "此网页暂未发现可转发的视频资源。",
   "watch.forward.peer": "从分享者接收",
   "watch.forward.direct": "从网站直接播放",

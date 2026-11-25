@@ -38,7 +38,7 @@ export const en: Record<CopyKey, string> = {
   "watch.forward.choose": "Choose the original video resource. Confirming starts using this device’s upload bandwidth.",
   "watch.forward.enableNamed": "Forward {name}",
   "watch.forward.shareFile": "Share this video",
-  "watch.forward.shareFileHelp": "Viewers try the site first in their browser or App. Receiving the video from your App uses your upload bandwidth.",
+  "watch.forward.shareFileHelp": "Room members receive the video link and can play directly from the website. Receiving through your App uses your upload bandwidth.",
   "watch.forward.none": "No video resource is available to forward on this webpage yet.",
   "watch.forward.peer": "Receive from sharer",
   "watch.forward.direct": "Play directly from website",

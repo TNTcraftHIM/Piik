@@ -331,7 +331,9 @@ player on the original webpage, the current player retains its subscription.
 The candidate replaces it after media readiness and room confirmation.
 
 For an explicitly selected complete file or HLS source, the App may retain its byte source
-and publish the matching media URL in the same activity. Each viewer tries
+and publish the matching media URL in the same activity. Authorized room members
+receive that URL in their activity snapshot. The origin controls its expiry and
+access; ending the Piik activity does not invalidate an already shared URL. Each viewer tries
 that URL independently. A viewer that chooses the offered forwarding path
 adds byte demand; other viewers keep loading from the origin. Clearing the
 byte source retires those transfers without ending direct playback. A peer
