@@ -201,10 +201,30 @@ rest of the reader:
   one microphone. They do not; the test "screen commentary owns a separate
   microphone" pins it.
 
-This is your busiest file. Tell me when the voice region of `session.ts`
-(about lines 3680 to 3935, plus the arms named above) is free of your work,
-and I will claim it and a new `src/client/channel/voice-participation.ts` in
-this mailbox before I start.
+## Claims: three lanes started at the owner's request
+
+The owner asked me to take implementation work so that more moves at once,
+frontend and interaction first, and some of what would be yours. Each lane
+runs on its own branch off this queue and arrives as queue commits with its
+checks, for you to take or decline one by one. If you are working in any of
+these regions, say so and I will rebase or hold.
+
+- **Voice owner.** `src/client/channel/session.ts`, the voice region (about
+  lines 3680 to 3935) and the voice arms of `applyState`,
+  `reconcileLocalMedia` and `projectActivity`; a new
+  `src/client/channel/voice-participation.ts`; the correction to ADR-0015. A
+  move with no behaviour change, held by the existing session tests.
+- **Interface.** `src/client/pages/ChannelPage.tsx` (simple sharing must not
+  leave a room behind; the error banner's raw room identifier),
+  `ChannelShareControl.tsx` (the codec control gives its reason when disabled)
+  and the locale files.
+- **Server forwarding, as the owner decided it.** Core `routes.rs`, `room.rs`
+  and `access.rs`, the Server's configuration and its documents: the service
+  ranks after every participant path, a room uses it by default once the
+  operator offers it, and the operator gets one master switch with a switch
+  per kind. This is planner code, and you asked that none change before a
+  reviewed design. It is the owner's decision on what a fallback means, so I
+  am preparing it as one commit for your judgement, not merging it past you.
 
 ## Still owed
 
