@@ -324,37 +324,69 @@ fn start(plan: &Plan) -> Result<()> {
     Ok(())
 }
 
+fn show_failure(plan: &Plan, error: &anyhow::Error) {
+    #[cfg(feature = "capture")]
+    if !plan.headless {
+        crate::app_windows::report_error(&format!("{error:#}"));
+    }
+    #[cfg(not(feature = "capture"))]
+    let _ = (plan, error);
+}
+
+fn restart_old(plan: &Plan, update_error: anyhow::Error) -> anyhow::Error {
+    // The message holds this helper and its workspace open. Let the user
+    // dismiss it before reopening the App that can retry the update.
+    show_failure(plan, &update_error);
+    if let Err(error) = start(plan) {
+        let error = error.context("The old App could not restart");
+        show_failure(plan, &error);
+        return error.context(format!("{update_error:#}"));
+    }
+    update_error
+}
+
 fn replace(plan: &Plan, workspace: &Path) -> Result<()> {
     let incoming = workspace.join("incoming");
     let previous = workspace.join("previous");
-    plan.layout.check(&plan.root)?;
+    let show_failure = |error: &anyhow::Error| show_failure(plan, error);
+    plan.layout.check(&plan.root).inspect_err(show_failure)?;
     if let Err(error) = fs::rename(&plan.root, &previous) {
         let hint = if error.raw_os_error() == Some(32) {
-            " Close other Apps using this installation and retry."
+            if plan.headless {
+                " Close other Apps using this installation and retry."
+            } else {
+                " Close other Apps using this installation, then dismiss this message to reopen Piik."
+            }
         } else {
             ""
         };
-        let restart = match start(plan) {
-            Ok(()) => "The old App was started.".to_owned(),
-            Err(restart) => format!("The old App could not restart: {restart:#}"),
-        };
-        return Err(error).with_context(|| {
-            format!("Update could not move the App directory. The old version is intact. {restart}{hint}")
-        });
+        let error = anyhow::Error::new(error).context(format!(
+            "Update could not move the App directory. The old version is intact.{hint}"
+        ));
+        return Err(restart_old(plan, error));
     }
     if let Err(error) = fs::rename(&incoming, &plan.root) {
         fs::rename(&previous, &plan.root)
-            .context("Replacement failed; old App remains in the update workspace")?;
-        let _ = start(plan);
-        return Err(error).context("Replacement failed; old App restored");
+            .with_context(|| {
+                format!("Replacement failed ({error}); old App remains in the update workspace")
+            })
+            .inspect_err(show_failure)?;
+        let error = anyhow::Error::new(error).context("Replacement failed; old App restored");
+        return Err(restart_old(plan, error));
     }
     if let Err(error) = start(plan) {
         fs::rename(&plan.root, &incoming)
-            .context("New process could not start; preserve both program copies")?;
+            .with_context(|| {
+                format!("New process could not start ({error:#}); preserve both program copies")
+            })
+            .inspect_err(show_failure)?;
         fs::rename(&previous, &plan.root)
-            .context("New process could not start; old App remains in the update workspace")?;
-        let _ = start(plan);
-        return Err(error).context("New process could not start; old App restored");
+            .with_context(|| format!("New process could not start ({error:#}); old App remains in the update workspace"))
+            .inspect_err(show_failure)?;
+        return Err(restart_old(
+            plan,
+            error.context("New process could not start; old App restored"),
+        ));
     }
     let _ = fs::remove_file(workspace.join("package.zip"));
     // Creating the process is the boundary. Its subsequent exit is not permission
@@ -417,19 +449,21 @@ pub(super) fn run(path: PathBuf) -> Result<()> {
         ensure!(line == "APPLY\n", "Update handoff was cancelled");
         Ok(parent)
     })();
-    #[cfg(feature = "capture")]
-    let report_failure = handoff.is_ok() && !plan.headless;
     let outcome = handoff.and_then(|parent| {
-        parent.wait()?;
-        // The single-threaded helper has finished its pipe handshake. Null
-        // inherited handles let CreateProcess initialize the new console's own
-        // streams instead of inheriting this helper's closed readiness pipe.
-        for kind in [-10i32, -11, -12] {
-            ensure!(
-                unsafe { SetStdHandle(kind as u32, 0) } != 0,
-                "Reset updater standard handles"
-            );
-        }
+        let ready = (|| -> Result<()> {
+            parent.wait()?;
+            // The single-threaded helper has finished its pipe handshake. Null
+            // inherited handles let CreateProcess initialize the new console's own
+            // streams instead of inheriting this helper's closed readiness pipe.
+            for kind in [-10i32, -11, -12] {
+                ensure!(
+                    unsafe { SetStdHandle(kind as u32, 0) } != 0,
+                    "Reset updater standard handles"
+                );
+            }
+            Ok(())
+        })();
+        ready.inspect_err(|error| show_failure(&plan, error))?;
         replace(&plan, &workspace)
     });
     let _ = write_new(
@@ -439,12 +473,6 @@ pub(super) fn run(path: PathBuf) -> Result<()> {
             detail: outcome.as_ref().err().map(|error| format!("{error:#}")),
         },
     );
-    #[cfg(feature = "capture")]
-    if report_failure {
-        if let Err(error) = &outcome {
-            crate::app_windows::report_error(&format!("{error:#}"));
-        }
-    }
     outcome
 }
 
