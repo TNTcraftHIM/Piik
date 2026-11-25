@@ -73,8 +73,19 @@
 /* A slim information bar: sharer, title, reactions, viewers and leave; the rest on hover or focus. */
 .c3-living .c3-monitor-source small { display: none; }
 .c3-living .c3-monitor-source strong { font-size: 14px; font-weight: 600; }
-.c3-living .c3-monitor-source-row { padding: 2px 8px; }
-.c3-living .c3-monitor-tile:not(:hover, :focus-within) :is(.c3-monitor-layout-action, .c3-monitor-publishing > :not(.c3-monitor-close)) { position: absolute; opacity: 0; pointer-events: none; }
+.c3-living .c3-monitor-source-row { flex-wrap: nowrap; padding: 2px 8px; }
+/* The bar keeps one line, so its measured height stays the one the stage layout reserved. */
+.c3-living :is(.c3-monitor-tile-actions, .c3-monitor-publishing) { flex-wrap: nowrap; }
+.c3-living .c3-monitor-tile-actions { flex: none; }
+/* A narrow tile keeps leave and focus; focusing it gives the full publishing controls room. */
+@container (max-width: 300px) {
+  .c3-living .c3-monitor-publishing > :not(.c3-monitor-close) { display: none; }
+  .c3-living .c3-monitor-social > .c3-message-reactions { display: none; }
+  .c3-living .c3-monitor-tile .c3-monitor-layout-action { position: static; opacity: 1; pointer-events: auto; }
+}
+@media (hover: hover) {
+  .c3-living .c3-monitor-tile:not(:hover, :focus-within) :is(.c3-monitor-layout-action, .c3-monitor-publishing > :not(.c3-monitor-close)) { position: absolute; opacity: 0; pointer-events: none; }
+}
 .c3-living .c3-monitor-wait { font-size: 14px; }
 /* Television off: a modest set holding the one primary action. */
 .c3-living .c3-living-tv { display: grid; place-items: center; padding: 16px; }
@@ -121,7 +132,9 @@
 .c3-living .c3-personal :is(.c3-voice-controls, .c3-voice-entry) .lr-btn:not(:has(.lr-cap))::after { content: attr(aria-label); font-size: 14px; font-weight: 600; }
 .c3-living .c3-personal :is(.c3-voice-controls, .c3-voice-entry) .lr-btn { width: auto; padding-inline: 10px; }
 /* Editing my profile is secondary in this bar: it appears on hover or focus, like a picture's extra controls. */
-.c3-living .c3-personal .c3-identity:not(:hover, :focus-within) .c3-profile-editor { position: absolute; opacity: 0; pointer-events: none; }
+@media (hover: hover) {
+  .c3-living .c3-personal .c3-identity:not(:hover, :focus-within) .c3-profile-editor { position: absolute; opacity: 0; pointer-events: none; }
+}
 /* Captions yield before the controls: a narrow bar keeps icons and accessible names. */
 @container living-bar (width < 640px) {
   .c3-living .c3-personal :is(.c3-voice-controls, .c3-voice-entry) .lr-btn:not(:has(.lr-cap))::after { content: none; }
