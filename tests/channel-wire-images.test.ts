@@ -55,6 +55,22 @@ it("accepts the Core room budget and rejects one extra room", () => {
   expect(() => decode(new ChannelEventDecoder(), welcome(state))).toThrow();
 });
 
+it("ignores extra watch activity metadata while validating playback and source", () => {
+  const activity = {
+    id: "watch", roomId: "room", userId: "user", sessionId: "endpoint",
+    source: { kind: "media", url: "https://video.test/watch" },
+    playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 0 },
+    viewerSessionIds: [],
+  };
+  const read = (watch: unknown) => decode(new ChannelEventDecoder(), {
+    type: "state", state: { ...snapshot(), watchActivities: [watch] },
+  });
+  expect(read({ ...activity, displayLabel: "Evening" })).toHaveProperty("state.watchActivities", [activity]);
+  expect(() => read({ ...activity, playback: { ...activity.playback, rate: "fast" } })).toThrow();
+  expect(() => read({ ...activity, source: { ...activity.source, kind: "playlist" } })).toThrow();
+  expect(() => read({ ...activity, source: { ...activity.source, displayLabel: "Evening" } })).toThrow();
+});
+
 describe("physical socket site and room pictures", () => {
   it("hydrates omissions and retains every other state's authoritative fields", () => {
     const decoder = new ChannelEventDecoder();
