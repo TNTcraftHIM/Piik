@@ -296,6 +296,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const voiceStreams = useVoicePlayback(state, sessionId, streams);
   const [voiceContext] = useState(() => new VoicePlaybackContext());
   const failure = channelErrorPresentation(channel.error, t);
+  // Name the failed room only when it is not the one on screen; a removed room has no name left to show.
+  const errorRoomName = channel.errorRoomId && channel.errorRoomId !== roomId ? rooms.find(value => value.id === channel.errorRoomId)?.name : undefined;
   useEffect(() => {
     if (!state) return;
     channel.browse(roomId);
@@ -390,8 +392,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
-    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{channel.errorRoomId
-      ? joinItems(lang, [t("channel.siteSettings.roomId", { id: channel.errorRoomId }), failure.message]) : failure.message}</span>
+    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{errorRoomName
+      ? joinItems(lang, [errorRoomName, failure.message]) : failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
