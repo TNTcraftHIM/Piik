@@ -309,13 +309,13 @@ export class ChannelAttachments {
     void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: false }).catch(() => {});
     if (removeStored) void this.store?.remove(key, source.attachment).catch(() => {});
   }
-  private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File, ownsFile?: () => boolean): Promise<File | null> {
+  private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File, ownsFile: () => boolean): Promise<File | null> {
     const store = this.store, scope = this.scope;
     if (!store || !scope) return null;
     const id = cacheRoom(scope, key.roomId), clear = this.cacheClears.get(id);
     if (clear?.pending) return null;
     const allowed = () => this.store === store && this.cacheClears.get(id) === clear
-      && (ownsFile?.() ?? true)
+      && ownsFile()
       && this.rooms.some(room => room.id === key.roomId && room.authorized)
       && !this.messageRemoved(key) && this.matchesPlan({ key, attachment });
     try {
@@ -357,7 +357,7 @@ export class ChannelAttachments {
       if (this.messageRemoved(key)) { saved = false; continue; }
       const source: Source = { key, attachment, file, status: idle, storage: "original" };
       this.installSource(source);
-      const retained = await this.retain(key, attachment, file);
+      const retained = await this.retain(key, attachment, file, () => this.sources.get(fileKeyString(key)) === source);
       if (!current()) return false;
       if (this.sources.get(fileKeyString(key)) !== source) { saved = false; continue; }
       if (retained) { source.file = retained; source.storage = "retained"; }
@@ -483,7 +483,7 @@ export class ChannelAttachments {
       const key = { roomId, messageSeq: message.seq, attachmentId: attachment.id };
       const source: Source = { key, attachment, file: selected.file, status: idle, storage: "original" };
       this.installSource(source);
-      void this.retain(key, attachment, selected.file).then(copy => {
+      void this.retain(key, attachment, selected.file, () => this.sources.get(fileKeyString(key)) === source).then(copy => {
         // The page keeps its live offer even if this saved copy is later evicted.
         if (copy && this.sources.get(fileKeyString(key)) === source) {
           source.file = copy;
