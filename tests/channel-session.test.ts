@@ -11769,6 +11769,12 @@ test("viewers join the exact confirmed screen and watch successor through normal
     reply("join_watch");
   } finally { session.close(); }
 });
+function confirmWatchJoinOrLeave(socket: ChannelSocket) {
+  const command = socket.sent.findLast(c => c.type === "join_watch")!;
+  socket.receive({ type: "room_reply", roomId: command.roomId, requestId: command.requestId,
+    result: command.mode === null ? { type: "done" } : { type: "watch_ready", serverTime: 1000 } });
+}
+
 test.each(["only grant", "left", "revoked", "App page", "direct failure"] as const)("original page successor keeps the confirmed watch until %s", async route => {
   const { session, socket } = await setup(1000, false);
   vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
@@ -11776,7 +11782,7 @@ test.each(["only grant", "left", "revoked", "App page", "direct failure"] as con
   const old = { id: "old", roomId: "first", sessionId: "other", userId: "other", viewerSessionIds: [],
     source: { kind: "media", url: "https://media.test/old.mp4" }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
   const next = { ...old, id: "new", predecessor: { kind: "watch", id: old.id }, source: { kind: "website", url: "https://www.example.test/page", ...(route === "direct failure" ? { mediaUrl: "https://media.test/failing.mp4" } : {}) } };
-  const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+  const reply = () => confirmWatchJoinOrLeave(socket);
   try {
     socket.receive({ type: "state", state: { ...base, watchActivities: [old] } });
     const joining = session.joinWatch(old.id); reply(); await joining;
@@ -11853,8 +11859,7 @@ test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a
   const activity = { id: "watch-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
     source: { kind: "media" as const, url: "https://media.test/one.mp4" },
     playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
-  const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId,
-    result: { type: "watch_ready", serverTime: 1000 } });
+  const reply = () => confirmWatchJoinOrLeave(socket);
   try {
     const snapshot = session.getSnapshot().state!;
     socket.receive({ type: "state", state: { ...snapshot, watchActivities: [activity] } });
@@ -15011,10 +15016,7 @@ test.each([{ volume: 0.35, muted: true }, { volume: 0.35, muted: false }, { volu
       byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" as const },
       playback: { timeline: "media" as const, position: 0, paused: false, rate: 1, anchorTime: 1000 } };
     const other = { ...activity, id: "other-audio-watch" };
-    const confirm = () => {
-      const command = socket.sent.findLast(value => value.type === "join_watch")!;
-      socket.receive({ type: "room_reply", roomId: "first", requestId: command.requestId, result: { type: "watch_ready", serverTime: 1000 } });
-    };
+    const confirm = () => confirmWatchJoinOrLeave(socket);
     const join = async (id: string, mode: "direct" | "peer", expected: { volume: number; muted: boolean }) => {
       const playStart = played.length;
       const joining = session.joinWatch(id, mode);
@@ -15604,4 +15606,38 @@ test('a watch that ends during source selection does not block the new share', a
     expect(start.replaceId).toBeUndefined();
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.owner).toBe(true);
   } finally { releaseReady(); session.close(); }
+});
+
+test("terminal candidate preserves invitation payload before done", async () => {
+  const { session, socket } = await setup();
+  try {
+    const finished = vi.fn();
+    const reading = session.getRoomInvite("first").then(finished);
+    const requestId = socket.sent.at(-1)!.requestId;
+    socket.receive({ type: "room_invite_state", roomId: "first", requestId, invitation: { state: "missing" } });
+    await Promise.resolve();
+    expect(finished).not.toHaveBeenCalled();
+    socket.receive({ type: "room_reply", roomId: "first", requestId, result: { type: "done" } });
+    await reading;
+    expect(finished).toHaveBeenCalledExactlyOnceWith({ state: "missing" });
+  } finally { session.close(); }
+});
+
+test("terminal candidate rejects unsupported room results only for their caller", async () => {
+  const { session, socket } = await setup();
+  try {
+    const saving = session.updateRoom("first", { name: "updated" }, false);
+    const requestId = socket.sent.at(-1)!.requestId;
+    const received = (roomId: string, id: unknown, type: string) => socket.receive({ type: "room_reply", roomId, requestId: id, result: { type } });
+    received("first", "observer", "unknown");
+    received("second", requestId, "unknown");
+    expect(session.getSnapshot().pending.has("room:first")).toBe(true);
+    received("first", requestId, "unknown");
+    await expect(saving).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(session.getSnapshot().error).toBeNull();
+    const retry = session.updateRoom("first", { name: "updated" }, false);
+    received("first", socket.sent.at(-1)!.requestId, "done");
+    await retry;
+  } finally { session.close(); }
 });

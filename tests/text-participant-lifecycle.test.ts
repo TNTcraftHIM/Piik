@@ -97,6 +97,13 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
   receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
   await connected;
 
+  const declined = client.browse(room.id);
+  const declinedId = socket.sent.at(-1)!.requestId;
+  receive({ type: 'room_reply', roomId: room.id, requestId: declinedId, result: { type: 'unknown' } });
+  await expect(declined).rejects.toThrow('invalid_response');
+  const confirmed = client.browse(room.id);
+  receive({ type: 'room_reply', roomId: room.id, requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
+  await confirmed;
   const history = client.history().catch((error: Error) => error.message);
   receive({ type: 'room_reply', roomId: 'other', requestId: socket.sent.at(-1)!.requestId,
     result: { type: 'error', code: 'room_busy' } });

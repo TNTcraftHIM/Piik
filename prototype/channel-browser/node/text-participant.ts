@@ -342,8 +342,9 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (!pending || pending.roomId !== event.roomId) return;
       if (event.result.type === 'error')
         this.complete(event.requestId, undefined, Error(event.result.code));
-      else if (pending.expects === 'ack')
+      else if (pending.expects === 'ack' && event.result.type === 'done')
         this.complete(event.requestId, event.result);
+      else this.complete(event.requestId, undefined, Error('invalid_response'));
       return;
     }
     if (event.type === 'ack') {

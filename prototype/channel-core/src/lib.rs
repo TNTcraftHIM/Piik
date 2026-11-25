@@ -806,7 +806,7 @@ impl Authority {
             RoomResult::Deleted { data_removed } => {
                 completion = RoomResult::Deleted { data_removed }
             }
-            _ => {}
+            RoomResult::Done | RoomResult::Topology { .. } => {}
         }
         effects.events.push((
             context.connection,
