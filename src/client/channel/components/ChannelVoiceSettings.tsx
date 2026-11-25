@@ -19,7 +19,7 @@ export function ChannelVoiceSettings({ channel, roomId, available, shortcuts }: 
   const trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel, { side: "above" });
-  const busy = channel.pending.has("voice-input") || [...channel.pending].some(key => key.startsWith("voice:"));
+  const busy = channel.voiceBusy();
   const enabled = channel.state?.publications.some(publication => publication.kind === "voice" && publication.sessionId === channel.sessionId) ?? false;
   const room = channel.state?.channel.rooms.find(room => room.id === roomId);
   const configure = (settings: Parameters<ChannelController["configureVoiceInput"]>[0]) => { void channel.configureVoiceInput(settings).catch(() => {}); };
