@@ -141,12 +141,28 @@ could have seen:
 - The five cursors on a writer binding reduce to one applied position and
   named barriers.
 
-## Decisions This Leaves Open
+## Owner Decisions, 2026-11-25
 
-1. Decided by the owner on 2026-11-25: Piik is meant to be decentralized and
-   usable by anyone, so traversal of difficult NATs stays and a relay is the
-   fallback. What remains is its shape, and measuring how many pairs each
-   technique rescues in the field.
-2. Whether a Browser may relay by re-encoding.
-3. Whether a site may read the content of a room it does not store.
-4. Whether the desktop shell bundles its browser engine.
+P2P-first and keeping load off any single machine are founding decisions of
+the product. The designs departed from them only because the brief did not
+state them. A change at that level is confirmed with the owner before
+anything else changes.
+
+1. **Reaching a home-run site.** The tunnel stays. A public IPv6 address and a
+   port mapping are used alongside it; none replaces another. Traversal of
+   difficult NATs stays, and a relay is the fallback. What remains is its
+   shape, and measuring how many pairs each technique rescues in the field.
+2. **A Browser that relays by re-encoding.** Kept, under the present
+   encoding-pool design, and only when it is needed. The rule is the same for
+   every node.
+3. **Whether a site can read a room it does not store.** Not built now. The
+   project stays simple, and the honest statement is that a site can read the
+   control and conversation traffic it relays and does not store it. The
+   conversation payload is already an opaque signed string with a versioned
+   prefix, so an encrypted payload can be added later as an addition behind a
+   capability once [ADR-0017](../adr/0017-contracts-fixed-before-release.md)'s
+   compatibility rule is in place. This does not need deciding before release.
+4. **The desktop shell.** The system web view where it provides WebRTC, and
+   the system browser where it does not. The tree already does this: the
+   Windows App uses the system web view and the App can open the system
+   browser instead.

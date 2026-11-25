@@ -58,8 +58,8 @@ the feedback period; they do not delay that delivery.
   rule, one schema source, one reply shape, storage versions with migrations,
   and a room store's epoch and change sequence. None can be corrected after
   the first 3.0 release. The
-  [design review](./research/clean-room-design-review.md) lists four product
-  decisions the owner keeps.
+  [design review](./research/clean-room-design-review.md) records the
+  evidence and the owner's four product decisions.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)

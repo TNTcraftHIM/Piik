@@ -147,6 +147,15 @@ place, history is the likeliest reason the tree is elsewhere.
   agent. Local counters for direct, predicted, searched and relayed pairs
   would tell us what each technique rescues.
 
+The owner decided the review's four product questions on 2026-11-25; the
+review records them. In short: the tunnel stays, with IPv6 and port mapping
+alongside it; a Browser may relay by re-encoding under the present pool
+design, only when needed; no end-to-end encryption of the room link now,
+since it can be added later behind a capability; and the system web view
+with the system browser as fallback, which the tree already does. P2P-first
+and keeping load off a single machine are founding decisions, and a change
+at that level is confirmed with the owner first.
+
 Three corrections to what I told you before:
 
 - **Replies and observer copies.** I said no marker was needed, and for the
