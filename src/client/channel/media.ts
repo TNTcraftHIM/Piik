@@ -173,7 +173,7 @@ export class ChannelMedia {
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
         this.peers.delete(id);
-        this.recordRemovedAssignments(peer.plan);
+        this.recordAssignments(peer.plan);
         released = this.closePeer(peer) || released;
       }
     }
@@ -226,8 +226,9 @@ export class ChannelMedia {
         }
         peer = { plan, transport, inputs: new Map(), roomDataReady: new Set() };
         this.peers.set(plan.id, peer);
+        this.recordAssignments(undefined, plan);
       } else {
-        this.recordRemovedAssignments(peer.plan, plan);
+        this.recordAssignments(peer.plan, plan);
         peer.plan = plan;
       }
       for (const room of peer.roomDataReady) if (!plan.rooms.includes(room)) peer.roomDataReady.delete(room);
@@ -692,13 +693,20 @@ export class ChannelMedia {
       unavailable: samples.some(result => result.status === "rejected") };
   }
 
-  private recordRemovedAssignments(previous: ChannelPair, next?: ChannelPair): void {
+  private recordAssignments(previous: ChannelPair | undefined, next?: ChannelPair): void {
     if (!browserDebugEnabled) return;
     for (const direction of ["incoming", "outgoing"] as const) {
-      for (const flow of previous[direction]) {
+      for (const flow of previous?.[direction] ?? []) {
         if (!next?.[direction].some(current => current.id === flow.id)) {
-          debugEvent("channel", "flow-assignment-removed", { pairId: previous.id, flowId: flow.id, direction });
+          debugEvent("channel", "flow-assignment-removed", { pairId: previous!.id, flowId: flow.id, direction });
         }
+      }
+      for (const flow of next?.[direction] ?? []) {
+        const before = previous?.[direction].find(current => current.id === flow.id);
+        const details = { pairId: next!.id, peerId: next!.peerId, flowId: flow.id, publicationId: flow.publicationId,
+          inputFlowId: flow.inputFlowId, direction };
+        if (!before) debugEvent("channel", "flow-assignment-added", details);
+        if (flow.selected && !before?.selected) debugEvent("channel", "flow-assignment-selected", details);
       }
     }
   }

@@ -934,6 +934,8 @@ export class ChannelSession {
     if (command.type === "flow_state") {
       const { pairId, flowId, state } = command;
       debugEvent("channel", "flow-state-sent", { pairId, flowId, state });
+    } else if (command.type === "link_state") {
+      debugEvent("channel", "link-state-sent", { pairId: command.pairId, state: command.state });
     } else if (command.type === "host_register" && browserDebugEnabled) {
       debugRecord("room-host", "registered", { summary: hostTrace(command.room), resumeBinding: command.resumeBinding ?? null });
     }

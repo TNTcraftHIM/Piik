@@ -15636,6 +15636,42 @@ test.each([false, true])("records the Browser room host's summary and inputs who
   } finally { session.close(); }
 });
 
+test.each([false, true])("logs flow assignments, selections and link states only with Browser debug enabled (%s)", async enabled => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const [pairId, incomingId, outgoingId, publicationId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const peerId = "source";
+  const base = session.getSnapshot().state!;
+  const state = (selected: boolean, outgoing: boolean) => ({ ...base, subscriptions: [publicationId],
+    publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: peerId, userId: "self", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+    pairs: [{ id: pairId, peerId, canReceiveVideoLayers: false, rooms: ["first"],
+      outgoing: outgoing ? [{ id: outgoingId, publicationId, selected: false, inputFlowId: incomingId }] : [],
+      incoming: [{ id: incomingId, publicationId, selected, inputFlowId: null }] }],
+  });
+  try {
+    socket.receive({ type: "state", state: state(false, false) });
+    socket.receive({ type: "state", state: state(true, true) });
+    RoomPeerConnection.instances.at(-1)!.connected();
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "link_state")).toBe(true));
+    socket.receive({ type: "state", state: { ...state(true, true), pairs: [] } });
+    const { events } = JSON.parse(await exportBrowserDebug());
+    const logged = events.filter((event: { event: string }) => event.event.startsWith("flow-assignment-") || event.event === "link-state-sent")
+      .map(({ event, details }: { event: string; details: unknown }) => ({ event, details }));
+    const incoming = { pairId, peerId, flowId: incomingId, publicationId, inputFlowId: null, direction: "incoming" };
+    const outgoing = { pairId, peerId, flowId: outgoingId, publicationId, inputFlowId: incomingId, direction: "outgoing" };
+    expect(logged).toEqual(enabled ? [
+      { event: "flow-assignment-added", details: incoming },
+      { event: "flow-assignment-selected", details: incoming },
+      { event: "flow-assignment-added", details: outgoing },
+      { event: "link-state-sent", details: { pairId, state: "connected" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId: incomingId, direction: "incoming" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId: outgoingId, direction: "outgoing" } },
+    ] : []);
+  } finally { session.close(); }
+});
+
 test.each(["ack", "error"] as const)("a retired publish %s cannot admit or remove the pending replacement", async reply => {
   const { session, socket } = await setup();
   const id = crypto.randomUUID();
