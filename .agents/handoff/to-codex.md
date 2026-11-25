@@ -21,11 +21,56 @@ rebuilt from the merged sources. I did not run the Rust suites.
   ship from `main` before 3.0 is released, and problems found during 3.0 work
   are fed back to it. So `main` is the one writer of the 2.x rules and of the
   2.x ledger, and a defect found here that 2.x shares is recorded there.
-  One caution before anything is removed: these files are not purely 2.x.
-  `media-quality.md` is the record that accepts several 3.0 Native media
-  mechanisms. I am preparing an inventory, section by section, of what 3.0
-  relies on, what is 2.x only, and which corrections exist only here and
-  should be offered to `main`. Nothing is removed until you have seen it.
+  These files are not all purely 2.x, so I had each section classified
+  against the 3.0 code and its inbound links before proposing anything.
+  Nothing is removed until you have answered the plan below.
+
+## The 2.x copies: what the inventory found, and a plan
+
+| File | 2.x only | 3.0 relies on | Proposal |
+| --- | --- | --- | --- |
+| `media-quality.md` | about 65 lines | about 500 | **Stays**, as the 3.0 media standard. Cut the Pion, LiveKit and SFU layer, the ADR-0011 fan-out and old-client compatibility |
+| `rooms-access.md` | about 220 | about 60 | Leaves after Remote Control (`:197-256`, implemented in `channel-native/src/input`) and two room-voice sentences move |
+| `presentation-lifecycle.md` | about 240 | about 110, half of it already owned elsewhere | Leaves after about 90 lines move: interface languages (`:160-182`), playback ownership, three recovery rules |
+| `routing-transport.md` | about 384 | 7 | Leaves after one rule moves: a rejected ICE candidate is disposable input (`:285-291`) |
+| `configuration.md` | about 300 | about 15 | Leaves after the Browser debug report (`:233-234`, `:288-300`) moves to the Server README |
+| the four operations guides | all | none | Leave |
+
+Where the 3.0 content would go is the part I want your judgement on, because
+three pieces have no 3.0 standard to receive them:
+
+- **Remote Control.** No 3.0 standard owns it. The nearest fit by the map is
+  the input section of the network implementation. I would sooner keep it as
+  a short standard of its own than add forty lines of contract to a research
+  document.
+- **Interface languages.** No owner either. `naming.md` already owns the
+  writing conventions and could take a section; the standards index and both
+  translation guides link the present anchor.
+- **Playback ownership** fits `media-status.md` beside its evidence boundary.
+
+Three rules that `main` states and the 3.0 code follows are missing from this
+tree altogether and belong in the trimmed media standard: the playback buffer
+target (`channel/media.ts:66-89`), orientation normalised in the shared Browser
+encoder (`browser-encoding-producer.ts:122`), and recovery from a lost capture
+device (`capture/frames.rs:57`, rule unverified).
+
+Removal also touches `scripts/required-project-paths.txt` (five entries), the
+size budgets in `scripts/check-docs.mjs:72-75`, `site/docs/pages.mjs` (it reads
+every listed file, so the site build breaks without the edit), `site/index.html`
+and `tests/docs-publication.test.ts:66`. Removing the hosting pages leaves the
+site with no hosting section, so the 3.0 deployment guide has to take their
+place in the same change.
+
+**One finding goes the other way, to `main`.** This tree's self-hosting guide
+tells an operator to pin `PIIK_IMAGE` to a 2.x tag at first install
+(`self-hosting.md:57-58`). `main` does not: its Compose file defaults to
+`ghcr.io/tntcrafthim/piik:latest` and its first-install step says nothing
+about pinning. So a 2.x operator who followed the published guide follows
+`latest`, and the day that tag means 3.0 a routine pull replaces a 2.x server
+with a build that cannot read its configuration or its data. The cutover item
+in TODO pins guides and downloads and does not mention the container tag.
+This looks like a 2.x maintenance update before the cutover and a decision
+about what `latest` means after it. I have told the owner.
 
 ## Your outcomes
 
