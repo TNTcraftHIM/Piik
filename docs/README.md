@@ -76,6 +76,7 @@ and [website preview and publishing](./operations/website.md).
 
 | Topic | Its reference |
 | --- | --- |
+| The founding ideas everything else follows | [Canon](./canon.md) |
 | Published 2.x invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
 | Published 2.x viewer connections | [Routing and transport](./standards/routing-transport.md) |
 | Published 2.x screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |

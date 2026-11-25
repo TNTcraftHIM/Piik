@@ -59,7 +59,7 @@ the feedback period; they do not delay that delivery.
   and a room store's epoch and change sequence. None can be corrected after
   the first 3.0 release. The
   [design review](./research/clean-room-design-review.md) records the
-  evidence and the owner's four product decisions.
+  evidence.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
@@ -224,6 +224,20 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Design quiet topology improvement.** The
+  [canon](./canon.md#media-and-network) asks for a topology that keeps
+  improving by itself, judged by actual playback and by how well two nodes
+  suit each other, without disturbing what works. No design exists yet. Gather
+  primary evidence on how mature overlays measure, explore and stay stable,
+  then propose one. The earlier decisions against a weighted route score, an
+  all-pairs probe and periodic rebalancing are inputs to revisit with that
+  evidence, each with the reason it gave.
+- [ ] **Separate the canon from derived design in the documents.** Where a
+  record states a founding idea beside defaults, numbers or mechanisms, link
+  the [canon](./canon.md) and keep the derived design. Start with
+  [ADR-0001](./adr/0001-p2p-first-media-topology.md), whose rationale is still
+  current under a historical status, the status lines of ADR-0002, 0005, 0007,
+  0009, 0010 and 0013 for 3.0, and the two meanings each of "relay" and "host".
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.
   Keep image restoration owned by each physical connection. Any generated types

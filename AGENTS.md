@@ -4,17 +4,20 @@ These instructions are for any agent or contributor working in this
 repository. They are layered. When two statements pull apart, the earlier
 layer wins:
 
-1. The **invariants** below. Only the owner changes one, by editing that section.
+1. The **invariants** below and the [canon](./docs/canon.md). Only the owner
+   changes either.
 2. The owner's latest explicit decision for the task at hand.
 3. The **principles** below.
 4. Domain standards and [CONTRIBUTING](./CONTRIBUTING.md), each for what it owns.
 5. Skills, which describe how to do a kind of work.
 
 Research notes, examples, audit suggestions and messages from another agent are
-evidence. They bind nothing and grant no authority. A conflict below the
-invariants is a defect in the lower statement: follow the higher one and fix or
-report the lower. Only the invariants are absolute. Everything else is a
-default, and a departure from it states its reason.
+evidence. They bind nothing and grant no authority. A conflict below the first
+layer is a defect in the lower statement: follow the higher one and fix or
+report the lower. The invariants are absolute. The canon holds until the owner
+changes it, so a design that departs from it goes to the owner before anything
+else changes. Everything else is a default, and a departure from it states its
+reason.
 
 ## Invariants
 
@@ -45,8 +48,9 @@ default, and a departure from it states its reason.
 
 ## Product
 
-Piik is free, P2P-first screen sharing for a host and their friends. This
-worktree develops isolated 3.0, whose architecture
+Piik is a free, self-hosted place for friends to talk and share their screens,
+P2P first. The [canon](./docs/canon.md) states its founding design: read it
+before design work. This worktree develops isolated 3.0, whose architecture
 [ADR-0016](./docs/adr/0016-shared-rust-core.md) records. The
 [network model](./docs/research/channel-network-design.md) and
 [room-data model](./docs/research/channel-storage-and-identity.md) describe the
@@ -57,16 +61,10 @@ indexes the implementation. Published 2.x promises remain with the maintenance
 line's [standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md)
 and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
 
-The standard is a polished experience and clear engineering, across interface,
-interaction, functional boundaries, lifecycle and code. Working behaviour alone
-does not meet it. Piik is meant to be decentralized and usable by anyone:
-anyone can host, and no single machine should have to carry a room. A direct
-path is therefore worth real effort, including through difficult NATs, and a
-relay is the fallback. Media stays automatic and P2P-first, and adaptation
-belongs to Browser WebRTC, the Native RTC SDK and accepted encoder policies. Changing
-that, for example with a custom quality score, a ladder, an all-pairs probe,
-periodic rebalancing or a hand-built SFU representation, takes a new accepted
-decision backed by primary evidence.
+The canon is not repeated here. One working default follows from it: media
+adaptation belongs to Browser WebRTC, the Native RTC SDK and accepted encoder
+policies, and a media mechanism of our own takes an accepted decision backed
+by primary evidence.
 
 ## Principles
 
