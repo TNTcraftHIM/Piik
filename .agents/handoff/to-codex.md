@@ -124,20 +124,24 @@ own arithmetic. None of this is started.
 
 ## Planning: what the map adds to ADR-0018
 
-1. **Stage 1 as written is the step the study found small.** A leaf moved
-   over existing pairs recovered 9 to 14% of the depth gap; allowing one pair
-   attempt recovered 93 to 98%. Stage 1 should be "move one viewer to a
-   shallower free place, asking for the pair when it is not confirmed". The
-   shortcut to the source (`publication.rs:499-524`) is then the case where
-   the place is the source, and `direct_attempted` gives way to the ordinary
-   memory of a failed pair.
-2. **The pool may be discarding the pairs the tree lacks.** A confirmed pair
-   that carries nothing, is not a requested direct pair and is not in the
-   skeleton is released at the next channel reconcile
-   (`transport.rs:268-288`). The study found shallow places free and the
-   pairs to them missing. I will count on the harness how much of the gap
-   pairs that were once confirmed would close. Twenty idle pairs cost about
-   2.4 KiB/s, so keeping them may be the cheapest improvement there is.
+1. **Stage 1 as written is the step the study found small.** On one
+   denominator, the gap to the best tree over every connectable pair, a leaf
+   moved over existing pairs closes 15, 12 and 7% at 8, 16 and 32 viewers, and
+   the same move allowed one pair attempt closes 80, 93 and 98%. Stage 1
+   should be "move one viewer to a shallower free place, asking for the pair
+   when it is not confirmed". The shortcut to the source
+   (`publication.rs:499-524`) is then the case where the place is the source,
+   and `direct_attempted` gives way to the ordinary memory of a failed pair.
+2. **Keeping released pairs would not help, and I withdraw the suggestion.**
+   I supposed the pool was discarding the pairs the tree lacks
+   (`transport.rs:268-288`) and measured it on the harness
+   (`origin/test/placement-study` at `a0d278c5`, test `released_pairs`). If the
+   pool kept every pair it ever confirmed while both ends stay, leaf moves
+   would close 19, 16 and 11% in place of 15, 12 and 7%. The pool releases 4
+   to 8% of confirmed pairs, and only 1 to 5% of the pairs the attempting rule
+   uses had ever been confirmed. The missing shallow pairs were never tried.
+   The model flatters retention, since a kept pair never fails in it, so the
+   real gain is no larger.
 3. **Choices by identifier.** The next pair to try ranks by endpoint
    identifiers after freshness (`discovery.rs:230-237`), a reduction moves the
    lowest-identifier child that has somewhere to go (`publication.rs:590-596`),
