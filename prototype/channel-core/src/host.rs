@@ -119,6 +119,32 @@ pub struct ServiceEndpoint {
     pub connection_id: Uuid,
 }
 
+/// The kinds of traffic the site's operator lets its service forward.
+/// Files include the original video forwarded for watching together.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TransitKinds {
+    pub screen: bool,
+    pub voice: bool,
+    pub files: bool,
+}
+
+impl TransitKinds {
+    pub fn media(self, kind: crate::wire::Kind) -> bool {
+        match kind {
+            crate::wire::Kind::Screen => self.screen,
+            crate::wire::Kind::Voice => self.voice,
+        }
+    }
+}
+
+/// The service's live socket together with what its operator offers.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ServiceTransit {
+    #[serde(flatten)]
+    pub endpoint: ServiceEndpoint,
+    pub kinds: TransitKinds,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
@@ -135,7 +161,7 @@ pub struct HostInput {
     pub confirmed_pairs: BTreeSet<(Uuid, Uuid)>,
     pub endpoints: BTreeMap<Uuid, Endpoint>,
     #[serde(default)]
-    pub service_endpoint: Option<ServiceEndpoint>,
+    pub service_endpoint: Option<ServiceTransit>,
     pub action: HostAction,
 }
 

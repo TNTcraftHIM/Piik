@@ -27,7 +27,7 @@ firewall rules. A working web page does not establish that peer traffic is allow
 - If your group can use a shared virtual network, follow the [virtual LAN steps](#optional-a-virtual-lan).
 - On a managed network, ask the network administrator about blocked UDP, or use another network.
 - If the site runs on Piik Server, ask the site operator whether site forwarding is available.
-  A room manager can then enable **Allow site forwarding** under **Room settings → Connection**.
+  Rooms use it by default; check that **Use site forwarding** is on under **Room settings → Connection**.
 
 Piik selects routes automatically. The App's automatic **Public invite** uses
 Cloudflare Tunnel for the invitation page and signaling. Picture, voice and file

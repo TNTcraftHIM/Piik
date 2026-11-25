@@ -1447,7 +1447,7 @@ impl Session {
                             room,
                             picture: None,
                             password: None,
-                            allow_service_relay: false,
+                            allow_service_relay: None,
                         },
                         Some(&request_id),
                     )

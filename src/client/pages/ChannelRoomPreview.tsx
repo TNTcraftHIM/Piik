@@ -115,7 +115,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
     ...createdRooms.map(room => {
       const settings = sample.settingsByRoom[room.id];
-      return { ...room, ...settings, serviceRelay: { enabled: settings?.allowServiceRelay ?? room.serviceRelay?.enabled ?? false, available: false }, picture: settings?.picture === undefined ? room.picture : settings.picture ?? undefined };
+      return { ...room, ...settings, serviceRelay: { enabled: settings?.allowServiceRelay ?? room.serviceRelay?.enabled ?? true, available: false }, picture: settings?.picture === undefined ? room.picture : settings.picture ?? undefined };
     })].filter(room => !removedRooms.has(room.id));
   const roomIds = new Set(rooms.map(room => room.id));
   const publications = (sharingRoom ? [{ audience: [], id: "sample-screen-2", roomId: sharingRoom,
@@ -401,7 +401,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     createRoom: async settings => {
       const id = `sample-room-${crypto.randomUUID()}`;
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,
-        serviceRelay: { enabled: settings.allowServiceRelay ?? false, available: false },
+        serviceRelay: { enabled: settings.allowServiceRelay ?? true, available: false },
         id, name: settings.name, picture: settings.picture ?? undefined, participantSessionIds: [sample.channel.sessionId!],
         delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}` } }]);
       return id;

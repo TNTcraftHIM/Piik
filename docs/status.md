@@ -17,7 +17,9 @@ Demo profile admits guest-created rooms by invitation.
 Conversation reaches the room writer through the site WebSocket. Each screen,
 voice source, file holder and forwarded webpage source uses its own delivery
 paths on authorized connections. Optional site forwarding uses the Server's
-Native endpoint when offered by the operator and allowed by the room owner.
+Native endpoint for the kinds its operator offers, in rooms that have not
+declined it. A route is assigned to it only for a receiver no participant path
+can serve then, and that receiver keeps it until it fails or demand ends.
 [Network model](./research/channel-network-design.md) ·
 [Data model](./research/channel-storage-and-identity.md)
 

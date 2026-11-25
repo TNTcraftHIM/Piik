@@ -3,8 +3,8 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 // English stays complete against the canonical Chinese key set.
 export const en: Record<CopyKey, string> = {
   "room.transit.title": "Site forwarding assistance",
-  "room.transit.allow": "Allow site forwarding",
-  "room.transit.note": "When direct connections are unavailable, allow this site to forward this room's assigned media and file data, without chat or history access. This choice is saved with the room.",
+  "room.transit.allow": "Use site forwarding",
+  "room.transit.note": "On by default. When no participant can carry this room's media or files, this site can forward the kinds its operator offers, without chat or history access. Turn it off to decline for this room; the choice is saved with the room.",
   "room.transit.unavailable": "Site forwarding is currently unavailable. Your room preference is kept.",
   "connection.siteForwarding": "Site forwarding",
   "connection.webpage": "Webpage",

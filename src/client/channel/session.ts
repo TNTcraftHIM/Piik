@@ -2084,7 +2084,7 @@ export class ChannelSession {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     if (state.channel.hostingMode === "hosted") return this.importHostedRoomCopy(archive, settings, current);
     const runtime = await loadRoomHosting();
-    const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
+    const policy = await runtime.createRoomPolicy({ ...settings, id: crypto.randomUUID(), creatorId: self.id });
     current();
     let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined;
     let cancelReservation: (() => void) | undefined;

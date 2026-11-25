@@ -43,11 +43,24 @@ describes a different runtime and its SFU controls.
 
 ### Packaged Server
 
-Site forwarding assistance is off by default. A Server operator can offer it
-with `PIIK_CHANNEL_SERVICE_TRANSIT=true` at startup. Each room owner must then
-allow it in the room's existing device settings. This preference stays with the
-room across host/service reconnections; copying it as a new room resets the
-choice. Each active lease still belongs to the current service socket. This does
+Site forwarding assistance is off by default, because its bandwidth is the
+operator's cost. A Server operator offers it with
+`PIIK_CHANNEL_SERVICE_TRANSIT=true` at startup, which turns on screen, voice and
+files together. `PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN`,
+`PIIK_CHANNEL_SERVICE_TRANSIT_VOICE` and `PIIK_CHANNEL_SERVICE_TRANSIT_FILES`
+accept `true` or `false`, default to `true`, and let the operator turn one kind
+off; files include original video forwarded for watching together. With the
+first switch off, nothing is forwarded whatever the others say.
+
+Once offered, every room uses it unless its owner turns off **Use site
+forwarding** under **Room settings → Connection**. The rule applies when a route
+is assigned: the service gets a receiver only when no participant path can serve
+it then. A receiver already served through the service keeps that route until it
+fails or demand ends, even if a participant path appears later; a screen viewer
+can still move to a direct path from the person sharing, as any relayed viewer
+can. This preference stays with the room across
+host/service reconnections; a room copied as a new room starts with the default.
+Each active lease still belongs to the current service socket. This does
 not transfer room hosting or grant ordinary room Read,
 chat or history access to the service. Assigned picture, sound, file and shared
 playback bytes use the existing peer plans; a reachable service media path is

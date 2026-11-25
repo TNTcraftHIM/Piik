@@ -9,6 +9,7 @@ pub mod domain;
 pub mod web;
 
 use domain::Domain;
+use piik_channel_core::host::TransitKinds;
 use piik_channel_native::peer::server_udp::ServerUdp;
 use piik_channel_native::session::{self as native, Config, Hosting, RoomFile};
 use std::{
@@ -49,7 +50,7 @@ impl NativeService {
         directory: &Path,
         udp: Arc<ServerUdp>,
         bootstrap: bool,
-        transit_enabled: bool,
+        transit: Option<TransitKinds>,
     ) -> anyhow::Result<Self> {
         let address = listener_client_address(address);
         let directory = room_directory(directory, domain.identity());
@@ -108,7 +109,7 @@ impl NativeService {
                     Some((session, acknowledged)) = admitted.recv() => {
                         // Only this owned Native Welcome supplies the service identity.
                         // Its actual socket retirement clears registration in Domain.
-                        if service_domain.register_service(session, transit_enabled) { let _ = acknowledged.send(()); }
+                        if service_domain.register_service(session, transit) { let _ = acknowledged.send(()); }
                     }
                 }
             }
@@ -149,7 +150,7 @@ pub async fn serve_server(
     directory: PathBuf,
     routes: axum::Router,
     udp: Arc<ServerUdp>,
-    transit_enabled: bool,
+    transit: Option<TransitKinds>,
     stop: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(directory.join("rooms"))?;
@@ -166,7 +167,7 @@ pub async fn serve_server(
         &directory,
         udp.clone(),
         domain.was_created(),
-        transit_enabled,
+        transit,
     )?;
     let (stop_domain, mut domain_stopped) = watch::channel(false);
     let mut service = tokio::spawn(domain.clone().serve(listener, routes, async move {
@@ -196,7 +197,7 @@ pub async fn serve_server(
                 let result = domain.restore(request.metadata, &request.credential);
                 // A failed durable replacement keeps the old authority and restarts
                 // its same saved rooms; neither branch recreates missing histories.
-                match NativeService::start(&domain, address, &directory, udp.clone(), false, transit_enabled) {
+                match NativeService::start(&domain, address, &directory, udp.clone(), false, transit) {
                     Ok(next) => hosting = next,
                     Err(error) => {
                         let code = if result.is_ok() {

@@ -341,7 +341,7 @@ fn hosted_room_policy(
     room: RoomSummary,
     password: Option<String>,
     picture: Option<String>,
-    allow_service_relay: bool,
+    allow_service_relay: Option<bool>,
 ) -> Result<RoomState, &'static str> {
     let mut policy = RoomState::new(
         room.id,
@@ -355,7 +355,9 @@ fn hosted_room_policy(
     policy.appearance.picture = picture;
     policy.voice_bitrate = room.voice_bitrate;
     policy.relay_capacity = room.relay_capacity;
-    policy.allow_service_relay = allow_service_relay;
+    if let Some(allowed) = allow_service_relay {
+        policy.allow_service_relay = allowed;
+    }
     policy.validate()?;
     Ok(policy)
 }
@@ -712,14 +714,15 @@ impl Domain {
     pub(crate) fn register_service(
         &self,
         endpoint: piik_channel_core::host::ServiceEndpoint,
-        transit: bool,
+        transit: Option<piik_channel_core::host::TransitKinds>,
     ) -> bool {
         let mut hub = self.hub.lock().unwrap();
         if hub.authority.set_room_writer(endpoint).is_err() {
             return false;
         }
-        if transit {
-            if let Ok(effects) = hub.authority.set_service_endpoint(Some(endpoint)) {
+        if let Some(kinds) = transit {
+            let service = piik_channel_core::host::ServiceTransit { endpoint, kinds };
+            if let Ok(effects) = hub.authority.set_service_endpoint(Some(service)) {
                 hub.apply(effects);
             }
         }

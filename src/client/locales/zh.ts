@@ -1,8 +1,8 @@
 // Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
   "room.transit.title": "站点转发协助",
-  "room.transit.allow": "允许站点转发",
-  "room.transit.note": "直连不可用时，允许此站点转发本房间已分配的媒体和文件数据，不授予聊天或历史读取权限。此选择保存在房间设置中。",
+  "room.transit.allow": "使用站点转发",
+  "room.transit.note": "默认开启。没有参与者能转发本房间的媒体或文件时，此站点可在运营者开放的范围内代为转发，不授予聊天或历史读取权限。关闭即为本房间拒绝站点转发，此选择保存在房间设置中。",
   "room.transit.unavailable": "站点暂未提供转发；房间设置已保留。",
   "connection.siteForwarding": "站点转发",
   "connection.webpage": "网页",

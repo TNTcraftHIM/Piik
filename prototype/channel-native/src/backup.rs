@@ -459,7 +459,7 @@ mod tests {
         };
         assert_eq!(room.name, "Copy");
         assert_eq!(password.as_deref(), Some("synthetic"));
-        assert!(allow_service_relay);
+        assert_eq!(allow_service_relay, Some(true));
         let snapshot = submission.stage(folder.path(), destination.clone())?;
         assert_eq!(snapshot.metadata().domain_id, destination.domain_id);
         let mut count = 0;

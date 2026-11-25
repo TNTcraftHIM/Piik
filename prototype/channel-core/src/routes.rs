@@ -4,6 +4,10 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub(crate) struct RelayLimits {
+    /// A relay that a new assignment gives only receivers no participant path reaches,
+    /// taking a scarce output from a participant path only when that serves more
+    /// receivers. A complete incumbent path through it is kept like any other.
+    pub fallback: Option<Uuid>,
     pub shared: BTreeMap<Uuid, BTreeSet<Uuid>>,
     pub source_direct_limit: Option<usize>,
     pub default: usize,
@@ -12,6 +16,7 @@ pub(crate) struct RelayLimits {
 impl Default for RelayLimits {
     fn default() -> Self {
         Self {
+            fallback: None,
             shared: Default::default(),
             source_direct_limit: None,
             default: 2,
@@ -249,8 +254,22 @@ impl Plan {
         }
         // A surviving assignment can serve its existing receiver through a signaling outage.
         // The scratch plan carries no payload proofs, so BFS only extends confirmed prefixes.
+        // Participants serve first; the fallback reaches only receivers they leave waiting.
+        // The joint tree, where the fallback may take a scarce slot, wins only by serving more.
+        let first = limits.fallback.filter(|id| graph.relays.contains(id)).map(|fallback| {
+            let mut participants = graph.relays.clone();
+            participants.remove(&fallback);
+            let mut first = self.clone();
+            first.extend_confirmed(&ScreenDemand { relays: &participants, ..*graph }, helpers, limits);
+            first.extend_confirmed(graph, helpers, limits);
+            first
+        });
         self.extend_confirmed(graph, helpers, limits);
-        self.parents
+        let served = |plan: &Plan| graph.order.iter().filter(|r| plan.parents.contains_key(r)).count();
+        match first {
+            Some(first) if served(&first) >= served(&self) => first.parents,
+            _ => self.parents,
+        }
     }
 
     pub fn new(source: Uuid) -> Self {
@@ -647,6 +666,7 @@ impl Plan {
             // Readiness changes must not revoke a valid equal-depth reservation.
             .min_by_key(|parent| {
                 (
+                    limits.fallback == Some(*parent),
                     std::iter::successors(Some(*parent), |node| self.parents.get(node).copied())
                         .count(),
                     current != Some(parent),
@@ -1428,6 +1448,7 @@ mod tests {
     fn personal_limits_apply_only_to_relays() {
         let id = Uuid::from_u128;
         let mut limits = RelayLimits {
+            fallback: None,
             shared: Default::default(),
             source_direct_limit: None,
             default: 2,
@@ -1442,6 +1463,45 @@ mod tests {
         assert_eq!(limits.get(id(1), id(2)), 0);
         assert_eq!(limits.get(id(2), id(2)), 2);
         assert_eq!(limits.get(id(3), id(2)), 0);
+    }
+
+    #[test]
+    fn a_moved_child_takes_any_ready_participant_before_the_fallback() {
+        let mut plan = Plan::new(id(1));
+        plan.parents = [(2, 1), (3, 1), (4, 3), (9, 3)]
+            .map(|(child, parent)| (id(child), id(parent)))
+            .into();
+        for (child, parent) in plan.parents.clone() {
+            plan.mark_ready(child, parent, Readiness::Decoded);
+        }
+        let connected = set(&[1, 2, 3, 4, 9]);
+        let choose = |limits: &RelayLimits| {
+            plan.candidate_parent(id(9), &connected, &BTreeMap::new(), limits)
+        };
+        // Every parent may keep one output, so 9 must leave 3.
+        let limits = RelayLimits { default: 1, ..Default::default() };
+        assert_eq!(choose(&limits), Some(id(2)), "the shallower participant wins");
+        let limits = RelayLimits { fallback: Some(id(2)), ..limits };
+        assert_eq!(choose(&limits), Some(id(4)));
+    }
+
+    #[test]
+    fn the_fallback_takes_a_scarce_source_slot_when_that_serves_more_receivers() {
+        // Listeners 2 and 3 reach only the source and forward nothing; 4 and 5
+        // reach only the service 9. The source keeps two outputs.
+        let (source, service) = (id(1), id(9));
+        let neighbors = confirmed_neighbors(&[(1, 2), (1, 3), (1, 9), (9, 4), (9, 5)]);
+        let limits = RelayLimits { fallback: Some(service), ..Default::default() };
+        let parents = activity_parents(
+            source,
+            &set(&[2, 3, 4, 5]),
+            &BTreeMap::new(),
+            &neighbors,
+            &[service].into(),
+            &limits,
+            &BTreeSet::new(),
+        );
+        assert_eq!(parents, [(2, 1), (9, 1), (4, 9), (5, 9)].map(|(c, p)| (id(c), id(p))).into());
     }
 
     #[test]

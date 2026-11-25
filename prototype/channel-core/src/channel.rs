@@ -39,6 +39,7 @@ pub struct Channel {
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
     ice_servers: Vec<Value>,
     pub(crate) service_endpoint: Option<crate::host::ServiceEndpoint>,
+    pub(crate) service_kinds: crate::host::TransitKinds,
 }
 
 pub(crate) struct HostAcceptance {
@@ -197,6 +198,7 @@ impl Channel {
             input_registrations: BTreeMap::new(),
             ice_servers,
             service_endpoint: None,
+            service_kinds: Default::default(),
         }
     }
 
@@ -1175,7 +1177,10 @@ impl Channel {
             self.hosting_mode,
             self.identity.owner_id,
             endpoints,
-            self.service_endpoint,
+            self.service_endpoint.map(|endpoint| crate::host::ServiceTransit {
+                endpoint,
+                kinds: self.service_kinds,
+            }),
             self.transports.confirmed_pairs(&self.identity),
             action,
             self.now,
@@ -1563,7 +1568,9 @@ impl Channel {
                     || !file_availability_limit
                         .is_some_and(|limit| observation.available.len() <= limit)
             }) || view.transit_endpoint.is_some_and(|endpoint| {
-                !projection.allow_service_relay || Some(endpoint) != self.service_endpoint
+                !projection.allow_service_relay
+                    || Some(endpoint) != self.service_endpoint
+                    || byte_transit(view) && !self.service_kinds.files
             }) {
                 return Err("invalid_room_projection");
             }
@@ -1852,6 +1859,7 @@ impl Channel {
             .map(|flow| (flow.id, flow))
             .collect();
         let mut inputs = BTreeSet::new();
+        let transit = |id| projection.views.get(&id).is_some_and(|v| v.transit_endpoint.is_some());
         for flow in &projection.flows {
             let (confirmed_or_retired, admitted) = current_pair(flow.sender, flow.receiver);
             if !(confirmed_or_retired || (admitted && previous.contains_key(&flow.id)))
@@ -1868,6 +1876,10 @@ impl Channel {
                     (v.authorized || v.transit_endpoint.is_some())
                         && publications.contains_key(&flow.publication_id)
                 })
+                || (transit(flow.sender) || transit(flow.receiver))
+                    && !publications
+                        .get(&flow.publication_id)
+                        .is_some_and(|publication| self.service_kinds.media(publication.kind))
                 || previous.get(&flow.id).is_some_and(|old| {
                     old.publication_id != flow.publication_id
                         || old.sender != flow.sender
@@ -2074,8 +2086,11 @@ impl Channel {
     }
 
     fn service_relay(&self, enabled: bool) -> crate::wire::ServiceRelay {
+        let kinds = self.service_kinds;
         crate::wire::ServiceRelay {
-            available: self.service_endpoint.is_some(),
+            // A service whose operator offers no kind forwards nothing.
+            available: self.service_endpoint.is_some()
+                && (kinds.screen || kinds.voice || kinds.files),
             enabled,
         }
     }

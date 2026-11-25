@@ -107,8 +107,8 @@ pub enum Command {
         )]
         picture: Option<String>,
         password: Option<String>,
-        #[serde(default)]
-        allow_service_relay: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        allow_service_relay: Option<bool>,
     },
     AdmitRoom {
         room: crate::host::RoomSummary,

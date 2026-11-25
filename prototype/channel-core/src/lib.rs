@@ -235,19 +235,22 @@ impl Authority {
         self.channel.identity()
     }
 
-    /// The embedding Server passes its Native's actual Welcome, never a later socket lookup.
+    /// The embedding Server passes its Native's actual Welcome, never a later socket lookup,
+    /// with the kinds of traffic its operator offers.
     pub fn set_service_endpoint(
         &mut self,
-        service: Option<host::ServiceEndpoint>,
+        service: Option<host::ServiceTransit>,
     ) -> Result<Effects, &'static str> {
         if service.is_some_and(|service| {
-            self.channel.identity.sessions.get(&service.session_id).is_none_or(|session| {
-                !session.can_use_peer_transport || session.connection != Some(service.connection_id)
+            self.channel.identity.sessions.get(&service.endpoint.session_id).is_none_or(|session| {
+                !session.can_use_peer_transport
+                    || session.connection != Some(service.endpoint.connection_id)
             })
         }) {
             return Err("service_unavailable");
         }
-        self.channel.service_endpoint = service;
+        self.channel.service_endpoint = service.map(|service| service.endpoint);
+        self.channel.service_kinds = service.map(|service| service.kinds).unwrap_or_default();
         self.channel.reconcile();
         let mut effects = Effects::default();
         self.sync_hosts(&mut effects, true);

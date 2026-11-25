@@ -67,7 +67,7 @@ pub struct RoomRuntime {
     publications: BTreeMap<Uuid, Publication>,
     watch_activities: BTreeMap<Uuid, Watch>,
     writer: Option<(Uuid, crate::wire::HostingMode)>,
-    transit_endpoint: Option<crate::host::ServiceEndpoint>,
+    transit: Option<crate::host::ServiceTransit>,
     delivery_frontiers: Vec<crate::host::DeliveryFrontier>,
     repair_at: Option<u64>,
     failed_data_pairs: BTreeSet<(Uuid, Uuid)>,
@@ -121,7 +121,7 @@ impl RoomRuntime {
             publications: BTreeMap::new(),
             watch_activities: BTreeMap::new(),
             writer: None,
-            transit_endpoint: None,
+            transit: None,
             delivery_frontiers: Vec::new(),
             repair_at: None,
             failed_data_pairs: BTreeSet::new(),
@@ -139,7 +139,7 @@ impl RoomRuntime {
 
     pub(crate) fn reset_routes(&mut self) {
         self.delivery_frontiers.clear();
-        self.transit_endpoint = None;
+        self.transit = None;
         self.repair_at = None;
         self.failed_data_pairs.clear();
         self.files.reset_routes();
@@ -153,12 +153,12 @@ impl RoomRuntime {
 
     pub(crate) fn service_endpoint(
         &mut self,
-        service: Option<crate::host::ServiceEndpoint>,
+        service: Option<crate::host::ServiceTransit>,
         endpoints: &BTreeMap<Uuid, Endpoint>,
         now: u64,
         confirmed_pairs: &BTreeSet<(Uuid, Uuid)>,
     ) {
-        if self.transit_endpoint != service {
+        if self.transit != service {
             if let Some(previous) = self.selected_service() {
                 // Withdraw proof from the old service socket before deriving new work.
                 let session = previous.session_id;
@@ -184,12 +184,13 @@ impl RoomRuntime {
                 }
                 self.reconcile_with_pairs(&retired, now, confirmed_pairs);
             }
-            self.transit_endpoint = service;
+            self.transit = service;
         }
     }
 
     fn selected_service(&self) -> Option<crate::host::ServiceEndpoint> {
-        self.transit_endpoint
+        self.transit
+            .map(|transit| transit.endpoint)
             .filter(|_| self.policy.allow_service_relay)
     }
 
@@ -449,6 +450,7 @@ impl RoomRuntime {
 
     fn relay_limits(&self) -> RelayLimits {
         RelayLimits {
+            fallback: self.selected_service().map(|service| service.session_id),
             shared: Default::default(),
             source_direct_limit: None,
             default: self.policy.relay_capacity as usize,
@@ -1428,10 +1430,10 @@ impl RoomRuntime {
         confirmed_pairs: &BTreeSet<(Uuid, Uuid)>,
     ) {
         // Keep the retiring service's role while deriving ordinary routing demand.
-        let transit_endpoint = self.transit_endpoint;
-        self.transit_endpoint = self.transit_endpoint.filter(|service| {
+        let transit_endpoint = self.transit.map(|transit| transit.endpoint);
+        self.transit = self.transit.filter(|service| {
             endpoints
-                .get(&service.session_id)
+                .get(&service.endpoint.session_id)
                 .is_some_and(Endpoint::online_peer)
         });
         let repair_due = self.repair_at.is_some_and(|deadline| deadline <= now);
@@ -1535,6 +1537,12 @@ impl RoomRuntime {
             .filter(|id| routable.contains(id))
             .copied()
             .collect();
+        // The service relays only the kinds its operator offers.
+        let kinds = self.transit.map(|transit| transit.kinds).unwrap_or_default();
+        let offered = |relays: &BTreeSet<Uuid>, carried: bool| -> BTreeSet<Uuid> {
+            relays.iter().copied().filter(|id| carried || Some(*id) != service).collect()
+        };
+        let byte_relays = offered(&new_relays, kinds.files);
         self.failed_data_pairs
             .retain(|pair| !repair_due && confirmed_pairs.contains(pair));
         let mut byte_neighbors = neighbors.clone();
@@ -1547,18 +1555,18 @@ impl RoomRuntime {
             }
         }
         self.files
-            .route(endpoints, &byte_neighbors, &new_relays, &limits);
-        self.files.collect_frontiers(endpoints, &byte_neighbors, &new_relays, &limits, &self.failed_data_pairs, &mut self.delivery_frontiers);
+            .route(endpoints, &byte_neighbors, &byte_relays, &limits);
+        self.files.collect_frontiers(endpoints, &byte_neighbors, &byte_relays, &limits, &self.failed_data_pairs, &mut self.delivery_frontiers);
         let mut waiting_bytes = self.files.waiting();
         for (id, watch) in &mut self.watch_activities {
             let receivers: BTreeSet<_> = Self::watch_receivers(&self.activity, *id).collect();
             watch.bytes.retain_refused(&receivers, |peer| routable.contains(peer));
             let source = watch.byte_source.as_ref().map(|source| source.session_id);
             let parents = source
-                .map(|source| watch.bytes.branches(source, &receivers, &byte_neighbors, &new_relays, &limits))
+                .map(|source| watch.bytes.branches(source, &receivers, &byte_neighbors, &byte_relays, &limits))
                 .unwrap_or_default();
             watch.bytes.commit(source, parents);
-            watch.bytes.collect_frontiers(&receivers, &self.failed_data_pairs, &byte_neighbors, &new_relays,
+            watch.bytes.collect_frontiers(&receivers, &self.failed_data_pairs, &byte_neighbors, &byte_relays,
                 &limits, &mut self.delivery_frontiers);
             waiting_bytes |= watch.bytes.waiting(&receivers);
         }
@@ -1616,17 +1624,18 @@ impl RoomRuntime {
                     }
                 }
             }
+            let carried = kinds.media(publication.info.kind);
             publication.reconcile(
                 &subscribers,
                 &connected,
-                &relays,
+                &offered(&relays, carried),
                 &helpers,
                 &screen_limits,
                 &neighbors,
                 now,
             );
             if !publication.info.paused {
-                publication.collect_frontiers(&subscribers, &neighbors, &new_relays, &helpers,
+                publication.collect_frontiers(&subscribers, &neighbors, &offered(&new_relays, carried), &helpers,
                     &screen_limits, &mut self.delivery_frontiers);
             }
             publication.bound_screen_preparation(&screen_limits, &helpers);
@@ -3418,6 +3427,7 @@ mod tests {
             let count = if multiple_parents { 7 } else { 5 };
             let all: BTreeSet<_> = (1..=count).map(id).collect();
             let mut limits = RelayLimits {
+                fallback: None,
                 shared: Default::default(),
                 source_direct_limit: None,
                 default: 3,
@@ -4013,9 +4023,12 @@ mod tests {
         room.set_writer(source, crate::wire::HostingMode::Lightweight);
         room.set_service_relay_preference(true);
         room.service_endpoint(
-            Some(crate::host::ServiceEndpoint {
-                session_id: service,
-                connection_id: id(14),
+            Some(crate::host::ServiceTransit {
+                endpoint: crate::host::ServiceEndpoint {
+                    session_id: service,
+                    connection_id: id(14),
+                },
+                kinds: ALL_KINDS,
             }),
             &endpoints,
             0,
@@ -4140,6 +4153,102 @@ mod tests {
         assert!(previews
             .iter()
             .all(|id| room.flows().any(|flow| flow.id == *id)));
+    }
+
+    const ALL_KINDS: crate::host::TransitKinds =
+        crate::host::TransitKinds { screen: true, voice: true, files: true };
+
+    /// Writer 1 shares screen 10 and voice 11 with viewer 9. Participants 5
+    /// and 6 browse as relays; 2 is the site's service, offered for `kinds`.
+    fn transit_room(
+        kinds: Option<crate::host::TransitKinds>,
+        declined: bool,
+        pairs: &[(u128, u128)],
+    ) -> RoomRuntime {
+        let id = Uuid::from_u128;
+        let [source, service, viewer] = [1, 2, 9].map(id);
+        let endpoints: BTreeMap<_, _> = [1, 2, 5, 6, 9]
+            .map(|value| {
+                let endpoint = Endpoint {
+                    signing_key: [value as u8; 32],
+                    member: Member { user_id: id(value) },
+                    can_use_peer_transport: true,
+                    connected: true,
+                };
+                (id(value), endpoint)
+            })
+            .into();
+        let member = |session: Uuid| endpoints[&session].member;
+        let policy = RoomState::new(
+            "transit".into(),
+            "Transit".into(),
+            Default::default(),
+            source,
+            RoomAccess::Public,
+            false,
+            None,
+        );
+        let mut room = RoomRuntime::new(policy.unwrap());
+        room.set_writer(source, crate::wire::HostingMode::Lightweight);
+        if declined {
+            room.set_service_relay_preference(false);
+        }
+        let endpoint = crate::host::ServiceEndpoint { session_id: service, connection_id: id(12) };
+        let offer = kinds.map(|kinds| crate::host::ServiceTransit { endpoint, kinds });
+        room.service_endpoint(offer, &endpoints, 0, &BTreeSet::new());
+        for relay in [5, 6].map(id) {
+            room.browse(member(relay), relay, true).unwrap();
+        }
+        for session in [source, viewer] {
+            room.set_voice(member(session), session, true, false, false).unwrap();
+        }
+        let screen = Some(crate::wire::ScreenSource::default());
+        room.publish(member(source), source, id(10), Kind::Screen, screen_settings(), screen)
+            .unwrap();
+        room.publish(member(source), source, id(11), Kind::Voice, None, None).unwrap();
+        room.subscribe(member(viewer), viewer, id(10), true, None).unwrap();
+        room.reconcile_with_pairs(&endpoints, 0, &confirmed_pairs(pairs));
+        room
+    }
+
+    fn hops(room: &RoomRuntime, publication: u128) -> BTreeSet<(u128, u128)> {
+        room.flows()
+            .filter(|flow| flow.publication_id == Uuid::from_u128(publication))
+            .map(|flow| (flow.sender.as_u128(), flow.receiver.as_u128()))
+            .collect()
+    }
+
+    #[test]
+    fn service_serves_only_receivers_that_no_participant_path_reaches() {
+        // The service path is shorter and its identifier sorts first.
+        let both = transit_room(Some(ALL_KINDS), false, &[(1, 5), (5, 6), (6, 9), (1, 2), (2, 9)]);
+        let only = transit_room(Some(ALL_KINDS), false, &[(1, 5), (1, 2), (2, 9)]);
+        for publication in [10, 11] {
+            assert_eq!(hops(&both, publication), [(1, 5), (5, 6), (6, 9)].into());
+            assert_eq!(hops(&only, publication), [(1, 2), (2, 9)].into());
+        }
+    }
+
+    #[test]
+    fn service_carries_only_the_kinds_its_operator_offers() {
+        let pairs = [(1, 5), (1, 2), (2, 9)];
+        let screen_off = crate::host::TransitKinds { screen: false, ..ALL_KINDS };
+        let room = transit_room(Some(screen_off), false, &pairs);
+        assert_eq!(hops(&room, 11), [(1, 2), (2, 9)].into());
+        assert!(hops(&room, 10).is_empty());
+        // Without the master switch the Server offers no service at all.
+        let room = transit_room(None, false, &pairs);
+        assert!(hops(&room, 10).is_empty() && hops(&room, 11).is_empty());
+    }
+
+    #[test]
+    fn new_room_uses_the_offered_service_until_its_manager_declines() {
+        let pairs = [(1, 5), (1, 2), (2, 9)];
+        let room = transit_room(Some(ALL_KINDS), false, &pairs);
+        assert!(room.policy().allow_service_relay);
+        assert_eq!(hops(&room, 11), [(1, 2), (2, 9)].into());
+        let declined = transit_room(Some(ALL_KINDS), true, &pairs);
+        assert!(hops(&declined, 10).is_empty() && hops(&declined, 11).is_empty());
     }
 
     #[test]
