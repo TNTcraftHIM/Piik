@@ -459,6 +459,7 @@ impl PopupWindow {
     fn new(
         window: Rc<Window>,
         overlay_document: Option<u64>,
+        focused: bool,
         environment: webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
         events: EventLoopProxy<ServiceEvent>,
         pending: PendingPermissions,
@@ -472,7 +473,7 @@ impl PopupWindow {
         let document = Rc::new(std::cell::Cell::new(0u64));
         let loading_document = document.clone();
         let token = uuid::Uuid::new_v4();
-        let mut builder = WebViewBuilder::new();
+        let mut builder = WebViewBuilder::new().with_focused(focused);
         if overlay_document.is_some() {
             builder = builder.with_initialization_script_for_main_only(popup::overlay_script(token), true);
         }
@@ -530,7 +531,7 @@ impl PopupWindow {
         })
     }
 
-    fn set_overlay_mode(&self, mode: popup::Mode, controls: &WindowControls) {
+    fn set_overlay_mode(&self, mode: popup::Mode, controls: &WindowControls, opener: &MainWindow) {
         let pinned = matches!(mode, popup::Mode::Pinned);
         if self.window.set_ignore_cursor_events(pinned).is_err() {
             return;
@@ -555,6 +556,9 @@ impl PopupWindow {
         if matches!(mode, popup::Mode::Editing) {
             self.window.set_focus();
             let _ = self.content.focus();
+        } else if pinned && activity::foreground(&self.window) {
+            opener.window.set_focus();
+            let _ = opener.content.focus();
         }
     }
 
@@ -623,6 +627,7 @@ impl MainWindow {
         let origins = Rc::new(RefCell::new(WorkspaceOrigins::default()));
         let popup_origins = origins.clone();
         let opener_generation = document.clone();
+        let popup_opener = window.clone();
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
             .with_initialization_script(reveal::SCRIPT)
@@ -659,14 +664,15 @@ impl MainWindow {
             .with_new_window_req_handler(move |url, features| {
                 if !popup_origins.borrow().handles(&url, true) { return NewWindowResponse::Deny; }
                 let create = || -> Result<NewWindowResponse> {
+                    let focused = activity::foreground(&popup_opener);
                     let window = Rc::new(popup::builder(window_builder()?, features.size, features.position, &popup_controls)
-                        .with_decorations(false).with_undecorated_shadow(true).build(&popup_target)?);
+                        .with_focused(focused).with_decorations(false).with_undecorated_shadow(true).build(&popup_target)?);
                     let mut opener = windows_core::PWSTR::null();
                     unsafe { features.opener.webview.Source(&mut opener)?; }
                     let address = webview2_com::take_pwstr(opener);
                     let overlay_document = (url == "about:blank" && popup_origins.borrow().overlay_document(&address))
                         .then(|| opener_generation.get());
-                    let popup = PopupWindow::new(window, overlay_document, features.opener.environment, popup_events.clone(),
+                    let popup = PopupWindow::new(window, overlay_document, focused, features.opener.environment, popup_events.clone(),
                         popup_pending.clone(), popup_origins.clone(), &popup_controls)?;
                     let response = NewWindowResponse::Create { webview: popup.content.webview() };
                     popups.borrow_mut().push(popup);
@@ -1050,7 +1056,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         launcher.set_fragment(Some(&fragment.finish()));
                         let window = Rc::new(popup::builder(window_builder()?, None, None, &controls)
                             .with_decorations(false).with_undecorated_shadow(true).build(target)?);
-                        let popup = PopupWindow::new(window, None, main.content.environment(), page_events.clone(), pending.clone(), main.origins.clone(), &controls)?;
+                        let popup = PopupWindow::new(window, None, true, main.content.environment(), page_events.clone(), pending.clone(), main.origins.clone(), &controls)?;
                         popup.content.load_url(launcher.as_str())?;
                         bookmarks_window = Some(popup.window.id());
                         popups.borrow_mut().push(popup);
@@ -1110,7 +1116,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 if generation != main.document.get() || !main.origins.borrow().overlay_document(&source) { return; }
                 if child.overlay_document != Some(main.document.get()) || !main.content.url().ok().is_some_and(|url| main.origins.borrow().overlay_document(&url))
                     || child.content.url().ok().as_deref() != Some("about:blank") { return; }
-                child.set_overlay_mode(mode, &controls);
+                child.set_overlay_mode(mode, &controls, main);
             }
             Event::UserEvent(ServiceEvent::PopupPresentation(id, message)) => {
                 if let Some(size) = message.panel_size() {

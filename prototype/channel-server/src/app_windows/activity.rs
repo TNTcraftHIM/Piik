@@ -53,8 +53,12 @@ unsafe extern "system" fn activation(
     }
 }
 
+pub(super) fn foreground(window: &Window) -> bool {
+    unsafe { GetForegroundWindow() }.0 as isize == window.hwnd()
+}
+
 pub(super) fn sync(window: &Window, content: &WebView) {
-    let active = unsafe { GetForegroundWindow() }.0 as isize == window.hwnd();
+    let active = foreground(window);
     let _ = content.evaluate_script(&format!(
         "if (window.piikNativeActive !== {active}) {{ window.piikNativeActive = {active}; window.dispatchEvent(new Event('piik-window-activity')); }}"
     ));
