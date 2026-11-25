@@ -511,7 +511,7 @@ impl Authority {
             } => {
                 match self
                     .channel
-                    .stop_host(room_id, session_id, connection, *binding_id)
+                    .stop_host(room_id, session_id, *binding_id)
                 {
                     Ok(replies) => {
                         for (room, reply) in replies {

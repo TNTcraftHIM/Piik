@@ -41,7 +41,7 @@ fn discovery_skips_non_room_entries_and_preserves_the_root_error() -> Result<()>
     drop(HostedRoom::create(&path, policy)?);
     let files = stored_rooms(folder.path())?;
     assert_eq!(files.len(), 1);
-    assert_eq!(files[0].id, "healthy");
+    assert_eq!(files["healthy"].as_ref().unwrap().path, path);
     std::fs::remove_file(&path)?;
     assert!(stored_room_policy(&path)?.is_none());
     assert!(stored_rooms(&path).is_err());
@@ -456,7 +456,8 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
     };
     let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
     let directory = tempfile::tempdir().unwrap();
-    let owner = Uuid::new_v4();
+    let native = session.live.as_ref().unwrap().session;
+    let owner = self_profile(&state, native).id;
     let creator = Uuid::new_v4();
     let binding = Uuid::new_v4();
     let (_send, commands) = mpsc::channel(1);
@@ -576,12 +577,37 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
             assert_eq!(response.await.unwrap().unwrap().name, "Restored");
         }
     }
+    let bound = session.live.as_ref().unwrap().room.rooms["guest"].binding().unwrap();
+    let directory = &session.hosting.as_ref().unwrap().directory;
+    drop(HostedRoom::create(&directory.join("another.sqlite"), policy).unwrap());
+    state.channel.hosting_mode = piik_channel_core::wire::HostingMode::Hosted;
+    state.channel.managed_room_ids.push("guest".into());
+    assert!(state.channel.rooms.is_empty());
+    let (admission, mut requests) = mpsc::channel::<ServiceAdmission>(1);
+    session.service_admission = Some(admission);
+    tokio::spawn(async move {
+        let (_, response) = requests.recv().await.unwrap();
+        response.send(()).unwrap();
+    });
+    session.event(Event::Welcome {
+        connection_id: Uuid::new_v4(),
+        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        self_profile: self_profile(&state, native),
+        credential: "fixture".into(),
+        session_id: native,
+        state,
+        invitation_origin: None,
+    }, &mut socket).await.unwrap();
+    let stop = Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+    assert!(matches!(stop.command, Command::HostStop { room_id, binding_id } if room_id == "guest" && binding_id == bound));
+    assert!(!session.live.as_ref().unwrap().room.rooms.contains_key("guest"));
+    session.release().await.unwrap();
 }
 
 #[tokio::test]
 async fn committed_restore_registration_completes_each_coalesced_reply_with_its_own_result() {
     use piik_channel_core::{backup::RoomMetadata, wire::Request, RoomBackup};
-    for failure in ["rejected", "missing-binding", "disconnected", "success"] {
+    for failure in ["rejected", "missing-binding", "disconnected", "success", "ambiguous-at-install", "recovered-original"] {
         let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
         let native = session.live.as_ref().unwrap().session;
         let user = state
@@ -635,6 +661,14 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         session.state(state.clone(), &mut socket).await.unwrap();
         let staging = tempfile::tempdir().unwrap();
         let stage_path = staging.path().to_owned();
+        let offline = matches!(failure, "ambiguous-at-install" | "recovered-original");
+        if offline {
+            session.live.as_mut().unwrap().room.rooms.remove("target");
+        }
+        let original = std::fs::read(&path).unwrap();
+        if failure == "recovered-original" {
+            std::fs::write(&path, b"unreadable room checkpoint").unwrap();
+        }
         let mut replacement = policy.clone();
         replacement.name = "Restored".into();
         let room = RoomBackup::stage(
@@ -668,10 +702,46 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert!(matches!(admission.command, Command::AdmitRoom { .. }));
         assert!(stage_path.exists());
+        let duplicate = directory.path().join("returned.sqlite");
+        if failure == "ambiguous-at-install" {
+            std::fs::write(&duplicate, &original).unwrap();
+        }
         session.event(Event::Ack { request_id: admission.request_id.unwrap() }, &mut socket).await.unwrap();
+        if failure == "ambiguous-at-install" {
+            assert_eq!(restored_reply.await.unwrap().err().unwrap(), "room_unavailable");
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+            assert_eq!(std::fs::read(&duplicate).unwrap(), original);
+            assert!(!stage_path.exists());
+            session.release().await.unwrap();
+            continue;
+        }
         let registration =
             Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert!(matches!(registration.command, Command::HostRegister { .. }));
+        if failure == "recovered-original" {
+            let installed = session.files.iter().find(|file| file.path != path).unwrap().path.clone();
+            session.event(Event::HostBound { room_id: "target".into(), binding_id: binding }, &mut socket).await.unwrap();
+            session.event(Event::Ack { request_id: registration.request_id.unwrap() }, &mut socket).await.unwrap();
+            assert_eq!(restored_reply.await.unwrap().unwrap().name, "Restored");
+            let imported = std::fs::read(&installed).unwrap();
+            std::fs::write(&path, &original).unwrap();
+            session.event(Event::Welcome {
+                connection_id: Uuid::new_v4(),
+                protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                self_profile: self_profile(&state, native),
+                credential: "fixture".into(),
+                session_id: native,
+                state,
+                invitation_origin: None,
+            }, &mut socket).await.unwrap();
+            let stop = Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+            assert!(matches!(stop.command, Command::HostStop { room_id, binding_id } if room_id == "target" && binding_id == binding));
+            assert!(!session.live.as_ref().unwrap().room.rooms.contains_key("target"));
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+            assert_eq!(std::fs::read(&installed).unwrap(), imported);
+            session.release().await.unwrap();
+            continue;
+        }
         assert!(
             !stage_path.exists(),
             "the committed restore released its staging data"

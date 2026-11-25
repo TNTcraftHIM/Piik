@@ -1226,6 +1226,7 @@ impl Session {
                     .find(|session| session.id == session_id)
                     .ok_or_else(|| anyhow!("welcome omitted current session"))?
                     .user_id;
+                let mut ambiguous = BTreeSet::new();
                 if let Some(hosting) = &self.hosting {
                     if hosting.identity != (state.channel.id, user) {
                         bail!("owner_mismatch");
@@ -1233,10 +1234,12 @@ impl Session {
                     // No local room is opened until the actual domain admission agrees.
                     std::fs::create_dir_all(&hosting.directory)?;
                     self.forwarding_limit = hosting.forwarding_limit()?;
-                    for file in discover_rooms(&hosting.directory, |path, error| {
-                        eprintln!("Native room data unavailable: {}: {error}", path.display());
-                        Ok(())
-                    })? {
+                    for (id, file) in available_room_files(&hosting.directory)? {
+                        let Ok(file) = file else {
+                            eprintln!("Native room {id} unavailable: duplicate room id");
+                            ambiguous.insert(id);
+                            continue;
+                        };
                         if !self.files.iter().any(|known| known.path == file.path) {
                             self.files.push(file);
                         }
@@ -1263,6 +1266,9 @@ impl Session {
                                     }
                                 };
                                 file.id = policy.id;
+                                if ambiguous.contains(&file.id) {
+                                    continue;
+                                }
                                 if !file.bootstrap
                                     && !state.channel.rooms.iter().any(|room| room.id == file.id)
                                     && !(self.service_admission.is_some()
@@ -1282,7 +1288,7 @@ impl Session {
                             }
                             Err(error)
                                 if error.kind() == std::io::ErrorKind::NotFound
-                                    && !file.name.is_empty() =>
+                                    && !file.name.is_empty() && !ambiguous.contains(&file.id) =>
                             {
                                 let policy = match RoomState::new(
                                     file.id.clone(),
@@ -1331,13 +1337,6 @@ impl Session {
                         }
                         self.files.push(file);
                     }
-                    // Only reopened rooms will receive a registration reply on this session.
-                    for (_, opening) in self.opening.extract_if(.., |id, opening| {
-                        matches!(opening.work, OpeningWork::Register { .. })
-                            && !rooms.contains_key(id)
-                    }) {
-                        opening.fail("room_unavailable");
-                    }
                     let ice = state
                         .ice_servers
                         .iter()
@@ -1370,11 +1369,24 @@ impl Session {
                         pairs: BTreeSet::new(),
                     });
                 }
+                let mut retired = BTreeSet::new();
                 if let Some(live) = &mut self.live {
+                    for id in ambiguous {
+                        if let Some(binding) = live.room.rooms.remove(&id).and_then(|room| room.binding()) {
+                            retired.insert((id, binding));
+                        }
+                    }
+                    // Retained writers can lose their file identity during recovery.
+                    for (_, opening) in self.opening.extract_if(.., |id, opening| {
+                        matches!(opening.work, OpeningWork::Register { .. })
+                            && !live.room.rooms.contains_key(id)
+                    }) {
+                        opening.fail("room_unavailable");
+                    }
                     live.forwarding_budget.reconnected();
                 }
                 self.recovery = None;
-                self.state(state, socket).await?;
+                self.apply_state(state, socket, retired).await?;
                 if let Some(admission) = &self.service_admission {
                     let (ack, registered) = oneshot::channel();
                     admission
@@ -2314,22 +2326,13 @@ impl Session {
             // A committed SQLite deletion leaves an empty store. Verify the
             // directory before acknowledging a retried deletion as complete.
             let mut unreadable = None;
-            for entry in std::fs::read_dir(&hosting.directory)? {
-                let path = entry?.path();
-                if path.extension().and_then(|ext| ext.to_str()) != Some("sqlite") {
-                    continue;
-                }
-                match stored_room_policy(&path) {
-                    Ok(Some(policy)) if policy.id == id => {
-                        HostedRoom::open(&path, id, creator)?.delete_data()?;
-                        unreadable = None;
-                        break;
-                    }
-                    Err(error) => unreadable = Some(error),
-                    _ => {}
-                }
-            }
-            if let Some(error) = unreadable {
+            let mut files = discover_rooms(&hosting.directory, |_, error| {
+                unreadable = Some(error);
+                Ok(())
+            })?;
+            if let Some(file) = files.remove(id).transpose().map_err(anyhow::Error::msg)? {
+                HostedRoom::open(&file.path, id, creator)?.delete_data()?;
+            } else if let Some(error) = unreadable {
                 return Err(error);
             }
         }
@@ -2359,8 +2362,7 @@ impl Session {
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
             if copied
                 && (live.room.rooms.contains_key(&id)
-                    || self.opening.contains_key(&id)
-                    || self.files.iter().any(|file| file.id == id))
+                    || self.opening.contains_key(&id))
             {
                 bail!("room_already_exists");
             }
@@ -2368,7 +2370,13 @@ impl Session {
                 if Uuid::parse_str(&id)?.to_string() != id {
                     bail!("invalid_room_id");
                 }
-                let path = hosting.directory.join(format!("{id}.sqlite"));
+                let existing = available_room_files(&hosting.directory)?.remove(&id)
+                    .transpose().map_err(anyhow::Error::msg)?;
+                if copied && existing.is_some() {
+                    bail!("room_already_exists");
+                }
+                let path = existing.map(|file| file.path)
+                    .unwrap_or_else(|| hosting.directory.join(format!("{id}.sqlite")));
                 let host = if let Some(snapshot) = copy {
                     if path.try_exists()? {
                         bail!("room_already_exists");
@@ -2512,10 +2520,10 @@ impl Session {
         if request.result.is_closed() {
             return Ok(());
         }
+        let id = request.snapshot.room.metadata().policy.id.clone();
         if request.existing.is_some() {
             return self.install_room_backup(request, socket).await;
         }
-        let id = request.snapshot.room.metadata().policy.id.clone();
         let admission = (|| -> Result<()> {
             let hosting = self
                 .hosting
@@ -2611,9 +2619,8 @@ impl Session {
                 host.replace(&request.snapshot.room, hosting.identity)?;
                 Some(previous)
             } else {
-                let existing = stored_rooms(&hosting.directory)?
-                    .into_iter()
-                    .find(|file| file.id == id);
+                let existing = stored_rooms(&hosting.directory)?.remove(&id)
+                    .transpose().map_err(anyhow::Error::msg)?;
                 let (path, host) = if let Some(file) = existing {
                     let mut host = HostedRoom::open(&file.path, &id, hosting.identity.1)?;
                     host.replace(&request.snapshot.room, hosting.identity)?;
@@ -2715,7 +2722,16 @@ impl Session {
         Ok(())
     }
 
-    async fn state(&mut self, mut state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
+    async fn state(&mut self, state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
+        self.apply_state(state, socket, BTreeSet::new()).await
+    }
+
+    async fn apply_state(
+        &mut self,
+        mut state: Snapshot,
+        socket: &mut Writer<'_>,
+        retired: BTreeSet<(String, Uuid)>,
+    ) -> Result<()> {
         // Once the directory confirms a seed, reconnects may only reopen it.
         for file in self.files.iter_mut().filter(|file| file.bootstrap) {
             if state.channel.managed_room_ids.contains(&file.id)
@@ -2733,7 +2749,7 @@ impl Session {
                         && state.channel.managed_room_ids.contains(id))
             });
         }
-        self.retire_missing_hosts(&state, socket).await?;
+        self.retire_missing_hosts(&state, socket, retired).await?;
         let retired: Vec<_> = self
             .pending_captures
             .iter()
@@ -2827,11 +2843,12 @@ impl Session {
         &mut self,
         state: &Snapshot,
         socket: &mut Writer<'_>,
+        mut retired: BTreeSet<(String, Uuid)>,
     ) -> Result<()> {
         let Some(live) = self.live.as_ref() else {
             return Ok(());
         };
-        let missing: Vec<_> = state
+        retired.extend(state
             .channel
             .rooms
             .iter()
@@ -2843,9 +2860,8 @@ impl Session {
                             && !live.room.rooms.contains_key(&room.id)
                     })
                     .map(|delivery| (room.id.clone(), delivery.binding_id))
-            })
-            .collect();
-        for (room_id, binding_id) in missing {
+            }));
+        for (room_id, binding_id) in retired {
             write(
                 socket,
                 &Command::HostStop {
@@ -2862,7 +2878,16 @@ impl Session {
 
 /// Physical names are local storage, not room identities. Imported named rooms
 /// use random filenames; the durable policy remains their one identity owner.
-fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
+type DiscoveredRooms = BTreeMap<String, Result<RoomFile, &'static str>>;
+
+fn available_room_files(directory: &std::path::Path) -> Result<DiscoveredRooms> {
+    discover_rooms(directory, |path, error| {
+        eprintln!("Native room data unavailable: {}: {error}", path.display());
+        Ok(())
+    })
+}
+
+fn stored_rooms(directory: &std::path::Path) -> Result<DiscoveredRooms> {
     discover_rooms(directory, |path, error| {
         if room_data_unavailable(path, &error) { Ok(()) } else { Err(error) }
     })
@@ -2870,13 +2895,13 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
 
 fn discover_rooms(
     directory: &std::path::Path,
-    on_file_error: impl Fn(&std::path::Path, anyhow::Error) -> Result<()>,
-) -> Result<Vec<RoomFile>> {
+    mut on_file_error: impl FnMut(&std::path::Path, anyhow::Error) -> Result<()>,
+) -> Result<DiscoveredRooms> {
     let mut paths = std::fs::read_dir(directory)?
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     paths.sort();
-    let mut files = vec![];
+    let mut files = BTreeMap::new();
     for path in paths {
         if path.extension().and_then(|value| value.to_str()) != Some("sqlite") {
             if let Err(error) = crate::hosted_room::reclaim_room_install(&path) {
@@ -2892,12 +2917,14 @@ fn discover_rooms(
                 continue;
             }
         };
-        files.push(RoomFile {
-            path,
-            id: policy.id,
-            name: String::new(),
-            bootstrap: false,
-        });
+        files.entry(policy.id.clone())
+            .and_modify(|file| *file = Err("room_unavailable"))
+            .or_insert_with(|| Ok(RoomFile {
+                path,
+                id: policy.id,
+                name: String::new(),
+                bootstrap: false,
+            }));
     }
     Ok(files)
 }

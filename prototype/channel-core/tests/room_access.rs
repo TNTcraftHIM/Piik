@@ -1596,3 +1596,91 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
             Event::RoomReply { request_id:Some(id),result:RoomResult::Done,.. } if id=="entry")));
     }
 }
+
+#[test]
+fn resumed_host_can_retire_its_current_binding_before_registering_again() {
+    let mut network = RoomNetwork::new();
+    let old = Uuid::new_v4();
+    let (session, credential, _) = admit(
+        &mut network,
+        old,
+        json!({"type":"join","name":"Host","ownerKey":"owner"}),
+    );
+    let other = Uuid::new_v4();
+    admit(
+        &mut network,
+        other,
+        json!({"type":"join","name":"Second session","credential":credential}),
+    );
+    let id = room(&mut network, old, "public", false);
+    let binding = network
+        .state(old)
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == id)
+        .unwrap()
+        .delivery
+        .as_ref()
+        .unwrap()
+        .binding_id;
+
+    let query = piik_channel_core::wire::Request::parse(
+        &json!({
+            "type":"delete_room", "deleteData":true, "roomId":id, "requestId":"prior"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let input = network
+        .authority
+        .handle(old, query, 100)
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let late_output = network.host_turn(&id, input);
+    network.authority.disconnect(old, 100);
+    let resumed = Uuid::new_v4();
+    network.host_connection(&id, resumed);
+    let (current, _, _) = admit(
+        &mut network,
+        resumed,
+        json!({
+            "type":"join","name":"Host","credential":credential,"sessionId":session
+        }),
+    );
+    assert_eq!(current, session);
+
+    let early_output = network.command(
+        resumed,
+        json!({"type":"host_output","roomId":id,"output":late_output}),
+    );
+    assert!(early_output.events.iter().any(|(to, event)| *to == resumed
+        && matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
+
+    let stop = |binding: Uuid| json!({"type":"host_stop","roomId":id,"bindingId":binding,"requestId":"stop"});
+    for (connection, candidate, expected) in [
+        (old, binding, "join_required"),
+        (other, binding, "stale_room_host"),
+        (resumed, Uuid::new_v4(), "stale_room_host"),
+    ] {
+        let rejected = network.command(connection, stop(candidate));
+        assert!(rejected.events.iter().any(|(to, event)| *to == connection
+            && matches!(event, Event::Error { code, .. } if code == expected)));
+    }
+    let stopped = network.command(resumed, stop(binding));
+    assert!(stopped.events.iter().any(|(to, event)| *to == resumed
+        && matches!(event, Event::Ack { request_id } if request_id == "stop")));
+    let room = network
+        .state(resumed)
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == id)
+        .unwrap();
+    assert!(room.delivery.is_none() && !room.available);
+}

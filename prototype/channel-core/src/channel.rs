@@ -1352,14 +1352,13 @@ impl Channel {
         &mut self,
         id: &str,
         session: Uuid,
-        connection: Uuid,
         binding: Uuid,
     ) -> Result<Vec<RetiredRoomReply>, &'static str> {
         let room = self.remote.get_mut(id).ok_or("room_unavailable")?;
         if !room
             .binding
             .as_ref()
-            .is_some_and(|b| b.id == binding && b.session == session && b.connection == connection)
+            .is_some_and(|b| b.id == binding && b.session == session)
         {
             return Err("stale_room_host");
         }

@@ -697,9 +697,20 @@ Domain hosting metadata version 2 contains domain authority version 6.
 Portable site archives use version 3. Room storage and backups have separate
 versions. The [storage reference](../../docs/research/channel-storage-and-identity.md#backups)
 records the supported SQLite, IndexedDB, room backup and room copy formats.
-An unsupported private store or archive is preserved. Open it with the build
-that created it, or choose a fresh directory for the new build using
-`PIIK_CHANNEL_DATA_DIR` for Server or `PIIK_CHANNEL_APP_DATA_DIR` for App.
+**One hosted room is offline.** If the Server cannot read a room database, or
+two files claim the same room, that room may be unavailable while other rooms
+stay online. Keep the original files and ask the site operator to check the
+Server log. If you have a room copy, you can import it as a new room from
+**Create room**.
+
+**Server stops with `unsupported_room_storage_layout`.** An older room database
+sits directly under `rooms/`. Keep the original data directory and use the
+build that created it to export supported room backups. To start an empty site,
+use a separate directory via `PIIK_CHANNEL_DATA_DIR`.
+
+For other unsupported private stores or archives, keep the original and open
+it with the build that created it. To start an empty App site, choose a
+separate directory with `PIIK_CHANNEL_APP_DATA_DIR`.
 
 The current site operator's personal credential authorizes `GET` and `PUT` on
 `/prototype/channel/backup`. The App or Server service validates the complete
@@ -711,8 +722,8 @@ neither room histories nor participant retained files belong in a domain archive
 Room settings → Records separates personal text export, a full room backup and
 a room copy. The room creator can use both archive actions when Server hosts the writer.
 In either hosting mode, load a room copy from Create room and choose the new
-room's access settings. For a Server-hosted room, restore a full backup from
-the original room's Records panel. The
+room's access settings. For an online Server-hosted room, restore a full
+backup from the original room's Records panel. The
 [data model](../../docs/research/channel-storage-and-identity.md#backups) owns
 these scopes.
 
@@ -734,8 +745,8 @@ owns those resources and operates one or more rooms through that adapter.
 The Server embeds this participant; its separate executable remains an explicit
 development host. Explicit App linkage starts a separate Native hosting endpoint
 for the same user. Normal Server shutdown first ends Native
-hosting and releases its room locks, then closes the HTTP service. A Native
-hosting failure also stops that service.
+hosting and releases its room locks, then closes the HTTP service. A failure of the shared Native
+hosting service also stops HTTP.
 A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or room data.
 
@@ -762,6 +773,9 @@ sent files and verified downloads may remain available after reopening through t
 participant's bounded retained store, scoped to its domain and user identity;
 the [room-data model](../../docs/research/channel-storage-and-identity.md#retained-files-and-images)
 owns retention and reclamation.
+To free space used by one room's attachments, open **Room settings → Records
+→ Clear local room cache**. Save any file whose only readable copy is on this
+device first. The action keeps chat history and files already saved as downloads.
 Current access controls offers and downloads; already downloaded bytes cannot be revoked.
 
 Replicated history, federation and authority handoff remain outside this slice.

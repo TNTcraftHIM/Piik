@@ -2250,6 +2250,8 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
         "invalid_json",
         "invalid_policy",
         "missing_history",
+        "duplicate_id",
+        "late_duplicate",
     ] {
         let folder = tempfile::tempdir().unwrap();
         let domain = Domain::open(
@@ -2310,7 +2312,12 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
         let damaged = rooms.join("damaged.sqlite");
         let original = std::fs::read(&damaged).unwrap();
         let mut room_lock = None;
-        if damage == "locked" {
+        let duplicate = rooms.join("another-name.sqlite");
+        if damage == "late_duplicate" {
+            std::fs::write(&damaged, b"unreadable checkpoint").unwrap();
+        } else if damage == "duplicate_id" {
+            std::fs::copy(&damaged, &duplicate).unwrap();
+        } else if damage == "locked" {
             let lock = std::fs::File::create(damaged.with_added_extension("lock")).unwrap();
             lock.try_lock().unwrap();
             room_lock = Some(lock);
@@ -2338,10 +2345,13 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
                 _ => unreachable!(),
             }
         }
-        let rejected_bytes = std::fs::read(&damaged).unwrap();
+        let expected_bytes = if damage == "late_duplicate" { original.clone() } else { std::fs::read(&damaged).unwrap() };
         for repaired in [false, true] {
             if repaired {
-                if damage == "locked" {
+                if matches!(damage, "duplicate_id" | "late_duplicate") {
+                    assert_eq!(std::fs::read(&duplicate).unwrap(), original);
+                    std::fs::remove_file(&duplicate).unwrap();
+                } else if damage == "locked" {
                     drop(room_lock.take());
                 } else {
                     std::fs::write(&damaged, &original).unwrap();
@@ -2392,6 +2402,20 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
                     .any(|room| room.id == "healthy" && room.reading)
             })
             .await;
+            if matches!(damage, "duplicate_id" | "late_duplicate") && !repaired {
+                if damage == "late_duplicate" {
+                    std::fs::write(&damaged, &original).unwrap();
+                    std::fs::write(&duplicate, &original).unwrap();
+                }
+                let commands = hub.lock().unwrap().room_commands.clone().unwrap();
+                let (result, reply) = tokio::sync::oneshot::channel();
+                commands.send(piik_channel_native::session::HostCommand::DeleteRetired {
+                    id: "damaged".into(),
+                    creator: identity.1,
+                    result,
+                }).await.unwrap();
+                assert!(!reply.await.unwrap(), "ambiguous files must both survive");
+            }
             let expected = if repaired { 3 } else { 2 };
             let sent = room_conversation(
                 &mut socket,
@@ -2438,7 +2462,7 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
             if !repaired {
                 assert_eq!(
                     std::fs::read(&damaged).unwrap(),
-                    rejected_bytes,
+                    expected_bytes,
                     "{damage}: failed data stays untouched"
                 );
             }
@@ -2447,7 +2471,7 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
 }
 
 #[tokio::test]
-async fn unsupported_room_storage_layout_stops_the_http_service() {
+async fn unscoped_sqlite_at_rooms_root_prevents_http_startup() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::create_dir(folder.path().join("rooms")).unwrap();
     let unscoped = folder.path().join("rooms/legacy.sqlite");
@@ -2972,6 +2996,10 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         connect_with_credential(address, "owner", "Operator").await;
     let (mut creator, creator_session, _, creator_credential) =
         connect_with_credential(address, "invite", "Creator").await;
+    let identity = hub.lock().unwrap().authority.identity();
+    let path = crate::room_directory(folder.path(), identity).join("unrelated.sqlite");
+    let locked = rusqlite::Connection::open(path).unwrap();
+    locked.execute_batch("BEGIN EXCLUSIVE; CREATE TABLE hold(value)").unwrap();
     send_request(
         &mut operator,
         json!({"type":"create_room","room":{
