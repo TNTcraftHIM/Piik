@@ -79,6 +79,7 @@
   background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px;
 }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
+.c3-monitor-wait > p { margin: 0; text-align: center; }
 .c3-monitor-wait-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed] { padding: 8px; gap: 4px; text-align: center; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed] > svg { display: none; }

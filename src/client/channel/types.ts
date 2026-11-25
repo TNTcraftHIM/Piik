@@ -224,7 +224,7 @@ export interface ChannelActions {
   inputDecide(publicationId: string, requestId: string, allow: boolean): Promise<void>;
   inputSimultaneous(publicationId: string, enabled: boolean): Promise<void>;
   inputShortcut(publicationId: string, key?: number): Promise<RemoteStopShortcut>;
-  joinVoice(roomId: string, listenOnly?: boolean): Promise<void>;
+  joinVoice(roomId: string, listenOnly?: boolean, reportError?: boolean): Promise<void>;
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
   canUnmute(roomId: string): boolean;

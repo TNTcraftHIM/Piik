@@ -32,7 +32,7 @@ export interface VoiceSession {
   snapshot(): ChannelSnapshot | undefined;
   /** Aborts when the session releases its media. */
   lifetime(): AbortSignal;
-  action<T>(key: string, work: () => Promise<T>): Promise<T>;
+  action<T>(key: string, work: () => Promise<T>, reportError?: boolean): Promise<T>;
   request(command: ChannelCommand): Promise<void>;
   send(command: ChannelCommand): void;
   write(command: ChannelCommand): void;
@@ -95,7 +95,7 @@ export class VoiceParticipation {
     return roomId === undefined ? [...pending].some(key => key === inputKey || key.startsWith("voice:")) : pending.has(roomKey(roomId));
   };
 
-  join = (roomId: string, listenOnly = false, providedStream?: MediaStream): Promise<void> => this.session.action(roomKey(roomId), async () => {
+  join = (roomId: string, listenOnly = false, reportError = true, providedStream?: MediaStream): Promise<void> => this.session.action(roomKey(roomId), async () => {
     if (this.rooms.has(roomId)) return;
     const intent: VoiceIntent = { publicationId: null, muted: listenOnly, deafened: false };
     this.rooms.set(roomId, intent);
@@ -126,7 +126,7 @@ export class VoiceParticipation {
       await this.session.request({ type: "voice", roomId, joined: false, muted: true, deafened: false }).catch(() => {});
       throw error;
     }
-  });
+  }, reportError);
 
   leave = (roomId: string): Promise<void> => {
     const id = this.rooms.get(roomId)?.publicationId;

@@ -204,12 +204,12 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
 }
 
 /** One dialog instance manages the requested room independently of room navigation. */
-export function ChannelRoomSettingsDialog({ channel, room, onClose }: {
-  channel: ChannelController; room: ChannelRoom; onClose(): void;
+export function ChannelRoomSettingsDialog({ channel, room, section, onClose }: {
+  channel: ChannelController; room: ChannelRoom; section?: RoomSettingsTask; onClose(): void;
 }) {
-  return <RoomSettings key={room.id} channel={channel} room={room} onClose={onClose} />;
+  return <RoomSettings key={room.id} channel={channel} room={room} section={section} onClose={onClose} />;
 }
-type RoomSettingsTask = "room" | "relay" | "data";
+export type RoomSettingsTask = "room" | "relay" | "data";
 
 function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy }: {
   channel: ChannelController; roomId: string; includeFiles: boolean; disabled: boolean; busy: boolean;
@@ -261,8 +261,8 @@ function BrowserRoomPersistence() {
     : persisted ? "room.settings.browserStoragePersistent" : "room.settings.browserStorageBestEffort")}</p>;
 }
 
-function RoomSettings({ channel, room, onClose }: {
-  channel: ChannelController; room: ChannelRoom; onClose(): void;
+function RoomSettings({ channel, room, section, onClose }: {
+  channel: ChannelController; room: ChannelRoom; section?: RoomSettingsTask; onClose(): void;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -270,7 +270,7 @@ function RoomSettings({ channel, room, onClose }: {
   const cacheAction = useSettingsAction();
   const historyAction = useSettingsAction();
   const [draft, setDraft] = useState<Partial<RoomDraft>>({});
-  const [task, setTask] = useState<RoomSettingsTask>(room.canManage ? "room" : "relay");
+  const [task, setTask] = useState<RoomSettingsTask>(section ?? (room.canManage ? "room" : "relay"));
   const [backupAvailable, setBackupAvailable] = useState(false);
   const [includeFiles, setIncludeFiles] = useState(true);
   const [fileLimits, setFileLimits] = useState<AttachmentLimits | null>(null);

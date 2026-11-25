@@ -2030,6 +2030,19 @@ test("voice microphone permission denial keeps listen-only available and reports
   } finally { session.close(); }
 });
 
+test("a voice join owned by its control returns the failure without the page banner", async () => {
+  const { session, socket } = await setup(3, false);
+  microphoneMixer([]);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new DOMException("Microphone declined", "NotAllowedError")) } });
+  try {
+    const denied = expect(session.joinVoice("first", false, false)).rejects.toThrow("voice_microphone_permission_denied");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", joined: false }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await denied;
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("recovery mute stops only this room's retained voice immediately", async () => {
   vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
   const { session, socket } = await setup(3, false);
@@ -10339,7 +10352,7 @@ async function startBackupActivities({ session, socket, state }: Awaited<ReturnT
   for (const roomId of rooms) {
     const screen = remoteTrack("video"), voice = remoteTrack("audio");
     const screenId = await publish(session.publish("screen", roomId, new RoomMediaStream([screen]) as unknown as MediaStream));
-    const joining = session.joinVoice(roomId, false, new RoomMediaStream([voice]) as unknown as MediaStream);
+    const joining = session.joinVoice(roomId, false, true, new RoomMediaStream([voice]) as unknown as MediaStream);
     const join = await next("voice");
     state.voice.push({ roomId, sessionId: "endpoint", muted: false, deafened: false });
     socket.receive({ type: "state", state });

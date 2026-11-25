@@ -95,6 +95,8 @@ export interface ScreenStageSource extends StagePictureSource {
   audience: readonly ScreenAudiencePerson[];
   reactions?: MessageReactions;
   deliveryFailed?: boolean;
+  /** Present when site forwarding is available, off for this room, and this person may turn it on. */
+  onForwardingSettings?: () => void;
   playbackError?: ScreenPlaybackError;
   roomAdmitted?: boolean;
   deliveryScope?: string;
@@ -343,6 +345,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           const title = stageTitle(source, t);
           const playbackFailed = !waiting && source.playbackError !== undefined;
           const failed = !waiting && !source.paused && (playbackFailed || source.deliveryFailed);
+          const forwardingOff = !waiting && !source.paused && !source.owned && !source.localSource && !playbackFailed && !!source.deliveryFailed && !!source.onForwardingSettings;
           const diagnosis = !waiting && diagnoseChannelFact({ area: "screen", paused: source.paused,
             deliveryFailed: source.deliveryFailed, playbackError: source.playbackError });
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
@@ -365,11 +368,14 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                 {source.paused || failed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
                 <span role="status">{t(source.paused ? "host.pauseNotice" : playbackFailed && diagnosis ? diagnosis.message
                   : source.deliveryFailed ? "screen.deliveryRetry" : source.awaitingRoute ? "screen.waitingRoute" : "screen.connectingPicture")}</span>
+                {forwardingOff && <p>{t("screen.forwardingOff")}</p>}
                 {!source.paused && !source.owned && !source.localSource && (failed || !source.awaitingRoute) &&
                   <div className="c3-monitor-wait-actions">
                     {onRetryPicture && <Btn icon="refresh" size="compact" quiet
                       title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
                       onClick={() => onRetryPicture(source.id)} />}
+                    {forwardingOff && <Btn icon="sliders" size="compact" quiet
+                      title="room.settings.title" cap="room.settings.title" onClick={source.onForwardingSettings} />}
                     {diagnosis && canSubscribe && !source.pending && !source.hidden && <PictureDeliveryHelp
                       key={source.deliveryScope} diagnosis={diagnosis} admitted={source.roomAdmitted} playbackFailed={playbackFailed}
                       onRetry={onRetryPicture ? () => onRetryPicture(source.id) : undefined} />}

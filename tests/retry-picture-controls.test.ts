@@ -24,3 +24,18 @@ test("picture retry is immediately available for waiting remote screens",()=>{
     expect(markup).not.toContain('aria-label="Picture help"');
   }
 });
+
+test("a failed picture offers room settings only while this person can turn on declined site forwarding",()=>{
+  setCopy({lang:"en"});
+  const source={kind:"screen" as const,audience:[],id:"screen",userId:"friend",name:"Friend",roomName:"Room",source:{kind:"screen" as const,name:null},title:null,owned:false,localSource:false,subscribed:true,paused:false,deliveryFailed:true,onForwardingSettings:vi.fn()};
+  const props:ChannelStageProps={theaterMode:[false,vi.fn()],sources:[source],focusedId:"screen",canSubscribe:true,onFocus:vi.fn(),onWatch:vi.fn(),onUnwatch:vi.fn(),onRetryPicture:vi.fn(),onPause:vi.fn(),onStop:vi.fn(),onInputPolicy:vi.fn(),onInputDecide:vi.fn(),onInputSimultaneous:vi.fn(),onInputShortcut:vi.fn()};
+  const markup=renderToStaticMarkup(createElement(ChannelStage,props));
+  expect(markup).toContain("Picture delivery failed. Retrying.");
+  expect(markup).toContain("Site forwarding is off for this room.");
+  expect(markup).toContain('aria-label="Room settings"');
+  for(const state of[{onForwardingSettings:undefined},{deliveryFailed:false},{paused:true},{playbackError:3 as const}]){
+    const other=renderToStaticMarkup(createElement(ChannelStage,{...props,sources:[{...source,...state} as typeof source]}));
+    expect(other).not.toContain("Site forwarding is off");
+    expect(other).not.toContain('aria-label="Room settings"');
+  }
+});

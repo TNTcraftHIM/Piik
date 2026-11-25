@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { voicePlaybackPublications } from "../src/client/channel/use-voice-playback";
+import { roomVoiceStatus, voicePlaybackPublications } from "../src/client/channel/use-voice-playback";
 import { listeningVoicePublications } from "../src/client/channel/presentation";
 import type { ChannelPublication, ChannelSnapshot } from "../src/client/channel/protocol";
 
@@ -67,4 +67,20 @@ test("selection requires the current live audio track rather than a retained or 
   expect(ids()).toEqual([]);
   state.publications[0].paused = false;
   expect(ids()).toEqual(["voice-a"]);
+});
+
+test("the dock claims connected voice only from played audio, and connecting only while someone speaks", () => {
+  const { state, streams, tracks } = fixture();
+  const status = (roomId: string) => roomVoiceStatus(state, "listener", roomId, voicePlaybackPublications(state, "listener", streams));
+  // The speaker's one microphone plays through room a and is heard in room b as well.
+  expect([status("a"), status("b")]).toEqual(["connected", "connected"]);
+  Object.defineProperty(tracks.get("voice-a"), "muted", { configurable: true, value: true });
+  Object.defineProperty(tracks.get("voice-b"), "muted", { configurable: true, value: true });
+  expect([status("a"), status("b")]).toEqual(["joining", "joining"]);
+  state.voice.find(voice => voice.sessionId === "listener" && voice.roomId === "a")!.deafened = true;
+  state.voice.find(voice => voice.sessionId === "speaker" && voice.roomId === "b")!.muted = true;
+  // Paused listening and a room where nobody speaks show membership only.
+  expect([status("a"), status("b")]).toEqual(["joined", "joined"]);
+  state.voice = state.voice.filter(voice => voice.sessionId === "listener");
+  expect(status("b")).toBe("joined");
 });
