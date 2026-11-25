@@ -2575,7 +2575,7 @@ export class ChannelSession {
     this.patch({});
   };
 
-  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = "", reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
     const { share, selection, current } = this.selectScreen(roomId);
     let context = this.local.get(share.id)?.audio?.outputGainAvailable ? null : HostAudio.activate();
@@ -2721,7 +2721,7 @@ export class ChannelSession {
       releaseCandidate();
       this.finishSourceSelection(roomId, selection);
     }
-  });
+  }, reportError);
   private retireWatchPlayer(id: string, reason?: string): void {
     const player = this.watchPlayers.get(id);
     if (player?.owner && reason) {
@@ -3376,7 +3376,7 @@ export class ChannelSession {
       this.patch({});
     });
   };
-  startExternalScreen = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startExternalScreen = (roomId: string, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     try {
       const app = await this.connectApp();
@@ -3385,7 +3385,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
       this.patch({});
     } finally { this.finishSourceSelection(roomId, selection); }
-  });
+  }, reportError);
   private async commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
     const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
     if (!entry) return;
@@ -3638,7 +3638,7 @@ export class ChannelSession {
     }).finally(() => { share.audioChange = undefined; this.patch({}); });
     return share.audioChange;
   };
-  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     const signal = selection.controller.signal;
     const native = { target, audio, renderEndpointId, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
@@ -3674,7 +3674,7 @@ export class ChannelSession {
       if (ownsPreparation) await app?.cancelCapture(share.id).catch(() => {});
       throw error;
     } finally { this.finishSourceSelection(roomId, selection); }
-  });
+  }, reportError);
   setScreenDirectLimit = async (publicationId: string, limit: number | null): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");

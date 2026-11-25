@@ -92,9 +92,11 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
   </details>;
 }
 
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerRequestHandled, onWatch }: {
+/** The picker closes before a start runs and this control can unmount with it, so a mounted owner supplies startAction. */
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerRequestHandled, onWatch, startAction }: {
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
   openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(): void;
+  startAction: ReturnType<typeof useSettingsAction>;
 }) {
   const { t } = useCopy();
   const settingsLabel = t("screen.shareSettings");
@@ -218,9 +220,10 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     }
     onPickerRequestHandled?.();
   }, [openRequested, canOpenSourcePicker, onPickerRequestHandled]);
-  const start = (operation: () => Promise<void>) => {
+  // A result its owner can no longer receive, after a room change, still reaches the banner.
+  const start = (operation: (reportError: () => boolean) => Promise<void>, onSuccess?: () => void) => {
     close();
-    void operation().catch(() => {}); // The session owns the operation's error.
+    void startAction.run(signal => operation(() => signal.aborted), onSuccess);
   };
   if (publicationId && !sharing) return null;
   return <><span className="c3-share-feedback"><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
@@ -245,8 +248,11 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
       quiet onClick={() => setExternalOpen(true)} />}
     </span>
-    {preparation && <span className="c3-share-wait" role="status" aria-live="polite">
+    {preparation ? <span className="c3-share-wait" role="status" aria-live="polite">
       <span>{t(preparation === "picker" ? "host.capture.chooseInSystem" : "host.capture.preparingPicture")} {t("host.capture.cancelPreparationHint")}</span>
+    </span> : startAction.error && <span className="c3-share-wait c3-share-failure">
+      <ChannelSettingsError error={startAction.error} />
+      <Btn icon="x" title="notice.dismiss" hint="hint-close" size="dense" quiet onClick={startAction.clearError} />
     </span>}</span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
@@ -314,15 +320,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         loadCameras={channel.cameraPreviews} initialCamera={currentCamera}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialRenderEndpointId={selectedNative?.renderEndpointId} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
-        onBrowser={() => start(() => startScreen(roomId))}
+        onBrowser={() => start(reportError => startScreen(roomId, "browser", "", reportError))}
         onWatch={() => { close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true }); onWatch(); }}
-        onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
+        onCamera={deviceId => start(reportError => startScreen(roomId, "camera", deviceId, reportError))}
         onExternalInput={channel.externalScreenInputAvailable ? () => {
           close();
           if (externalInput) setExternalOpen(true);
-          else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});
+          else start(reportError => channel.startExternalScreen(roomId, reportError), () => setExternalOpen(true));
         } : undefined}
-        onNative={selection => start(() => startNativeScreen(roomId, selection))}
+        onNative={selection => start(reportError => startNativeScreen(roomId, selection, reportError))}
         onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}

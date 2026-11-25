@@ -3103,6 +3103,16 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
   } finally { session.close(); }
 });
 
+test.each([[false, null], [true, "NotAllowedError"]] as const)("a share start owned by its control reaches the banner only once that owner is gone (gone: %s)", async (gone, banner) => {
+  const { session } = await setup();
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new DOMException("Declined", "NotAllowedError")) } });
+  try {
+    await expect(session.startScreen("first", "camera", "front", () => gone)).rejects.toMatchObject({ name: "NotAllowedError" });
+    expect(session.getSnapshot().error).toBe(banner);
+    expect(session.getSnapshot().pending.size).toBe(0);
+  } finally { session.close(); }
+});
+
 test("a rejected camera publication releases its capture without retaining a picture lease", async () => {
   const { session, socket } = await setup();
   const camera = remoteTrack("video");
