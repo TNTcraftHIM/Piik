@@ -44,7 +44,6 @@ import { RoomInteractionSession, type Rejection, type RoomInteraction } from "..
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
 import { FeedbackAudio, type FeedbackCue } from "./feedback-audio";
 import { validateCustomFeedbackClip } from "./feedback-clip";
-import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 import { prepareHostedRoomArchive, readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
@@ -1564,7 +1563,7 @@ export class ChannelSession {
               : { type: "publication" as const, publicationId: message.contentTarget.publicationId })
               : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
         if (!command) return false;
-        const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
+        const requestId = message.type === "send-room-interaction" ? message.requestId : crypto.randomUUID();
         if (command.type === "interaction_ready") current.interactionReadyRequestId = requestId;
         void this.conversation.send(command, requestId).catch(() => {
           if (this.readings.get(reading.roomId) !== current || current.interaction !== interaction) return;

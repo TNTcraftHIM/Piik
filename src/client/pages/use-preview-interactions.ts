@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { InteractionPayload } from "../../shared/protocol";
 import { REACTION_IDS } from "../../shared/room-interactions";
-import { createOpaqueId } from "../lib/opaque-id";
 import { RoomInteractionSession, type ContentReactionTarget } from "../lib/room-interactions";
 
 /** A local participant and friend exercise the real interaction view, without signaling. */
@@ -22,7 +21,7 @@ export function usePreviewInteractions(viewer: boolean, people?: {
         if (message.type === "subscribe-room-interactions") model.receive({ type: "room-interactions-ready", serverTime: Date.now() });
         if (message.type === "send-room-interaction") {
           if (message.contentTarget && message.payload.kind === "reaction") confirmed.current?.(message.payload.reaction, message.contentTarget);
-          model.receive({ type: "room-interaction", id: createOpaqueId(),
+          model.receive({ type: "room-interaction", id: crypto.randomUUID(),
             requestId: message.requestId, occurredAt: Date.now(), sender, payload: message.payload,
             ...(message.contentTarget ? { contentTarget: message.contentTarget } : {}) });
         }
@@ -34,7 +33,7 @@ export function usePreviewInteractions(viewer: boolean, people?: {
     return () => model.close();
   }, [viewer, selfId, selfName]);
   const receiveSample = (payload: InteractionPayload) => session?.receive({
-    type: "room-interaction", id: createOpaqueId(), requestId: createOpaqueId(), occurredAt: Date.now(),
+    type: "room-interaction", id: crypto.randomUUID(), requestId: crypto.randomUUID(), occurredAt: Date.now(),
     sender: { peerId: friendId, role: viewer ? "host" : "viewer", displayName: friendName }, payload,
   });
   return { session, receiveSample };
