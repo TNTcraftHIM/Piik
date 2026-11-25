@@ -877,7 +877,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 7);
+      const request = indexedDB.open(database, 8);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -963,7 +963,7 @@ window.runBrowserRoomCheck = async () => {
     await checkImageHistoryBudget();
     await checkTransferStorage();
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 8);
+      const upgrade = indexedDB.open(database, db.version + 1);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {

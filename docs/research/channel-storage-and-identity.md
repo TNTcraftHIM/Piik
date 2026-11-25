@@ -233,9 +233,12 @@ The current room-host binding scopes history requests and live replies. A fresh
 binding replaces the previous reading window with the writer's current result,
 even when its newest message is older or the history is empty. Only live arrivals
 from that binding can extend the refreshed window. Restore stops the previous
-writer and registers the same room identity with a fresh binding; no separate
-backup generation is needed. The shared room core owns synchronization identities
-and cursors; storage adapters supply atomic reads and writes.
+writer and registers the same room identity with a fresh binding. The writer
+creates a new persistent history lineage when it creates or installs a room.
+Ordinary restart and rebinding preserve that lineage. An authorized reader
+retains its personal read position within the same lineage and starts at zero
+when a saved position belongs to a different one. Portable room archives
+carry the policy and history rows. Their installation assigns the local lineage.
 
 Do not silently evict the room's confirmed history as if it were a participant
 cache. If storage cannot accept a message, report that failed send and preserve
@@ -529,7 +532,7 @@ The table describes current export formats and defaults. The [storage and backup
 | Room copy | Room owner through its hosting runtime | Complete confirmed history and reaction counts, with the same choice of local file originals. Room name, icon and connection/voice settings are optional. Import creates a new room owned by the importer under the site's room-creation policy. |
 | Personal record export | Any participant | Records obtained by that client. The current text export includes the messages loaded on the page. |
 
-Native room storage uses SQLite schema 9 and Browser hosting uses IndexedDB schema 7. Opening an older private room store reports `unsupported_storage_version` and preserves its contents. Use the build that created it to access the existing history. Room backups use archive version 3 and room copies use version 2. Import checks the format before replacing a room. Deleted rows carry only their room sequence and hashed retry identity, so restore preserves message order and rejects a delayed send after deletion.
+Native room and domain storage use SQLite schema 10. Browser room hosting uses IndexedDB schema 8. Opening an older private room store reports `unsupported_storage_version` and preserves its contents. Use the build that created it to access the existing history. Room backups use archive version 3 and room copies use version 2. Import checks the format before replacing a room. Deleted rows carry only their room sequence and hashed retry identity, so restore preserves message order and rejects a delayed send after deletion.
 
 A new Native room is initialized and closed in a private staging directory before
 its final database path is published without replacing an existing file. The

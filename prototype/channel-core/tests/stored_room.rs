@@ -1689,3 +1689,66 @@ fn restored_sequence_rejects_reactions_for_its_previous_message() {
     drop(empty_backup);
     std::fs::remove_dir_all(path).unwrap();
 }
+
+#[test]
+fn installed_history_lineage_survives_rebind_and_rolls_back_with_history() {
+    let folder = std::env::temp_dir().join(format!("piik-install-{}", Uuid::new_v4()));
+    std::fs::create_dir(&folder).unwrap();
+    let path = folder.join("live.sqlite");
+    let owner = Uuid::new_v4();
+    let guest = Uuid::new_v4();
+    let mut host =
+        StoredRoomHost::create(&path, policy("room", owner, RoomAccess::Private)).unwrap();
+    let project = |host: &mut StoredRoomHost| {
+        let result = host
+            .dispatch(input(owner, guest, |_| HostAction::Sync))
+            .unwrap()
+            .projection;
+        let g = result.history_lineage;
+        assert!(!g.is_nil());
+        assert_eq!(
+            result.snapshot(owner, true).unwrap().room.history_lineage,
+            Some(g)
+        );
+        assert_eq!(
+            result.snapshot(owner, false).unwrap().room.history_lineage,
+            None
+        );
+        assert_eq!(
+            result.snapshot(guest, true).unwrap().room.history_lineage,
+            None
+        );
+        g
+    };
+    let original = project(&mut host);
+    let backup = host
+        .snapshot(&folder.join("frozen.sqlite"), Uuid::new_v4(), None)
+        .unwrap();
+    let metadata = serde_json::to_string(backup.metadata()).unwrap();
+    assert!(!metadata.contains(&original.to_string()) && !metadata.contains("bindingId"));
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert_eq!(project(&mut host), original);
+    let sql = rusqlite::Connection::open(&path).unwrap();
+    sql.execute_batch("CREATE TRIGGER reject_install BEFORE INSERT ON checkpoint BEGIN SELECT RAISE(ABORT,'rejected'); END;").unwrap();
+    assert!(host.replace(&backup).is_err());
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert_eq!(project(&mut host), original);
+    sql.execute_batch("DROP TRIGGER reject_install").unwrap();
+    host.replace(&backup).unwrap();
+    let g2 = project(&mut host);
+    host.replace(&backup).unwrap();
+    let g3 = project(&mut host);
+    assert_ne!(original, g2);
+    assert_ne!(g2, g3);
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert_eq!(project(&mut host), g3);
+    drop(host);
+    let mut restored =
+        StoredRoomHost::from_backup(&folder.join("restored.sqlite"), &backup).unwrap();
+    assert_ne!(project(&mut restored), g3);
+    drop((restored, sql, backup));
+    std::fs::remove_dir_all(folder).unwrap();
+}

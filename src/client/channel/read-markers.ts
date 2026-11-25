@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { ChannelRoom } from "./protocol";
 
-type Room = Pick<ChannelRoom, "id" | "authorized" | "available" | "lastMessageSeq" | "delivery">;
+type Room = Pick<ChannelRoom, "id" | "authorized" | "available" | "lastMessageSeq" | "historyLineage" | "delivery">;
 type Positions = Record<string, number>;
 const sequence = z.number().int().nonnegative();
-const savedMarkers = z.record(z.string(), z.union([sequence, z.object({ seq: sequence, binding: z.string() })]));
+const savedMarkers = z.record(z.string(), z.object({ seq: sequence, lineage: z.string() }));
 
 function equalPositions(left: Positions, right: Positions): boolean {
   const keys = Object.keys(left);
@@ -15,10 +15,10 @@ export class RoomReadMarkers {
   private key: string | null = null;
   private saved: z.infer<typeof savedMarkers> = {};
   private positions: Positions = {};
-  private readonly observed = new Map<string, string>();
+  private readonly observed = new Map<string, { lineage: string; savedAtEntry?: string }>();
 
   project(siteId: string, userId: string | undefined, rooms: readonly Room[]): Positions {
-    const key = userId ? `piik.channel.read.${siteId}.${userId}` : null;
+    const key = userId ? `piik.channel.read.v2.${siteId}.${userId}` : null;
     const changedIdentity = this.key !== key;
     if (changedIdentity) {
       this.key = key;
@@ -28,7 +28,7 @@ export class RoomReadMarkers {
     }
     if (!key) return this.positions;
     if (changedIdentity || rooms.some(room => room.authorized && room.available && room.delivery
-      && this.observed.get(room.id) !== room.delivery.bindingId)) this.load(key);
+      && this.observed.get(room.id)?.lineage !== room.historyLineage)) this.load(key);
     return this.update(rooms, true);
   }
 
@@ -40,7 +40,7 @@ export class RoomReadMarkers {
 
   advance(rooms: readonly Room[], roomId: string, seq: number): Positions {
     const room = rooms.find(room => room.id === roomId && room.authorized);
-    if (!this.key || !room?.available || !room.delivery || Math.min(seq, room.lastMessageSeq) <= (this.positions[roomId] ?? 0)) return this.positions;
+    if (!this.key || !room?.available || !room.delivery || !room.historyLineage || Math.min(seq, room.lastMessageSeq) <= (this.positions[roomId] ?? 0)) return this.positions;
     this.load(this.key);
     return this.update(rooms, false, { roomId, seq });
   }
@@ -56,33 +56,32 @@ export class RoomReadMarkers {
     for (const room of rooms) {
       if (!room.authorized) continue;
       const id = room.id, record = this.saved[id];
-      const saved = typeof record === "number" ? record : record?.seq;
-      const binding = room.available ? room.delivery?.bindingId : undefined;
+      const lineage = room.available && room.delivery ? room.historyLineage : undefined;
       const observed = this.observed.get(id);
-      const storedBinding = typeof record === "object" ? record.binding : undefined;
-      const entering = !!binding && fromAuthority && observed !== binding;
-      // Another tab can see a restored room before this page gets its projection.
-      if (!entering && observed && storedBinding && observed !== storedBinding) {
+      if (!lineage) {
+        next[id] = this.positions[id] ?? record?.seq ?? 0;
+        continue;
+      }
+      if (fromAuthority && observed?.lineage !== lineage) {
+        this.observed.set(id, { lineage, savedAtEntry: record?.lineage });
+      }
+      const current = this.observed.get(id);
+      if (current?.lineage !== lineage) {
         next[id] = this.positions[id] ?? 0;
         continue;
       }
-      let position = saved ?? this.positions[id] ?? (binding ? room.lastMessageSeq : 0);
-      if (!entering) position = Math.max(position, this.positions[id] ?? 0);
-      if (binding) {
-        const rebound = entering && storedBinding !== binding;
-        // Only a fresh authority projection may supersede another binding.
-        // Same-binding storage can be ahead of this tab's last projection.
-        if (rebound) position = Math.min(position, room.lastMessageSeq);
-        if (entering) this.observed.set(id, binding);
-        if (entering || !storedBinding || storedBinding === binding) {
-          if (advance?.roomId === id) position = Math.max(position, Math.min(advance.seq, room.lastMessageSeq));
-          if (position !== saved || rebound) {
-            this.saved[id] = { seq: position, binding };
-            changed = true;
-          }
-        }
+      const sameHistory = record?.lineage === lineage;
+      let position = sameHistory ? record.seq : 0;
+      if (!record && !observed) position = room.lastMessageSeq;
+      if (observed?.lineage === lineage) position = Math.max(position, this.positions[id] ?? 0);
+      const reading = advance?.roomId === id;
+      const writable = !record || sameHistory || (reading && record.lineage === current.savedAtEntry);
+      if (reading && writable) position = Math.max(position, Math.min(advance.seq, room.lastMessageSeq));
+      if (writable && (record?.lineage !== lineage || record.seq !== position)) {
+        this.saved[id] = { seq: position, lineage };
+        changed = true;
       }
-      next[id] = binding ? Math.min(position, room.lastMessageSeq) : position;
+      next[id] = Math.min(position, room.lastMessageSeq);
     }
     if (changed && this.key) {
       try { localStorage.setItem(this.key, JSON.stringify(this.saved)); } catch { /* Volatile reading still works. */ }

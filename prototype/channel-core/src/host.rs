@@ -183,6 +183,7 @@ pub struct RoomProjection {
     pub relay_session_ids: BTreeSet<Uuid>,
     pub allow_service_relay: bool,
     pub watch_activities: Vec<crate::wire::WatchActivity>,
+    pub history_lineage: Uuid,
     pub last_message_seq: u64,
     pub next_route_deadline: Option<u64>,
     pub summary: RoomSummary,
@@ -481,6 +482,7 @@ impl RoomProjection {
             watch_subscriptions: view.watch_subscriptions.clone(),
             watch_bytes: view.watch_bytes.clone(),
             room: Room {
+                history_lineage: (available && view.authorized).then_some(self.history_lineage),
                 last_message_seq: if view.authorized {
                     self.last_message_seq
                 } else {
@@ -1502,10 +1504,11 @@ impl RoomHost {
             pending: None,
         }
     }
-    pub fn seed_history(&mut self, last_seq: u64) -> Result<(), &'static str> {
-        if self.authority.is_some() || last_seq > i64::MAX as u64 {
+    pub fn seed_history(&mut self, history_lineage: Uuid, last_seq: u64) -> Result<(), &'static str> {
+        if self.authority.is_some() || history_lineage.is_nil() || last_seq > i64::MAX as u64 {
             return Err("invalid_history_seed");
         }
+        self.room.history_lineage = history_lineage;
         self.room.last_message_seq = last_seq;
         Ok(())
     }

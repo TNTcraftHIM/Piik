@@ -1443,6 +1443,7 @@ impl Channel {
         self.check_room_policy(&projection.summary)?;
         let file_availability_limit = projection.capabilities.file_availability_limit;
         if projection.summary.validate().is_err()
+            || projection.history_lineage.is_nil()
             || projection.last_message_seq > i64::MAX as u64
             || file_availability_limit
                 .is_some_and(|limit| !(1..=crate::wire::FILE_AVAILABILITY_LIMIT).contains(&limit))

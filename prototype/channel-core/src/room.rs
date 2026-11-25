@@ -60,6 +60,7 @@ struct Watch {
 /// domain identities nor creates physical peer connections.
 #[derive(Clone)]
 pub struct RoomRuntime {
+    pub(crate) history_lineage: Uuid,
     pub(crate) last_message_seq: u64,
     policy: RoomState,
     activity: BTreeMap<Uuid, Activity>,
@@ -113,6 +114,7 @@ pub struct RoomRecipient {
 impl RoomRuntime {
     pub fn new(policy: RoomState) -> Self {
         Self {
+            history_lineage: Uuid::new_v4(),
             last_message_seq: 0,
             policy,
             activity: BTreeMap::new(),
@@ -360,6 +362,7 @@ impl RoomRuntime {
                         .collect(),
                 })
                 .collect(),
+            history_lineage: self.history_lineage,
             last_message_seq: self.last_message_seq,
             summary: crate::host::RoomSummary::from_policy(&self.policy),
             picture: if views.values().any(|view| view.authorized && view.reading) {
