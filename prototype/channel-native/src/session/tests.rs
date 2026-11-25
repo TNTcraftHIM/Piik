@@ -401,6 +401,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         session
             .restore_room(
                 RestoreRoom {
+                    scratch: None,
                     existing: None,
                     snapshot: RoomSnapshot {
                         room,
@@ -531,10 +532,10 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
         session
             .restore_room(
                 RestoreRoom {
+                    scratch: Some(Arc::new(tokio::sync::Semaphore::new(1)).try_acquire_owned().unwrap()),
                     existing: Some(ExistingRoomRestore {
                         room_id: "guest".into(),
                         creator,
-                        scratch: Arc::new(tokio::sync::Semaphore::new(1)).try_acquire_owned().unwrap(),
                     }),
                     snapshot: RoomSnapshot { room, directory },
                     result,
@@ -687,6 +688,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         session
             .restore_room(
                 RestoreRoom {
+                    scratch: None,
                     existing: None,
                     snapshot: RoomSnapshot {
                         room,

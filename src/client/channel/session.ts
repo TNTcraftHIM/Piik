@@ -2214,7 +2214,10 @@ export class ChannelSession {
     return { dataRemoved };
   }, false);
 
-  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => this.updateRoom(roomId, { voiceBitrate });
+  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
+    if (!Number.isInteger(voiceBitrate)) return Promise.reject(new Error("invalid_audio_bitrate"));
+    return this.updateRoom(roomId, { voiceBitrate });
+  };
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }), false);
   private roomInvitationURL(roomId: string, key: string): string {
     const url = new URL(location.pathname, this.invitationOrigin);
@@ -3563,6 +3566,7 @@ export class ChannelSession {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");
     if (this.view.connection !== "connected") throw new Error("disconnected");
+    if (limit !== null && !Number.isInteger(limit)) throw new Error("invalid_relay_capacity");
     const key = "direct-limit:" + publicationId;
     if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
       await this.action(key, () => this.request({ type: "set_screen_direct_limit", publicationId, limit }, undefined, publication.roomId), false);

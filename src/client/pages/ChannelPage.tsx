@@ -16,6 +16,7 @@ import { diagnoseChannelFact } from "../channel/diagnosis";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { useRoomPane } from "../channel/use-room-pane";
 import { LayerHistory } from "../ui/layer-history";
+import { composeDocumentTitle, usePageTitle } from "../ui/document-title";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
@@ -201,6 +202,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (moved && name) setOrderAnnouncement(t("room.order.moved", { name, position: String(moved.position), total: String(moved.total) }));
   };
   const room = rooms.find(value => value.id === selected);
+  const siteName = state?.channel.name;
+  usePageTitle(composeDocumentTitle(room?.name, siteName === "Piik" ? null : siteName));
   const roomId = room?.id ?? "";
   const overview = !room;
   const unlistedRoom = Boolean(state && selected && !room);

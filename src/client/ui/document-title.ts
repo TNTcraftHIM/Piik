@@ -19,11 +19,15 @@ export function useDocumentTitle(
 ): string {
   const decoration = useRotatingText(variations, context, { rotate: false });
   const title = composeDocumentTitle(...parts, decoration);
+  usePageTitle(title);
+  return title;
+}
+
+export function usePageTitle(title: string): void {
   useEffect(() => {
     document.title = title;
     return () => {
       document.title = BRAND_TITLE;
     };
   }, [title]);
-  return title;
 }

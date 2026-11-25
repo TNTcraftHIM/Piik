@@ -287,7 +287,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     use piik_channel_core::wire::Command;
     use piik_channel_native::session::{HostCommand, OpenRoom};
 
-    let (room, request_id, commands, password, picture, allow_service_relay) = {
+    let (room, session, request_id, commands, password, picture, allow_service_relay) = {
         let mut hub = state.hub.lock().unwrap();
         if hub.authority.hosting_mode() == HostingMode::Lightweight {
             hub.request(connection, request);
@@ -313,6 +313,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         };
         (
             room,
+            hub.authority.session_for_connection(connection).expect("room creator session"),
             request_id,
             hub.room_commands.clone(),
             password,
@@ -332,14 +333,18 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         commands
             .try_send(HostCommand::Open(OpenRoom { policy, result }))
             .map_err(|_| "hosting_unavailable")?;
-        response.await.map_err(|_| "hosting_unavailable")?
+        response.await.unwrap_or_else(|_| Err("room_creation_unconfirmed".into()))
     }
     .await;
     let mut hub = state.hub.lock().unwrap();
     match result {
         Ok(room) => hub.send(connection, Event::RoomCreated { room, request_id }),
         Err(code) => {
-            hub.authority.cancel_room_reservation(connection, &id);
+            if !matches!(code.as_str(), "room_creation_unconfirmed" | "room_created_connection_failed") {
+                let mut effects = Effects::default();
+                hub.authority.cancel_reservation(session, &id, &mut effects);
+                hub.apply(effects);
+            }
             hub.send(connection, Event::Error { code, request_id });
         }
     }

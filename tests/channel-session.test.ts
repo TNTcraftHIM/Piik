@@ -5836,6 +5836,12 @@ test("room voice settings use the managed room update without changing local inp
     await saving;
     expect(session.getSnapshot().voiceInput).toEqual(previous.voiceInput);
     expect(session.getSnapshot().listeningVolume).toBe(previous.listeningVolume);
+    const sentBeforeInvalid = socket.sent.length;
+    for (const value of [NaN, Infinity, 1.5]) {
+      const result = session.setRoomVoiceBitrate("first", value);
+      expect(socket.sent).toHaveLength(sentBeforeInvalid);
+      await expect(result).rejects.toThrow("invalid_audio_bitrate");
+    }
     // The room authority validates the bitrate; its rejection reaches the caller.
     const rejected = session.setRoomVoiceBitrate("first", 320_001);
     const invalid = socket.sent.at(-1)!;
@@ -11654,6 +11660,12 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     await expect(overlong).rejects.toThrow("invalid_title");
     expect(channelErrorPresentation("invalid_title", key => en[key]).message).toBe("The title cannot exceed 64 characters.");
     expect(channelErrorPresentation("invalid_title", key => zh[key]).message).toBe("标题不能超过 64 个字符。");
+    const sentBeforeInvalid = socket.sent.length;
+    for (const value of [NaN, Infinity, 1.5]) {
+      const result = session.setScreenDirectLimit(publication.id, value);
+      expect(socket.sent).toHaveLength(sentBeforeInvalid);
+      await expect(result).rejects.toThrow("invalid_relay_capacity");
+    }
     const outOfRange = session.setScreenDirectLimit(publication.id, 0);
     const outOfRangeLimit = socket.sent.at(-1)!;
     expect(outOfRangeLimit).toMatchObject({ type: "set_screen_direct_limit", publicationId: publication.id, limit: 0 });

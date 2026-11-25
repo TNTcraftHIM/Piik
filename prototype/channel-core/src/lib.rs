@@ -121,14 +121,11 @@ impl Authority {
         .then_some(room.summary.creator_id)
     }
 
-    pub fn cancel_room_reservation(&mut self, connection: Uuid, room_id: &str) -> bool {
-        let Some(session) = self.channel.identity.session_for_connection(connection) else {
-            return false;
-        };
-        self.cancel_reservation(session, room_id)
+    pub fn session_for_connection(&self, connection: Uuid) -> Option<Uuid> {
+        self.channel.identity.session_for_connection(connection)
     }
 
-    fn cancel_reservation(&mut self, session: Uuid, room_id: &str) -> bool {
+    pub fn cancel_reservation(&mut self, session: Uuid, room_id: &str, effects: &mut Effects) {
         if self
             .channel
             .remote
@@ -136,9 +133,8 @@ impl Authority {
             .is_some_and(|room| room.reservation == Some(session) && room.binding.is_none())
         {
             self.channel.remote.remove(room_id);
-            return true;
+            self.broadcast(None, effects);
         }
-        false
     }
 
     /// The storage owner has confirmed that the retired room's records are gone.
@@ -302,9 +298,7 @@ impl Authority {
 
     pub fn cancel_hosted_creation(&mut self, creation: &RoomCreation) -> Effects {
         let mut effects = Effects::default();
-        if self.cancel_reservation(creation.session, &creation.summary.id) {
-            self.broadcast(None, &mut effects);
-        }
+        self.cancel_reservation(creation.session, &creation.summary.id, &mut effects);
         effects
     }
 
@@ -363,9 +357,7 @@ impl Authority {
                 return effects;
             }
             Command::CancelRoomCreation { room_id } => {
-                if self.cancel_room_reservation(connection, room_id) {
-                    self.broadcast(None, &mut effects);
-                }
+                self.cancel_reservation(session_id, room_id, &mut effects);
                 if let Some(request_id) = request.request_id {
                     effects.events.push((connection, Event::Ack { request_id }));
                 }

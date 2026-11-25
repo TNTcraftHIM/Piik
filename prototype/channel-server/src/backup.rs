@@ -116,10 +116,12 @@ pub(crate) async fn describe(commands: mpsc::Sender<HostCommand>) -> ApiResult {
 pub(crate) async fn restore(
     commands: mpsc::Sender<HostCommand>,
     existing: Option<ExistingRoomRestore>,
+    scratch: Option<OwnedSemaphorePermit>,
     headers: &HeaderMap,
     body: Body,
 ) -> ApiResult {
-    let (staged, directory, existing) = stage_upload(headers, body, existing).await?;
+    let (staged, directory, scratch) =
+        stage_upload(headers, body, existing.is_some(), scratch).await?;
     let StagedBackup::Room { snapshot: room, .. } = staged else {
         return Err(error(StatusCode::BAD_REQUEST, "expected_room_backup"));
     };
@@ -128,6 +130,7 @@ pub(crate) async fn restore(
     commands
         .send(HostCommand::Restore(RestoreRoom {
             existing,
+            scratch,
             snapshot: staged,
             result,
         }))
@@ -144,7 +147,7 @@ pub(crate) async fn stage(
     headers: &HeaderMap,
     body: Body,
 ) -> std::result::Result<(StagedBackup, tempfile::TempDir), ApiError> {
-    let (staged, directory, _) = stage_upload(headers, body, None).await?;
+    let (staged, directory, _) = stage_upload(headers, body, false, None).await?;
     Ok((staged, directory))
 }
 
@@ -178,23 +181,28 @@ pub(crate) fn upload_error(cause: anyhow::Error) -> ApiError {
     }
 }
 
-type Upload = (StagedBackup, tempfile::TempDir, Option<ExistingRoomRestore>);
+type Upload = (
+    StagedBackup,
+    tempfile::TempDir,
+    Option<OwnedSemaphorePermit>,
+);
 
 async fn stage_upload(
     headers: &HeaderMap,
     body: Body,
-    existing: Option<ExistingRoomRestore>,
+    existing: bool,
+    scratch: Option<OwnedSemaphorePermit>,
 ) -> std::result::Result<Upload, ApiError> {
     require_zip(headers)?;
     let mut reader = upload_reader(body);
     tokio::task::spawn_blocking(move || -> Result<Upload> {
-        let (archive, directory) = receive_zip(&mut reader, existing.is_some())?;
-        let staged = if existing.is_some() {
+        let (archive, directory) = receive_zip(&mut reader, scratch.is_some())?;
+        let staged = if existing {
             backup::stage_hosted_room(archive, directory.path())?
         } else {
             backup::stage(archive, directory.path())?
         };
-        Ok((staged, directory, existing))
+        Ok((staged, directory, scratch))
     })
     .await
     .map_err(|error| self::error(StatusCode::INTERNAL_SERVER_ERROR, error))?
@@ -261,10 +269,11 @@ mod upload_tests {
         let target = ExistingRoomRestore {
             room_id: "room".into(),
             creator: uuid::Uuid::new_v4(),
-            scratch: slot.clone().try_acquire_owned().unwrap(),
         };
-        let request =
-            tokio::spawn(async move { restore(commands, Some(target), &headers, body).await });
+        let scratch = slot.clone().try_acquire_owned().unwrap();
+        let request = tokio::spawn(async move {
+            restore(commands, Some(target), Some(scratch), &headers, body).await
+        });
         reading.await.unwrap();
         request.abort();
         assert!(request.await.unwrap_err().is_cancelled());

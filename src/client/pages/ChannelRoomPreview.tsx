@@ -91,6 +91,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
   const [forwarding, setForwarding] = useState(new URLSearchParams(location.search).has("forward"));
   const [pageSample, setPageSample] = useState<ReturnType<ChannelController["watchPage"]>>();
+  const [capturePendingSample, setCapturePendingSample] = useState(() => new URLSearchParams(location.search).has("share-pending"));
   const [browserSourcePending, setBrowserSourcePending] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -278,8 +279,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
+  const pendingScreenRoom = capturePendingSample ? "friday" : browserSourcePending;
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...streams].filter(([id]) => id !== samplePictureId)) : streams, error: null, siteURL: "https://friends.example/",
-    pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
+    pending: pendingScreenRoom ? new Set([...sample.channel.pending, `screen:${pendingScreenRoom}`]) : sample.channel.pending,
     watchPlayers, roomOpenFailures: unopened && hostOffline ? new Map([["friday", unopened]]) : sample.channel.roomOpenFailures,
     watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
       : new URLSearchParams(location.search).has("indexed-tracks") ? { choices: [], indexed: indexedTracks, mpd: [] }
@@ -291,7 +293,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
-    cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },
+    cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
       if (!activityId && (query.has("browser-source") || query.has("indexed-tracks") || query.has("mpd-tracks"))) {
@@ -413,7 +415,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
-    browserCapturePreparation: () => undefined,
+    browserCapturePreparation: roomId => capturePendingSample && roomId === "friday" ? "preparing" : undefined,
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   const optionsLabel = { text: zh ? "预览选项" : "Preview options" };
   const previewOptions = <>

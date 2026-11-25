@@ -382,15 +382,15 @@ impl Drop for SnapshotJob {
     }
 }
 
-/// The authenticated room target owns the scratch slot through staging and installation.
 pub struct ExistingRoomRestore {
     pub room_id: String,
     pub creator: Uuid,
-    pub scratch: tokio::sync::OwnedSemaphorePermit,
 }
 
 pub struct RestoreRoom {
     pub snapshot: RoomSnapshot,
+    /// Holds Server scratch admission through staging and installation.
+    pub scratch: Option<tokio::sync::OwnedSemaphorePermit>,
     pub existing: Option<ExistingRoomRestore>,
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
