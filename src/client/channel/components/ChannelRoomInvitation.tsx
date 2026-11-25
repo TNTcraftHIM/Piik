@@ -42,7 +42,7 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
   const [retry, setRetry] = useState(0);
   const [includeInvite, setIncludeInvite] = useState(room.canManage);
   const available = channel.connection === "connected" && room.available;
-  const busy = channel.pending.has(`invite:${room.id}`);
+  const busy = channel.invitationPending(room.id);
   const { getRoomInvite } = channel;
   useLayoutEffect(() => {
     // The active writer may have committed the replacement before the action replies.
@@ -64,7 +64,7 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
   const generate = (reset = false) => <ChannelAction icon="link" label={reset ? t("invite.room.confirmReset")
     : t("invite.room.generate")} hint="hint-rotate-invite" danger={reset}
     busy={busy} disabled={!available || busy || invitation.state === "loading"}
-    onClick={() => { void run(() => channel.createRoomInvite(room.id, false)); }} />;
+    onClick={() => { void run(() => channel.createRoomInvite(room.id)); }} />;
   return <>
     <header><strong>{room.name}</strong><ChannelAction icon="x" iconOnly quiet label={t("room.action.close")} onClick={onClose} /></header>
     <p>{room.access === "public" ? t("invite.room.publicNote")

@@ -198,7 +198,8 @@ export interface ChannelActions {
   importRoomCopy(archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }>;
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
   enterRoom(roomId: string, password: string): Promise<void>;
-  createRoomInvite(roomId: string, reportError?: boolean): Promise<string>;
+  invitationPending(roomId: string): boolean;
+  createRoomInvite(roomId: string): Promise<string>;
   getRoomInvite(roomId: string): Promise<RoomInvitationState>;
   revokeRoomAccess(roomId: string, userId: string, reportError?: boolean): Promise<void>;
   startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;

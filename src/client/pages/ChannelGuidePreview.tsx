@@ -216,6 +216,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     },
     interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable,
     getRoomInvite: async (roomId: string) => ({ state: "available" as const, url: invites[roomId] ?? `https://friends.example/#room=${roomId}&invite=sample` }),
+    invitationPending: () => false,
     createRoomInvite: async (roomId: string) => {
       const next = `${invites[roomId] ?? `https://friends.example/#room=${roomId}&invite=sample`}-new`;
       setInvites(previous => ({ ...previous, [roomId]: next })); received(); return next;

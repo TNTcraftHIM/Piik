@@ -1406,6 +1406,42 @@ test.each([false, true])("peer path changes do not reload the Domain conversatio
     expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual(historical ? [1, 2] : [4, 5]);
   } finally { session.close(); }
 });
+test("room invitation rotations stay pending until their own final reply and keep failures local", async () => {
+  const { session, socket } = await setup();
+  const rotations = () => socket.sent.filter(command => command.type === "room_invite");
+  const pending: boolean[] = [];
+  const unsubscribe = session.subscribe(() => pending.push(session.invitationPending("first")));
+  try {
+    socket.receive({ type: "error", code: "room_host_failed" });
+    const first = session.createRoomInvite("first");
+    expect(pending.at(-1)).toBe(true);
+    const second = session.createRoomInvite("second");
+    const [old, sibling] = rotations();
+    socket.receive({ type: "room_invite", roomId: "first", key: "old-key", requestId: old.requestId });
+    await expect(session.createRoomInvite("first")).rejects.toThrow("operation_pending");
+    expect(rotations()).toHaveLength(2);
+    expect(session.getSnapshot().error).toBe("room_host_failed");
+
+    socket.receive({ type: "room_reply", roomId: "first", requestId: old.requestId, result: { type: "error", code: "forbidden" } });
+    await expect(first).rejects.toThrow("forbidden");
+    expect(pending.at(-1)).toBe(false);
+    expect(session.invitationPending("second")).toBe(true);
+    expect(session.getSnapshot().error).toBe("room_host_failed");
+
+    const retry = session.createRoomInvite("first");
+    const replacement = rotations().at(-1)!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: old.requestId, result: { type: "done" } });
+    socket.receive({ type: "room_invite", roomId: "second", key: "sibling", requestId: sibling.requestId });
+    socket.receive({ type: "ack", requestId: sibling.requestId });
+    await expect(second).resolves.toContain("invite=sibling");
+    expect(session.invitationPending("first")).toBe(true);
+    socket.receive({ type: "room_invite", roomId: "first", key: "replacement", requestId: replacement.requestId });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: replacement.requestId, result: { type: "done" } });
+    await expect(retry).resolves.toContain("invite=replacement");
+    expect(pending.at(-1)).toBe(false);
+  } finally { unsubscribe(); session.close(); }
+});
+
 test("site addresses and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;

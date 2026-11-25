@@ -217,7 +217,7 @@ export class ChannelSession {
   private ownerBootstrap = ownerBootstrapFromLocation();
   private roomId = selectedRoom();
   private requests = new Map<string, {
-    roomId?: string; bindingId?: string;
+    kind: ChannelCommand["type"]; roomId?: string; bindingId?: string;
     seekAfter?: number;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
@@ -981,7 +981,7 @@ export class ChannelSession {
     return new Promise<void>((resolve, reject) => {
       // Conversation includes image upload and its host-confirmed response.
       timer = setTimeout(() => { this.retireRequest(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
-      this.requests.set(requestId, { resolve, reject, roomId,
+      this.requests.set(requestId, { resolve, reject, roomId, kind: command.type,
         result: event => {
           try {
             if (event.type === "room_reply") {
@@ -1013,6 +1013,7 @@ export class ChannelSession {
       else {
         if (command.type === "browse" && command.active) this.readingRooms.add(command.roomId);
         this.write({ ...command, requestId });
+        if (command.type === "room_invite") this.patch({});
       }
     }).finally(() => {
       this.retireRequest(requestId);
@@ -1177,9 +1178,12 @@ export class ChannelSession {
 
   /** Removes a request together with its page under assembly, so no page outlives its request. */
   private retireRequest(requestId: string): boolean {
-    const roomId = this.requests.get(requestId)?.roomId;
-    if (roomId) this.histories.get(roomId)?.dropPage(requestId);
-    return this.requests.delete(requestId);
+    const request = this.requests.get(requestId);
+    if (!request) return false;
+    this.requests.delete(requestId);
+    if (request.roomId) this.histories.get(request.roomId)?.dropPage(requestId);
+    if (request.kind === "room_invite") this.patch({});
+    return true;
   }
 
   private commandRoom(command: ChannelCommand): string | undefined {
@@ -2352,12 +2356,17 @@ export class ChannelSession {
     if (!invitation) throw new Error("invalid_response");
     return invitation;
   };
-  createRoomInvite = (roomId: string, reportError = true): Promise<string> => this.action(`invite:${roomId}`, async () => {
+  invitationPending = (roomId: string): boolean => {
+    for (const request of this.requests.values()) if (request.kind === "room_invite" && request.roomId === roomId) return true;
+    return false;
+  };
+  createRoomInvite = async (roomId: string): Promise<string> => {
+    if (this.invitationPending(roomId)) throw new Error("operation_pending");
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
-  }, reportError);
+  };
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
     const watch: ScreenWatch = {};
