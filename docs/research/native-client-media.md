@@ -1091,7 +1091,7 @@ advertised capability under the current versioning owner.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
-[native sender evidence](./native-sender.md).
+[native sender evidence](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/native-sender.md).
 
 ## Primary Sources
 

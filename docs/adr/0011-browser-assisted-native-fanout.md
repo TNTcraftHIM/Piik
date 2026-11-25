@@ -14,7 +14,7 @@ transport fanout API. Browser simulcast and Dynacast remain appropriate for a
 single Browser-to-SFU publication; they do not make independent P2P senders
 share one encoder.
 
-The later [Chromium legacy probe](../research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
+The later [Chromium legacy probe](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
 demonstrates a non-standard clean-path exception, with unresolved feedback and
 statistics. It is not an accepted replacement for this Browser/App boundary.
 
@@ -68,7 +68,7 @@ UI and capture owner.
 
 ## References
 
-- [Advanced peer distribution research](../research/advanced-peer-distribution.md)
+- [Advanced peer distribution research](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/advanced-peer-distribution.md)
 - [WebRTC Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/)
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [Pion encoded broadcast](https://github.com/pion/webrtc/blob/main/examples/broadcast/main.go)

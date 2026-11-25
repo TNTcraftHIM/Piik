@@ -1,7 +1,7 @@
 # Node-Local Encoding Cost Probe
 
 Measured: 2026-09-07. This is a component experiment, not a media-policy decision.
-[Node-local adaptive reuse](./node-local-adaptation.md) owns the design model.
+[Node-local adaptive reuse](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/node-local-adaptation.md) owns the design model.
 [Full measurement data](./data/node-local-vp8.json) includes both rounds, phase
 counts, timings, keyframe sizes and measured source digests.
 

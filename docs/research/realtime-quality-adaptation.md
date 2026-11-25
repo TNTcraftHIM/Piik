@@ -402,7 +402,7 @@ Host page visibility, captured-surface visibility, capture production, encode,
 transport, Viewer decode, and local presentation are separate variables. Current
 code pauses only the hidden/unfocused local preview. Browser/OS capture muting,
 mobile suspension, page reclamation, and relay survival remain platform evidence
-in [background capture research](./browser-background-capture.md), not Web
+in [background capture research](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/browser-background-capture.md), not Web
 keepalive features.
 
 The Media Capture specification copies a track's constraints when it is cloned,

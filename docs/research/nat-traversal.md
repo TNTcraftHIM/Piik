@@ -528,7 +528,7 @@ Three distinct 2.x failures retained separate owners:
   the correction and constrained-bandwidth comparison; six local controls then
   retained fresh decoding. This does not explain every blur/stall report.
 
-The [Viewer control-retirement repair](./native-client-lifecycle.md#viewer-control-retirement)
+The [Viewer control-retirement repair](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/native-client-lifecycle.md#viewer-control-retirement)
 separately fixed a denied Viewer retaining its App slot across invitations.
 
 ### Gateway And Address-Family Controls

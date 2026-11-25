@@ -55,6 +55,6 @@ must remain owned by ADR-0005.
 
 ## Evidence
 
-- [Native sender and shared encode](../research/native-sender.md)
+- [Native sender and shared encode](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/native-sender.md)
 - [Browser screen audio](../research/browser-screen-audio-quality.md)
 - [ADR-0005](./0005-automatic-hybrid-media-routing.md)

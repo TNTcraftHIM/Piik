@@ -59,7 +59,6 @@ docs/adr/0001-p2p-first-media-topology.md
 docs/adr/0010-cross-platform-client-runtime.md
 docs/research/agent-context-governance.md
 docs/research/cross-platform-client-runtime.md
-docs/research/webrtc-p2p-screen-sharing.md
 native/third_party/webrtc-frame-dropper/README.md
 native/third_party/webrtc-frame-dropper/LICENSE
 native/third_party/webrtc-frame-dropper/PATENTS

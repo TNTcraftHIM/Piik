@@ -212,7 +212,7 @@ target and release contract.
   rooms and media state remain process-only. A blank password leaves that site open.
 
 Persistence evidence, limits and the earlier cross-restart evaluation live in
-[cross-restart recovery research](../research/cross-restart-room-recovery.md).
+[cross-restart recovery research](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/cross-restart-room-recovery.md).
 
 The App opens its own localhost Host page with the configured password, when
 present, in a fragment. The page removes the fragment and uses the existing

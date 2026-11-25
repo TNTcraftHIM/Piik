@@ -438,8 +438,8 @@ Negative:
 - [ADR-0004](./0004-peer-assisted-media-experiment.md): Browser relay evidence.
 - [ADR-0007](./0007-path-isolated-representation-quality.md): framework-owned
   representation adaptation.
-- [Low-server-cost routes](../research/low-server-media-routes.md) and
-  [peer-assisted media](../research/peer-assisted-media.md): measurements and
+- [Low-server-cost routes](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/low-server-media-routes.md) and
+  [peer-assisted media](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/peer-assisted-media.md): measurements and
   rejected alternatives.
 - [Verification status](../verification-status.md): current open physical gates.
 

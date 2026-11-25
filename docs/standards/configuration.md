@@ -299,7 +299,7 @@ payloads, arbitrary config/environment files and raw process-memory contents
 are not collected. Browser window titles and participant display names are
 omitted. Debug detail has CPU/I/O cost and should be enabled for investigation.
 
-The [research comparison](../research/diagnostic-feedback.md) records the mature
+The [research comparison](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/diagnostic-feedback.md) records the mature
 project references and the reasons for this collection boundary.
 
 ## Public And Private Ports
