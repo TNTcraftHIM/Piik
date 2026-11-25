@@ -14,7 +14,7 @@ import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { stageColumns, stageLayout, type StageTile } from "../stage-layout";
+import { stageColumns, stageWithCouch, type CouchMode, type StageTile } from "../stage-layout";
 import type { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { Btn, Cap } from "../../components/living/primitives";
@@ -204,8 +204,13 @@ export interface ChannelStageProps {
   onInputDecide: (publicationId: string, requestId: string, allow: boolean) => Promise<void>;
   onInputSimultaneous: (publicationId: string, enabled: boolean) => Promise<void>;
   onInputShortcut: (publicationId: string, key?: number) => Promise<ChannelStopShortcut>;
-  /** Size every grid tile to its own picture's aspect (see stageLayout); off keeps cells of equal shape. */
-  fit?: boolean;
+  /** Size every grid tile to its own picture's aspect (see stageLayout); off keeps cells of equal shape.
+   * The value names the surrounding composition: when it changes, the stage measures again. */
+  fit?: string | false;
+  /** With fit: the couch mode chosen from the same measurement (see stageWithCouch). The stage reads the
+   * couch heights from its --stage-couch-full and --stage-couch-strip properties, and stacks full width
+   * without a height budget when --stage-stack is 1. */
+  onCouchMode?: (mode: CouchMode) => void;
 }
 
 function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: {
@@ -221,14 +226,15 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
 export function ChannelStage({ theaterMode: [theater, setTheater], buffering, sources, focusedId, canSubscribe, onFocus: onChangeFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
-  onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut, fit = false }: ChannelStageProps) {
+  onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut, fit: fitKey = false, onCouchMode }: ChannelStageProps) {
+  const fit = !!fitKey;
   const { lang, t } = useCopy();
   const retained = sources.filter(source => source.kind === "waiting" || source.owned || source.subscribed);
   const active = retained.filter(source => !source.hidden);
   const available = sources.filter((source): source is ScreenStageSource | WatchStageSource => source.kind !== "waiting" && !source.hidden && !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
   // A fitted stage sizes its one picture as it sizes a grid; focus and theater still apply when chosen.
-  const fitAlone = fit && active.length === 1;
+  const fitAlone = !!fit && active.length === 1;
   const automaticEmbed = (focused?.kind === "watch" && focused.player?.presentation.kind === "embed" ? focused
     : active.find(source => source.kind === "watch" && source.player?.presentation.kind === "embed"))?.id;
   const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
@@ -273,9 +279,11 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
         return video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
       });
       if (fit) {
-        const fitted = stageLayout(ratios, tiles.clientWidth, height, parseFloat(layout.rowGap) || 0, footer,
-          parseFloat(layout.getPropertyValue("--stage-tile-min")) || 0);
-        setColumns(fitted.columns); setTileSizes(fitted.tiles);
+        const couch = { full: parseFloat(style.getPropertyValue("--stage-couch-full")) || 0, strip: parseFloat(style.getPropertyValue("--stage-couch-strip")) || 0 };
+        const stacked = style.getPropertyValue("--stage-stack").trim() === "1";
+        const fitted = stageWithCouch(ratios, tiles.clientWidth, stacked ? Infinity : height, parseFloat(layout.rowGap) || 0, footer,
+          couch, parseFloat(layout.getPropertyValue("--stage-tile-min")) || 0);
+        setColumns(fitted.columns); setTileSizes(fitted.tiles); onCouchMode?.(fitted.couch);
         return;
       }
       setColumns(stageColumns(tiles.clientWidth, height, ratios, parseFloat(layout.columnGap) || 0, footer,
@@ -297,7 +305,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
       tiles.removeEventListener("resize", measure, true);
       window.removeEventListener("resize", measure);
     };
-  }, [layoutSources, focused?.id, theater, lang, fit, fitAlone]);
+  }, [layoutSources, focused?.id, theater, lang, fitKey, fitAlone]);
   useLayoutEffect(() => {
     for (const tile of grid.current?.querySelectorAll<HTMLElement>('article[hidden], article.is-thumbnail') ?? []) {
       for (const panel of tile.querySelectorAll<HTMLElement>('[popover]:popover-open')) panel.hidePopover();

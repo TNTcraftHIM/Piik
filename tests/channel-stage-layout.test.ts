@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { stageColumns, stageLayout } from "../src/client/channel/stage-layout";
+import { stageColumns, stageLayout, stageWithCouch } from "../src/client/channel/stage-layout";
 
 test("maximizes the contained picture after reserving source controls, without a source-count layout table", () => {
   expect(stageColumns(1541, 655, Array(3).fill(16 / 9), 14, 62, 280)).toBe(3);
@@ -51,4 +51,32 @@ test("a column narrower than the minimum is not considered", () => {
   expect(short.columns).toBe(2);
   expect(short.tiles[0].height).toBeCloseTo(44);
   expect(stageLayout([16 / 9], 120, 418, 12, 42, 160).columns).toBe(1);
+});
+
+test("the couch keeps its full size while pictures are limited by width, and becomes the strip when they are limited by height", () => {
+  const couch = { full: 126, strip: 74 };
+  // A tall column: one 16:9 picture fills the width even under the full couch.
+  const tall = stageWithCouch([16 / 9], 900, 900, 12, 40, couch);
+  expect(tall.couch).toBe("full");
+  expect(tall.tiles[0].width).toBeCloseTo(900);
+  // A short column: under the full couch the picture is height-bound, so the strip gives it the height.
+  const short = stageWithCouch([16 / 9], 928, 660, 12, 40, couch);
+  expect(short.couch).toBe("strip");
+  expect(short.tiles[0].height).toBeCloseTo(928 * 9 / 16);
+  expect(short.tiles[0].height).toBeGreaterThan(stageLayout([16 / 9], 928, 660 - 126, 12, 40).tiles[0].height);
+  // Four pictures in a 1024 x 700 window reach 2 x 2 with the strip.
+  const four = stageWithCouch(Array(4).fill(16 / 9), 928, 470, 12, 40, couch, 200);
+  expect(four.couch).toBe("strip");
+  expect(four.columns).toBe(2);
+});
+
+test("the couch choice depends only on the column, so the same input gives the same answer", () => {
+  const couch = { full: 126, strip: 74 };
+  const first = stageWithCouch(Array(2).fill(16 / 9), 704, 600, 12, 40, couch);
+  expect(stageWithCouch(Array(2).fill(16 / 9), 704, 600, 12, 40, couch)).toEqual(first);
+  // No room under the full couch at all still yields the strip, and an unbounded column keeps the full couch.
+  expect(stageWithCouch([16 / 9], 900, 100, 12, 40, couch).couch).toBe("strip");
+  expect(stageWithCouch(Array(3).fill(16 / 9), 374, Infinity, 4, 36, couch).couch).toBe("full");
+  // Equal heights mean there is nothing to gain.
+  expect(stageWithCouch([16 / 9], 928, 400, 12, 40, { full: 74, strip: 74 }).couch).toBe("full");
 });

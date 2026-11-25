@@ -54,3 +54,18 @@ export function stageColumns(width: number, height: number, ratios: readonly num
   }
   return selected;
 }
+
+export type CouchMode = "full" | "strip";
+
+/** Size the pictures and choose the couch from one measurement of the column that holds both.
+ * The couch takes only the height pictures cannot use: with the full couch, pictures limited by
+ * width keep it; pictures limited by height get the strip's saving instead. The heights are the
+ * column's, never the couch's current size, so the choice cannot oscillate. */
+export function stageWithCouch(aspects: readonly number[], width: number, height: number, gap: number, barHeight: number,
+  couch: { full: number; strip: number }, minWidth = 0): StageLayout & { couch: CouchMode } {
+  const full = stageLayout(aspects, width, height - couch.full, gap, barHeight, minWidth);
+  const cellWidth = (width - (full.columns - 1) * gap) / full.columns;
+  const widthLimited = full.tiles.length > 0 && full.tiles.every(tile => tile.width > 0 && tile.width >= cellWidth - 0.5);
+  if (widthLimited || couch.strip >= couch.full) return { ...full, couch: "full" };
+  return { ...stageLayout(aspects, width, height - couch.strip, gap, barHeight, minWidth), couch: "strip" };
+}
