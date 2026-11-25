@@ -155,6 +155,7 @@
 .c3-living .c3-chat-panel .c3-conversation { padding-block: 0 12px; }
 .c3-living .c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 12px; }
 .c3-living .c3-message-content-body { font-size: 16px; line-height: 1.5; }
+.c3-living .c3-room-start p { font-size: 14px; }
 .c3-living:lang(zh) .c3-message-content-body, :lang(zh) .c3-living .c3-message-content-body { line-height: 1.6; }
 .c3-living .c3-message-meta strong { font-size: 16px; font-weight: 600; }
 .c3-living .c3-message-meta time, .c3-living .c3-message-date { font-size: 12px; }
