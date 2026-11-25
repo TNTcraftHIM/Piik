@@ -15,8 +15,8 @@ use piik_channel_core::conversation::ControlFrame;
 use piik_channel_core::file_room::FilePlan;
 use piik_channel_core::wire::Snapshot;
 use piik_channel_core::wire::{
-    Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
-    Track as WireTrack, UdpPreparation,
+    Candidate, Command, Description, FlowBinding, FlowState, Kind, LinkState, PairInfo,
+    PublicationInfo, Signal, Track as WireTrack, UdpPreparation,
 };
 use rtc_rtp as rtp;
 use std::{
@@ -1439,6 +1439,18 @@ impl Driver {
         messages
     }
 
+    fn fails_flow(
+        publications: &HashMap<Uuid, PublicationInfo>,
+        flow: &FlowBinding,
+        media: MediaKind,
+    ) -> bool {
+        !flow.selected
+            || media == MediaKind::Video
+            || publications
+                .get(&flow.publication_id)
+                .is_some_and(|publication| publication.kind == Kind::Voice)
+    }
+
     async fn output_failed(&mut self, pair: Uuid, key: TrackKey, source: Uuid, output: Uuid) {
         let Some(p) = self.pairs.get_mut(&pair) else {
             return;
@@ -1458,14 +1470,7 @@ impl Driver {
             .copied();
         p.rejected_outputs.insert(key, source);
         p.outputs.remove(&key).unwrap().close(&p.pc).await;
-        if binding.is_some_and(|flow| {
-            !flow.selected
-                || key.1 == MediaKind::Video
-                || self
-                    .publications
-                    .get(&flow.publication_id)
-                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
-        }) {
+        if binding.is_some_and(|flow| Self::fails_flow(&self.publications, &flow, key.1)) {
             self.fail_flow(pair, key.0).await;
         }
     }
@@ -2816,14 +2821,7 @@ impl Driver {
                 }
             }
         }
-        if assigned_latest.is_some_and(|flow| {
-            !flow.selected
-                || key.1 == MediaKind::Video
-                || self
-                    .publications
-                    .get(&flow.publication_id)
-                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
-        }) {
+        if assigned_latest.is_some_and(|flow| Self::fails_flow(&self.publications, &flow, key.1)) {
             self.send(Command::FlowState {
                 flow_id: key.0,
                 pair_id: pair,
@@ -3678,11 +3676,7 @@ impl Driver {
                             Err(error) => {
                                 eprintln!("Native encoded track attach failed: {error}");
                                 p.rejected_outputs.insert(output_key, source.id);
-                                if !binding.selected
-                                    || source.kind == MediaKind::Video
-                                    || self.publications[publication].kind
-                                        == piik_channel_core::wire::Kind::Voice
-                                {
+                                if Self::fails_flow(&self.publications, binding, source.kind) {
                                     failed.insert((binding.id, *id));
                                 }
                                 continue;
