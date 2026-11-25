@@ -646,6 +646,19 @@ impl Plan {
     ) -> Option<Uuid> {
         self.candidate_parent_where(child, connected, helpers, limits, |_| true)
     }
+    /// Whether some pair on `from`'s path up to the source is reported down:
+    /// `down` holds directed `(child, parent)` observations, the child reporting.
+    pub(crate) fn path_down(&self, from: Uuid, down: &BTreeSet<(Uuid, Uuid)>) -> bool {
+        let mut child = from;
+        while let Some(&parent) = self.parents.get(&child) {
+            if down.contains(&(child, parent)) {
+                return true;
+            }
+            child = parent;
+        }
+        false
+    }
+
     pub(crate) fn candidate_parent_where(
         &self,
         child: Uuid,

@@ -226,7 +226,7 @@ impl Publication {
             .delivery_frontiers(&upstreams, neighbors, relays, helpers, limits, frontiers);
     }
 
-    pub fn reconcile_observed(
+    pub fn reconcile(
         &mut self,
         down: &BTreeSet<(Uuid, Uuid)>,
         requested: &BTreeSet<Uuid>,
@@ -258,14 +258,8 @@ impl Publication {
                 return None;
             }
             plan.candidate_parent_where(child, connected, helpers, limits, |p| {
-                let mut cur = p;
-                while let Some(&parent) = plan.parents.get(&cur) {
-                    if down.contains(&(cur, parent)) {
-                        return false;
-                    }
-                    cur = parent;
-                }
-                required.is_none_or(|wanted| wanted == p)
+                !plan.path_down(p, down)
+                    && required.is_none_or(|wanted| wanted == p)
                     && p != old
                     && (p == plan.source || relays.contains(&p))
                     && confirmed(p, child)
@@ -307,7 +301,7 @@ impl Publication {
                             && connected.contains(r)
                             && (l.flow.sender == self.plan.source
                                 || relays.contains(&l.flow.sender))
-                            && requested.contains(r) == (l.viewing)
+                            && requested.contains(r) == l.viewing
                     })
                     && proposed.capacity_children(helpers, limits).is_empty();
                 if valid {
@@ -429,7 +423,7 @@ impl Publication {
                         && legs.iter().all(|(receiver, leg)| {
                             confirmed(leg.flow.sender, *receiver)
                                 && (self.info.kind == Kind::Screen && requested.contains(receiver))
-                                    == (leg.viewing)
+                                    == leg.viewing
                         })
                 }
             };
@@ -629,7 +623,7 @@ impl Publication {
                 && legs.iter().all(|(receiver, leg)| {
                     connected.contains(receiver)
                         && (self.info.kind == Kind::Screen && requested.contains(receiver))
-                            == (leg.viewing)
+                            == leg.viewing
                 })
             {
                 return;
@@ -865,12 +859,7 @@ impl Publication {
             if down.contains(&(*receiver, sender)) || down.contains(&(sender, *receiver)) {
                 return false;
             }
-            let mut r = *receiver;
-            let mut unavailable = leg.replaces.is_none();
-            while let Some(&p) = self.plan.parents.get(&r) {
-                unavailable |= down.contains(&(r, p));
-                r = p;
-            }
+            let unavailable = leg.replaces.is_none() || self.plan.path_down(*receiver, down);
             leg.ready(self.plan.readiness(*receiver), unavailable, now)
         }) {
             return false;
@@ -881,7 +870,7 @@ impl Publication {
         self.adopt(legs);
         true
     }
-    pub(crate) fn flow_state_observed(
+    pub(crate) fn flow_state(
         &mut self,
         id: Uuid,
         receiver: Uuid,
@@ -890,15 +879,6 @@ impl Publication {
         now: u64,
         down: &BTreeSet<(Uuid, Uuid)>,
     ) -> bool {
-        let unavailable = |mut r: Uuid, plan: &Plan| {
-            while let Some(&p) = plan.parents.get(&r) {
-                if down.contains(&(r, p)) {
-                    return true;
-                }
-                r = p;
-            }
-            false
-        };
         if self.info.paused && state != FlowState::Failed {
             return false;
         }
@@ -926,7 +906,7 @@ impl Publication {
                 if legs.iter().all(|(receiver, leg)| {
                     leg.ready(
                         self.plan.readiness(*receiver),
-                        leg.replaces.is_none() || unavailable(*receiver, &self.plan),
+                        leg.replaces.is_none() || self.plan.path_down(*receiver, down),
                         now,
                     )
                 }) {
