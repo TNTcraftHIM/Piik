@@ -140,33 +140,13 @@ Items 3, 6, 7 and 8 are settled as you took them, and I have removed them.
 
 ## Voice
 
-Both objections stand and the branch stays unmerged.
-
-- **The room limit.** The stored policy cannot tell a manager's 2 from the
-  default 2, since `relay_capacity` is one number with a default. Respecting a
-  manual lower limit therefore needs either a second stored fact or a decision
-  that the room's number is about pictures and relaying. That decision is the
-  owner's and I am putting it to the owner with your objection stated.
-- **The cost, measured.** Chrome 158, one page, n loopback outputs of one
-  noise-like track, ten seconds each. Processor time is every process of the
-  browser, and includes the n receiving connections in the same page, so it is
-  an upper bound for a sender.
-
-  | Outputs | 64 kbit/s set: on the wire | processor | 320 kbit/s set: on the wire | processor |
-  | --- | --- | --- | --- | --- |
-  | 1 | 84 kbit/s | 6% of a core | 285 kbit/s | 4% |
-  | 3 | 253 kbit/s | 12% | 853 kbit/s | 9% |
-  | 7 | 590 kbit/s | 14% | 1,991 kbit/s | 12% |
-  | 15 | 1,265 kbit/s | 26% | 4,266 kbit/s | 24% |
-  | 31 | 2,616 kbit/s | 47% | 8,815 kbit/s | 51% |
-
-  A copy costs about 84 kbit/s on the wire at the default setting, not 64, and
-  about 285 at the highest. The processor cost is about one and a half percent
-  of a core for each output with its receiver and does not depend on the rate.
-  So the bound should be a rate. My proposal once the owner has decided the
-  room-limit question: a speaker's own voice may use up to about 1.3 Mbit/s of
-  upload, which is 15 listeners at the default rate and 4 at the highest, and
-  relays carry the rest as they do now.
+**Decided by the owner: the room's number also bounds a speaker's own voice.**
+One control for pictures and speech, and less upload. `340ead9c` is withdrawn
+and will not be merged. ADR-0018 item 8 now states the rule with its measured
+cost, and the evidence note holds the planner count, both hop measurements and
+what a Browser source pays for direct copies: about 84 kbit/s a copy on the
+wire at the default setting, 285 at the highest, and about one and a half
+percent of a core for each output with its receiver. Nothing is asked of you.
 
 ## The interface, for your information
 
