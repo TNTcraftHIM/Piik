@@ -246,6 +246,11 @@ the feedback period; they do not delay that delivery.
   search, quote behavior and the merge rule for text and reaction changes.
   Set stored fields and capabilities with their consumers. Before publication,
   verify that supported archive round trips preserve meaningful row data.
+- [ ] **One vocabulary for extension.** Decide
+  [ADR-0020](./adr/0020-one-vocabulary-for-extension.md) through a bounded
+  comparison with plain lifecycle-owner extraction. Identify concrete providers
+  and consumers, preserve both runtime layouts and shared-resource lifetimes,
+  and settle deletion, copying and authority before changing the wire or stores.
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.
   Keep image restoration owned by each physical connection. Any generated types

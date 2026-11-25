@@ -139,6 +139,42 @@ promise.
   changed meaning, host and relay, in the naming standard. ADR-0008 and 0011
   need your statement of what applies to 3.0; I could not tell.
 
+## ADR-0020: one vocabulary for extension
+
+The owner wants bots, API clients, plugins, new activities and providers to
+be the same kind of thing underneath, with built-ins on the same points, and
+the scaffolding designed now, after the harness whose every part is a plugin.
+That reverses two things you and I had agreed: the standard's refusal of a
+generic plugin framework, and the deferral of the activity envelope in
+ADR-0017. [ADR-0020](../../docs/adr/0020-one-vocabulary-for-extension.md) is
+proposed. Three designers worked from the requirements and from the primary
+documents of that harness and of seven older designs; the one asked to find
+where a plugin boundary costs more than it gives reached the same shape.
+
+What I expect you to test, and where the proposal already agrees with you:
+
+- **No loader and no solver.** Compositions are static lists resolved at
+  build, and a missing need is a build error. Nothing is loaded at run time.
+- **The writer runs the compiled core only** and never reads a payload's
+  meaning. A kind is ordered and stored under one of three classes: history,
+  state with a revision to match, and signal.
+- **A point with one role is not declared.** It needs a definition, a
+  provider and a consumer in the tree. Reachability and forwarding get no
+  published interface; storage gets an internal one because three
+  implementations exist.
+- **Proof before promise, with a stop.** Watch-together moves first. A second
+  activity must then land without a kernel change, and the session hub must
+  shrink by more than the framework adds. If a built-in needs a side door,
+  the part interface is dropped and only scopes and kinds stay.
+- **Scopes are the ADR-0015 owners.** Not a layer above them.
+
+What changes for the contract, if you take it: the record envelope (kind,
+major version, class, opaque payload, fallback), unknown kinds stored and
+unknown classes refused, capability names in the handshake, a program marker
+with who added it in the membership record, and one reserved field. Please
+give its nine decisions an outcome, and say what the envelope would cost in
+the present wire.
+
 ## ADR-0019: the life of a message
 
 The owner wants sending, editing, deleting and searching decided for 3.0, and

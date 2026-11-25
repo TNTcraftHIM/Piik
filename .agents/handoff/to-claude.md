@@ -68,7 +68,7 @@ cover explicit Stop, inactive widgets, persistence status and narrow controls.
    consumed under the Domain lock. Ready/navigation links no longer contain
    the durable seed; personal credentials reconnect normally. Manual standalone
    Server bootstrap is unchanged. Native session integration and the full
-   check pass; matching WebView package acceptance remains. Previously exposed
+   check and matching WebView package acceptance pass. Previously exposed
    seeds are not revoked by this change.
 4. **Defer unconfirmed ingress/resource concerns** to public Demo acceptance;
    first trace existing admission and resource bounds. **Decline a timing-defense
@@ -118,12 +118,56 @@ ignored dtx. Both offers/answers omitted usedtx. Stable silence still sent
 Opus DTX reduces synthetic silence bytes, but does not prove a Browser room-
 voice toggle. See local round13/browser-dtx and round11/native-dtx.
 
+## ADR-0020 through 19ef5726
+
+The proposal is now in the tree as proposed, not as a replacement for the
+accepted engineering or compatibility rules. Four independent reviews traced
+the actual consumers, authority, layouts and record formats. Keep the goal of
+composable parts; use a paired implementation to choose the mechanism.
+
+| Item | Outcome |
+| --- | --- |
+| 1 · Vocabulary and locations | Defer universal Point/Contribution types until the owning operation and its second consumer are concrete. The four execution locations are useful distinctions. |
+| 2 · Universal kind envelope | Defer the cross-machine contract. Watch has commands, requester-only results, projections and independent byte delivery; three record classes do not remove those rules. Keep compiled validators at their authority. |
+| 3 · Fallback and retention | Defer a universal retention rule to a concrete content consumer. Same-room lossless restore and cross-room copy have different identity semantics. Unknown opaque references cannot be generically remapped. |
+| 4 · Scope tree | Decline mandatory parent teardown of activities and shared resources. A local cleanup stack may release its own listeners and borrowed leases. Closing a tool, browsing another room and leaving one shared connection user do not end their parents' or siblings' work. |
+| 5 · Compositions | Decline separate full/simple builds as a required proof. Both are runtime views of one session; simple sharing still supports chat, voice and multiple pictures. Direct typed imports already check required constructor dependencies. |
+| 6 · Program identity | Defer enrollment fields to an authenticated program-enrollment action. Mark registered programs; ordinary credentials cannot prove whether software or a human drives them. Current authorized history reads also do not require Browse, so the proposed universal visible-reading guarantee is not implemented. |
+| 7 · Providers | Take internal, owner-specific provider contracts where real interchangeable implementations use them. Do not force synchronous SQLite and asynchronous Browser transactions behind an unused common facade, or publish planner/transport interfaces without a consumer. |
+| 8 · Publication stages | Take internal/proposed/stable review for extension points. Keep public wire and storage compatibility with their existing owner; it cannot depend on first recruiting outside consumers. |
+| 9 · Pilot | Take a paired private experiment. Apply identical ADR-0015 extraction to both arms first. Attribute only additional removed mappings/dependencies to the part interface. Check preserved sibling use and lease retirement; absolute connection counts include legitimate standby reuse. Retain no failed experimental abstraction by default. |
+
+The initial watch commit 74035b62 gives a reproducible eleven-touchpoint list,
+but several implement genuine room semantics or the player. WatchMedia already
+has concrete providers. Start the comparison there or at the owned Stage handoff;
+do not count two media providers as two independent activities.
+
+One synthetic five-field encoding changed a short message's existing WASM
+signed packet from 727 to 789 bytes. A 1,000-short-message SQLite fixture grew
+315,392→385,024 bytes; this is a candidate-format measurement, not a product
+storage forecast. More consequential: append-only retraction conflicts with
+current body/thumbnail/quote deletion and file withdrawal, and one revision
+requires a coherent full-message merge. These costs need explicit decisions.
+Local reports and reproducible scripts: round15/extensions. No framework,
+envelope, reserved field or new permission mechanism was implemented.
+
 ## Validation
 
 Full Rust, Native session, real Browser/WASM and protocol checks passed, then
 2,342 Web tests. The subsequent voice-only change passed TypeScript and 30
 related tests. Installed Domain-47 Node SDK signed exchange passed at 1db2a858.
 OBS/WHIP High-10 rejection and compatible 8-bit playback passed at 79c94549.
-Physical devices, difficult NATs, matching Native same-page replacement and the
-next immutable App package remain separate acceptance. The 2.x branch received
-the touch-cancel docking repair in 3b009edc. No public release or deployment.
+Matching review-7f52281b Windows and Linux packages now pass automatic runtime
+acceptance. Windows covers WebView/Browser owner tickets, storage failure,
+reconnect, window controls and room creation. Linux checks real restart and
+restore lineage with signed history. Android ARM64/x64 APK compilation, signing,
+16 KiB alignment and shared Web hashes pass; no device installation was attempted.
+Original-page Windows and Browser delayed/403/retry/reconnect controls also pass.
+The native original page currently reports joined membership after becoming
+playable; it does not expose presented-frame proof to the Piik tile.
+
+842bb206 adds the later output-recovery UI repair: an existing video frame must
+not hide a failed audio-device selector. TypeScript and 33 targeted tests pass;
+the frozen 7f package predates it. Physical devices, difficult NATs and broader
+website coverage remain in TODO. The 2.x branch received the touch-cancel docking
+repair in 3b009edc. No public release or deployment.
