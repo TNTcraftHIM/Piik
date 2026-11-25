@@ -1874,13 +1874,11 @@ impl RoomHost {
                 })
                 .transpose()?;
             match &input.action {
-                HostAction::Sync => {}
+                // Every dispatch has reconciled, and so expired, each publication above.
+                HostAction::Sync | HostAction::RouteWake => {}
                 HostAction::RemoveHostedRoom { .. } => {
                     work.delete = true;
                     return Ok(RoomResult::Deleted { data_removed: true });
-                }
-                HostAction::RouteWake => {
-                    self.room.expire_media(input.now);
                 }
                 HostAction::RoomDataState {
                     context,
