@@ -14577,6 +14577,52 @@ test("App admission waits for Native readiness and cancelling the last intent pe
 });
 
 
+test.each(["sources", "share-page", "watch-page", "external", "capture"] as const)("cancelling %s during App admission releases the caller and permits retry", async kind => {
+  const { session, socket } = await setup(1000, false);
+  const approved = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, token: "owned", port: 8793, pagePlayer: true, externalScreenInputAvailable: true } as const;
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(approved);
+  const reader = new AbortController();
+  const activity = { id: "website-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+    source: { kind: "website" as const, url: "https://website.test/episode" },
+    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+  const begin = {
+    sources: () => session.nativeSources(reader.signal),
+    "share-page": () => session.prepareWatchPage("first", activity.source.url),
+    "watch-page": () => session.prepareWatchPage("first", activity.source.url, activity.id),
+    external: () => session.startExternalScreen("first"),
+    capture: () => session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Owned fixture" }, audio: false, showCaptureBorder: false }),
+  };
+  const result = begin[kind]().catch(error => error);
+  try {
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const first = ChannelSocket.current;
+    await first.onopen?.();
+    const hello = first.sent.at(-1)!.id;
+    expect(first.sent.map(command => command.type)).toEqual(["hello"]);
+    const pendingKey = kind === "watch-page" ? `watch-video:${activity.id}` : kind === "sources" ? undefined : "screen:first";
+    if (pendingKey) expect(session.getSnapshot().pending.has(pendingKey)).toBe(true);
+    if (kind === "sources") reader.abort();
+    else if (kind === "watch-page") session.cancelWatchPage(activity.id);
+    else await session.cancelScreenSelection("first");
+    await vi.waitFor(() => expect(first.readyState).toBe(3), { timeout: 200 });
+    expect(await result).toMatchObject({ name: "AbortError" });
+    if (pendingKey) expect(session.getSnapshot().pending.has(pendingKey)).toBe(false);
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
+    const retried = session.activateApp(approved);
+    const next = ChannelSocket.current;
+    expect(next).not.toBe(first);
+    await next.onopen?.();
+    first.receive({ id: hello, result: null });
+    expect(session.getSnapshot().appConnected).toBe(false);
+    next.receive({ id: next.sent.at(-1)!.id, result: null });
+    await retried;
+    expect(session.getSnapshot()).toMatchObject({ appConnected: true, error: null });
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+  } finally { session.close(); await result; }
+});
+
 test("App activation cannot acknowledge success before Domain admission", async () => {
   const { session, socket } = await setup();
   try {
