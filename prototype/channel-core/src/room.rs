@@ -1614,7 +1614,7 @@ impl RoomRuntime {
                 }
             }
             let carried = kinds.media(publication.info.kind);
-            publication.reconcile_observed(
+            publication.reconcile(
                 &self.disconnected_pairs,
                 &subscribers,
                 &connected,
@@ -1722,22 +1722,12 @@ impl RoomRuntime {
         }
     }
 
-    pub fn flow_state(
-        &mut self,
-        flow_id: Uuid,
-        receiver: Uuid,
-        sender: Uuid,
-        state: FlowState,
-        now: u64,
-    ) -> Result<bool, &'static str> {
-        self.flow_state_observed(flow_id, receiver, sender, state, now, &BTreeSet::new())
-    }
     pub(crate) fn commit_ready_switches(&mut self, now: u64, down: &BTreeSet<(Uuid, Uuid)>) {
         for publication in self.publications.values_mut() {
             publication.commit_ready_switch(now, down);
         }
     }
-    pub(crate) fn flow_state_observed(
+    pub(crate) fn flow_state(
         &mut self,
         flow_id: Uuid,
         receiver: Uuid,
@@ -1755,7 +1745,7 @@ impl RoomRuntime {
                 })
             })
             .ok_or("unassigned_flow")?;
-        Ok(publication.flow_state_observed(flow_id, receiver, sender, state, now, down))
+        Ok(publication.flow_state(flow_id, receiver, sender, state, now, down))
     }
 }
 
@@ -1961,8 +1951,15 @@ mod tests {
         );
         room.subscribe(viewer, id(2), id(10), true, None).unwrap();
         for flow in room.flows().collect::<Vec<_>>() {
-            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                .unwrap();
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Decoded,
+                1,
+                &BTreeSet::new(),
+            )
+            .unwrap();
         }
         // The helper reserves one WAN output for the other viewer. Its paired
         // display also receives the prepared picture under that same cap.
@@ -2002,6 +1999,7 @@ mod tests {
                 flow.sender,
                 FlowState::Forwardable,
                 3,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
@@ -2010,8 +2008,15 @@ mod tests {
             .all(|old| room.flows().any(|flow| flow.id == old.id && flow.selected)));
         for receiver in [id(2), id(4)] {
             let flow = &trial[&receiver];
-            room.flow_state(flow.id, receiver, flow.sender, FlowState::SwitchReady, 4)
-                .unwrap();
+            room.flow_state(
+                flow.id,
+                receiver,
+                flow.sender,
+                FlowState::SwitchReady,
+                4,
+                &BTreeSet::new(),
+            )
+            .unwrap();
             if receiver == id(2) {
                 let pending = room
                     .flows()
@@ -2080,8 +2085,15 @@ mod tests {
                     .filter(|flow| flow.receiver != id(4))
                     .collect::<Vec<_>>()
                 {
-                    room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                        .unwrap();
+                    room.flow_state(
+                        flow.id,
+                        flow.receiver,
+                        flow.sender,
+                        FlowState::Decoded,
+                        1,
+                        &BTreeSet::new(),
+                    )
+                    .unwrap();
                 }
             }
             room.subscribe(
@@ -2117,12 +2129,20 @@ mod tests {
                 native.sender,
                 FlowState::Forwardable,
                 3,
+                &BTreeSet::new(),
             )
             .unwrap();
             for receiver in [id(4), id(2)] {
                 let flow = &candidate[&receiver];
-                room.flow_state(flow.id, receiver, flow.sender, FlowState::Decoded, 4)
-                    .unwrap();
+                room.flow_state(
+                    flow.id,
+                    receiver,
+                    flow.sender,
+                    FlowState::Decoded,
+                    4,
+                    &BTreeSet::new(),
+                )
+                .unwrap();
             }
             if playing {
                 assert!(room.flows().any(|flow| !flow.selected));
@@ -2133,6 +2153,7 @@ mod tests {
                     flow.sender,
                     FlowState::SwitchReady,
                     5,
+                    &BTreeSet::new(),
                 )
                 .unwrap();
             }
@@ -2161,8 +2182,15 @@ mod tests {
             );
             room.subscribe(viewer, id(2), id(10), true, None).unwrap();
             for flow in room.flows().collect::<Vec<_>>() {
-                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                    .unwrap();
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Decoded,
+                    1,
+                    &BTreeSet::new(),
+                )
+                .unwrap();
             }
             let old: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
             room.subscribe(
@@ -2181,8 +2209,15 @@ mod tests {
                 .unwrap();
             match failure {
                 0 => {
-                    room.flow_state(local.id, local.receiver, local.sender, FlowState::Failed, 3)
-                        .unwrap();
+                    room.flow_state(
+                        local.id,
+                        local.receiver,
+                        local.sender,
+                        FlowState::Failed,
+                        3,
+                        &BTreeSet::new(),
+                    )
+                    .unwrap();
                 }
                 1 => {
                     assert!(room.expire_media(20_002));
@@ -2218,8 +2253,15 @@ mod tests {
             );
             room.subscribe(viewer, id(2), id(10), true, None).unwrap();
             for flow in room.flows().collect::<Vec<_>>() {
-                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                    .unwrap();
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Decoded,
+                    1,
+                    &BTreeSet::new(),
+                )
+                .unwrap();
             }
             let incumbent: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
             room.subscribe(
@@ -2244,6 +2286,7 @@ mod tests {
                     upstream.sender,
                     FlowState::Failed,
                     3,
+                    &BTreeSet::new(),
                 )
                 .unwrap();
                 room.reconcile_with_pairs(&endpoints, 4, &pairs);
@@ -2604,8 +2647,15 @@ mod tests {
                 room.browse(member, session, true).unwrap();
             }
             for flow in room.flows().collect::<Vec<_>>() {
-                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                    .unwrap();
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Decoded,
+                    1,
+                    &BTreeSet::new(),
+                )
+                .unwrap();
             }
             let relay_member = endpoints[&relay].member;
             room.set_relay_capacity(relay_member, relay, Some(2)).unwrap();
@@ -2933,6 +2983,7 @@ mod tests {
             serving.sender,
             FlowState::Decoded,
             1,
+            &BTreeSet::new(),
         )
         .unwrap();
         // One source slot remains. Viewer 4 requested first and has a direct
@@ -2968,8 +3019,15 @@ mod tests {
             .filter(|flow| flow.sender == id(5))
             .all(|flow| flow.input_flow_id == Some(relay.id)));
         assert_eq!(room.next_route_deadline(), Some(2 + SCREEN_PREPARE_MS));
-        room.flow_state(relay.id, id(5), id(1), FlowState::Failed, 3)
-            .unwrap();
+        room.flow_state(
+            relay.id,
+            id(5),
+            id(1),
+            FlowState::Failed,
+            3,
+            &BTreeSet::new(),
+        )
+        .unwrap();
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
         assert!(room
             .flows()
@@ -3007,9 +3065,9 @@ mod tests {
         let input = room.flows().find(|f| f.receiver == a).unwrap();
         let output = room.flows().find(|f| f.receiver == c).unwrap();
         assert_eq!(output.sender, a);
-        room.flow_state(input.id, a, b, FlowState::Forwardable, 2)
+        room.flow_state(input.id, a, b, FlowState::Forwardable, 2, &BTreeSet::new())
             .unwrap();
-        room.flow_state(output.id, c, a, FlowState::Decoded, 2)
+        room.flow_state(output.id, c, a, FlowState::Decoded, 2, &BTreeSet::new())
             .unwrap();
         room.set_voice(member(a), a, true, true, false).unwrap();
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
@@ -3027,8 +3085,15 @@ mod tests {
             .flows()
             .find(|f| f.publication_id == id(11) && f.receiver == a)
             .unwrap();
-        room.flow_state(second_input.id, a, d, FlowState::Decoded, 5)
-            .unwrap();
+        room.flow_state(
+            second_input.id,
+            a,
+            d,
+            FlowState::Decoded,
+            5,
+            &BTreeSet::new(),
+        )
+        .unwrap();
         room.failed_pair(d, c);
         room.reconcile_with_pairs(&endpoints, 6, &pairs);
         let outputs: Vec<_> = room.flows().filter(|f| f.sender == a).collect();
@@ -3036,7 +3101,7 @@ mod tests {
         assert!(outputs.iter().any(|flow| flow.id == output.id));
         assert!(outputs.iter().all(|flow| flow.receiver == c));
         let second = outputs.iter().find(|f| f.publication_id == id(11)).unwrap();
-        room.flow_state(second.id, c, a, FlowState::Decoded, 6)
+        room.flow_state(second.id, c, a, FlowState::Decoded, 6, &BTreeSet::new())
             .unwrap();
         room.subscribe(member(b), b, id(11), true, None).unwrap();
         room.failed_pair(d, b);
@@ -3210,6 +3275,7 @@ mod tests {
             voice.sender,
             FlowState::Forwardable,
             1,
+            &BTreeSet::new(),
         )
         .unwrap();
 
@@ -3350,6 +3416,7 @@ mod tests {
                 flow.sender,
                 FlowState::Forwardable,
                 2,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
@@ -3376,7 +3443,8 @@ mod tests {
                 abandoned.receiver,
                 abandoned.sender,
                 FlowState::Forwardable,
-                12
+                12,
+                &BTreeSet::new()
             ),
             Err("unassigned_flow")
         );
@@ -3408,6 +3476,7 @@ mod tests {
                 flow.sender,
                 FlowState::Forwardable,
                 23,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
@@ -3477,7 +3546,7 @@ mod tests {
                 [id(2), id(3), id(4)].into_iter().collect(),
                 requested.clone(),
             ] {
-                picture.reconcile_observed(
+                picture.reconcile(
                     &BTreeSet::new(),
                     &requested,
                     &all,
@@ -3488,7 +3557,7 @@ mod tests {
                     0,
                 );
                 for flow in picture.flows().collect::<Vec<_>>() {
-                    picture.flow_state_observed(
+                    picture.flow_state(
                         flow.id,
                         flow.receiver,
                         flow.sender,
@@ -3510,7 +3579,7 @@ mod tests {
             };
             neighbors.entry(expected.0).or_default().insert(expected.1);
             neighbors.entry(expected.1).or_default().insert(expected.0);
-            picture.reconcile_observed(
+            picture.reconcile(
                 &BTreeSet::new(),
                 &requested,
                 &all,
@@ -3523,7 +3592,7 @@ mod tests {
             let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
             assert_eq!((candidate.sender, candidate.receiver), expected);
             let deadline = picture.deadline();
-            picture.reconcile_observed(
+            picture.reconcile(
                 &BTreeSet::new(),
                 &requested,
                 &all,
@@ -3537,7 +3606,7 @@ mod tests {
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == candidate.id && !flow.selected));
-            picture.flow_state_observed(
+            picture.flow_state(
                 candidate.id,
                 candidate.receiver,
                 candidate.sender,
@@ -3548,7 +3617,7 @@ mod tests {
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == old[&candidate.receiver] && flow.selected));
-            picture.flow_state_observed(
+            picture.flow_state(
                 candidate.id,
                 candidate.receiver,
                 candidate.sender,
@@ -3556,7 +3625,7 @@ mod tests {
                 1_002,
                 &BTreeSet::new(),
             );
-            picture.reconcile_observed(
+            picture.reconcile(
                 &BTreeSet::new(),
                 &requested,
                 &all,
@@ -3584,8 +3653,15 @@ mod tests {
         let (mut room, endpoints) = screen_room();
         let pairs = confirmed_pairs(&[(1, 3), (1, 2), (2, 4), (3, 4)]);
         for flow in room.flows().collect::<Vec<_>>() {
-            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                .unwrap();
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Decoded,
+                1,
+                &BTreeSet::new(),
+            )
+            .unwrap();
         }
         let old = room.flows().find(|flow| flow.receiver == id(4)).unwrap();
         room.set_relay_capacity(endpoints[&id(2)].member, id(2), Some(0))
@@ -3599,8 +3675,15 @@ mod tests {
             .unwrap();
         assert_eq!(candidate.sender, id(3), "the publication origin uses the room default even when its personal relay override is zero");
         for state in [FlowState::Forwardable, FlowState::Decoded] {
-            room.flow_state(candidate.id, candidate.receiver, candidate.sender, state, 3)
-                .unwrap();
+            room.flow_state(
+                candidate.id,
+                candidate.receiver,
+                candidate.sender,
+                state,
+                3,
+                &BTreeSet::new(),
+            )
+            .unwrap();
             assert!(room.flows().any(|flow| flow.id == old.id && flow.selected));
         }
         room.flow_state(
@@ -3609,6 +3692,7 @@ mod tests {
             candidate.sender,
             FlowState::SwitchReady,
             4,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 5, &pairs);
@@ -3661,8 +3745,15 @@ mod tests {
         let (mut room, endpoints) = screen_room();
         let pairs = screen_room_pairs();
         for flow in room.flows().collect::<Vec<_>>() {
-            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                .unwrap();
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Decoded,
+                1,
+                &BTreeSet::new(),
+            )
+            .unwrap();
         }
         room.set_default_relay_capacity(1);
         for endpoint in [id(2), id(3), id(4)] {
@@ -3738,6 +3829,7 @@ mod tests {
             failed.sender,
             FlowState::Failed,
             1,
+            &BTreeSet::new(),
         )
         .unwrap();
         pairs.insert((id(2), id(3)));
@@ -3752,7 +3844,8 @@ mod tests {
                 failed.receiver,
                 failed.sender,
                 FlowState::Decoded,
-                2
+                2,
+                &BTreeSet::new()
             ),
             Err("unassigned_flow")
         );
@@ -3765,6 +3858,7 @@ mod tests {
             alternative.sender,
             FlowState::Failed,
             2,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 2, &pairs);
@@ -3780,6 +3874,7 @@ mod tests {
             restored.sender,
             FlowState::Forwardable,
             5_002,
+            &BTreeSet::new(),
         )
         .unwrap();
         assert_eq!(failures(&room, id(2)), serde_json::json!([id(10)]));
@@ -3789,6 +3884,7 @@ mod tests {
             restored.sender,
             FlowState::Decoded,
             5_003,
+            &BTreeSet::new(),
         )
         .unwrap();
         assert_eq!(failures(&room, id(2)), serde_json::json!([]));
@@ -3799,7 +3895,8 @@ mod tests {
                 failed.receiver,
                 failed.sender,
                 FlowState::Failed,
-                5_003
+                5_003,
+                &BTreeSet::new()
             ),
             Err("unassigned_flow")
         );
@@ -3815,6 +3912,7 @@ mod tests {
             child.sender,
             FlowState::Decoded,
             5_004,
+            &BTreeSet::new(),
         )
         .unwrap();
         assert_eq!(failures(&room, id(4)), serde_json::json!([]));
@@ -3825,6 +3923,7 @@ mod tests {
             child.sender,
             FlowState::Failed,
             5_005,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 5_005, &pairs);
@@ -4126,6 +4225,7 @@ mod tests {
                 preview.sender,
                 FlowState::Decoded,
                 1,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
@@ -4177,16 +4277,30 @@ mod tests {
         room.reconcile_with_pairs(&endpoints, 5_003, &pairs);
         assert!(room.flows().any(|flow| flow.id == upstream.id));
         assert_eq!(room.publications[&publication].deadline(), deadline);
-        room.flow_state(upstream.id, service, source, FlowState::Forwardable, 5_004)
-            .unwrap();
+        room.flow_state(
+            upstream.id,
+            service,
+            source,
+            FlowState::Forwardable,
+            5_004,
+            &BTreeSet::new(),
+        )
+        .unwrap();
         room.reconcile_with_pairs(&endpoints, 5_004, &pairs);
         let downstream = room
             .flows()
             .find(|flow| flow.sender == service && flow.receiver == viewer)
             .expect("the service's forwardable input must admit the waiting viewer");
         assert_eq!(downstream.input_flow_id, Some(upstream.id));
-        room.flow_state(downstream.id, viewer, service, FlowState::Decoded, 5_005)
-            .unwrap();
+        room.flow_state(
+            downstream.id,
+            viewer,
+            service,
+            FlowState::Decoded,
+            5_005,
+            &BTreeSet::new(),
+        )
+        .unwrap();
         room.reconcile_with_pairs(&endpoints, 5_005, &pairs);
         assert!(room.flows().any(|flow| {
             flow.id == downstream.id && flow.selected && flow.proof == Some(FlowState::Decoded)
@@ -4317,8 +4431,15 @@ mod tests {
         let (mut room, endpoints) = screen_room();
         let mut pairs = confirmed_pairs(&[(1, 3), (1, 2), (2, 4), (2, 3)]);
         for flow in room.flows().collect::<Vec<_>>() {
-            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 0)
-                .unwrap();
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Decoded,
+                0,
+                &BTreeSet::new(),
+            )
+            .unwrap();
         }
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
         assert!(room
@@ -4369,8 +4490,15 @@ mod tests {
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
         let picture = room.flows().find(|flow| flow.receiver == viewer).unwrap();
         assert_eq!(picture.sender, source);
-        room.flow_state(picture.id, viewer, source, FlowState::Decoded, 1)
-            .unwrap();
+        room.flow_state(
+            picture.id,
+            viewer,
+            source,
+            FlowState::Decoded,
+            1,
+            &BTreeSet::new(),
+        )
+        .unwrap();
 
         for peer in [source, viewer] {
             room.failed_pair(host, peer);
@@ -4458,8 +4586,15 @@ mod tests {
             }
             room.reconcile_with_pairs(&endpoints, 0, &pairs);
             for flow in room.flows().collect::<Vec<_>>() {
-                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                    .unwrap();
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Decoded,
+                    1,
+                    &BTreeSet::new(),
+                )
+                .unwrap();
             }
             room.reconcile_with_pairs(&endpoints, 1, &pairs);
             let old = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
@@ -4529,11 +4664,25 @@ mod tests {
                 .iter()
                 .any(|p| p.id == id(10) && p.session_id == id(1)));
             assert_eq!(
-                room.flow_state(old.id, id(2), id(1), FlowState::Decoded, restored_at),
+                room.flow_state(
+                    old.id,
+                    id(2),
+                    id(1),
+                    FlowState::Decoded,
+                    restored_at,
+                    &BTreeSet::new()
+                ),
                 Err("unassigned_flow")
             );
-            room.flow_state(restored.id, id(2), id(1), FlowState::Decoded, restored_at + 1)
-                .unwrap();
+            room.flow_state(
+                restored.id,
+                id(2),
+                id(1),
+                FlowState::Decoded,
+                restored_at + 1,
+                &BTreeSet::new(),
+            )
+            .unwrap();
             if let Some(preparing) = preparing {
                 assert!(room.flows().any(|flow| flow.id == preparing.id));
                 room.flow_state(
@@ -4542,6 +4691,7 @@ mod tests {
                     preparing.sender,
                     FlowState::Decoded,
                     restored_at + 1,
+                    &BTreeSet::new(),
                 )
                 .unwrap();
             }
@@ -4718,6 +4868,7 @@ mod tests {
             id(3),
             FlowState::Forwardable,
             1,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 1, &pairs);
@@ -4733,7 +4884,14 @@ mod tests {
         assert_ne!(before[&(id(2), id(4))], after[&(id(2), id(4))]);
         assert_eq!(room.next_route_deadline(), Some(2 + SCREEN_PREPARE_MS));
         assert_eq!(
-            room.flow_state(before[&(id(1), id(2))], id(2), id(1), FlowState::Decoded, 3),
+            room.flow_state(
+                before[&(id(1), id(2))],
+                id(2),
+                id(1),
+                FlowState::Decoded,
+                3,
+                &BTreeSet::new()
+            ),
             Err("unassigned_flow")
         );
 
@@ -4741,8 +4899,15 @@ mod tests {
         for now in 4..=6 {
             let selected: Vec<_> = room.flows().filter(|flow| flow.selected).collect();
             for flow in selected {
-                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, now)
-                    .unwrap();
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Decoded,
+                    now,
+                    &BTreeSet::new(),
+                )
+                .unwrap();
             }
             room.reconcile_with_pairs(&endpoints, now, &pairs);
         }
@@ -4770,7 +4935,8 @@ mod tests {
                     flow.receiver,
                     flow.sender,
                     FlowState::SwitchReady,
-                    8
+                    8,
+                    &BTreeSet::new()
                 ),
                 Err("unassigned_flow")
             );
@@ -4801,6 +4967,7 @@ mod tests {
             id(3),
             FlowState::Forwardable,
             19_000,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 19_000, &pairs);
@@ -4813,6 +4980,7 @@ mod tests {
             id(1),
             FlowState::Forwardable,
             38_000,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 38_000, &pairs);
@@ -4884,6 +5052,7 @@ mod tests {
                 flow.sender,
                 FlowState::Forwardable,
                 1_000,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
@@ -4902,6 +5071,7 @@ mod tests {
                 flow.sender,
                 FlowState::Decoded,
                 2_000,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
@@ -4949,13 +5119,21 @@ mod tests {
                 flow.sender,
                 FlowState::Forwardable,
                 1,
+                &BTreeSet::new(),
             )
             .unwrap();
         }
         assert_eq!(audience(&room, id(3)), preparing);
         let flow = room.flows().find(|flow| flow.receiver == id(4)).unwrap();
-        room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 2)
-            .unwrap();
+        room.flow_state(
+            flow.id,
+            flow.receiver,
+            flow.sender,
+            FlowState::Decoded,
+            2,
+            &BTreeSet::new(),
+        )
+        .unwrap();
         let active = vec![PublicationAudience {
             session_id: id(4),
             state: AudienceState::Active,
@@ -4964,8 +5142,15 @@ mod tests {
         assert_eq!(audience(&room, id(4)), active);
         // Reading/voice/forwarding never turn an endpoint into a screen watcher.
         assert!(room.reading(id(2)) && room.voice_joined(id(2)));
-        room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Failed, 3)
-            .unwrap();
+        room.flow_state(
+            flow.id,
+            flow.receiver,
+            flow.sender,
+            FlowState::Failed,
+            3,
+            &BTreeSet::new(),
+        )
+        .unwrap();
         assert_eq!(audience(&room, id(3))[0].state, AudienceState::Failed);
         // The viewer reads its own delivery failure from its own entry, by session.
         assert!(audience(&room, id(4)).contains(&PublicationAudience {
@@ -5015,7 +5200,8 @@ mod tests {
                     viewer.receiver,
                     viewer.sender,
                     FlowState::SwitchReady,
-                    3_000
+                    3_000,
+                    &BTreeSet::new()
                 )
                 .unwrap());
             assert_eq!(room.next_route_deadline(), Some(22_000));
@@ -5029,7 +5215,8 @@ mod tests {
                         relay.receiver,
                         relay.sender,
                         FlowState::Decoded,
-                        4_000
+                        4_000,
+                        &BTreeSet::new()
                     )
                     .unwrap());
             }
@@ -5043,7 +5230,8 @@ mod tests {
                     } else {
                         FlowState::Forwardable
                     },
-                    4_000
+                    4_000,
+                    &BTreeSet::new()
                 )
                 .unwrap());
             room.reconcile_with_pairs(&endpoints, 4_000, &pairs);
@@ -5067,7 +5255,8 @@ mod tests {
                         retired.receiver,
                         retired.sender,
                         FlowState::Failed,
-                        5_000
+                        5_000,
+                        &BTreeSet::new()
                     ),
                     Err("unassigned_flow")
                 );
@@ -5097,7 +5286,8 @@ mod tests {
                         viewer.receiver,
                         viewer.sender,
                         FlowState::Failed,
-                        21_999
+                        21_999,
+                        &BTreeSet::new()
                     )
                     .unwrap());
             }
@@ -5145,6 +5335,7 @@ mod tests {
                 relay.sender,
                 FlowState::SwitchReady,
                 3_000,
+                &BTreeSet::new(),
             )
             .unwrap();
             assert_eq!(
@@ -5159,6 +5350,7 @@ mod tests {
                     relay.sender,
                     FlowState::Decoded,
                     4_000,
+                    &BTreeSet::new(),
                 )
                 .unwrap();
                 assert_eq!(
@@ -5177,6 +5369,7 @@ mod tests {
                     relay.sender,
                     FlowState::SwitchReady,
                     7_999,
+                    &BTreeSet::new(),
                 )
                 .unwrap();
                 assert_eq!(room.next_route_deadline(), Some(22_000));
@@ -5188,6 +5381,7 @@ mod tests {
                 viewer.sender,
                 FlowState::SwitchReady,
                 pending_at,
+                &BTreeSet::new(),
             )
             .unwrap();
             room.reconcile_with_pairs(&endpoints, pending_at, &pairs);
@@ -5206,6 +5400,7 @@ mod tests {
                 relay.sender,
                 FlowState::SwitchReady,
                 pending_at + 100,
+                &BTreeSet::new(),
             )
             .unwrap();
             assert!(shadow
@@ -5226,6 +5421,7 @@ mod tests {
             relay.sender,
             FlowState::SwitchReady,
             3_000,
+            &BTreeSet::new(),
         )
         .unwrap();
         room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)
@@ -5250,6 +5446,7 @@ mod tests {
             relay.sender,
             FlowState::Failed,
             3_000,
+            &BTreeSet::new(),
         )
         .unwrap();
         let candidate = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
@@ -5259,7 +5456,8 @@ mod tests {
                 candidate.receiver,
                 candidate.sender,
                 FlowState::SwitchReady,
-                3_000
+                3_000,
+                &BTreeSet::new()
             )
             .unwrap());
         room.reconcile_with_pairs(&endpoints, 3_000, &pairs);
