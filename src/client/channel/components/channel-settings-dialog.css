@@ -7,9 +7,13 @@
 .c3-settings-dialog-heading p { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
 .c3-settings-dialog-heading > .lr-comic-tip-wrap { flex: none; }
 .c3-settings-content, .c3-settings-body { display: flex; flex-direction: column; min-height: 0; }
-.c3-settings-navigation { flex: none; overflow-x: auto; padding: 0 24px 16px; scrollbar-width: thin; }
-.c3-settings-nav { width: max-content; min-width: 100%; box-sizing: border-box; }
-.c3-settings-nav button { white-space: nowrap; }
+.c3-settings-navigation { flex: none; padding: 0 24px 16px; container-type: inline-size; }
+.c3-settings-nav { width: 100%; grid-auto-columns: minmax(0, 1fr); box-sizing: border-box; }
+.c3-settings-nav button { min-width: 0; text-align: center; }
+.c3-settings-nav .lr-cap { white-space: normal; overflow-wrap: anywhere; }
+@container (inline-size < 380px) {
+  .c3-settings-nav button { flex-direction: column; gap: 3px; padding: 5px 2px; }
+}
 .c3-settings-panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 24px; scrollbar-width: thin; }
 .c3-settings-panels > [role="tabpanel"] { display: grid; gap: 16px; }
 .c3-settings-panels > [hidden] { display: none; }

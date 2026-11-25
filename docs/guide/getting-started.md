@@ -9,9 +9,9 @@ for those versions.
 
 | You have… | Start here |
 | --- | --- |
-| A friend's 3.0 link | [Join their room](#join-a-friends-room). A browser is enough to watch. |
-| A 3.0 test App package | [Create a room with App](#share-with-piik-app). |
-| Your group's 3.0 site address | [Join a room on that site](#share-from-an-existing-site). |
+| A friend's 3.0 link | [Join a friend's room](#join-a-friends-room). A browser is enough to watch. |
+| A 3.0 test App package | [Share with Piik App](#share-with-piik-app). |
+| Your group's 3.0 site address | [Share from an existing site](#share-from-an-existing-site). |
 
 A **site** can have several rooms. The site owner decides who can create them and can require members’ rooms to be invitation-only. Once in a room, you can chat, join voice, share your screen or watch a friend.
 
@@ -19,8 +19,8 @@ A **site** can have several rooms. The site owner decides who can create them an
 
 1. Open the complete 3.0 link in a computer or phone browser. The site opens
    directly and remembers your identity in this browser.
-2. Choose a room from the room list. On a narrow screen, **Rooms** opens that
-   list. A private room may need its own invitation or **room password**.
+2. A room link opens that room. If you received a site address, choose a room
+   from **Rooms**. Enter the **room password** if Piik asks for one.
 3. In the room's available screens, choose the person whose picture you want
    and select **Watch**. If playback is blocked, press **Play**.
 4. Write in the message box to chat. Select **Join voice** in the personal area
@@ -47,12 +47,13 @@ site, not the entry for this test version.
    open Piik. Keep the desktop package's files together.
 2. On Windows the launcher opens in the Piik window by default. You can also use the system browser.
    Under **Start Piik on this device**, select **Set up and start**. Choose a mode below and select **Open Piik**.
+   If the site is already running, select **Continue**.
    Your first visit opens the room overview. Select the Piik mark to return to it later.
 3. If the site lets you create rooms, select **Create your first room** on an empty site. You can rename **Living room**. If the form offers a choice, select **Public** or **Private**. Check the hosting note,
    then select **Create room** to enter it. Later, use **Create room** in the
    room list (**Rooms** on a narrow screen) to open the same form.
 4. [Invite your friends](#invite-friends), then select **Start sharing**.
-   Choose **Browser**, **Camera**, or an available App window/screen source.
+   Use **Browser → Share a screen**, **Camera**, or an available App window or screen.
    Select the actual source and enable source sound if offered.
 5. Your friends enter the room and select **Watch** on your picture.
    Each person joins voice separately; picture sharing does not start a call.
@@ -161,5 +162,5 @@ the native sources supported by your device.
 ## Next steps
 
 - [Sharing and playback](./sharing.md#playback-controls): viewing and sound controls.
-- [Room tools](./room-tools.md): chat, voice and remote-control details.
+- [Chat, voice and remote control](./room-tools.md)
 - [Troubleshooting](./troubleshooting.md#common-problems): start from the symptom you see.

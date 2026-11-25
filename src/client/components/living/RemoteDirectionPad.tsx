@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { onDocumentInactive } from "../../ui/document-active";
 import { useCopy } from "../../ui/copy";
 import { DRAG_ACTIVATION_DISTANCE_PX, PLAYER_CONTROLS_IDLE_MS } from "../../ui/control-timing";
 import { Glyph } from "../../ui/icons";
@@ -45,12 +46,9 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
   useEffect(() => {
     if (!open) return;
     const doc = pad.current!.ownerDocument;
-    const visibility = () => { if (doc.hidden) release(); };
-    doc.defaultView?.addEventListener("blur", release);
-    doc.addEventListener("visibilitychange", visibility);
+    const stopListening = onDocumentInactive(doc, release);
     return () => {
-      doc.defaultView?.removeEventListener("blur", release);
-      doc.removeEventListener("visibilitychange", visibility);
+      stopListening();
       release();
     };
   }, [release, open]);

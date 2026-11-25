@@ -243,6 +243,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
 fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let path = std::env::temp_dir().join(format!("piik-domain-metadata-{}.sqlite", Uuid::new_v4()));
     let mut hub = Hub {
+        launch_tickets: BTreeMap::new(),
         _directory_owner: None,
         authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
@@ -325,6 +326,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
 #[test]
 fn retired_or_closing_connections_cannot_execute_queued_requests() {
     let mut hub = Hub {
+        launch_tickets: BTreeMap::new(),
         _directory_owner: None,
         authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
@@ -432,6 +434,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     let directory_store = storage::Storage::open(&directory_path).unwrap();
     let mut room_store = storage::Storage::open(&room_path).unwrap();
     let mut hub = Hub {
+        launch_tickets: BTreeMap::new(),
         _directory_owner: None,
         authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),

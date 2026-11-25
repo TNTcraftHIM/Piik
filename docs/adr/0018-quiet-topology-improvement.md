@@ -32,19 +32,22 @@ yet.
 2. **A move is decided by comparison, not by a threshold.** A candidate is
    compared with the incumbent under the same viewing intent, in the same
    seconds, both loaded. A move for quality needs no regression and a shown
-   advantage. Frame counts are not comparable across layers, frame-rate
+   advantage, counting any harm the trial causes to the incumbent or siblings.
+   Frame counts are not comparable across layers, frame-rate
    intent, re-encoding or a paused display, so the ratio of rendered to sent
-   frames is an offline measure taken per hop, not a live trigger.
+   frames is only meaningful for matched layers, intervals and intent, including
+   in offline replay.
 3. **One proof-based operation at a time**, through the handoff that exists.
    Three reasons are kept apart: repair of an actual failure, improvement of a
    healthy route, and recovery from a starved source, which is not a reason to
    move. A failed attempt is rejected by its generation and reopened only
-   under an agreed retry rule and fresh evidence.
+   under an agreed retry rule and fresh evidence. Input-generation fencing and
+   rollback remain independent of whether downstream sender identities are reused.
 4. **Observations open a comparison. They do not decide it.** Siblings in
    trouble together, or trouble through two parents, can have several causes:
    source capture, parent ingress, a shared access network or parent egress.
    They say whether a trial is worth its cost. The trial decides.
-5. **Capacity grows by demand.** When a demand cannot be placed, one more
+5. **Auto capacity grows by demand.** When a demand cannot be placed, one more
    child is tried at a parent under the existing allocator, and it stays only
    if every sibling still proves healthy. A node healthy with N children has
    proved N for that workload, nothing more. A person's explicit limit, zero
@@ -54,17 +57,21 @@ yet.
    the formats and the implementation negotiated for that flow, not on a
    platform label. An unknown cost is not zero, and a pair's estimate is not
    an endpoint's headroom. Any new order is compared with the present hop
-   order before it replaces it.
+   order before it replaces it, including a transitive order when facts are unknown.
 7. **The pool keeps its shared-interest ownership.** A spare connection that
    protects a receiver from losing its only relay is compared with denser fill
    of a room before density becomes a target.
-8. **Voice has no shape of its own.** It uses the same planner, pool and
-   capacity as a screen. Discontinuous transmission is not negotiated today,
-   so silence costs real packets; establishing it is a separate, small change.
+8. **Voice has no additional overlay.** It uses the shared planner, pool and
+   allocator, with independent voice counts and explicit user limits. Keep
+   reachable multi-hop paths. The measured Chromium voice session did not
+   negotiate discontinuous transmission. DTX, priority and any fanout change
+   need their own comparisons.
 9. **A lost parent is repaired through actual flow failure**, and each
    surviving branch needs its own entry. How long a viewer waits after a
-   parent dies silently is not measured. It is bounded today by connection
-   failure. That measurement comes before any new detector.
+   parent dies silently is not measured. Connection failure is one detection
+   signal, not a bound on resumed rendering. Preserve the last frame during the
+   owned recovery attempt. Measure silent loss separately from signaled departure
+   before adding a detector.
 
 ## What Stays
 
@@ -81,7 +88,7 @@ them.
 | 1 | One leaf moved to a strictly better place, with the present proof | A missed opportunity that recurs in the traces |
 | 2 | One more child tried on unmet demand | Viewers refused or placed deeper while a parent stayed healthy |
 | 3 | A targeted spare connection | Receivers that lost their only relay |
-| 4 | Repair gated by observations; memory across days | Faults that outlast natural recovery; capacity that repeats |
+| 4 | Quality comparisons gated by observations; memory across days | Impairment that outlasts natural recovery; capacity that repeats |
 
 Repeated moves of a subtree need a cost test on a real workload before sender
 reuse is chosen or rejected. Two measured replacements kept playback while

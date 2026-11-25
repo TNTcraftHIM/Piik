@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 46;
+export const CHANNEL_PROTOCOL = 47;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -43,6 +43,7 @@ export const roomSchema = z.object({
   participantSessionIds: z.array(id),
   fileActivity: z.array(z.object({ sessionId: id, sending: z.boolean(), receiving: z.boolean() })).max(CHANNEL_SESSION_LIMIT),
   available: z.boolean(), reading: z.boolean(),
+  historyLineage: z.uuid().optional(),
   lastMessageSeq: z.number().int().nonnegative(),
   serviceRelay: z.object({ enabled: z.boolean(), available: z.boolean() }).optional(),
   capabilities: z.object({

@@ -46,6 +46,8 @@ pub(super) enum Progress {
 #[serde(rename_all = "camelCase")]
 pub(super) struct Ready {
     target: String,
+    #[serde(skip)]
+    domain: Domain,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_certificate: Option<LocalCertificate>,
 }
@@ -56,9 +58,10 @@ struct LocalCertificate {
     sha256_fingerprint: String,
 }
 impl Ready {
-    fn new(target: String, https: Option<&web::LanHttps>) -> Self {
+    fn new(target: String, https: Option<&web::LanHttps>, domain: Domain) -> Self {
         Self {
             target,
+            domain,
             local_certificate: https.map(|https| LocalCertificate {
                 origin: https.origin().to_owned(),
                 sha256_fingerprint: https.fingerprint(),
@@ -150,6 +153,20 @@ pub(super) async fn describe(app: &App, state: &mut Value) -> anyhow::Result<()>
         }
     }
     Ok(())
+}
+
+pub(super) async fn owner_entry(State(app): State<Arc<App>>) -> ApiResult {
+    owner_target(&app).await.map(|target| Json(json!({ "target": target })))
+}
+
+pub(super) async fn owner_target(app: &App) -> Result<String, (StatusCode, Json<Value>)> {
+    let launch = app.launch.lock().await;
+    let ready = launch.as_ref().map(|launch| launch.progress.borrow());
+    let Some(Progress::Ready(ready)) = ready.as_deref() else {
+        return Err((StatusCode::CONFLICT, Json(json!({"detail":"Site is not ready"}))));
+    };
+    let ticket = ready.domain.launch_ticket().map_err(super::operation_failure)?;
+    Ok(format!("{}&launch={ticket}", ready.target))
 }
 
 pub(super) async fn launch(State(app): State<Arc<App>>, Json(request): Json<Request>) -> ApiResult {
@@ -318,13 +335,10 @@ async fn run(
             ));
         }
     };
-    let mut ready = Ready::new(
-        format!(
-            "{origin}/?piik-client-port={}#owner={}&piik-client=1",
-            app.port,
-            domain.owner_key()
-        ),
+    let ready = Ready::new(
+        format!("{origin}/?piik-client-port={}#piik-client=1", app.port),
         https.as_ref(),
+        domain.clone(),
     );
     if let Some(certificate) = &ready.local_certificate {
         eprintln!("Local invitation entry: {}", certificate.origin);
@@ -366,7 +380,7 @@ async fn run(
         },
     ));
     console.ready(&origin, &invitation, matches!(request.mode, Mode::External));
-    progress.send_replace(Progress::Ready(ready.clone()));
+    progress.send_replace(Progress::Ready(ready));
     let (result, finished_service) = loop {
         tokio::select! {
             _ = stopped.changed() => break (Ok(()), None),
@@ -412,12 +426,7 @@ async fn run(
                 stop_hosts(hosts).await;
                 let result = domain.restore(request.metadata, &request.credential);
                 drop(registry);
-                if result.is_ok() {
-                    ready.target = format!(
-                        "{origin}/?piik-client-port={}#owner={}&piik-client=1", app.port, domain.owner_key()
-                    );
-                    progress.send_replace(Progress::Ready(ready.clone()));
-                } else {
+                if result.is_err() {
                     // Restore the retained runtimes; their remote readiness must not
                     // hold the Domain loop or its stop signal after a failed import.
                     for ((site, domain, user), credential) in restart {
@@ -510,7 +519,9 @@ mod tests {
     #[tokio::test]
     async fn ready_reports_the_current_invitation_certificate_and_preserves_it_on_restore() {
         let http = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-        let target = format!("http://{}/#owner=before", http.local_addr().unwrap());
+        let target = format!("http://{}/#piik-client=1", http.local_addr().unwrap());
+        let data = tempfile::tempdir().unwrap();
+        let domain = Domain::open(data.path(), "test-owner", format!("http://{}", http.local_addr().unwrap()), None, vec![]).unwrap();
         let https = web::LanHttps::bind(Ipv4Addr::LOCALHOST.into(), 0)
             .await
             .unwrap();
@@ -524,7 +535,7 @@ mod tests {
             "origin": https.origin(),
             "sha256Fingerprint": fingerprint,
         });
-        let mut ready = Ready::new(target.clone(), Some(&https));
+        let ready = Ready::new(target.clone(), Some(&https), domain.clone());
         let post = json!(ready);
         assert_eq!(
             post,
@@ -536,10 +547,7 @@ mod tests {
         assert_eq!(get["target"], post["target"]);
         assert_eq!(get["sites"], json!([]));
 
-        ready.target = format!("http://{}/#owner=after", http.local_addr().unwrap());
-        assert_ne!(json!(ready)["target"], post["target"]);
-        assert_eq!(json!(ready)["localCertificate"], certificate);
-        let public = Ready::new("http://127.0.0.1:12345/#owner=public".into(), None);
+        let public = Ready::new(target, None, domain);
         assert_eq!(json!(public), json!({"target": public.target}));
         let mut get = json!({});
         public.describe(&mut get);

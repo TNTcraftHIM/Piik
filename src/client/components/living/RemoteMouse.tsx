@@ -3,6 +3,7 @@ import { RemoteDirectionPad } from "./RemoteDirectionPad";
 import { REMOTE_TOUCH_HOLD_MS, type RemoteTouchpad } from "../../remote-control/touchpad";
 import type { PicturePoint } from "../../media/video-geometry";
 import type { RoomPreferences } from "../../lib/room-preferences";
+import { onDocumentInactive } from "../../ui/document-active";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { useSurfaceDocument } from "../../ui/panel-window";
@@ -126,12 +127,9 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
   }, [mode, owner, park, clearIdle]);
   useEffect(() => {
     if (!owner) return;
-    const hidden = () => { if (owner.hidden) release(); };
-    owner.defaultView?.addEventListener("blur", release);
-    owner.addEventListener("visibilitychange", hidden);
+    const stopListening = onDocumentInactive(owner, release);
     return () => {
-      owner.defaultView?.removeEventListener("blur", release);
-      owner.removeEventListener("visibilitychange", hidden);
+      stopListening();
       release();
     };
   }, [release, owner]);
@@ -158,7 +156,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
       if (current.kind === "widget") {
         widget.current?.removeAttribute("data-dragging");
         suppressClick.current ||= current.moved || cancelled;
-        if (current.moved && !cancelled) park();
+        if (current.moved || (cancelled && mode === "mini")) park();
       }
     }
     if (wheel.current?.id === id) finishWheel(cancelled);

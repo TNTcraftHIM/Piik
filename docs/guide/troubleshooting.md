@@ -285,14 +285,19 @@ use that build at the original site address in the original browser profile.
 To try the new build while keeping the old data, use a separate browser profile,
 or start the desktop App or Server with a fresh data directory. The [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files) lists the directory settings.
 
-If you choose to discard the old test data, close the affected App or browser tabs first.
+To start with empty test data, close the affected App or browser tabs first.
 
-- Windows: open **重置3.0内测数据.bat** from the test package and choose its default or review data.
-- Android: clear **Piik 3.0** application data in system settings.
-- Browser-hosted rooms: clear data for the affected Piik site.
+- On **Windows**, use the beta reset shortcut if supplied, or open
+  `scripts/reset-beta-app-data.cmd` from the 3.0 source tree. Check the data
+  directory shown and type `RESET`.
+  The script renames that directory as a backup. The next launch starts
+  without its saved identities, approvals, settings or rooms.
+- On **Android**, clearing **Piik 3.0** app data in system settings deletes its local data.
+- For **Browser-hosted rooms**, clearing the affected Piik site's browser data removes
+  its local identity, rooms, history and cached attachments.
 
-A reset removes local identity, approvals, rooms and history in the selected scope.
-Keep using existing data when the format has not changed. Connection failures do not require a data reset.
+For attachment cleanup, use **Room settings → Records → Clear local room cache**.
+See [Manage a room](./room-tools.md#manage-a-room).
 
 ## Starting a share
 

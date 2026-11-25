@@ -1,6 +1,7 @@
 # ADR-0008: Browser Screen-Audio Scope
 
 - Status: accepted for Browser capture and the Windows App audio paths
+- Scope: 3.0 retains Browser picker consent, video-only sharing when audio is unavailable, and Windows capture scoped to the selected source. For a display, Windows can use a selected render endpoint or exclude one process tree across render endpoints when supported. The Host and Viewer media paths below describe 2.x.
 - Date: 2026-08-21
 - Last updated: 2026-10-12
 

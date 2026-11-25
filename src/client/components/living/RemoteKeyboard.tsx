@@ -4,6 +4,7 @@ import type { RemoteInputEvent } from "../../remote-control/input-session";
 import { REMOTE_TEXT_BYTES, type RemoteInputPlatform } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { readRoomPreferences, saveRoomPreferences, REMOTE_KEYBOARD_PAGES, type RoomPreferences } from "../../lib/room-preferences";
+import { onDocumentInactive } from "../../ui/document-active";
 import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
@@ -76,15 +77,12 @@ export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch
   useEffect(() => {
     panel.current?.focus({ preventScroll: true });
     const picture = inputSurface?.current;
-    const hidden = () => { if (owner.hidden) reset(); };
+    const stopListening = onDocumentInactive(owner, reset);
     reset();
-    owner.defaultView?.addEventListener("blur", reset);
     if (picture?.ownerDocument === owner) picture.addEventListener("focusout", reset);
-    owner.addEventListener("visibilitychange", hidden);
     return () => {
-      owner.defaultView?.removeEventListener("blur", reset);
+      stopListening();
       picture?.removeEventListener("focusout", reset);
-      owner.removeEventListener("visibilitychange", hidden);
       presses.reset();
     };
   }, [presses, owner, inputSurface, reset]);
