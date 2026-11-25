@@ -275,7 +275,7 @@ fn first_screen_subscription_prepares_after_link_confirmation() {
 
     command(&mut net, receiver, subscribe(screen, true));
     assert!(net.state(receiver).subscriptions.contains(&screen));
-    assert!(!net.state(receiver).failed_subscriptions.contains(&screen));
+    assert!(!net.failed_screens(receiver).contains(&screen));
     let pending = pair(&net, receiver, source);
     let id = pending.id;
     assert_eq!(input(pending, screen), None);
@@ -423,7 +423,7 @@ fn withdrawing_a_file_keeps_the_screen_on_the_same_pair() {
     );
     let active_screen = input(pair(&net, receiver, source), screen).unwrap();
     assert!(active_screen.selected);
-    assert!(!net.state(receiver).failed_subscriptions.contains(&screen));
+    assert!(!net.failed_screens(receiver).contains(&screen));
     assert_eq!(net.state(receiver).files[0].upstream, Some(source));
 
     command(&mut net, receiver, file_receive(&room, file, false));
@@ -546,7 +546,6 @@ fn cold_screen_direct_failure_discovers_a_room_reader_before_media_failure() {
             .selected
     );
     no_payload_grants(&net, lobby);
-    let state = net.state(receiver);
-    assert!(state.subscriptions.contains(&screen));
-    assert!(!state.failed_subscriptions.contains(&screen));
+    assert!(net.state(receiver).subscriptions.contains(&screen));
+    assert!(!net.failed_screens(receiver).contains(&screen));
 }

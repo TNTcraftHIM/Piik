@@ -127,7 +127,6 @@ export const snapshotSchema = z.object({
   watchActivities: z.array(watchActivitySchema),
   watchSubscriptions: z.array(z.object({ id, mode: z.enum(["direct", "peer"]) }).strict()),
   watchBytes: z.array(watchBytePlanSchema),
-  failedSubscriptions: z.array(id),
   files: z.array(filePlanSchema),
   pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(flowBindingSchema), incoming: z.array(flowBindingSchema) })).max(CHANNEL_SESSION_LIMIT - 1),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),

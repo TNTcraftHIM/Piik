@@ -591,8 +591,6 @@ impl Channel {
                             && readable_sessions.contains(&helper)
                             && screen_helper_pair(*session, helper, &endpoints)
                     });
-                    view.failed_subscriptions
-                        .retain(|id| view.subscriptions.contains(id));
                 }
                 projection.flows.retain_mut(|flow| {
                     flow.presentation = projection.views.get(&flow.receiver)
@@ -1622,20 +1620,12 @@ impl Channel {
                             p.id == *id && p.kind == Kind::Screen && p.session_id != *recipient
                         })
                 })
-                || view.failed_subscriptions.len() > MAX_PUBLICATIONS
-                || view.failed_subscriptions.iter().any(|id| {
-                    !view.subscriptions.contains(id)
-                        || !projection.publications.iter().any(|publication| {
-                            publication.id == *id && publication.kind == Kind::Screen
-                        })
-                })
                 || view.files.len() > FILE_REGISTRATION_LIMIT
                 || (!ordinary
                     && (view.reading
                         || !view.watch_subscriptions.is_empty()
                         || view.transit_endpoint.is_none() && !view.watch_bytes.is_empty()
                         || !view.subscriptions.is_empty()
-                        || !view.failed_subscriptions.is_empty()
                         || view.transit_endpoint.is_none() && !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
@@ -2203,7 +2193,6 @@ impl Channel {
         let mut voice = Vec::new();
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
-        let mut failed_subscriptions = BTreeSet::new();
         if let Some(member) = member {
             for room in self.remote.values() {
                 if member.user_id != room.summary.creator_id
@@ -2274,7 +2263,6 @@ impl Channel {
                     voice.extend(snapshot.voice);
                     files.extend(snapshot.files);
                     subscriptions.extend(snapshot.subscriptions);
-                    failed_subscriptions.extend(snapshot.failed_subscriptions);
                 }
             }
         }
@@ -2333,7 +2321,6 @@ impl Channel {
             publications,
             voice,
             subscriptions: subscriptions.into_iter().collect(),
-            failed_subscriptions: failed_subscriptions.into_iter().collect(),
             pairs: self.transports.snapshot(
                 session_id,
                 |peer| self.can_prepare_udp(session_id, peer),

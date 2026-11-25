@@ -596,7 +596,6 @@ impl RoomProjection {
             },
             files: view.files.clone(),
             subscriptions: view.subscriptions.clone(),
-            failed_subscriptions: view.failed_subscriptions.clone(),
         };
         for pending in &view.handoffs {
             match pending.target {

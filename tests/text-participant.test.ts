@@ -36,7 +36,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
           sessions: [{ id: local, userId: user, online: true, signingKey: command.signingKey },
             { id: host, userId: owner, online: true, signingKey: [...signer.signing_key()] }],
           publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [],
-          failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+          files: [], pairs: [], iceServers: [],
         });
         const textState = { ...state, watchActivities: [{ id: randomUUID(), roomId: 'room', userId: user,
           sessionId: host, source: { kind: 'media', url: 'https://example.invalid/owned.mp4' },

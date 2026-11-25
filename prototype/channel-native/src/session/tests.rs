@@ -970,7 +970,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         "users":[{"id":user,"name":"Source","version":"a".repeat(64)},{"id":owner,"name":"Owner","version":"b".repeat(64)}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
             {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
-        "watchActivities":[],"watchSubscriptions":[],"watchBytes":[],"files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
+        "watchActivities":[],"watchSubscriptions":[],"watchBytes":[],"files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[]
     }))
     .unwrap();
     let mut session = Session {
@@ -1463,7 +1463,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
-            "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
+            "files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[],
             "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
         }))
         .unwrap();
