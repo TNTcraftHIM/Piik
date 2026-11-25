@@ -463,6 +463,6 @@ the feedback period; they do not delay that delivery.
 - **Managed Demo hosting.** Keep the existing P2P-only Demo pending a concrete
   option. [Provider assessment](./operations/website.md#managed-hosting-assessment)
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
-  justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
+  justifies the [pairing and input boundary](https://github.com/TNTcraftHIM/Piik/blob/e79e658d5f2430e2b40534b1dfe20b2d20d344b0/docs/research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
   control and desktop co-play.

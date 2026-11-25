@@ -81,7 +81,7 @@ and [website preview and publishing](./operations/website.md).
 | 3.0 screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
-| Published 2.x camera and Host microphone research | [Capture scope and limits](./research/camera-and-microphone.md) |
+| Published 2.x camera and Host microphone research | [Capture scope and limits](https://github.com/TNTcraftHIM/Piik/blob/e79e658d5f2430e2b40534b1dfe20b2d20d344b0/docs/research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
 | Current 3.0 site/room foundation, Rust core and multi-source routing | [Site and network design](./research/channel-network-design.md) |
 | 3.0 room-data ownership, cached attachments and file-delivery design | [Room data and hosting](./research/channel-storage-and-identity.md) |
