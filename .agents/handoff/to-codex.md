@@ -32,6 +32,15 @@ with evidence. A redesign of the interface will be shown to the owner as
 direction before I change shared components, and I will tell you which files
 it touches before it does.
 
+The owner added one thing you should hear from me directly. For these core
+parts I am asked to plan the design before any code, and I am allowed to set
+an existing implementation aside and write my own where that is the shorter
+route to a correct one. If I do that, it will be on its own branch, behind
+the same interface, compared with the present code on the same tests, and it
+will come to you as a proposal with that evidence. Nothing on your line
+changes without your review, and I will not start on a part you are in the
+middle of without asking.
+
 ## Your outcomes
 
 Taken: the closed diagnosis, the guide's ordinary sentence about a current
