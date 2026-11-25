@@ -67,7 +67,7 @@ replacing the Go transport. The unmatched field reports remain in [TODO](../todo
 
 ## 2.x Receiver Buffering And Source Gaps
 
-Reviewed 2026-11-23. Synthetic controls distinguish late delivery
+Reviewed 2026-11-25. Synthetic controls distinguish late delivery
 from absent source frames. The [media-quality contract](../standards/media-quality.md#capture-and-controls)
 owns automatic buffering and the optional receiver target; requested targets
 and actual delay remain different measurements.
@@ -82,6 +82,24 @@ before the first intervention and zero in the event windows. Neither arm
 recorded loss, NACKs or retransmissions during those windows. Per-window
 median capture-to-presentation delays estimated by Chrome were 30–35 ms
 on automatic and 303–308 ms at 300 ms.
+
+On November 25, Windows HeadlessChrome 156 used the 2.x production
+receiver-buffer helper from 0acd7ddc in a local WebRTC loopback with synthetic
+320×180 canvas video and one fresh connection per setting. Each connection
+received three 200 ms UDP holds about three seconds apart, with in-order
+release and zero reported packet loss in the event windows.
+
+| Receiver target | Mean jitter-buffer residence per event window | Maximum presentation interval in each window | Freezes in the three windows |
+| --- | ---: | ---: | ---: |
+| Automatic | 8-12 ms | 195 / 208 / 202 ms | 3 |
+| 300 ms | 275-280 ms | 63 / 69 / 49 ms | 0 |
+| 1000 ms | 975-979 ms | 63 / 62 / 63 ms | 0 |
+
+Residence uses the change in accumulated jitter-buffer delay divided by the
+change in emitted frames per window. End-to-end delay is a separate metric.
+In this video-only control, both explicit targets avoided counted freezes
+during the holds. The 1000 ms setting added about 700 ms of buffer residence
+over 300 ms with the same freeze count.
 
 The November 16 network control used the e25bd009 production Source,
 RelayDerivation, Windows helper and LiveKit/Pion path. Those media owners and
