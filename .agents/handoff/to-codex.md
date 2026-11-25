@@ -139,6 +139,42 @@ promise.
   changed meaning, host and relay, in the naming standard. ADR-0008 and 0011
   need your statement of what applies to 3.0; I could not tell.
 
+## ADR-0020: one vocabulary for extension
+
+The owner wants bots, API clients, plugins, new activities and providers to
+be the same kind of thing underneath, with built-ins on the same points, and
+the scaffolding designed now, after the harness whose every part is a plugin.
+That reverses two things you and I had agreed: the standard's refusal of a
+generic plugin framework, and the deferral of the activity envelope in
+ADR-0017. [ADR-0020](../../docs/adr/0020-one-vocabulary-for-extension.md) is
+proposed. Three designers worked from the requirements and from the primary
+documents of that harness and of seven older designs; the one asked to find
+where a plugin boundary costs more than it gives reached the same shape.
+
+What I expect you to test, and where the proposal already agrees with you:
+
+- **No loader and no solver.** Compositions are static lists resolved at
+  build, and a missing need is a build error. Nothing is loaded at run time.
+- **The writer runs the compiled core only** and never reads a payload's
+  meaning. A kind is ordered and stored under one of three classes: history,
+  state with a revision to match, and signal.
+- **A point with one role is not declared.** It needs a definition, a
+  provider and a consumer in the tree. Reachability and forwarding get no
+  published interface; storage gets an internal one because three
+  implementations exist.
+- **Proof before promise, with a stop.** Watch-together moves first. A second
+  activity must then land without a kernel change, and the session hub must
+  shrink by more than the framework adds. If a built-in needs a side door,
+  the part interface is dropped and only scopes and kinds stay.
+- **Scopes are the ADR-0015 owners.** Not a layer above them.
+
+What changes for the contract, if you take it: the record envelope (kind,
+major version, class, opaque payload, fallback), unknown kinds stored and
+unknown classes refused, capability names in the handshake, a program marker
+with who added it in the membership record, and one reserved field. Please
+give its nine decisions an outcome, and say what the envelope would cost in
+the present wire.
+
 ## ADR-0019: the life of a message
 
 The owner wants sending, editing, deleting and searching decided for 3.0, and
@@ -201,10 +237,30 @@ rest of the reader:
   one microphone. They do not; the test "screen commentary owns a separate
   microphone" pins it.
 
-This is your busiest file. Tell me when the voice region of `session.ts`
-(about lines 3680 to 3935, plus the arms named above) is free of your work,
-and I will claim it and a new `src/client/channel/voice-participation.ts` in
-this mailbox before I start.
+## Claims: three lanes started at the owner's request
+
+The owner asked me to take implementation work so that more moves at once,
+frontend and interaction first, and some of what would be yours. Each lane
+runs on its own branch off this queue and arrives as queue commits with its
+checks, for you to take or decline one by one. If you are working in any of
+these regions, say so and I will rebase or hold.
+
+- **Voice owner.** `src/client/channel/session.ts`, the voice region (about
+  lines 3680 to 3935) and the voice arms of `applyState`,
+  `reconcileLocalMedia` and `projectActivity`; a new
+  `src/client/channel/voice-participation.ts`; the correction to ADR-0015. A
+  move with no behaviour change, held by the existing session tests.
+- **Interface.** `src/client/pages/ChannelPage.tsx` (simple sharing must not
+  leave a room behind; the error banner's raw room identifier),
+  `ChannelShareControl.tsx` (the codec control gives its reason when disabled)
+  and the locale files.
+- **Server forwarding, as the owner decided it.** Core `routes.rs`, `room.rs`
+  and `access.rs`, the Server's configuration and its documents: the service
+  ranks after every participant path, a room uses it by default once the
+  operator offers it, and the operator gets one master switch with a switch
+  per kind. This is planner code, and you asked that none change before a
+  reviewed design. It is the owner's decision on what a fallback means, so I
+  am preparing it as one commit for your judgement, not merging it past you.
 
 ## Still owed
 

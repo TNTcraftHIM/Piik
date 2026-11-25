@@ -1930,10 +1930,14 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 "the original seed is no longer active"
             );
         }
-        assert!(
-            url::form_urlencoded::parse(target.fragment().unwrap().as_bytes())
-                .any(|(key, value)| key == "owner" && value == owner)
-        );
+        assert_eq!(target.fragment(), Some("piik-client=1"));
+        let (status, entry) = app_http(address, "POST", "/api/client-launcher/owner-entry", Some(&local), Some(json!({}))).await;
+        assert_eq!(status, 200);
+        let entry = url::Url::parse(entry["target"].as_str().unwrap()).unwrap();
+        assert_eq!(entry.origin(), target.origin());
+        let ticket = url::form_urlencoded::parse(entry.fragment().unwrap().as_bytes())
+            .find(|(key, _)| key == "launch").unwrap().1.into_owned();
+        assert_ne!(ticket, owner);
         let domain_address =
             std::net::SocketAddr::new(std::net::Ipv4Addr::LOCALHOST.into(), target.port().unwrap());
         let lan_address =
@@ -2127,7 +2131,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 .headers_mut()
                 .insert("Origin", origin.parse().unwrap());
             let (mut admin, _) = connect_async(request).await.unwrap();
-            admin.send(Message::Text(json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":owner,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
+            admin.send(Message::Text(json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":ticket,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
             let admitted: Value =
                 serde_json::from_str(&admin.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();
@@ -2196,7 +2200,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 .join(channel)
                 .join(user)
                 .join(format!("{room}.sqlite"));
-            let restored_owner = {
+            {
                 let url = format!("http://{domain_address}/prototype/channel/backup");
                 let client = http_client(Duration::from_secs(10));
                 let response = client
@@ -2226,8 +2230,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                     .await
                     .unwrap();
                 assert_eq!(response.status().as_u16(), 200);
-                metadata.owner_key
-            };
+            }
             tokio::time::timeout(Duration::from_secs(5), async {
                 while let Some(frame) = control.next().await {
                     if matches!(frame.unwrap(), Message::Close(_)) {
@@ -2254,10 +2257,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             let (_, state) = app_http(address, "GET", "/api/client-launcher", None, None).await;
             let refreshed = url::Url::parse(state["target"].as_str().unwrap()).unwrap();
             assert_eq!(refreshed.origin(), target.origin());
-            assert!(
-                url::form_urlencoded::parse(refreshed.fragment().unwrap().as_bytes())
-                    .any(|(key, value)| key == "owner" && value == restored_owner)
-            );
+            assert_eq!(refreshed, target);
             retained_room = Some((room_path, room.to_owned()));
             drop((admin, control, lock));
         }
@@ -2413,7 +2413,7 @@ async fn app_external_origin_is_exact_and_owned_startup_restores_it() {
             target.origin().ascii_serialization(),
             format!("http://{site_address}")
         );
-        assert!(target.fragment().unwrap().contains("owner="));
+        assert_eq!(target.fragment(), Some("piik-client=1"));
         assert_eq!(app_http(site_address, "GET", "/", None, None).await.0, 200);
         assert_eq!(
             app_http(site_address, "GET", "/api/client-launcher", None, None)

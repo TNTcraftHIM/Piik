@@ -347,8 +347,9 @@ impl RoomHost {
     pub fn room_id(&self) -> String {
         self.room.policy().id.clone()
     }
-    pub fn seed_history(&mut self, last_seq: u64) -> Result<(), JsValue> {
-        self.room.seed_history(last_seq).map_err(error)
+    pub fn seed_history(&mut self, history_lineage: &str, last_seq: u64) -> Result<(), JsValue> {
+        let lineage = Uuid::parse_str(history_lineage).map_err(|_| error("invalid_history_seed"))?;
+        self.room.seed_history(lineage, last_seq).map_err(error)
     }
     pub fn policy(&self) -> Result<String, JsValue> {
         encode(self.room.policy())

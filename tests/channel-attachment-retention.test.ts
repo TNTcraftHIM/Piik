@@ -457,7 +457,7 @@ test.each(["attachment_unavailable", "disconnected"])("a reopened room reconcile
     await vi.waitFor(() => expect(files.hasSavedCopy(key, attachment)).toBe(true));
     rejectOffer(new Error(code));
     if (code === "attachment_unavailable") {
-      await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(key, { forgetReceipt: true }));
+      await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(key, attachment, { forgetReceipt: true }));
       expect(files.hasSavedCopy(key, attachment)).toBe(false);
     } else {
       await vi.waitFor(() => expect(files.status(key).error).toBe("file_offer_failed"));
@@ -551,6 +551,79 @@ test("a platform save follows its participant across room views and ignores resu
     expect(saveReceipt).toHaveBeenCalledOnce();
     expect(saveReceipt.mock.calls[0]?.[0].receipt).toBe("new");
   } finally { files.reset(); }
+});
+
+test("a restored attachment only reuses the platform save for matching content", async () => {
+  const files = setup(), reports: NonNullable<Parameters<typeof downloads.downloadBlob>[2]>[] = [];
+  const saveReceipt = vi.spyOn(FileStore.prototype, "saveReceipt").mockResolvedValue(true);
+  vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => {
+    reports.push(options!); options!.outcome?.("requested");
+  });
+  try {
+    const replacement = { ...attachment, sha256: "b".repeat(64) };
+    const first = files.download(key, attachment, inlineImage);
+    await first;
+    expect(files.download(key, { ...attachment, sha256: attachment.sha256.toUpperCase() }, inlineImage)).toBe(first);
+    expect(files.status(key, replacement)).toEqual({ busy: false, error: null });
+    await files.download(key, replacement, { ...inlineImage, data: btoa("GIF87a") });
+    expect(reports).toHaveLength(2);
+    expect(reports[0].signal?.aborted).toBe(true);
+    reports[0].rememberSaved?.("old"); reports[0].outcome?.("saved");
+    expect(files.status(key, replacement).outcome).toBe("requested");
+    reports[1].rememberSaved?.("new"); reports[1].outcome?.("saved");
+    reports[0].outcome?.("failed");
+    expect(files.status(key, replacement).outcome).toBe("saved");
+    expect(files.status(key, attachment).outcome).toBeUndefined();
+    expect(saveReceipt.mock.calls.map(([receipt]) => receipt.receipt)).toEqual(["new"]);
+  } finally { files.reset(); }
+});
+
+test.each(["in progress", "completed without retention"])("restore replaces a receiver that is %s at the same attachment key", async phase => {
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const a = { ...attachment, size: 3 }, b = { ...a, sha256: "b".repeat(64) };
+  const getFileHandle = vi.fn()
+    .mockImplementationOnce(async () => handle("AAA"))
+    .mockImplementationOnce(async () => handle("BBB"));
+  function handle(bytes: string) {
+    return { getFile: async () => new File([bytes], a.name),
+      createWritable: async () => ({ abort: async () => {}, close: async () => {} }) };
+  }
+  const cancel = vi.fn(() => []);
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...await hosting.loadRoomHosting(),
+    FileDelivery: class {
+      start() { return []; } update() { return []; } cancel = cancel; free() {}
+      next_deadline() { return undefined; }
+      control() { return [{ type: "complete", key }]; }
+    },
+  } as never);
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("quota"));
+  const save = vi.spyOn(downloads, "downloadBlob").mockImplementation(() => {});
+  stubTransferStorage({ getFileHandle, removeEntry: async () => {} });
+  const update = (bindingId: string) => files.update("endpoint", { domainId: "domain", userId: "self" }, [],
+    [{ id: key.roomId, authorized: true, available: true, delivery: { bindingId } }] as ChannelRoom[], []);
+  const read = (descriptor: ChannelAttachment) => files.content(key, descriptor, new AbortController().signal).then(file => file.text());
+  try {
+    update("old");
+    const old = read(a);
+    void old.catch(() => {});
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: true }));
+    if (phase === "completed without retention") {
+      files.data("source", "control", "finished");
+      await expect(old).resolves.toBe("AAA");
+    }
+    update("restored");
+    if (phase === "completed without retention") await expect(read(b)).rejects.toThrow("attachment_unavailable");
+    const next = read(b), download = files.download(key, b);
+    await vi.waitFor(() => expect(getFileHandle).toHaveBeenCalledTimes(2));
+    if (phase === "in progress") await expect(old).rejects.toThrow("attachment_unavailable");
+    files.data("source", "control", "finished");
+    await expect(next).resolves.toBe("BBB");
+    await download;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledOnce();
+    expect(await save.mock.calls[0][0].text()).toBe("BBB");
+    await expect(read(b)).resolves.toBe("BBB");
+  } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
 test("a generated preview cannot replace the original in the download content path", async () => {

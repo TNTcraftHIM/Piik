@@ -25,7 +25,7 @@ use std::{
     future::Future,
     path::Path,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{mpsc, watch, Semaphore};
 use uuid::Uuid;
@@ -40,6 +40,7 @@ struct Client {
 
 struct Hub {
     authority: Authority,
+    launch_tickets: BTreeMap<String, Instant>,
     clients: BTreeMap<Uuid, Client>,
     storage: storage::Storage,
     // A background room operation can retain the Hub after the listener closes.
@@ -49,6 +50,14 @@ struct Hub {
 }
 
 impl Hub {
+    fn redeem_launch(&mut self, request: &mut Request) {
+        if let piik_channel_core::wire::Command::Join { owner_key: Some(key), .. } = &mut request.command {
+            if self.launch_tickets.remove(key).is_some_and(|expiry| Instant::now() < expiry) {
+                *key = self.authority.owner_admission_key().to_owned();
+            }
+        }
+    }
+
     fn request(&mut self, connection: Uuid, request: Request) {
         self.handle_request(connection, request, false);
     }
@@ -214,12 +223,13 @@ async fn upgrade(
     let Ok(permit) = state.sockets.clone().try_acquire_owned() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    let local_entry = origin == Some(state.origin());
     socket
         .max_message_size(piik_channel_core::wire::CHANNEL_MESSAGE_BYTES)
         .max_frame_size(piik_channel_core::wire::CHANNEL_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
-            session(socket, state).await;
+            session(socket, state, local_entry).await;
         })
 }
 
@@ -472,7 +482,7 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
     }
 }
 
-async fn session(mut socket: WebSocket, state: Domain) {
+async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
     let mut domain_closing = state.closing.subscribe();
     if *domain_closing.borrow() {
         return;
@@ -486,7 +496,7 @@ async fn session(mut socket: WebSocket, state: Domain) {
         Ok(Some(Ok(Message::Text(text)))) => text,
         _ => return,
     };
-    let request = match Request::parse(&text) {
+    let mut request = match Request::parse(&text) {
         Ok(request) => request,
         Err((request_id, code)) => {
             send(
@@ -509,6 +519,9 @@ async fn session(mut socket: WebSocket, state: Domain) {
         let mut hub = state.hub.lock().unwrap();
         if *domain_closing.borrow() {
             return;
+        }
+        if local_entry {
+            hub.redeem_launch(&mut request);
         }
         hub.clients.insert(connection, Client { events, close });
         hub.request(connection, request);
@@ -674,6 +687,7 @@ impl Domain {
         Ok(Domain {
             hub: Arc::new(Mutex::new(Hub {
                 authority,
+                launch_tickets: BTreeMap::new(),
                 clients: BTreeMap::new(),
                 storage,
                 _directory_owner: Some(directory_owner),
@@ -754,6 +768,7 @@ impl Domain {
             .save(&checkpoint)
             .map_err(anyhow::Error::from_boxed)?;
         hub.authority = authority;
+        hub.launch_tickets.clear();
         for client in std::mem::take(&mut hub.clients).into_values() {
             client.close.send_replace(true);
         }
@@ -776,6 +791,19 @@ impl Domain {
             .authority
             .owner_name()
             .map(str::to_owned)
+    }
+
+    /// Only an explicit App launcher navigation issues a bearer for the first Join.
+    pub(crate) fn launch_ticket(&self) -> anyhow::Result<String> {
+        // Allow time for an external browser to start and load the site.
+        const LAUNCH_TIMEOUT: Duration = Duration::from_secs(60);
+        let mut hub = self.hub.lock().unwrap();
+        let now = Instant::now();
+        hub.launch_tickets.retain(|_, expiry| *expiry > now);
+        anyhow::ensure!(hub.launch_tickets.len() < piik_channel_core::MAX_SESSIONS, "Too many pending site launches");
+        let ticket = Uuid::new_v4().to_string();
+        hub.launch_tickets.insert(ticket.clone(), now + LAUNCH_TIMEOUT);
+        Ok(ticket)
     }
 
     /// Private local bootstrap only; this value never enters client state.
@@ -888,6 +916,44 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn owner_launch_tickets_are_independent_single_use_and_end_on_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        let domain = Domain::open(directory.path(), "seed", "http://127.0.0.1:8787".into(), None, vec![]).unwrap();
+        let redeem = |ticket: &str| {
+            let mut join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":ticket,
+                "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
+            let mut hub = domain.hub.lock().unwrap();
+            hub.redeem_launch(&mut join);
+            let piik_channel_core::wire::Command::Join { owner_key, .. } = join.command else { unreachable!() };
+            owner_key.unwrap()
+        };
+        let first = domain.launch_ticket().unwrap();
+        let second = domain.launch_ticket().unwrap();
+        assert_ne!(first, second);
+        assert_eq!(redeem(&first), "seed");
+        assert_eq!(redeem(&first), first);
+        assert_eq!(redeem(&second), "seed");
+
+        let expired = domain.launch_ticket().unwrap();
+        domain.hub.lock().unwrap().launch_tickets.insert(expired.clone(), Instant::now());
+        assert_eq!(redeem(&expired), expired);
+
+        let pending = domain.launch_ticket().unwrap();
+        let (credential, backup) = {
+            let mut hub = domain.hub.lock().unwrap();
+            let join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":"seed",
+                "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
+            let effects = hub.authority.handle(Uuid::new_v4(), join, 0);
+            let credential = effects.events.into_iter().find_map(|(_, event)| match event {
+                Event::Welcome { credential, .. } => Some(credential), _ => None,
+            }).unwrap();
+            (credential, hub.authority.export_backup())
+        };
+        domain.restore(backup, &credential).unwrap();
+        assert_eq!(redeem(&pending), pending);
+    }
+
+    #[test]
     fn failed_deleted_room_checkpoint_keeps_only_an_offline_retry_entry() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("domain.sqlite");
@@ -901,6 +967,7 @@ mod tests {
         let mut hub = Hub {
             _directory_owner: None,
             authority,
+            launch_tickets: BTreeMap::new(),
             clients: [(
                 connection,
                 Client {

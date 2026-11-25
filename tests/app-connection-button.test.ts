@@ -1,4 +1,3 @@
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
@@ -1062,12 +1061,14 @@ it("keeps source enumeration failures distinct from access denial and App recove
     renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources, initialTab: "window", browserSupported: true,
       onBrowser: vi.fn(), onNative: vi.fn(), onPreview: async () => null,
-      onRefresh: vi.fn(), nativeFailureMessage: nativeSources.kind === "failed" ? channelErrorPresentation(nativeSources.error ?? null, (key, vars) => t("en", key, vars), "host.sourcePicker.failed").message ?? undefined : undefined, onCancel: vi.fn(),
+      onRefresh: vi.fn(), onCancel: vi.fn(),
     }));
   expect(render({ kind: "failed", error: "portal_failed" })).toContain(t("en", "host.sourcePicker.failed"));
   expect(render({ kind: "failed", error: "permission_denied" })).toContain(t("en", "channel.error.deviceAccessDenied"));
   const timedOut = render({ kind: "failed", error: "app_request_timeout" });
   expect(timedOut).toContain(t("en", "native.fail.requestTimeout"));
+  expect(timedOut).toContain("#the-page-cannot-connect-to-app");
+  expect(render({ kind: "failed", error: "capture_targets_failed" })).toContain("#app-windows-or-screens-are-missing");
   expect(timedOut).toMatch(new RegExp(`aria-label="${t("en", "host.sourcePicker.refresh")}"(?![^>]*disabled)`));
   const unavailable = render({ kind: "unavailable" });
 

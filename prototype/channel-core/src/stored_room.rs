@@ -71,6 +71,15 @@ impl RoomBackup {
         Ok(Self { metadata, store })
     }
 
+    fn install(&self, target: &mut Storage) -> StoreResult<RoomHost> {
+        let lineage = Uuid::new_v4();
+        let policy = &self.metadata.policy;
+        let mut host = RoomHost::new(policy.clone());
+        host.seed_history(lineage, self.store.last_message_seq(&policy.id)?)?;
+        target.install_room(&self.store, lineage)?;
+        Ok(host)
+    }
+
     pub fn for_each_row(
         &self,
         visit: impl FnMut(HistoryRow) -> StoreResult<()>,
@@ -103,32 +112,34 @@ impl StoredRoomHost {
         {
             return Err("backup_room_mismatch".into());
         }
-        let mut host = RoomHost::new(policy.clone());
-        host.seed_history(backup.store.last_message_seq(&policy.id)?)?;
-        self.store.replace_from(&backup.store)?;
-        self.host = host;
+        self.host = backup.install(&mut self.store)?;
         Ok(())
     }
 
     pub fn from_backup(path: &Path, backup: &RoomBackup) -> StoreResult<Self> {
-        let store = backup.store.snapshot(path)?;
-        let mut host = RoomHost::new(backup.metadata.policy.clone());
-        host.seed_history(store.last_message_seq(&backup.metadata.policy.id)?)?;
-        Ok(Self { host, store })
+        let mut store = Storage::create_staging(path)?;
+        match backup.install(&mut store) {
+            Ok(host) => Ok(Self { host, store }),
+            Err(error) => {
+                drop(store);
+                std::fs::remove_file(path)?;
+                Err(error)
+            }
+        }
     }
 
     /// The caller supplies a trusted, separate database path for this room.
     pub fn create(path: &Path, policy: RoomState) -> StoreResult<Self> {
         policy.validate()?;
-        let mut store = Storage::open(path)?;
+        let store = Storage::open(path)?;
         if store.load()?.is_some() {
             return Err("room_already_exists".into());
         }
-        store.save(&serde_json::to_value(&policy)?)?;
-        Ok(Self {
-            host: RoomHost::new(policy),
-            store,
-        })
+        let lineage = Uuid::new_v4();
+        let mut host = RoomHost::new(policy);
+        host.seed_history(lineage, 0)?;
+        store.create_room(host.policy(), lineage)?;
+        Ok(Self { host, store })
     }
 
     pub fn open(path: &Path) -> StoreResult<Self> {
@@ -140,7 +151,7 @@ impl StoredRoomHost {
             .validate()
             .map_err(|error| StorageDataError(error.into()))?;
         let mut host = RoomHost::new(policy);
-        host.seed_history(store.last_message_seq(&host.policy().id)?)?;
+        host.seed_history(store.history_lineage()?, store.last_message_seq(&host.policy().id)?)?;
         Ok(Self { host, store })
     }
 

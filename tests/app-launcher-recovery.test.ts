@@ -240,16 +240,18 @@ describe("App launcher state recovery", () => {
   });
 
   it("uses the configured HTTPS origin without changing the local owner entry", async () => {
-    const target = "http://127.0.0.1:8787/#owner=local-fixture";
+    const target = "http://127.0.0.1:8787/#piik-client=1";
     const fetch = vi.fn().mockResolvedValueOnce(response(saved))
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target }) });
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ target: `${target}&launch=fresh-ticket` }) });
     const page = mount(fetch, { mode: "link", publicOrigin: "https://PIIK.example:443/" });
     try {
       await settle(); await page.launch({ preventDefault() {} });
       expect(JSON.parse(fetch.mock.calls[1]![1].body)).toEqual({
         mode: "external", publicOrigin: "https://piik.example", port: 8787, language: "en",
       });
-      expect(page.navigate).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/127\.0\.0\.1:8787\//));
+      expect(fetch.mock.calls[2]![0]).toBe("/api/client-launcher/owner-entry");
+      expect(page.navigate).toHaveBeenCalledWith(expect.stringContaining("launch=fresh-ticket"));
     } finally { page.cleanup(); }
   });
 
@@ -307,8 +309,9 @@ describe("App launcher state recovery", () => {
       await settle();
       expect(page.state.AppDebug).toBe(true);
       fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target }) } as ReturnType<typeof response>);
+      fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: `${target}&launch=test-ticket` }) } as ReturnType<typeof response>);
       await page.launch({ preventDefault() {} });
-      const [path, request] = fetch.mock.calls.at(-1)! as unknown as [string, { body: string }];
+      const [path, request] = fetch.mock.calls.at(-2)! as unknown as [string, { body: string }];
       expect(path).toBe("/api/client-launcher/launch");
       expect(JSON.parse(request.body)).toEqual({ mode: "local", port: saved.sitePort, language: "en", lanAddress: saved.lan.selected });
       const destination = new URL(page.navigate.mock.calls[0]![0] as string);
@@ -390,8 +393,9 @@ describe("App launcher state recovery", () => {
     expect(page.state).toMatchObject({ Starting: false, Error: { kind: "launch", detail: "Startup failed" } });
     fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1",
       localCertificate: { origin: "https://192.0.2.1:8787", sha256Fingerprint: "A1".repeat(32) } }) });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1&launch=fresh" }) });
     await page.launch(event);
-    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1&piik-lang=en&piik-theme=system");
+    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1&launch=fresh&piik-lang=en&piik-theme=system");
     page.cleanup();
   });
 
@@ -649,7 +653,9 @@ it("enters the fresh App-owned startup result once with its current debug settin
     await settle();
     expect(page.navigate).not.toHaveBeenCalled();
     const fresh = "http://127.0.0.1:45678/#piik-client=1";
-    fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ...saved, target: fresh, debug: true, controlPort: 39732 }) });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ...saved, target: fresh, debug: true, controlPort: 39732 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ target: `${fresh}&launch=fresh` }) })
+      .mockResolvedValue(response(saved));
     page.retry();
     await settle();
     const destination = new URL(page.navigate.mock.calls[0]![0]);
@@ -659,7 +665,7 @@ it("enters the fresh App-owned startup result once with its current debug settin
     page.focus();
     await settle();
     expect(page.navigate).toHaveBeenCalledTimes(1);
-    expect(fetch.mock.calls.every(call => !call[1]?.method)).toBe(true);
+    expect(fetch.mock.calls.filter(call => call[1]?.method).map(call => call[0])).toEqual(["/api/client-launcher/owner-entry"]);
   } finally {
     page.cleanup();
     vi.unstubAllGlobals();
@@ -673,7 +679,8 @@ it("leaves a failed owned startup available for manual retry", async () => {
     await settle();
     expect(page.state.Starting).toBe(false);
     expect(page.state.Error).toMatchObject({ kind: "launch" });
-    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "http://127.0.0.1:45678/" }) });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "http://127.0.0.1:45678/" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ target: "http://127.0.0.1:45678/#launch=fresh" }) });
     await page.launch({ preventDefault() {} });
     expect(page.navigate).toHaveBeenCalledTimes(1);
   } finally { page.cleanup(); }

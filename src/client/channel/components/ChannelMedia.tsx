@@ -128,8 +128,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const draggingSeek = useRef(false);
   const position = Math.max(seekStart, Math.min(seekPreview ?? media.position, seekEnd || 1));
-  const timeLabel = live ? t(live.active ? "watch.liveDelay" : "watch.liveRemaining", { seconds: String(Math.max(0, Math.round(seekEnd - position))) })
+  const liveOffset = Math.max(0, Math.round(seekEnd - position));
+  const timeLabel = live ? t(live.active ? "watch.liveDelay" : "watch.liveRemaining", { seconds: String(liveOffset) })
     : `${formatMediaTime(position)} / ${formatMediaTime(media.duration || Number.NaN)}`;
+  const timeReadout = live?.active ? `${t("watch.live")} −${formatMediaTime(liveOffset)}` : timeLabel;
   const [fullscreen, setFullscreen] = useState(() => player.video ? videoFullscreenState(player.video)
     : { supported: false, ready: false, active: false, nativeActive: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
@@ -279,7 +281,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
             {ended && <span className="c3-watch-status" role="status">{t("watch.ended")}</span>}
             {live?.active && !seekAvailable && <span className="c3-watch-status">{t("watch.live")}</span>}
-            {(!live || seekAvailable) && <span className="c3-watch-time" title={timeLabel}>{live ? timeLabel : <><strong>{formatMediaTime(position)}</strong>{` / ${formatMediaTime(media.duration || Number.NaN)}`}</>}</span>}
+            {(!live || seekAvailable) && <span className="c3-watch-time" data-live={!!live || undefined} title={timeLabel}>{live ? timeReadout : <><strong>{formatMediaTime(position)}</strong>{` / ${formatMediaTime(media.duration || Number.NaN)}`}</>}</span>}
           </div>}
           {owned && livePosition !== null && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" textTooltip
             disabled={disabled} onClick={() => onPlayback({ position: livePosition, paused: false })} />}

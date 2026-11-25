@@ -1,6 +1,7 @@
 # ADR-0011: Browser-Assisted Native Encoded Fanout
 
 - Status: accepted
+- Scope: the App-launched Browser's H.264 ingress and Pion fanout describe published 2.x. In 3.0 a Browser relay re-encodes its received track, and Native can forward compatible encoded media through its RTC SDK under [ADR-0016](./0016-shared-rust-core.md).
 - Date: 2026-09-05
 
 ## Context

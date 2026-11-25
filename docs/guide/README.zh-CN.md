@@ -29,11 +29,11 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 ## 开始使用
 
-- [看朋友的分享](./getting-started.zh-CN.md#加入朋友的房间)<br>
-  打开 3.0 邀请，选择房间，再选择要看的画面。
-- [用 App 创建房间](./getting-started.zh-CN.md#用-piik-app-分享)<br>
-  启动 3.0 内测 App，点击 **进入 Piik**。建好房间后，通过房间里的邀请按钮给朋友发链接。
-- [免安装使用](./getting-started.zh-CN.md#免安装使用-30-链接)<br>
+- [加入朋友的房间](./getting-started.zh-CN.md#加入朋友的房间)<br>
+  打开 3.0 房间邀请，再选择要看的画面。
+- [用 Piik App 分享](./getting-started.zh-CN.md#用-piik-app-分享)<br>
+  从 3.0 App 启动页开站。建好房间后，邀请朋友加入。
+- [免安装使用 3.0 链接](./getting-started.zh-CN.md#免安装使用-30-链接)<br>
   通过朋友的 3.0 链接观看、聊天、加入语音，或用浏览器分享。
 
 </section>

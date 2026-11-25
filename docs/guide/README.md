@@ -30,11 +30,11 @@ remains available separately.
 
 ## Start here
 
-- [Watch a friend](./getting-started.md#join-a-friends-room)<br>
-  Open the 3.0 invitation, choose a room and select the picture to watch.
-- [Create a room with App](./getting-started.md#share-with-piik-app)<br>
-  Launch the 3.0 test App and select **Open Piik**. Create a room and use its invitation button to send friends a link.
-- [Use Piik without installing](./getting-started.md#use-a-30-link-without-installing)<br>
+- [Join a friend's room](./getting-started.md#join-a-friends-room)<br>
+  Open the 3.0 room invitation and select the picture to watch.
+- [Share with Piik App](./getting-started.md#share-with-piik-app)<br>
+  Start your site from the 3.0 App launcher. Create a room and invite your friends.
+- [Use a 3.0 link without installing](./getting-started.md#use-a-30-link-without-installing)<br>
   Use a friend's 3.0 link to watch, chat, join voice or share from your browser.
 
 </section>

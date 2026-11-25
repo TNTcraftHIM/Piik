@@ -163,7 +163,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
-        lastMessageSeq: 0, fileActivity: [],
+        historyLineage: crypto.randomUUID(), lastMessageSeq: 0, fileActivity: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding" } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
@@ -725,6 +725,20 @@ test("a saved owner credential retires only the consumed owner URL parameter and
   } finally { session.close(); reloaded?.close(); }
 });
 
+test("a consumed App launch ticket retires after welcome even if Browser storage is unavailable", async () => {
+  const { session, socket } = await setup(3, false, "launch=one-use", true, undefined, "ignores-write");
+  try {
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "one-use" });
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner", sessionId: "endpoint", state: session.getSnapshot().state! });
+    expect(location.hash).toBe("");
+    vi.useFakeTimers();
+    socket.close(); await vi.advanceTimersByTimeAsync(1000); await ChannelSocket.current.onopen?.();
+    const join = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(join).toMatchObject({ credential: "personal-owner" });
+    expect(join).not.toHaveProperty("ownerKey");
+  } finally { session.close(); }
+});
+
 test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverable when Browser storage %s", async failure => {
   const { session, socket } = await setup(3, false, "owner=owner-secret&other=keep", true, undefined, failure);
   const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
@@ -1018,7 +1032,7 @@ test("unread lookup accepts an empty seek result and preserves the read marker",
   try {
     enableUnreadLookup(fixture);
     session.markRead("first", 2);
-    const key = "piik.channel.read.domain.self";
+    const key = "piik.channel.read.v2.domain.self";
     const saved = localStorage.getItem(key);
     const loading = session.findUnreadMessage("first", 2, new AbortController().signal);
     const seek = await peer.next();
@@ -3242,6 +3256,40 @@ test("Browser replacement cannot cancel preparation after transferring source au
     expect(candidate.stop).not.toHaveBeenCalled();
     expect(session.getSnapshot().ownedScreens.has(description.id)).toBe(true);
     expect(session.sourceSelectionCommitting("first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("stopping the publication releases both Browser replacement streams before the transfer reply", async () => {
+  const { session, socket } = await setup(3, false);
+  const old = remoteTrack("video"), candidate = remoteTrack("video"), sound = remoteTrack("audio");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(remoteStream("incumbent", [old]))
+    .mockResolvedValueOnce(remoteStream("candidate", [candidate, sound])) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const published = nextSocketCommand(socket, "publish");
+    const initial = session.startScreen("first");
+    const publication = await published;
+    const id = (publication.publication as { id: string }).id;
+    socket.receive({ type: "ack", requestId: publication.requestId });
+    await initial;
+    const transferring = nextSocketCommand(socket, "transfer_source");
+    const replacement = session.startScreen("first").catch(error => error);
+    const transfer = await transferring;
+    const stopping = session.stopScreen(id);
+    expect.soft(old.stop).toHaveBeenCalledOnce();
+    expect.soft(candidate.stop).toHaveBeenCalledOnce();
+    expect.soft(sound.stop).toHaveBeenCalledOnce();
+    const unpublish = socket.sent.at(-1)!;
+    expect(unpublish.type).toBe("unpublish");
+    socket.receive({ type: "ack", requestId: unpublish.requestId });
+    await stopping;
+    expect(await replacement).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    socket.receive({ type: "ack", requestId: transfer.requestId });
+    expect(candidate.stop).toHaveBeenCalledOnce();
+    expect(sound.stop).toHaveBeenCalledOnce();
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
   } finally { session.close(); }
 });
 
@@ -6338,7 +6386,8 @@ test("retained source content and availability follow the current authenticated 
     socket.receive({ type: "state", state });
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, sha256: attachment.sha256, available: false }));
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, sha256: attachment.sha256, available: false }));
-    expect(remove).toHaveBeenCalledWith(key); expect(remove).toHaveBeenCalledWith(changedKey);
+    expect(remove).toHaveBeenCalledWith(key, attachment);
+    expect(remove).toHaveBeenCalledWith(changedKey, { ...attachment, id: changedId });
   } finally { session.close(); }
 });
 
@@ -6958,6 +7007,41 @@ test("room metrics ignore a late rejected read from a retired peer", async () =>
     expect(current.samples).toMatchObject([{ pairId: "pair", peerId: "z", flowId: "healthy-flow" }]);
     expect(fixture.other.close).toHaveBeenCalledOnce();
   } finally { fixture.media.reset(); fixture.session.close(); }
+});
+
+test.each(["ended", "removetrack"])("voice retires only the current audio input on %s", async event => {
+  const { media, session, pc, sent, state, changed } = await setupRoomMedia();
+  const tracks = [Object.assign(remoteTrack("audio"), { muted: true }) as MediaStreamTrack];
+  const primary = remoteStream("primary", tracks), sibling = remoteStream("sibling", [remoteTrack("audio")]);
+  const streams = [primary, sibling];
+  state.publications = streams.map(stream => ({ id: stream.id, kind: "voice", roomId: "first", userId: "other", sessionId: "z", audience: [], paused: false }));
+  state.pairs[0].incoming = streams.map(stream => ({ id: stream.id, publicationId: stream.id, selected: true, inputFlowId: null }));
+  state.subscriptions = streams.map(stream => stream.id);
+  media.update("a", state); pc.connected();
+  const states = () => sent.filter(command => command.type === "flow_state");
+  try {
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "voices" },
+      tracks: streams.map(stream => ({ flowId: stream.id, streamId: stream.id })) });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("voices"));
+    for (const stream of streams) pc.ontrack?.({ streams: [stream] });
+    expect(states()).toContainEqual({ type: "flow_state", flowId: primary.id, pairId: "pair", state: "forwardable" });
+    const old = tracks[0], replacement = Object.assign(remoteTrack("audio"), { muted: true });
+    tracks[0] = replacement; pc.ontrack?.({ streams: [primary] });
+    sent.length = 0;
+    Object.assign(old, { readyState: "ended" }); old.dispatchEvent(new Event("ended"));
+    expect(states()).toEqual([]);
+    if (event === "ended") {
+      Object.assign(replacement, { readyState: "ended" }); replacement.dispatchEvent(new Event("ended"));
+    } else {
+      tracks.length = 0; primary.dispatchEvent(new Event("removetrack"));
+    }
+    expect(states()).toEqual([{ type: "flow_state", flowId: primary.id, pairId: "pair", state: "failed" }]);
+    expect(changed.mock.lastCall?.[0].has(primary.id)).toBe(false);
+    expect(changed.mock.lastCall?.[0].get(sibling.id)).toBe(sibling);
+    sent.length = 0; pc.connected();
+    expect(states()).not.toContainEqual({ type: "flow_state", flowId: primary.id, pairId: "pair", state: "forwardable" });
+    expect(states()).toContainEqual({ type: "flow_state", flowId: sibling.id, pairId: "pair", state: "forwardable" });
+  } finally { media.reset(); session.close(); }
 });
 
 test("voice activity follows subscribed speaking endpoints and discards retired input stats", async () => {
@@ -10016,10 +10100,8 @@ test("a resumed room owner retires reading left behind by an offline room switch
 
 test("voice forwards without local listening and the same pair carries the reverse source", async () => {
   const { session, media, state, pc } = await setupRoomMedia();
-  const aTrack = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
-  const bTrack = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
-  const voice = (id: string, track: MediaStreamTrack) => ({ id, getTracks: () => [track], getAudioTracks: () => [track], getVideoTracks: () => [] }) as unknown as MediaStream;
-  const incoming = voice("a-stream", aTrack), local = voice("b-stream", bTrack);
+  const aTrack = remoteTrack("audio"), bTrack = remoteTrack("audio");
+  const incoming = remoteStream("a-stream", [aTrack]), local = remoteStream("b-stream", [bTrack]);
   try {
     pc.connected(); pc.channels[0].open();
     state.publications = [
@@ -11475,23 +11557,25 @@ test("a tab with a partial room view preserves the shared identity's read cursor
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value) });
   const state = structuredClone(session.getSnapshot().state!);
-  const key = `piik.channel.read.${state.channel.id}.${session.getSnapshot().self!.id}`;
+  const key = `piik.channel.read.v2.${state.channel.id}.${session.getSnapshot().self!.id}`;
   try {
     const [publicRoom, privateRoom] = state.channel.rooms;
+    const pub = (seq: number) => ({ seq, lineage: publicRoom.historyLineage! });
+    const priv = (seq: number) => ({ seq, lineage: privateRoom.historyLineage! });
     publicRoom.lastMessageSeq = 5;
     state.channel.rooms = [publicRoom];
     socket.receive({ type: "state", state });
-    const saved = JSON.stringify({ [publicRoom.id]: 1, [privateRoom.id]: 7 });
+    const saved = JSON.stringify({ [publicRoom.id]: pub(1), [privateRoom.id]: priv(7) });
     storage.set(key, saved);
     session.refreshReadMarkers({ key, newValue: saved } as StorageEvent);
     session.markRead(publicRoom.id, 3);
     expect(session.getSnapshot().readByRoom).toEqual({ [publicRoom.id]: 3 });
-    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: { seq: 3, binding: "binding" }, [privateRoom.id]: 7 });
+    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: pub(3), [privateRoom.id]: priv(7) });
 
-    const newer = JSON.stringify({ [publicRoom.id]: 8, [privateRoom.id]: 7 });
+    const newer = JSON.stringify({ [publicRoom.id]: pub(8), [privateRoom.id]: priv(7) });
     storage.set(key, newer);
     session.refreshReadMarkers({ key, newValue: newer } as StorageEvent);
-    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: 8, [privateRoom.id]: 7 });
+    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: pub(8), [privateRoom.id]: priv(7) });
     publicRoom.lastMessageSeq = 8;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom).toEqual({ [publicRoom.id]: 8 });
@@ -11525,8 +11609,10 @@ test("read markers stay personal and do not turn background room activity into r
   const setItem = vi.fn((key: string, value: string) => storage.set(key, value));
   vi.stubGlobal("localStorage", { getItem, setItem });
   const state = structuredClone(session.getSnapshot().state!);
-  const key = `piik.channel.read.${state.channel.id}.${session.getSnapshot().self!.id}`;
+  const key = `piik.channel.read.v2.${state.channel.id}.${session.getSnapshot().self!.id}`;
   try {
+    const first = (seq: number) => ({ seq, lineage: state.channel.rooms[0].historyLineage! });
+    const second = (seq: number) => ({ seq, lineage: state.channel.rooms[1].historyLineage! });
     session.refreshReadMarkers();
     state.channel.rooms[0].lastMessageSeq = 5;
     state.channel.rooms[1].lastMessageSeq = 8;
@@ -11537,8 +11623,8 @@ test("read markers stay personal and do not turn background room activity into r
     session.markRead("first", 2);
     expect(session.getSnapshot().readByRoom).toEqual({ first: 2, second: 0 });
     session.markRead("first", 99);
-    expect(JSON.parse(storage.get(key)!)).toEqual({ first: { seq: 5, binding: "binding" }, second: { seq: 0, binding: "binding" } });
-    storage.set(key, JSON.stringify({ first: 5, second: 4 }));
+    expect(JSON.parse(storage.get(key)!)).toEqual({ first: first(5), second: second(0) });
+    storage.set(key, JSON.stringify({ first: first(5), second: second(4) }));
     session.refreshReadMarkers({ key, newValue: storage.get(key)! } as StorageEvent);
     expect(session.getSnapshot().readByRoom.second).toBe(4);
     state.channel.rooms[1].available = false;
@@ -11554,18 +11640,20 @@ test("read markers stay personal and do not turn background room activity into r
     for (let index = 0; index < 20; index++) socket.receive({ type: "state", state });
     expect(setItem.mock.calls.filter(([name]) => name === key)).toHaveLength(0);
     expect(getItem.mock.calls.filter(([name]) => name === key)).toHaveLength(0);
+    const previousFirst = first(5);
     state.channel.rooms[0].lastMessageSeq = 1;
+    state.channel.rooms[0].historyLineage = crypto.randomUUID();
     state.channel.rooms[0].delivery!.bindingId = "restored";
     socket.receive({ type: "state", state });
-    expect(session.getSnapshot().readByRoom.first).toBe(1);
+    expect(session.getSnapshot().readByRoom.first).toBe(0);
     state.channel.id = "another-site";
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
-    expect(JSON.parse(storage.get(key)!)).toEqual({ first: { seq: 1, binding: "restored" }, second: 4 });
+    expect(JSON.parse(storage.get(key)!)).toEqual({ first: previousFirst, second: second(4) });
     const siteId = state.channel.id;
     const originalUser = session.getSnapshot().self!.id;
     const otherUser = "other-reader";
-    storage.set(`piik.channel.read.${siteId}.${otherUser}`, JSON.stringify({ first: 0, second: 2 }));
+    storage.set(`piik.channel.read.v2.${siteId}.${otherUser}`, JSON.stringify({ first: first(0), second: second(2) }));
     state.users.push({ ...state.users.find(user => user.id === originalUser)!, id: otherUser });
     const endpoint = state.sessions.find(value => value.id === session.getSnapshot().sessionId)!;
     endpoint.userId = otherUser;
@@ -11577,7 +11665,7 @@ test("read markers stay personal and do not turn background room activity into r
     endpoint.userId = originalUser;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
-    expect(JSON.parse(storage.get(`piik.channel.read.${siteId}.${otherUser}`)!)).toEqual({ first: { seq: 0, binding: "restored" }, second: { seq: 3, binding: "binding" } });
+    expect(JSON.parse(storage.get(`piik.channel.read.v2.${siteId}.${otherUser}`)!)).toEqual({ first: first(0), second: second(3) });
   } finally { session.close(); }
 });
 
@@ -11852,6 +11940,79 @@ test("two waiting successors retain a viewer's peer choice when the App can open
     expect(session.getSnapshot().watchPlayers.get(second.id)?.mode).toBe("peer");
   } finally { session.close(); }
 });
+test.each([
+  ["watch", "connected"], ["watch", "reconnected"], ["watch", "left"],
+  ["screen", "connected"], ["screen", "reconnected"], ["screen", "left"], ["screen", "revoked"],
+] as const)("consecutive watch replacements follow a %s successor while the previous join is pending (%s)", async (kind, mode) => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const original = { id: "old", roomId: "first", sessionId: "publisher", userId: "other", viewerSessionIds: [],
+    source: { kind: "media" as const, url: "https://fixture.test/old.mp4" },
+    playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const middle = { ...original, id: "middle", predecessor: { kind: "watch", id: original.id } };
+  const latest = { ...middle, id: "latest" };
+  const screen = { id: latest.id, userId: original.userId, sessionId: original.sessionId, roomId: original.roomId, kind: "screen",
+    predecessor: middle.predecessor, paused: false, audience: [], source: { kind: "screen", name: "Display" }, title: null };
+  const channel = mode === "revoked" ? {
+    ...base.channel, rooms: base.channel.rooms.map(room => room.id === original.roomId ? { ...room, authorized: false } : room),
+  } : base.channel;
+  const final = { ...base, channel, watchActivities: kind === "watch" ? [latest] : [], publications: kind === "screen" ? [screen] : [] };
+  try {
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original] } });
+    const initial = session.joinWatch(original.id);
+    confirmWatchJoinOrLeave(socket);
+    await initial;
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original], watchSubscriptions: [{ id: original.id, mode: "direct" }] } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
+    expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: middle.id, mode: "direct" });
+    if (mode === "left") {
+      const leave = session.leaveWatch(middle.id);
+      expect(socket.sent.filter(c => c.type === "join_watch" && c.mode === null).map(c => c.id)).toEqual([original.id, middle.id]);
+      confirmWatchJoinOrLeave(socket);
+      await leave;
+    }
+    let current = socket;
+    if (mode === "reconnected") {
+      socket.close();
+      session.reconnect();
+      current = ChannelSocket.current;
+      await current.onopen?.();
+      current.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint",
+        state: final });
+    } else {
+      current.receive({ type: "state", state: final });
+    }
+    if (kind === "screen") {
+      const subscriptions = () => current.sent.filter(command => command.type === "subscribe" && command.publicationId === latest.id && command.enabled);
+      if (mode === "left" || mode === "revoked") {
+        expect(subscriptions()).toHaveLength(0);
+        expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
+        return;
+      }
+      expect(session.getSnapshot().state?.publications.find(publication => publication.kind === "screen")?.predecessor).toEqual({ kind: "watch", id: middle.id });
+      await vi.waitFor(() => expect(subscriptions()).toHaveLength(1));
+      current.receive({ type: "room_reply", roomId: screen.roomId, requestId: subscriptions()[0].requestId, result: { type: "done" } });
+      current.receive({ type: "state", state: { ...final, subscriptions: [latest.id] } });
+      expect(session.getSnapshot().state?.subscriptions).toEqual([latest.id]);
+      return;
+    }
+    const joins = current.sent.filter(c => c.type === "join_watch" && c.id === latest.id && c.mode === "direct");
+    if (mode === "left") {
+      expect(joins).toHaveLength(0);
+      expect(session.getSnapshot().watchPlayers.size).toBe(0);
+      return;
+    }
+    expect(joins).toHaveLength(1);
+    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: middle.id });
+    expect(session.getSnapshot().waitingWatchPages?.has(latest.id)).toBe(true);
+    confirmWatchJoinOrLeave(current);
+    current.receive({ type: "state", state: { ...base, watchActivities: [latest], watchSubscriptions: [{ id: latest.id, mode: "direct" }] } });
+    expect(session.getSnapshot().watchPlayers.get(latest.id)?.mode).toBe("direct");
+    expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
+  } finally { session.close(); }
+});
+
 test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a new ordinary subscription for a %s viewer", async status => {
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), next = new WatchTestVideo();
