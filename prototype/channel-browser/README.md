@@ -38,10 +38,9 @@ node scripts/build-channel-web.mjs
 ```
 
 The ignored `build/channel-web/` directory contains the HTML, styles, JavaScript
-and WASM. This entry mounts the same functional page as `/__channel-preview`,
-sharing its session, components, theme and language preferences. The
+and WASM. The
 [Rust service](../channel-server/README.md#run) can serve this directory directly.
-A separate web host must serve `index.html` for `/` and `/__channel-preview`,
+A separate web host must serve `index.html` for `/`,
 route the existing `/prototype/channel` WebSocket to the domain service on the
 same origin, and serve WASM as `application/wasm`.
 Node, Vite and the WASM tools are build dependencies; the deployed App or Server

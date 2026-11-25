@@ -376,7 +376,20 @@ impl Publication {
         }
         self.plan.parents.retain(|child, _| needed.contains(child));
         self.reconcile_leases();
-        if recovery_placement.is_some() && self.operation.as_ref().is_some_and(|op| matches!(&op.kind,OperationKind::Switch{legs,..} if self.current_switch(legs) && legs.values().all(|leg| legs.contains_key(&leg.flow.sender) || self.leases.get(&leg.flow.sender).map(|f|f.id) == leg.flow.input_flow_id))) {return;}
+        let recovery_pending = recovery_placement.is_some()
+            && self
+                .operation
+                .as_ref()
+                .is_some_and(|operation| match &operation.kind {
+                    OperationKind::Switch { legs, .. } => {
+                        self.current_switch(legs)
+                            && Self::branch_inputs_current(&self.plan, &self.leases, legs)
+                    }
+                    _ => false,
+                });
+        if recovery_pending {
+            return;
+        }
         if matches!(
             self.operation.as_ref().map(|operation| &operation.kind),
             Some(OperationKind::Reduce { .. })
@@ -697,6 +710,22 @@ impl Publication {
             .filter_map(|(_, child)| self.leases.get(&child).map(|f| f.id))
     }
 
+    fn branch_inputs_current(
+        plan: &Plan,
+        leases: &BTreeMap<Uuid, Flow>,
+        legs: &BTreeMap<Uuid, Shadow>,
+    ) -> bool {
+        legs.values().all(|leg| {
+            let sender = leg.flow.sender;
+            sender == plan.source
+                || legs
+                    .get(&sender)
+                    .is_some_and(|parent| Some(parent.flow.id) == leg.flow.input_flow_id)
+                || plan.parents.contains_key(&sender)
+                    && leases.get(&sender).map(|flow| flow.id) == leg.flow.input_flow_id
+        })
+    }
+
     fn current_switch(&self, legs: &BTreeMap<Uuid, Shadow>) -> bool {
         legs.iter().all(|(receiver, leg)| {
             self.leases.get(receiver).map(|old| old.id) == leg.replaces
@@ -820,16 +849,7 @@ impl Publication {
             ..
         }) = &mut self.operation
         {
-            let independent = legs.values().all(|leg| {
-                let sender = leg.flow.sender;
-                sender == self.plan.source
-                    || legs
-                        .get(&sender)
-                        .is_some_and(|parent| Some(parent.flow.id) == leg.flow.input_flow_id)
-                    || self.plan.parents.contains_key(&sender)
-                        && self.leases.get(&sender).map(|flow| flow.id) == leg.flow.input_flow_id
-            });
-            if independent {
+            if Self::branch_inputs_current(&self.plan, &self.leases, legs) {
                 for (receiver, leg) in legs.iter_mut() {
                     if !self.plan.parents.contains_key(receiver) {
                         leg.replaces = None;

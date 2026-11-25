@@ -194,15 +194,19 @@ describe("Webpage watch presentation", () => {
     expect(html).toMatch(/type="button"[^>]*aria-label="Play direct video URL"[^>]*disabled=""/);
   });
 
-  it.each([[undefined, true, true], ["watch", true, false], [undefined, false, true]] as const)(
-    "offers source discovery for creator candidates and player selection for viewers (%s, %s)",
-    (activityId, hasURL, expected) => {
+  it.each([[undefined, true], ["watch", true], [undefined, false]] as const)(
+    "names each candidate for share and watch selection (%s, %s)",
+    (activityId, hasURL) => {
       setCopy({ lang: "en" });
       const channel = { pending: new Set(), sourceSelectionCommitting: () => false, watchEmbed: () => undefined,
-        watchPage: () => ({ candidates: [{ id: "video", url: hasURL ? "https://video.test/video.mp4" : undefined }] }),
+        watchPage: () => ({ candidates: [
+          { id: "video", url: hasURL ? "https://video.test/video.mp4" : undefined },
+          { id: "named", title: "Evening clip" },
+        ] }),
       } as unknown as ChannelController;
       const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", activityId, onClose: vi.fn() }));
-      expect(html.includes('aria-label="Choose playback source"')).toBe(expected);
+      expect(html).toContain('aria-label="Select video 1"');
+      expect(html).toContain('aria-label="Select video Evening clip"');
     },
   );
 

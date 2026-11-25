@@ -79,11 +79,9 @@ window.runBrowserRoomCheck = async () => {
   const history = async (before?: number) => {
     const replies = await host.dispatchPeer(peerPacket({ type: "history", before: before ?? null }), Date.now());
     const end = replies.at(-1)?.record;
-    check(end?.type === "history_end", "signed peer history completes its page");
-    const messages = replies.flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
-    check(messages.length === end.count, "signed peer page count matches its records");
-    const snapshots = JSON.parse(JSON.stringify(replies)).filter((reply: { record: { type: string } }) => reply.record.type === "message_reactions");
-    check(snapshots.length === messages.length, "every retained body has its reaction snapshot");
+    check(end?.type === "history_page", "signed peer history completes its page");
+    const messages = replies.flatMap(({ record }) => record.type === "history_page" ? record.messages : []);
+    check(replies.length === 1 && messages.every(message => message.reactions), "one signed page contains each body and its reaction snapshot");
     return { messages, hasMore: end.hasMore, oldestSeq: end.oldestSeq, before: end.before };
   };
   async function checkReplyStorage() {
@@ -160,8 +158,8 @@ window.runBrowserRoomCheck = async () => {
         return current.dispatchPeer(JSON.parse(signature), Date.now(), undefined, output => published.push(output));
       };
       const records = await run({ type: "history", before: null });
-      check(records.some(({ record }) => record.type === "history_message" && record.message.seq === 2
-        && JSON.stringify(record.message.reply) === JSON.stringify(replied.message.reply)), "reopened history preserves the confirmed reply");
+      check(records.some(({ record }) => record.type === "history_page" && record.messages.some(message => message.seq === 2
+        && JSON.stringify(message.reply) === JSON.stringify(replied.message.reply))), "reopened history preserves the confirmed reply");
       const offered = await current.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId,
         hostSessionId: session, revision: ++turn, endpoints, action: { type: "command", context: { connection,
           sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command: { type: "file_offer",
@@ -178,8 +176,8 @@ window.runBrowserRoomCheck = async () => {
       const late = await run({ type: "delete_message", messageSeq: 1, messageId: first.message.id }, true);
       check(late[0].record.type === "error" && late[0].record.code === "message_unavailable", "late owner confirmation cannot delete a tombstone");
       const redacted = await run({ type: "history", before: null });
-      check(redacted.length === 3 && redacted[0].record.type === "history_message" && !redacted[0].record.message.reply
-        && redacted[0].record.message.seq === 2, "deletion removes the body, reactions and embedded quote");
+      check(redacted.length === 1 && redacted[0].record.type === "history_page" && redacted[0].record.messages.length === 1 && !redacted[0].record.messages[0].reply
+        && redacted[0].record.messages[0].seq === 2, "deletion removes the body, reactions and embedded quote");
       const cleared = await run({ type: "clear_history", throughSeq: 2 }, true);
       check(cleared[0]?.record.type === "history_cleared", "room owner clears remaining history");
       const snapshot = await current.snapshot(), deleted: BackupHistoryRow[] = [];
@@ -191,7 +189,7 @@ window.runBrowserRoomCheck = async () => {
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       check((await sync()).projection.lastMessageSeq === 2, "empty restored archive preserves sequence floor");
       const empty = await run({ type: "history", before: null });
-      check(empty.length === 1 && empty[0].record.type === "history_end" && empty[0].record.count === 0, "reopened purged history is empty");
+      check(empty.length === 1 && empty[0].record.type === "history_page" && empty[0].record.messages.length === 0, "reopened purged history is empty");
       const replay = (await chat(current, { text: "Original author text", nonce: "original" }))[0].record;
       check(replay.type === "error" && replay.code === "message_unavailable", "restored deletion rejects a stale send");
 
@@ -234,7 +232,7 @@ window.runBrowserRoomCheck = async () => {
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       check((await sync()).projection.lastMessageSeq === lateWrite.message.seq, "partial clear and restore retain the latest committed sequence");
       const available = (await run({ type: "history", before: null }))
-        .flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
+        .flatMap(({ record }) => record.type === "history_page" ? record.messages : []);
       check(available.length === 2 && available.some(message => message.id === backlog.message.id)
         && available.some(message => message.id === lateWrite.message.id && !message.reply && message.attachments[0]?.id === attachment.id),
       "post-boundary rows and attachment metadata survive restart and restore with the purged quote removed");
@@ -266,11 +264,11 @@ window.runBrowserRoomCheck = async () => {
       IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
       try {
         const page = (await run({ type: "history", before: 2051 })).at(-1)?.record;
-        check(page?.type === "history_end" && page.oldestSeq === 2001 && page.count === 50 && !page.hasMore,
+        check(page?.type === "history_page" && page.oldestSeq === 2001 && page.messages.length === 50 && !page.hasMore,
           "older page reaches the first live message after reopen");
         check(advances === 49, "older page cursor advances: " + advances);
         const emptyPage = (await run({ type: "history", before: 2001 })).at(-1)?.record;
-        check(emptyPage?.type === "history_end" && emptyPage.oldestSeq === 2001 && emptyPage.count === 0 && !emptyPage.hasMore
+        check(emptyPage?.type === "history_page" && emptyPage.oldestSeq === 2001 && emptyPage.messages.length === 0 && !emptyPage.hasMore
           && advances === 49, "exclusive paging at oldest returns empty without visiting the purged prefix");
         await seek(0, 2001);
         check(advances === 49, "seek from before the purge finds another author without advancing the cursor");
@@ -290,26 +288,26 @@ window.runBrowserRoomCheck = async () => {
       IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
       try {
         const page = (await run({ type: "history", before: 2051 })).at(-1)?.record;
-        check(page?.type === "history_end" && page.oldestSeq === 2001 && page.count === 50 && !page.hasMore,
+        check(page?.type === "history_page" && page.oldestSeq === 2001 && page.messages.length === 50 && !page.hasMore,
           "restored history retains the first live sequence");
         await seek(0, 2001);
         check(advances === 49, "restored paging and seek both skip the imported 2,000-row tombstone prefix");
       } finally { IDBCursor.prototype.continue = advance; }
 
       const firstLive = (await run({ type: "history", before: 2002 }))
-        .find(({ record }) => record.type === "history_message")?.record;
-      check(firstLive?.type === "history_message" && firstLive.message.seq === 2001, "first live row is available after clear");
-      const deleteFirstLive = await run({ type: "delete_message", messageSeq: 2001, messageId: firstLive.message.id }, true);
+        .flatMap(({ record }) => record.type === "history_page" ? record.messages : [])[0];
+      check(firstLive?.seq === 2001, "first live row is available after clear");
+      const deleteFirstLive = await run({ type: "delete_message", messageSeq: 2001, messageId: firstLive.id }, true);
       check(deleteFirstLive[0]?.record.type === "message_deleted", "owner can delete the first remaining row");
       const afterDelete = (await run({ type: "history", before: 2003 })).at(-1)?.record;
-      check(afterDelete?.type === "history_end" && afterDelete.oldestSeq === 2002 && afterDelete.count === 1 && !afterDelete.hasMore,
+      check(afterDelete?.type === "history_page" && afterDelete.oldestSeq === 2002 && afterDelete.messages.length === 1 && !afterDelete.hasMore,
         "paging skips an isolated deletion above the clear boundary");
       const olderBackup = await BrowserRoomHost.stage(name, replyPolicy);
       try { for (const row of retained) await olderBackup.append(row); await olderBackup.replace(); } finally { await olderBackup.close(); }
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       await sync();
       const afterRestore = (await run({ type: "history", before: null })).at(-1)?.record;
-      check(afterRestore?.type === "history_end" && afterRestore.oldestSeq === backlog.message.seq && afterRestore.count === 2,
+      check(afterRestore?.type === "history_page" && afterRestore.oldestSeq === backlog.message.seq && afterRestore.messages.length === 2,
         "restoring an earlier backup resets the clear boundary before the restored rows");
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
@@ -338,11 +336,10 @@ window.runBrowserRoomCheck = async () => {
       for (;;) {
         const replies = await imageHost.dispatchPeer(packet({ type: "history", before }), Date.now());
         const end = replies.at(-1)!.record;
-        check(end.type === "history_end", "image page has its ordinary history end marker");
-        const bodies = replies.flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
-        const snapshots = replies.filter(({ record }) => record.type === "message_reactions");
-        check(bodies.length === end.count && snapshots.length === end.count && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
-          "byte-bounded pages preserve count, reaction and cursor contracts");
+        check(end.type === "history_page", "image page uses the ordinary bounded history reply");
+        const bodies = replies.flatMap(({ record }) => record.type === "history_page" ? record.messages : []);
+        check(replies.length === 1 && bodies.every(body => body.reactions) && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
+          "byte-bounded pages preserve rows, reactions and cursors");
         check(bodies.every(body => JSON.stringify(body.inlineImages?.[image.id]) === JSON.stringify(inline)), "pagination retains every thumbnail");
         check(bodies.reduce((total, body) => total + new TextEncoder().encode(JSON.stringify(body)).byteLength, 0) <= 256 * 1024,
           "message bodies remain within the 256 KiB history page budget");
@@ -370,8 +367,8 @@ window.runBrowserRoomCheck = async () => {
       const sent = await imageHost.dispatchPeer(packet({ ...chat, inlineImages: { [attachment.id]: thumbnail } }), Date.now());
       check(sent[0].record.type === "confirmed" && sent[0].record.message.seq === 8, "the thumbnail is confirmed");
       const records = await imageHost.dispatchPeer(packet({ type: "history", before: null }), Date.now());
-      check(records.some(({ record }) => record.type === "history_message"
-        && record.message.inlineImages?.[attachment.id]?.data === thumbnail.data),
+      check(records.some(({ record }) => record.type === "history_page"
+        && record.messages.some(message => message.inlineImages?.[attachment.id]?.data === thumbnail.data)),
         "the writer returns the thumbnail from history without requesting the original");
 
     } finally { await imageHost.close(); await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(name);
@@ -535,7 +532,7 @@ window.runBrowserRoomCheck = async () => {
         const reset = await dispatch({ type: "room_invite", roomId: reopened.roomId }, undefined, reopened);
         check(reset.reply?.result.key && reset.reply.result.key !== invitation.reply!.result.key, "only an explicit reset changes the invitation");
         const afterReset = await reopened.dispatchPeer(privatePacket({ type: "history", before: null }), Date.now());
-        check(afterReset.some(reply => reply.record.type === "history_message" && reply.record.message.text === "Before invitation reset"),
+        check(afterReset.some(reply => reply.record.type === "history_page" && reply.record.messages.some(message => message.text === "Before invitation reset")),
           "resetting an invitation preserves committed IndexedDB history");
         const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(grantedAgain.projection.views[guestSession], "resetting an invitation preserves an existing user's grant");
@@ -588,10 +585,10 @@ window.runBrowserRoomCheck = async () => {
     finally { IDBObjectStore.prototype.put = originalPut; }
     check(reactionWriteSucceeded, "reaction rollback occurs after a real IndexedDB put success");
     await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
-    const recovered = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now())));
-    const recoveredReaction = recovered.find((reply: { record: { type: string; snapshot?: { messageSeq: number } } }) =>
-      reply.record.type === "message_reactions" && reply.record.snapshot?.messageSeq === 1).record.snapshot;
-    const { type: _type, ...savedReaction } = finalReaction.snapshot;
+    const recovered = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
+    const recoveredReaction = recovered.flatMap(({ record }) => record.type === "history_page" ? record.messages : [])
+      .find(message => message.seq === 1)?.reactions;
+    const savedReaction = { revision: finalReaction.snapshot.revision, counts: finalReaction.snapshot.counts };
     check(JSON.stringify(recoveredReaction) === JSON.stringify(savedReaction), "reopen restores committed counts and excludes the aborted reaction");
 
     const controller = new AbortController();
@@ -701,8 +698,8 @@ window.runBrowserRoomCheck = async () => {
     check(repeated[0].record.type === "confirmed" && !repeated[0].record.inserted && confirmation.record.type === "confirmed"
       && JSON.stringify(repeated[0].record.message) === JSON.stringify(confirmation.record.message), "peer retry reuses original confirmation");
     const page = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
-    check(page.length === 101 && page.slice(0, 100).every((reply, index) => String(reply.record.type) === (index % 2 ? "message_reactions" : "history_message"))
-      && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
+    check(page.length === 1 && page[0].record.type === "history_page" && page[0].record.messages.length === 50
+      && page[0].record.messages.every(message => message.reactions) && page[0].record.hasMore, "history returns one bounded page with message reactions");
     const ready = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "interaction_ready" }), 1000)));
     check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "admitted participant initializes interaction time and reactions");
     const interactionPacket = peerPacket({ type: "react", nonce: ++reactionNonce, reaction: "wave", target: { type: "person", userId: owner.userId } });

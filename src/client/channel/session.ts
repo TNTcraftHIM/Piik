@@ -1045,11 +1045,7 @@ export class ChannelSession {
       return;
     }
     const history = this.histories.get(reply.roomId);
-    if (record.type === "history_message") {
-      if (!history?.addMessage(reply.requestId, record.message)) this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
-      return;
-    }
-    if (record.type === "history_end" && history?.hasPage(reply.requestId)) {
+    if (record.type === "history_page" && history?.hasPage(reply.requestId)) {
       const page = history.completePage(reply.requestId, record);
       if (!page) {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
@@ -2702,7 +2698,7 @@ export class ChannelSession {
       const url = this.watchSource(rawURL).url;
       const selection = this.selectSource(roomId);
       try {
-        const app = await this.connectApp();
+        const app = await this.connectApp(undefined, selection.controller.signal);
         selection.controller.signal.throwIfAborted();
         const page = await app.preparePage(url, () => this.patch({}), selection.controller.signal);
         selection.controller.signal.throwIfAborted();
@@ -2937,7 +2933,7 @@ export class ChannelSession {
       if (!activity || activity.source.kind !== "website" || activity.sessionId === this.view.sessionId) throw new Error("watch_unavailable");
       if (activity.playback.timeline === "program") throw new Error("watch_live_timeline_unsupported");
       const media = new AppPageMedia(async signal => {
-        const app = await this.connectApp();
+        const app = await this.connectApp(undefined, signal);
         signal.throwIfAborted();
         return app.preparePage(originalWatchURL(activity.source), () => this.patch({}), signal);
       });
@@ -3267,7 +3263,7 @@ export class ChannelSession {
       && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
   nativeSources = async (signal?: AbortSignal): Promise<NativeCaptureSources> => {
     signal?.throwIfAborted();
-    const app = await this.connectApp();
+    const app = await this.connectApp(undefined, signal);
     const sources = await app.sources(signal);
     if (this.app !== app || !app.connected || this.closed) throw new Error("app_context_changed");
     if (this.view.encodingExecution === "software" && !sources.softwareEncodingCodecs.length)
@@ -3293,7 +3289,7 @@ export class ChannelSession {
   startExternalScreen = (roomId: string, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     try {
-      const app = await this.connectApp();
+      const app = await this.connectApp(undefined, selection.controller.signal);
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
       await app.prepareExternalInput(share.id, roomId);
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
@@ -3559,7 +3555,7 @@ export class ChannelSession {
     let app: ChannelApp | undefined;
     let ownsPreparation = false;
     try {
-      app = await this.connectApp();
+      app = await this.connectApp(undefined, signal);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
         && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);

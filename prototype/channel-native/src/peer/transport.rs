@@ -1886,11 +1886,8 @@ impl Engine {
         while self.turn_setup.try_recv().is_ok() {}
         self.close_turn();
         self.discovery_routes.clear();
-        // Closed before the last drain: an SDK we disconnected has no send consent,
-        // and that must not be read as a failed path.
         self.state.store(PeerState::Closed as u8, Ordering::Release);
         self.rtc.disconnect();
-        self.drain();
         self.udp_send_failures
             .flush((!self.events.local()).then_some(self.handle.pair));
         self.tracks.clear();

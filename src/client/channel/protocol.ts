@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 50;
+export const CHANNEL_PROTOCOL = 51;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -272,11 +272,11 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "message_reactions"; snapshot: MessageReactionSnapshot }
   | { type: "interaction_ready"; serverTime: number; reactionIds: string[]; publicationReactions: PublicationReactionSnapshot[] }
   | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
-  | { type: "history_message" | "live_message"; message: ChannelMessage }
+  | { type: "live_message"; message: ChannelMessage }
   | { type: "message_deleted"; messageSeq: number }
   | { type: "history_cleared"; throughSeq: number }
   | { type: "history_seek_result"; after: number; seq: number | null }
-  | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
+  | { type: "history_page"; messages: (ChannelMessage & { reactions: NonNullable<ChannelMessage["reactions"]> })[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
 export interface DomainSettings { name: string; icon: string }

@@ -5,14 +5,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
-import init, { history_page_size, SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
+import init, { SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
 }>;
-export type TextHistoryPage = Pick<Extract<ConversationReply['record'], { type: 'history_end' }>,
-  'hasMore' | 'oldestSeq' | 'before'> & { messages: ChannelMessage[] };
+export type TextHistoryPage = Omit<Extract<ConversationReply['record'], { type: 'history_page' }>, 'type'>;
 export type TextReactionResult = {
   type: 'reaction';
   nonce: number;
@@ -55,11 +54,10 @@ export interface TextParticipantOptions {
   credential?: string;
   admission?: { inviteKey?: string; password?: string };
 }
-type ConversationResult = 'confirmed' | 'history_end' | 'interaction_ready' | 'reaction' | 'message_deleted';
+type ConversationResult = 'confirmed' | 'history_page' | 'interaction_ready' | 'reaction' | 'message_deleted';
 type Pending = {
   roomId?: string;
   expects: 'ack' | 'room_created' | ConversationResult;
-  records: ChannelMessage[];
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
@@ -232,7 +230,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         reject(new Error('request_timeout'));
       }, expects === 'ack' || expects === 'room_created' ? 10_000 : 30_000);
       const roomId = command.type === 'conversation' ? this.roomId : 'roomId' in command ? command.roomId : undefined;
-      this.pending.set(requestId, { roomId, expects, records: [], resolve, reject, timer });
+      this.pending.set(requestId, { roomId, expects, resolve, reject, timer });
       try {
         this.write(command, requestId);
       }
@@ -263,7 +261,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   }
 
   async history(before?: number): Promise<TextHistoryPage> {
-    return await this.conversation({ type: 'history', roomId: this.selectedRoomId(), before }, 'history_end') as TextHistoryPage;
+    return await this.conversation({ type: 'history', roomId: this.selectedRoomId(), before }, 'history_page') as TextHistoryPage;
   }
 
   async deleteOwnMessage(message: ChannelMessage): Promise<void> {
@@ -371,18 +369,11 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     }
     if (record.type === pending?.expects && (record.type === 'interaction_ready' || record.type === 'reaction' || record.type === 'message_deleted'))
       this.complete(reply.requestId, record);
-    if (record.type === 'history_message' && pending?.expects === 'history_end') {
-      if (pending.records.length >= history_page_size())
+    if (record.type === 'history_page' && pending?.expects === 'history_page') {
+      if (record.hasMore && !record.messages.length)
         this.complete(reply.requestId, undefined, new Error('incomplete_history'));
       else
-        pending.records.push(record.message);
-    }
-    if (record.type === 'history_end' && pending?.expects === 'history_end') {
-      const messages = pending.records;
-      if (record.count !== messages.length || record.hasMore && !messages.length)
-        this.complete(reply.requestId, undefined, new Error('incomplete_history'));
-      else
-        this.complete(reply.requestId, { messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before });
+        this.complete(reply.requestId, { messages: record.messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before });
     }
     if (record.type === 'confirmed') {
       if (pending?.expects === 'confirmed') this.complete(reply.requestId, record.message);

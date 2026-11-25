@@ -81,7 +81,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'recover
     for (const index of indices) {
       await writeFile(join(output, `${index}.js`), f.captureProbe(index ? 'Viewer' : 'Source'));
       browserOpened.add(index);
-      await browser(index, 'open', `${origin}/__channel-preview#invite=owned-kernel-lab-invite`);
+      await browser(index, 'open', `${origin}/#invite=owned-kernel-lab-invite`);
       cdp.set(index, (await browser(index, 'get', 'cdp-url')).cdpUrl);
       await f.until(`Browser${index} admitted`, () => f.view(index), (value: any) => value.connection === 'connected');
       const role = index === sourceBrowser ? 'source' : index === viewerBrowser ? 'viewer' : 'relay';

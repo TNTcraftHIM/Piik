@@ -174,6 +174,7 @@ struct App {
     config: Config,
     port: u16,
     token: String,
+    host_creation: tokio::sync::RwLock<()>,
     registry: Mutex<Registry>,
     closing: watch::Sender<bool>,
     launch: Mutex<Option<hosted::Launch>>,
@@ -246,10 +247,7 @@ async fn catalog_reply(pending: &mut Option<(String, CaptureTargets)>) -> Value 
         Err(_) => Err("capture_targets_failed".into()),
     };
     let (id, _) = pending.take().expect("capture catalog pending");
-    match result {
-        Ok(value) => json!({"id":id,"result":value}),
-        Err(error) => json!({"id":id,"error":error}),
-    }
+    control_reply(id, result.map_err(anyhow::Error::msg))
 }
 
 impl App {
@@ -290,7 +288,8 @@ impl App {
         watch::Receiver<Option<Result<(), String>>>,
     )> {
         let key = (site.to_owned(), channel, user);
-        let mut registry = loop {
+        let (_creation, mut registry) = loop {
+            let creation = self.host_creation.read().await;
             let registry = self.registry.lock().await;
             if *self.closing.borrow() {
                 bail!("hosting_unavailable");
@@ -299,10 +298,11 @@ impl App {
                 bail!("site_not_approved");
             }
             let Some(host) = registry.hosts.get(&key).filter(|host| host.finished() || *host.stop.borrow()) else {
-                break registry;
+                break (creation, registry);
             };
             let task = host.task.clone();
             drop(registry);
+            drop(creation);
             self.join_host(&key, task).await;
         };
         if let Some(host) = registry.hosts.get(&key) {
@@ -484,6 +484,7 @@ pub async fn serve(
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites,
             approvals,
@@ -1996,10 +1997,7 @@ async fn connection(
                             }
                             Ok(())
                         });
-                        let response = match result {
-                            Ok(()) => json!({"id":id,"result":null}),
-                            Err(error) => json!({"id":id,"error":error.to_string()}),
-                        };
+                        let response = control_reply(id, result.map(|()| Value::Null));
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2011,10 +2009,7 @@ async fn connection(
                     Some((id, result)) = previews.next(), if !previews.is_empty() => {
                         let result: Result<Option<String>> = result;
                         preview = None; // The capture has stopped and its worker has joined.
-                        let response = match result {
-                            Ok(image) => json!({"id":id,"result":image}),
-                            Err(error) => json!({"id":id,"error":error.to_string()}),
-                        };
+                        let response = control_reply(id, result.map(|image| json!(image)));
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2084,22 +2079,17 @@ async fn connection(
                                 Err(error) => Err(error),
                             }
                         };
-                        let response = match result {
-                            Ok(value) => json!({"id":id,"result":value}),
-                            Err(error) => {
-                                if !request.is_aborted() {
-                                    if let Some(capture) = captures.get_mut(&publication_id) {
-                                        let external = capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External);
-                                        if ended.is_none() { capture.pending = None; }
-                                        if external && ended.is_none() && external_page.permits.contains_key(&publication_id) {
-                                            let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
-                                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                                        }
-                                    }
+                        if result.is_err() && !request.is_aborted() {
+                            if let Some(capture) = captures.get_mut(&publication_id) {
+                                let external = capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External);
+                                if ended.is_none() { capture.pending = None; }
+                                if external && ended.is_none() && external_page.permits.contains_key(&publication_id) {
+                                    let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
+                                    timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                                 }
-                                json!({"id":id,"error":error.to_string()})
                             }
-                        };
+                        }
+                        let response = control_reply(id, result);
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         if let Some((generation, ended)) = ended {
                             if let Some(event) = retire_external(&mut captures, &mut external_page, publication_id, generation, ended) {
@@ -2201,7 +2191,7 @@ async fn connection(
                     }) => {
                         match pages.prepare_media(page_id, candidate_id, choice_id, host.clone()) {
                             Ok(work) => {
-                                operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
+                                operations.push(async move { control_reply(request.id, work.await) }.boxed());
                                 continue;
                             }
                             Err(error) => Err(error),
@@ -2210,7 +2200,7 @@ async fn connection(
                     Operation::Page(page::Operation::PageMediaPrepareIndexed { page_id, candidate_id, video, audio }) => {
                         match pages.prepare_indexed_media(page_id, candidate_id, video, audio, host.clone()) {
                             Ok(work) => {
-                                operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
+                                operations.push(async move { control_reply(request.id, work.await) }.boxed());
                                 continue;
                             }
                             Err(error) => Err(error),
@@ -2231,12 +2221,7 @@ async fn connection(
                         ) {
                             Ok(work) => {
                                 operations.push(
-                                    async move {
-                                        match work.await {
-                                            Ok(value) => json!({"id":request.id,"result":value}),
-                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                        }
-                                    }.boxed(),
+                                    async move { control_reply(request.id, work.await) }.boxed(),
                                 );
                                 continue;
                             }
@@ -2252,12 +2237,7 @@ async fn connection(
                             } => match pages.inspect_mpd(page_id, candidate_id, choice_id, read_id) {
                                 Ok(work) => {
                                     operations.push(
-                                        async move {
-                                            match work.await {
-                                                Ok(value) => json!({"id":request.id,"result":value}),
-                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                            }
-                                        }.boxed(),
+                                        async move { control_reply(request.id, work.await) }.boxed(),
                                     );
                                     continue;
                                 }
@@ -2266,10 +2246,7 @@ async fn connection(
                             page::ResourceRequest::ReadMetadata { page_id, candidate_id, choice_id, read_id, offset, length } => {
                                 match pages.read_metadata(page_id, candidate_id, choice_id, read_id, offset, length) {
                                     Ok(work) => {
-                                        operations.push(async move { match work.await {
-                                            Ok(result) => json!({"id":request.id,"result":result}),
-                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                        }}.boxed());
+                                        operations.push(async move { control_reply(request.id, work.await) }.boxed());
                                         continue;
                                     }
                                     Err(error) => Err(error),
@@ -2292,10 +2269,7 @@ async fn connection(
                                     length,
                                 ) {
                                     Ok(work) => {
-                                        operations.push(async move { match work.await {
-                                        Ok(result) => json!({"id":request.id,"result":result}),
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }}.boxed());
+                                        operations.push(async move { control_reply(request.id, work.await) }.boxed());
                                         continue;
                                     }
                                     Err(error) => Err(error),
@@ -2383,10 +2357,7 @@ async fn connection(
                                     .map_err(anyhow::Error::msg)?;
                                 serde_json::to_value(result).map_err(anyhow::Error::from)
                             }.await;
-                            match work {
-                                Ok(result) => json!({"id": request_id, "result": result}),
-                                Err(error) => json!({"id": request_id, "error": error.to_string()}),
-                            }
+                            control_reply(request_id, work)
                         }.boxed());
                         continue;
                     }
@@ -2405,11 +2376,7 @@ async fn connection(
                                     let measured = response.await?.map_err(anyhow::Error::msg)?;
                                     Ok::<_, anyhow::Error>(serde_json::to_value(measured)?)
                                 }).await;
-                                match measured {
-                                    Ok(Ok(value)) => json!({"id":request.id,"result":value}),
-                                    Ok(Err(error)) => json!({"id":request.id,"error":error.to_string()}),
-                                    Err(_) => json!({"id":request.id,"error":"request_timeout"}),
-                                }
+                                control_reply(request.id, measured.unwrap_or_else(|_| Err(anyhow!("request_timeout"))))
                             }.boxed());
                             continue;
                         }
@@ -2420,7 +2387,7 @@ async fn connection(
                             _ => (CaptureCatalogKind::Microphones, &app.capture_microphones, &mut microphones),
                         };
                         if let Some((id, _)) = pending.replace((request.id, reader.read(kind).await)) {
-                            let response = json!({"id":id,"error":"request_cancelled"});
+                            let response = control_reply(id, Err(anyhow!("request_cancelled")));
                             timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         }
                         continue;
@@ -2569,10 +2536,7 @@ async fn connection(
                         match cancel {
                             Some(Ok(cancel)) => {
                                 operations.push(async move {
-                                    match cancel.await {
-                                        Ok(()) => json!({"id":request.id,"result":null}),
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }
+                                    control_reply(request.id, cancel.await.map(|()| Value::Null))
                                 }.boxed());
                                 continue;
                             }
@@ -2595,10 +2559,7 @@ async fn connection(
                             let capture_id = lease.producer_id();
                             operations.push(async move {
                                 let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
-                                match result {
-                                    Ok(()) => json!({"id":request.id,"result":null}),
-                                    Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                }
+                                control_reply(request.id, result.map(|()| Value::Null))
                             }.boxed());
                             continue;
                         } else {
@@ -2679,10 +2640,7 @@ async fn connection(
                         match update {
                             Ok(update) => {
                                 operations.push(async move {
-                                    match update.await {
-                                        Ok(()) => json!({"id":request.id,"result":null}),
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }
+                                    control_reply(request.id, update.await.map(|()| Value::Null))
                                 }.boxed());
                                 continue;
                             }
@@ -2713,10 +2671,7 @@ async fn connection(
                         match update {
                             Ok((update, state)) => {
                                 operations.push(async move {
-                                    match update.await {
-                                        Ok(()) => json!({"id":request.id,"result":state.borrow().microphone.clone()}),
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }
+                                    control_reply(request.id, update.await.map(|()| json!(state.borrow().microphone.clone())))
                                 }.boxed());
                                 continue;
                             }
@@ -2738,10 +2693,7 @@ async fn connection(
                             let capture_id = lease.producer_id();
                             operations.push(async move {
                                 let result = pause_capture(&commands, scope, capture_id, paused).await;
-                                match result {
-                                    Ok(()) => json!({"id":request.id,"result":null}),
-                                    Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                }
+                                control_reply(request.id, result.map(|()| Value::Null))
                             }.boxed());
                             continue;
                         } else {
@@ -2778,10 +2730,7 @@ async fn connection(
                             let capture_id = lease.producer_id();
                             operations.push(async move {
                                 let result = edit_capture(&commands, scope, capture_id, edit).await;
-                                match result {
-                                    Ok(()) => json!({"id":request.id,"result":null}),
-                                    Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                }
+                                control_reply(request.id, result.map(|()| Value::Null))
                             }.boxed());
                             continue;
                         } else {
@@ -2806,10 +2755,7 @@ async fn connection(
                         match policy {
                             Ok(policy) => {
                                 operations.push(async move {
-                                    match policy.await {
-                                        Ok(()) => json!({"id":request.id,"result":null}),
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }
+                                    control_reply(request.id, policy.await.map(|()| Value::Null))
                                 }.boxed());
                                 continue;
                             }
@@ -2847,16 +2793,13 @@ async fn connection(
                             Ok(shortcut) => {
                                 let desktop = app.desktop.clone();
                                 operations.push(async move {
-                                    match shortcut.await {
-                                        Ok(()) => {
-                                            let label = desktop.shortcut_label();
-                                            let available = label.as_ref().is_none_or(Option::is_some);
-                                            let mut value = json!({"key":key,"available":available});
-                                            if let Some(label) = label { value["stopShortcutLabel"] = json!(label); }
-                                            json!({"id":request.id,"result":value})
-                                        }
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }
+                                    control_reply(request.id, shortcut.await.map(|()| {
+                                        let label = desktop.shortcut_label();
+                                        let available = label.as_ref().is_none_or(Option::is_some);
+                                        let mut value = json!({"key":key,"available":available});
+                                        if let Some(label) = label { value["stopShortcutLabel"] = json!(label); }
+                                        value
+                                    }))
                                 }.boxed());
                                 continue;
                             }
@@ -3217,6 +3160,7 @@ mod lifecycle_tests {
             },
             port: 0,
             token: "owned".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::from([
@@ -3634,6 +3578,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "owned".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(site.clone(), permission)]),
@@ -3930,6 +3875,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(remote.into(), permission.clone())]),
@@ -4234,6 +4180,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::new(),
@@ -4418,6 +4365,7 @@ mod lifecycle_tests {
                 },
                 port: 39731,
                 token: "test".into(),
+                host_creation: Default::default(),
                 registry: Mutex::new(Registry {
                     sites,
                     approvals,
@@ -4647,6 +4595,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(site.clone(), permission.clone())]),

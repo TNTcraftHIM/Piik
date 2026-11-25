@@ -152,20 +152,25 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     )?;
     let operator = owner_link::Listener::bind(&directory)?;
     println!("Piik Server: http://{bound}");
-    println!("Web interface: {origin}/__channel-preview");
+    println!("Web interface: {origin}/");
     release::startup_notice();
     let operator_domain = state.clone();
+    let (stop_server, operator_stopped) = tokio::sync::oneshot::channel();
+    let server = serve_server(listener, state, directory, routes, udp, transit, async {
+        tokio::select! {
+            _ = stop => {},
+            _ = operator_stopped => {},
+        }
+    });
+    tokio::pin!(server);
     tokio::select! {
-        result = owner_link::serve(operator, &operator_domain) => result?,
-        result = serve_server(
-            listener,
-            state,
-            directory,
-            routes,
-            udp,
-            transit,
-            stop,
-        ) => result?,
+        result = owner_link::serve(operator, &operator_domain) => {
+            let _ = stop_server.send(());
+            let shutdown = server.await;
+            result.context("Serve the local owner link")?;
+            shutdown?;
+        }
+        result = &mut server => result?,
     }
     Ok(std::process::ExitCode::SUCCESS)
 }

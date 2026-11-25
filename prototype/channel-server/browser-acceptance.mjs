@@ -814,7 +814,7 @@ async function roomOwner(initial, serverRoom) {
   assert((await sample(0)).captures.some(track => track.kind === "video" && track.state === "live"));
   assert.equal((await view(0)).state.pairs.find(pair => pair.peerId === viewerSession).id, sharedPair);
   await progressing(2, serverPicture);
-  await browser(1, "open", `${origin}/__channel-preview`);
+  await browser(1, "open", `${origin}/`);
   await until("reopened owner restores the saved room", () => view(1), value => value.connection === "connected" &&
     value.state.channel.rooms.some(entry => entry.id === room && entry.authorized && entry.available !== false));
   await action(1, `browse(${JSON.stringify(room)})`);
@@ -1208,7 +1208,7 @@ async function profileControls(roomId, messageId) {
   }), value => !value.sessions.some(session => session.userId === member.id && session.online)
       && value.profile?.name === name && value.profile.avatar === avatar
       && value.message.name === name && value.message.avatar === avatar);
-  await browser(1, "open", `${origin}/__channel-preview#room=${encodeURIComponent(roomId)}`);
+  await browser(1, "open", `${origin}/#room=${encodeURIComponent(roomId)}`);
   await reenter();
   if (!await evaluate(0, "document.querySelector('#c3-people')?.checkVisibility() ?? false"))
     await browser(0, "click", "#c3-companion-trigger");
@@ -1452,7 +1452,7 @@ try {
       }
       await writeFile(script, probe);
     }
-    await browser(index, "open", `${origin}/__channel-preview${index === 0 ? `#owner=${encodeURIComponent(ownerKey)}` : ""}`);
+    await browser(index, "open", `${origin}/${index === 0 ? `#owner=${encodeURIComponent(ownerKey)}` : ""}`);
   }
   const initial = [];
   for (const index of active) {
