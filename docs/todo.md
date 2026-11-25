@@ -30,7 +30,8 @@ the feedback period; they do not delay that delivery.
   action. New peers, access or forwarding changes may enable a later attempt.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
-  changing the selected device. Room microphones, source audio inputs and
+  changing the selected device. Check audible message alerts with the App in
+  the foreground and background. Room microphones, source audio inputs and
   system-output capture retain their separate scopes.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during
@@ -246,11 +247,10 @@ the feedback period; they do not delay that delivery.
   Set stored fields and capabilities with their consumers. Before publication,
   verify that supported archive round trips preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
-  [ADR-0020](./adr/0020-one-vocabulary-for-extension.md): points,
-  contributions, scopes, kinds and static compositions; a kind with a fallback
-  as the only thing that crosses machines; a program as a participant. Its
-  envelope joins the contract settled before release, and watch-together is
-  the first feature moved onto it as proof.
+  [ADR-0020](./adr/0020-one-vocabulary-for-extension.md) through a bounded
+  comparison with plain lifecycle-owner extraction. Identify concrete providers
+  and consumers, preserve both runtime layouts and shared-resource lifetimes,
+  and settle deletion, copying and authority before changing the wire or stores.
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.
   Keep image restoration owned by each physical connection. Any generated types

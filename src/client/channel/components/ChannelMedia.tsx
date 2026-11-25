@@ -111,6 +111,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const localSeek = player.blockedReason === "local-seek";
   const resumeLabel = localSeek ? "watch.resync" : "watch.resume";
   const outputFailed = useSyncExternalStore(playbackOutput.subscribe, () => playbackOutput.failedFor(player.video), () => false);
+  const showOutputRecovery = outputFailed && !player.error && !player.blocked;
   const waiting = player.waitingForPicture && !player.error && !player.blocked;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
@@ -216,11 +217,11 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
   return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
-    data-diagnosis={showDiagnosis || outputFailed && waiting && !thumbnail ? true : undefined}
+    data-diagnosis={showDiagnosis || showOutputRecovery && !thumbnail ? true : undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
-    {surface.kind !== "external" && waiting && <div className="c3-mini-message">
-      {outputFailed ? <div className="c3-frame-wait c3-watch-result c3-watch-output">
+    {surface.kind !== "external" && (waiting || showOutputRecovery) && <div className="c3-mini-message">
+      {showOutputRecovery ? <div className="c3-frame-wait c3-watch-result c3-watch-output">
         {thumbnail ? <span role="status">{t("voice.output.failed")}</span> : <PlaybackDeviceSelect />}
       </div> : <span className="c3-frame-wait" role="status"><BrandMark size={thumbnail ? 24 : 32} motion="loop" />{t("watch.waiting")}</span>}
     </div>}
