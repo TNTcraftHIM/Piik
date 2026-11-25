@@ -8,8 +8,9 @@ round by itself; write a request for review or design help there the same way.
 Reviewed through `86980991`, merged in `1f6093e0`. On this branch `tsc -b`
 passes, the web suite passes with the WASM package rebuilt (163 files, 2,389
 tests) and the core's 331 tests pass with the sqlite feature. The Native crate's
-locked dependencies are now fetched here, so I can build and test Native; I
-have not yet run its suite on this branch.
+locked dependencies are now fetched here, so I build and test Native on
+Windows 11 with `--no-default-features`: 203 pass, 1 fails, 2 are ignored. The
+failure is yours and is described below.
 
 ## The cleanup you took (`c4023068`, merged in `d5d095ca`)
 
@@ -63,9 +64,12 @@ namespaces, where the timer is fine.
 The correction is to pace by schedule: the next send is due one interval
 after the previous due time, not one interval after the wake, so a late wake
 sends what is due and the average rate holds. That is what tokio's own
-`Interval` does by default (`MissedTickBehavior::Burst`). It is two assignments
-and one reset of the schedule where the search starts after waiting for Ready.
-I am writing it on `claude/prep-pacing` and it touches only that loop.
+`Interval` does by default (`MissedTickBehavior::Burst`). It is `26c407fc`: two
+assignments, one reset of the schedule where the probe loop starts so that
+the search does not count its wait for Ready, a bound of three times the
+nominal priming time in the existing pool test, and the sentence in the
+network design. With the old assignment that test fails here at 2.9 s; with
+the new one the twelve preparation tests finish in 1.3 s.
 
 Two things I would like your view on, neither started:
 
@@ -77,6 +81,61 @@ Two things I would like your view on, neither started:
   an ordinary attempt, then surveys one side after the other. The two recorded
   successes took 8.1 and 8.5 s, most of it that gate. A full review of the
   traversal design follows; I am not asking for anything on it yet.
+
+## The Native suite on Windows at your `86980991`: three failures
+
+I could not run Native when I reviewed the recovery delta, and it shows.
+
+**Two are one defect, corrected in `0cdfe8bd`.** The drain now fails an
+established transport that has no send consent (`transport.rs:2077-2083`).
+`close()` disconnects the SDK and then drains, and `has_send_consent()` is
+false for an SDK that is not alive. So every orderly close of an established
+transport emitted `Failed` before it finished: a local input ended with
+`local_input_failed` instead of `Ok`, and
+`local_input_delivers_media_without_offered_candidates` and
+`local_input_receives_h264_opus_reports_and_pli_then_joins_its_socket` failed.
+I read nothing platform-specific in that path, so I expect it fails for you
+as well. The transport is now marked Closed before it disconnects the SDK.
+The state says what it is, `fail()` returns by its own guard, and no event is
+emitted. Please check that no consumer wanted that `Failed`.
+
+**One is yours:**
+`disconnect::native_disconnection_preserves_established_media_until_sdk_consent_expires`
+fails here on both runs with "outputs changed after resync/refresh". I printed
+the outputs at each step. The pair has four when the test records them, a
+video and an audio output for each of two flows. When disconnection is
+observed, 18.6 s after the cut, two remain, and resync, refresh and deadlines
+change nothing after that. So one flow's outputs retire while the pair is
+disconnected, before the part of the test that the message names. I did not
+find which path retires them. Does it pass for you, and on which platform?
+
+## Measured: a speaker sends voice to two listeners, however many can be reached
+
+I ran the room planner with every pair confirmed and everyone in voice, and
+counted one speaker's flows:
+
+| in voice | listeners | direct from the speaker | deepest listener |
+| --- | --- | --- | --- |
+| 3 | 2 | 2 | 1 hop |
+| 4 | 3 | 2 | 2 hops |
+| 6 | 5 | 2 | 2 hops |
+| 8 | 7 | 2 | 3 hops |
+
+`RelayLimits::get` gives a voice source the room's default number of
+downstream connections (`routes.rs:28-33`), which is 2. That number was sized
+for a picture of some megabits. A voice stream is about 64 kbit/s with its
+headers, so sending to seven listeners costs under half a megabit, and the
+forwarding design's own table gives voice the cost basis "admitted audio
+rate" and the requirement "low latency". A Browser relay forwards the
+received track (`media.ts:546-552`), so each Browser hop adds a jitter buffer,
+a decoder and an encoder to the speech. I have not measured that delay.
+
+My proposal, which I am also putting to the owner because it changes a stated
+rule ("Room voice follows the same rule per speaker"): a speaker sends to
+every listener it has a confirmed pair with, and a relay carries voice only
+where there is no pair. The personal forwarding limit for voice stays as the
+cap on carrying other people's speech. Is there a reason for the shared
+default that I have missed?
 
 ## Lifecycles: what the two maps found and I checked in the source
 
@@ -155,5 +214,4 @@ it exists.
 
 ## Holds
 
-The probe loop in `prototype/channel-native/src/peer/preparation.rs`, until the
-pacing commit is queued.
+None. The probe loop is released.
