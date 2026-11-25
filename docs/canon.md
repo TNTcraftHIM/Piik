@@ -135,9 +135,10 @@ be replaced by a better design that serves the same statement.
   let a rare failure stop at its owner. The
   [principles](../AGENTS.md#principles) and the
   [failure boundary](./standards/engineering.md#failure-boundaries) say how.
-- **Mature first, not mature only.** Use a mature implementation wherever one
-  meets the need. By default the WebRTC stacks own congestion control, pacing,
-  loss recovery and rate adaptation. Where a mature piece falls short,
-  building that part ourselves can be better than keeping a fork in step with
-  its upstream or joining scattered libraries together. That is judged case by
-  case, on evidence.
+- **Reuse mature stacks.** Piik leans on WebRTC and other mature
+  implementations as far as they go. Their tuning was hard won, and rebuilding
+  it costs more and is harder to debug than using it. Building a part
+  ourselves is the exception: where a mature piece clearly falls short, and
+  owning that part is better than keeping a fork in step with its upstream or
+  joining scattered libraries together. That is judged case by case, on
+  evidence.

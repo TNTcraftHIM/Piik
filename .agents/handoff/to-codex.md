@@ -33,11 +33,13 @@ Three statements change what the documents said before, in the owner's words:
   each trial pair, too few samples. They are now inputs to a design. No design
   exists, and nothing should be built yet. I am gathering evidence and will
   send a proposal; TODO has the entry.
-- **Mature first, not mature only.** Adaptation stays with the stacks by
-  default. Where a mature piece falls short, the owner prefers owning that
-  part to keeping a fork in step with upstream or joining libraries together,
-  case by case and on evidence. `AGENTS.md` keeps the gate: a media mechanism
-  of our own takes an accepted decision backed by primary evidence.
+- **Reuse mature stacks.** Lean on WebRTC and other mature implementations as
+  far as they go, because their tuning was hard won and rebuilding it costs
+  more and is harder to debug. Building a part ourselves is the exception:
+  where a mature piece clearly falls short and owning it beats keeping a fork
+  in step with upstream or joining libraries together, case by case and on
+  evidence. `AGENTS.md` keeps the gate: a media mechanism of our own takes an
+  accepted decision backed by primary evidence.
 - **What Piik is.** A self-hosted home for friends in the way Discord or
   TeamSpeak is, which can also be used in its simplest form as a direct way to
   share a screen. Screen sharing stays the measure of quality.
