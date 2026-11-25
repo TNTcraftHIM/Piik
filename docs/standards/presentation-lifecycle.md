@@ -159,26 +159,8 @@ a permission query retain bounded discovery.
 
 ## Visual Language
 
-Registered languages express the same typed state and command catalog.
-The 3.0 App and Server UI provide Simplified Chinese (`zh`), English (`en`),
-Traditional Chinese (`zh-Hant`), Japanese (`ja`) and Korean (`ko`).
-On first use, the App and Server UI match the
-Browser's primary system language against registered locales, using English
-when none matches. `zh-CN` and `zh-Hans` select `zh`; `zh-TW`, `zh-HK` and
-`zh-Hant` select `zh-Hant`. An explicit later choice is persisted and takes
-precedence over that default. App launch handoff preserves the selected
-registered locale.
-Explicit launcher choices apply only to the presentation domains the user chose.
-Older launchers cannot distinguish defaults from explicit choices; updated Sites
-preserve their saved preferences when receiving those unmarked hints.
-The App console supports Chinese and English: both Chinese catalogs use Chinese,
-and other UI languages fall back to English. Windows window controls and
-permission prompts use the shared UI's five languages. The public website, film and documentation
-maintain independent Chinese/English content. All UI languages use concise copy.
-
-The [visual language](./visual-language.md) is the single owner of
-illustrative roles and objects, semantic colour, panel grammar, motion,
-accessible input and responsive hierarchy.
+[Naming and copy](./naming.md#interface-languages) owns the 3.0 interface
+languages and their selection.
 
 ## Playback Ownership
 

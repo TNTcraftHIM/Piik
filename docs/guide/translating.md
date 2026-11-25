@@ -119,7 +119,7 @@ layout questions, so contributors can coordinate work and review.
    Extra languages appear in the third, shared dropdown after the Chinese and
    English shortcuts. Check language
    selection, saved preferences and App handoff against the
-   [system-language policy](../standards/presentation-lifecycle.md#visual-language).
+   [system-language policy](../standards/naming.md#interface-languages).
 3. Check complete screens and the launch flow, including launcher, room and error
    states. The 3.0 site and room use the shared catalog, with complete
    English/Simplified Chinese coverage and matching placeholders in supplied

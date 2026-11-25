@@ -16,7 +16,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
 | Review in flight between agents | `.agents/handoff/` | One mailbox per reader, each with one writer: pending commits, open findings, questions and holds; items leave when absorbed |
 | Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Module, contract, lifecycle and source navigation; shared coding rules |
-| Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
+| Names, terminology, voice and interface languages | [Naming and copy](./naming.md) | Product/tool names, role labels, Chinese/English writing conventions and UI language selection |
 | Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
 | Action grouping, surfaces, accessible layout, illustration, palette and motion | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
 | Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
