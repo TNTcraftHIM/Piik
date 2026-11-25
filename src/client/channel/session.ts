@@ -24,7 +24,7 @@ import { userProfile } from "./presentation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -1395,7 +1395,7 @@ export class ChannelSession {
     }
   }
 
-  private async action<T>(key: string, work: () => Promise<T>, reportError: boolean | (() => boolean) = true, options: { clearError?: boolean } = {}): Promise<T> {
+  private async action<T>(key: string, work: () => Promise<T>, reportError: ReportError = true, options: { clearError?: boolean } = {}): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
     const socket = this.socket;
     const ownsError = () => typeof reportError === "function" ? reportError() : reportError;
@@ -2372,7 +2372,7 @@ export class ChannelSession {
     return this.roomInvitationURL(roomId, key);
   };
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
-  watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
+  watch = (publicationId: string, roomId?: string, signal?: AbortSignal, reportError: ReportError = true): Promise<void> => {
     const watch: ScreenWatch = {};
     const operation = this.action(`watch:${publicationId}`, async () => {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
@@ -2405,7 +2405,7 @@ export class ChannelSession {
         if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
         throw error;
       }
-    });
+    }, reportError);
     watch.operation = operation;
     return operation.finally(() => { watch.operation = undefined; }).then(() => { void this.syncAppWatching(); });
   };
@@ -2428,7 +2428,7 @@ export class ChannelSession {
       if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
     });
   };
-  retryPicture = (publicationId: string): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
+  retryPicture = (publicationId: string, reportError: ReportError = true): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
     const current = this.sessionContext();
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     const watch = this.watching.get(publicationId);
@@ -2464,7 +2464,7 @@ export class ChannelSession {
       this.browseRooms();
     }
     void this.syncAppWatching();
-  });
+  }, reportError);
   clearError = (): void => this.patch({ error: null });
 
   async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
@@ -2575,7 +2575,7 @@ export class ChannelSession {
     this.patch({});
   };
 
-  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = "", reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
     const { share, selection, current } = this.selectScreen(roomId);
     let context = this.local.get(share.id)?.audio?.outputGainAvailable ? null : HostAudio.activate();
@@ -2721,7 +2721,7 @@ export class ChannelSession {
       releaseCandidate();
       this.finishSourceSelection(roomId, selection);
     }
-  });
+  }, reportError);
   private retireWatchPlayer(id: string, reason?: string): void {
     const player = this.watchPlayers.get(id);
     if (player?.owner && reason) {
@@ -3376,7 +3376,7 @@ export class ChannelSession {
       this.patch({});
     });
   };
-  startExternalScreen = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startExternalScreen = (roomId: string, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     try {
       const app = await this.connectApp();
@@ -3385,7 +3385,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
       this.patch({});
     } finally { this.finishSourceSelection(roomId, selection); }
-  });
+  }, reportError);
   private async commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
     const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
     if (!entry) return;
@@ -3638,7 +3638,7 @@ export class ChannelSession {
     }).finally(() => { share.audioChange = undefined; this.patch({}); });
     return share.audioChange;
   };
-  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     const signal = selection.controller.signal;
     const native = { target, audio, renderEndpointId, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
@@ -3674,7 +3674,7 @@ export class ChannelSession {
       if (ownsPreparation) await app?.cancelCapture(share.id).catch(() => {});
       throw error;
     } finally { this.finishSourceSelection(roomId, selection); }
-  });
+  }, reportError);
   setScreenDirectLimit = async (publicationId: string, limit: number | null): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");

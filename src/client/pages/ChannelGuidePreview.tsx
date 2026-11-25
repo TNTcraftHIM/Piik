@@ -7,6 +7,7 @@ import { ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomCont
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
+import { useSettingsAction } from "../channel/components/ChannelSettingsDialog";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type DomainSettings, type ProfileUpdate, type RoomSettings } from "../channel/protocol";
 import { messageRemoved, type ChannelController } from "../channel/types";
@@ -271,6 +272,7 @@ export function ChannelGuidePreview() {
   const { channel, roomName, notice, received, onSend } = useChannelGuideSample({ showSampleAttachment: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
+  const shareStart = useSettingsAction();
   const [watchPage, setWatchPage] = useState<ReturnType<ChannelController["watchPage"]>>();
   const watchChannel: ChannelController = {
     ...channel, pagePlayer: true, watchPage: () => watchPage,
@@ -311,7 +313,7 @@ export function ChannelGuidePreview() {
       <header className="c3-guide-heading"><div className="c3-guide-title"><ChannelIdentityMark icon="couch" /><strong>{roomName}</strong>
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
-        <ChannelShareControl channel={channel} roomId="friday" disabled={false} onWatch={() => setWatchOpen(true)} /></header>
+        <ChannelShareControl channel={channel} roomId="friday" disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
       <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}

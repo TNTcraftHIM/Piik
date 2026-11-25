@@ -2107,6 +2107,22 @@ test("a voice join owned by its control returns the failure without the page ban
   } finally { session.close(); }
 });
 
+test.each([[false, null], [true, "room_host_offline"]] as const)("a Watch owned by its picture reaches the banner only once that owner is gone (gone: %s)", async (gone, banner) => {
+  const { session, socket } = await setup();
+  socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
+    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null,
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
+  ] } });
+  try {
+    const watching = session.watch("screen", undefined, undefined, () => gone);
+    const request = socket.sent.at(-1)!;
+    expect(request).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true });
+    socket.receive({ type: "error", requestId: request.requestId, code: "room_host_offline" });
+    await expect(watching).rejects.toThrow("room_host_offline");
+    expect(session.getSnapshot().error).toBe(banner);
+  } finally { session.close(); }
+});
+
 test("recovery mute stops only this room's retained voice immediately", async () => {
   vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
   const { session, socket } = await setup(3, false);
@@ -3084,6 +3100,16 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
     const leaving = session.leaveVoice("first");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await leaving;
     expect(voiceTrack.stop).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each([[false, null], [true, "NotAllowedError"]] as const)("a share start owned by its control reaches the banner only once that owner is gone (gone: %s)", async (gone, banner) => {
+  const { session } = await setup();
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new DOMException("Declined", "NotAllowedError")) } });
+  try {
+    await expect(session.startScreen("first", "camera", "front", () => gone)).rejects.toMatchObject({ name: "NotAllowedError" });
+    expect(session.getSnapshot().error).toBe(banner);
+    expect(session.getSnapshot().pending.size).toBe(0);
   } finally { session.close(); }
 });
 
@@ -14215,6 +14241,18 @@ test.each([false, true])("manual picture retry restores Browser viewing before A
       expect(restored).toMatchObject({ publicationId: "one", enabled: true, helperSessionId: helper });
       socket.receive({ type: "ack", requestId: restored.requestId });
     }
+  } finally { session.close(); }
+});
+
+test("a picture retry owned by its picture returns the failure without the page banner", async () => {
+  const { session, socket } = await retryPictureFixture();
+  try {
+    const retry = session.retryPicture("one", () => false);
+    const off = socket.sent.at(-1)!;
+    expect(off).toMatchObject({ type: "subscribe", publicationId: "one", enabled: false });
+    socket.receive({ type: "error", requestId: off.requestId, code: "request_timeout" });
+    await expect(retry).rejects.toThrow("request_timeout");
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 

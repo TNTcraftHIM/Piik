@@ -2,6 +2,8 @@
 .c3-share-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .c3-share-feedback { display: inline-flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
 .c3-share-wait { max-width: 34ch; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.c3-share-failure { display: inline-flex; align-items: center; gap: 4px; }
+.c3-share-failure > .c3-settings-error { margin: 0; }
 .c3-watch-forward-settings { padding: 16px 18px; }
 .c3-external-input, .c3-external-input-field { display: grid; gap: 10px; min-width: 0; }
 .c3-external-input p { margin: 0; font-size: 12px; line-height: 1.7; color: var(--muted); }

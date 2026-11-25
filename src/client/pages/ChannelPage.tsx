@@ -18,7 +18,7 @@ import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
-import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, useKeyedSettingsAction, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
 import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -366,6 +366,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     return () => document.removeEventListener("keydown", escape);
   }, [mobilePane, sidebarsInline, setMobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
+  // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
+  // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
+  const pictureAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]));
+  // A share start reports here: the picker closes first, and the room's share control moves to the tile once sharing starts.
+  const shareStart = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId, connected]));
+  const attemptPicture = (id: string, operation: (reportError: () => boolean) => Promise<void>) => {
+    void pictureAction.run(id, signal => operation(() => signal.aborted));
+  };
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
   const [hlsSupported, setHlsSupported] = useState(false);
   const inspectHls = stageWatches.some(activity => activity.sessionId !== sessionId && activity.byteSource?.format === "hls")
@@ -400,7 +409,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         browserSource, pending: busy("watch-video", activity.id), disabled: !connected,
         onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
         onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
-      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} />,
+      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} startAction={shareStart} />,
       hidden: activity.roomId !== roomId,
       paused: activity.playback.paused, player, available,
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
@@ -510,7 +519,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <div className="c3-room-toolbar"><div className="c3-room-actions">
             {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
               <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-                openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} />}
+                openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />}
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
@@ -571,7 +580,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !roomToolOpen ? "" : " chat-collapsed"}`} hidden={overview}>
           {layout === "quick" && room?.authorized && room.available && !visibleScreens.length && <div className="c3-quick-entry-tv"><StageTv hasEntry label={t("channel.previewPage.shareAScreen")}>
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-              openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} /></div>
+              openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} /></div>
           </StageTv></div>}
           <ChannelStage theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),
@@ -582,10 +591,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
               roomId={publication.roomId} publicationId={publication.id} onWatch={() => setWatchRoomId(publication.roomId)} compact
-              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} />,
+              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            pictureFailure: pictureAction.errors.get(publication.id), clearPictureFailure: () => pictureAction.clearError(publication.id),
             playbackError: channel.screenPlaybackError(publication.id),
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
             deliveryScope: JSON.stringify([roomId, sessionId, publication.sessionId,
@@ -615,8 +625,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id) || busy("retry-picture", publication.id),
           })), ...watchSources, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id)).map(source => ({ ...source, hidden: source.roomId !== roomId, onClose: () => closeWaiting(source.id) }))]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
-            onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
-            onRetryPicture={id => run(channel.retryPicture(id))}
+            onWatch={id => { showSource(roomId, id); attemptPicture(id, reportError => channel.watch(id, reportError)); }} onUnwatch={id => run(channel.unwatch(id))}
+            onRetryPicture={id => attemptPicture(id, reportError => channel.retryPicture(id, reportError))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />

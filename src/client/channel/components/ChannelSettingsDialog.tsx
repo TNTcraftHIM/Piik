@@ -103,6 +103,14 @@ export function ChannelSettingsError({ error }: { error: string | null }) {
 
 export type SettingsAction = <T>(work: (signal: AbortSignal) => Promise<T>, onSuccess?: (value: T) => void) => Promise<void>;
 
+/** The failure code an action owner shows, or null for a cancellation. */
+export function settingsActionFailure(error: unknown): string | null {
+  if (error instanceof DOMException && error.name === "AbortError") return null;
+  if (isDeferredModuleFailure(error)) return "deferred_module_load_failed";
+  // The same failure code the session's banner would show.
+  return error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
+}
+
 /** Pending stays in Session; only this open surface, for its current owner, receives its action result. */
 export function useSettingsAction(open = true, owner?: string): { error: string | null; run: SettingsAction; clearError(): void } {
   const [error, setError] = useState<string | null>(null);
@@ -120,11 +128,39 @@ export function useSettingsAction(open = true, owner?: string): { error: string 
       const result = await work(current.signal);
       if (lifetime.current === current) onSuccess?.(result);
     } catch (error) {
-      if (lifetime.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;
-      if (isDeferredModuleFailure(error)) setError("deferred_module_load_failed");
-      // The same failure code the session's banner would show.
-      else setError(error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed");
+      const failure = settingsActionFailure(error);
+      if (lifetime.current === current && failure) setError(failure);
     }
   }, []);
   return { error, run, clearError: () => setError(null) };
+}
+
+/** useSettingsAction for a list whose rows can unmount while their action runs: each key keeps its own result. */
+export function useKeyedSettingsAction(owner?: string): {
+  errors: ReadonlyMap<string, string>; run(key: string, work: (signal: AbortSignal) => Promise<unknown>): Promise<void>; clearError(key: string): void;
+} {
+  const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
+  const lifetime = useRef<AbortController | null>(null);
+  useLayoutEffect(() => {
+    const current = lifetime.current = new AbortController();
+    setErrors(new Map());
+    return () => { current.abort(); lifetime.current = null; };
+  }, [owner]);
+  const clearError = useCallback((key: string) => setErrors(previous => {
+    if (!previous.has(key)) return previous;
+    const next = new Map(previous);
+    next.delete(key);
+    return next;
+  }), []);
+  const run = useCallback(async (key: string, work: (signal: AbortSignal) => Promise<unknown>) => {
+    const current = lifetime.current;
+    if (!current) return;
+    clearError(key);
+    try { await work(current.signal); }
+    catch (error) {
+      const failure = settingsActionFailure(error);
+      if (lifetime.current === current && failure) setErrors(previous => new Map(previous).set(key, failure));
+    }
+  }, [clearError]);
+  return { errors, run, clearError };
 }
