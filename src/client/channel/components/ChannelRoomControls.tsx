@@ -8,6 +8,7 @@ import { formatChatTranscript } from "../../lib/room-chat-export";
 import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy } from "../protocol";
 import { MAX_RELAY_CAPACITY } from "../protocol";
 import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch, type RoomDraft } from "../room-creation";
+import { diagnoseChannelFact } from "../diagnosis";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
@@ -290,6 +291,8 @@ function RoomSettings({ channel, room, onClose }: {
   const deleteData = serverHosted || room.available;
   const canPurge = room.authorized && (room.canManage || (!!channel.self && channel.self.id === site?.ownerId));
   const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
+  const openFailure = channel.roomOpenFailures.get(room.id);
+  const diagnosis = openFailure && diagnoseChannelFact({ area: "roomOpen", failure: openFailure });
   const available = connected && room.available;
   const busy = channel.pending.has(`room:${room.id}`);
   const backupBusy = channel.pending.has("room-backup");
@@ -314,8 +317,10 @@ function RoomSettings({ channel, room, onClose }: {
     <div className="c3-settings-body">
       <ChannelSettingsTabs<RoomSettingsTask> id={id} label={t("room.settings.title")} tasks={tasks} selected={selected ?? "room"} onSelect={setTask} />
       <div className="c3-settings-panels">
-        {!room.available && <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
-          : t("room.settings.offlineRelay")}</p>}
+        {!room.available && (diagnosis ? <div className="c3-settings-offline" role="status">
+          {t(diagnosis.message)} <ChannelDiagnosisHelp diagnosis={diagnosis} />
+        </div> : <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
+          : t("room.settings.offlineRelay")}</p>)}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={{ ...roomDraft(room), ...draft }} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))}
             inviteOnly={inviteOnly} disabled={!available || working} busy={busy}
