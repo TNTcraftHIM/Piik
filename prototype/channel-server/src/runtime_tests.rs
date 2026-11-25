@@ -3265,3 +3265,92 @@ async fn owner_room_backup_rejects_busy_restore_before_reading_upload() {
     assert_eq!(status, StatusCode::CONFLICT);
     assert!(!polled.load(Ordering::SeqCst));
 }
+
+#[tokio::test]
+async fn hosted_creation_reservation_follows_writer_outcome() {
+    use piik_channel_native::{hosted_room::HostedRoom, session::HostCommand};
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open_with_options(
+        folder.path(), "owner", "http://localhost".into(), None, vec![],
+        RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
+    ).unwrap();
+    let (writer, mut commands) = mpsc::channel(1);
+    let mut owner = {
+        let mut hub = domain.hub.lock().unwrap();
+        hub.room_commands = Some(writer);
+        Endpoint::join(&mut hub, "owner")
+    };
+    let request = || Request::parse(&json!({
+        "type":"create_room", "requestId":"create", "room":{
+            "id":"draft","name":"Living room","icon":"couch","creatorId":Uuid::nil(),
+            "access":"public","hidden":false,"hasPassword":false
+        }
+    }).to_string()).unwrap();
+
+    for outcome in ["room_busy", "room_creation_unconfirmed", "success"] {
+        let writer = async {
+            let HostCommand::Open(open) = commands.recv().await.unwrap() else {
+                panic!("expected room open");
+            };
+            let id = open.policy.id.clone();
+            if outcome == "room_busy" {
+                assert!(open.result.send(Err(outcome.into())).is_ok());
+            } else {
+                let path = folder.path().join(format!("{id}.sqlite"));
+                let room = HostedRoom::create(&path, open.policy).unwrap();
+                if outcome == "success" {
+                    assert!(open.result.send(Ok(room.summary())).is_ok());
+                } else {
+                    drop(open.result);
+                }
+            }
+            id
+        };
+        let (_, id) = tokio::join!(create_room(&domain, owner.id, request()), writer);
+        let events = owner.drain();
+        let snapshots: Vec<_> = events.iter()
+            .filter(|event| event["type"] == "state")
+            .map(|event| event["state"]["channel"]["managedRoomIds"].as_array().unwrap())
+            .collect();
+        assert!(snapshots[0].contains(&json!(id)));
+        assert_eq!(snapshots.last().unwrap().contains(&json!(id)), outcome != "room_busy");
+        let last = events.last().unwrap();
+        assert_eq!(last["requestId"], "create");
+        if outcome == "success" {
+            assert_eq!(last["type"], "room_created");
+        } else {
+            assert_eq!(last["code"], outcome);
+        }
+        if outcome == "room_creation_unconfirmed" {
+            owner.request(&mut domain.hub.lock().unwrap(), json!({"type":"cancel_room_creation","roomId":id}));
+            assert!(owner.drain().iter().any(|event| event["type"] == "state"),
+                "the creator must still own the reservation after a lost writer reply");
+        }
+    }
+    let resume_during_install = async {
+        let HostCommand::Open(open) = commands.recv().await.unwrap() else {
+            panic!("expected room open");
+        };
+        let room_id = open.policy.id.clone();
+        let mut hub = domain.hub.lock().unwrap();
+        let mut resumed = Endpoint::connect(&mut hub);
+        resumed.request(&mut hub, json!({
+            "type":"join", "ownerKey":"owner", "sessionId":owner.session, "name":"Friend"
+        }));
+        assert_eq!(hub.authority.current_connection(owner.session), Some(resumed.id));
+        assert!(resumed.drain().iter().any(|event|
+            event["type"] == "welcome" && event["state"]["channel"]["managedRoomIds"]
+                .as_array().unwrap().contains(&json!(room_id))));
+        assert!(open.result.send(Err("room_busy".into())).is_ok());
+        (resumed, room_id)
+    };
+    let (_, (mut resumed, id)) = tokio::join!(
+        create_room(&domain, owner.id, request()), resume_during_install
+    );
+    assert!(resumed.drain().iter().any(|event|
+        event["type"] == "state" && !event["state"]["channel"]["managedRoomIds"]
+            .as_array().unwrap().contains(&json!(id))),
+        "confirmed failure must clear the reservation after a session resumes");
+
+}
