@@ -90,10 +90,12 @@ the next packet's delta or indexing past the feedback array.
 
 Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
 the root module replaces LiveKit with the immutable
-[c7f56b38 revision](https://github.com/TNTcraftHIM/livekit/commit/c7f56b38971398d077a0aa5004443eaf3c31016c),
-based on upstream `cde3991916cf`. Its only changes are an optional local encoder
-demand input to `StreamAllocator` and regression tests. Native publication uses
-that input; ordinary forwarding leaves it unset. The existing allocator still
+[1e1593e6 revision](https://github.com/TNTcraftHIM/livekit/commit/1e1593e6b0fc64ccf2088de88fb74143a5840cd0),
+based on [upstream v1.13.11](https://github.com/livekit/livekit/tree/385aa40f9292fe1db8caad87301e4b285b7c198a).
+The patch adds optional local encoder demand to `StreamAllocator` and regression
+tests. Native publication uses that input. Ordinary forwarding leaves it unset.
+The tag includes [upstream #5055](https://github.com/livekit/livekit/pull/5055),
+which permits concurrent retransmission reads. The existing allocator still
 owns probe timing, congestion response and allocation; encoder demand does not
 change track-deficiency state. No allocator source is copied into Piik and no
 build-time patch is applied.
@@ -118,9 +120,9 @@ the expiry, healthy delivery and consumer controls.
 
 Until [upstream #3668](https://github.com/pion/webrtc/pull/3668) is available,
 the root module replaces Pion with the immutable
-[02e42c55 revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/02e42c553795d76a36de4db4b0df5ca5daab347b),
-based on official v4.2.27. It matches equivalent H.264 subprofiles according to
-[RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
+[94d7bae6 revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/94d7bae66f92a292d84194daf848d9d5dc8ba14b),
+based on [official v4.2.29](https://github.com/pion/webrtc/tree/96acb16fcd2d00ec0c8a3ac372b078d73ae4722f).
+The patch matches equivalent H.264 subprofiles according to [RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
 Without this repair, an offer containing Constrained Baseline `42c01f` and VP8
 can select VP8 even though the receiver prefers and supports that H.264 profile.
 The patch changes only profile matching and its regressions; level and
