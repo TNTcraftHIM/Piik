@@ -92,9 +92,11 @@ Checked against the canon, for your judgement:
   direction: the operator's switch stays off by default, because bandwidth is
   the operator's cost; once the operator turns it on, rooms use it without a
   second switch in each room, and it ranks after every participant path. A
-  room can still decline it. The owner is weighing a choice per kind (screen,
-  voice, files), which your forwarding plan already proposes, which I support
-  because their costs differ by orders of magnitude. On file originals the
+  room can still decline it. The owner also decided the choice per kind that
+  your forwarding plan proposes: screen, voice and files each have a switch,
+  one master switch turns all three on or off together, and everything is off
+  by default. Their costs differ by orders of magnitude, which is why an
+  operator may want to separate them. On file originals the
   present decision stands: a Server does not keep them. I had suggested the
   Server as one more holder and have withdrawn it. The owner's reasons are
   integrity, consistency, space and the demand for third-party storage that
