@@ -9,6 +9,10 @@
 }
 .c3-mini-player > video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; outline-offset: -4px; transform: var(--picture-transform, none); }
 .c3-mini-player > video[data-selected="false"] { opacity: 0; pointer-events: none; }
+/* A held frame's box is the box object-fit gave the live picture, from its inline aspect ratio. */
+.c3-mini-player > video[data-held-fit] { width: auto; height: auto; }
+.c3-mini-player > video[data-held-fit="contain"] { max-width: 100%; max-height: 100%; margin: auto; }
+.c3-mini-player > video[data-held-fit="cover"] { inset: auto; left: 50%; top: 50%; translate: -50% -50%; min-width: 100%; min-height: 100%; }
 .c3-watch-actions, .c3-watch-shared, .c3-watch-local { display: flex; align-items: center; gap: inherit; min-width: 0; }
 .c3-watch-local { flex: none; margin-inline-start: auto; }
 .c3-watch-settings { display: inline-flex; flex: none; }

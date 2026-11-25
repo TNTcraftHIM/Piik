@@ -332,8 +332,10 @@ export function observeChannelInputFrame(element: HTMLVideoElement, stream: Medi
   });
 }
 
-function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
+function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
   input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
+  /** This layer left the live inputs and holds its last frame. */
+  held: boolean;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
   issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown, playbackError?: ScreenPlaybackError): void;
@@ -342,6 +344,10 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [composited, setComposited] = useState(false);
+  // A removed track's last frame loses its natural size, and object-fit then stretches it to the box.
+  // The element reports no event for that loss, so the held layer takes the picture's last shape as its own box.
+  const [shape, setShape] = useState<string>();
+  const heldFit = held && shape && fit !== "fill" ? fit : undefined;
   const attach = useCallback((element: HTMLVideoElement | null) => {
     ref.current = element; register(input, element);
   }, [input.flowId, input.stream, register]);
@@ -349,7 +355,7 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
     const element = ref.current!;
     element.muted = true;
     element.srcObject = input.stream;
-    setComposited(false);
+    setComposited(false); setShape(undefined);
     const stop = observeChannelInputFrame(element, input.stream, negotiatedFlowId, () => {
       setComposited(true); frame(input, element);
     });
@@ -361,9 +367,12 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
     void element.play().catch(error => { if (active) issue(input, element, error); });
     return () => { active = false; stop(); stopDebug(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, negotiatedFlowId, frame, issue]);
-  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
-    data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
-    tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
+  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit, aspectRatio: heldFit && shape }} aria-label={visible ? label : undefined} aria-hidden={!visible}
+    data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady} data-held-fit={heldFit}
+    tabIndex={visible ? 0 : -1} onResize={event => {
+      const { videoWidth: width, videoHeight: height } = event.currentTarget;
+      if (width && height) setShape(`${width} / ${height}`);
+    }} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
     onEnded={() => playing(input, true)} onError={event => {
       const element = event.currentTarget;
       issue(input, element, element.error, elementPlaybackError(element.error));
@@ -583,7 +592,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
-    {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={shown(input)}
+    {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={shown(input)} held={held && shown(input)}
       negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
       interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused && !sourcePaused} />
