@@ -30,3 +30,12 @@
   .c3-settings-panels { padding: 0 16px 18px; }
   .c3-settings-dialog > .c3-settings-error { padding-inline: 16px; }
 }
+
+/* Keep the tabs in the same scroll area as their panels on short viewports. */
+@media (max-height: 360px) {
+  .c3-settings-dialog .c3-settings-content {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .c3-settings-dialog .c3-settings-panels { flex: none; overflow: visible; }
+}

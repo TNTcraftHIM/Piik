@@ -45,7 +45,7 @@ import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { ChannelDiagnosisHelp } from "../channel/components/ChannelDiagnosisHelp";
-import { roomHasUnread, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
+import { roomHasUnread, roomPeople, roomSessionViewing, viewingAppearance, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
 import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
@@ -557,8 +557,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             const watch = "playback" in source;
             const ended = !("source" in source);
             const owned = watch ? ownsWatch(source.id) : channel.ownedScreens.has(source.id), title = ended ? source.title : watch ? watchTitle(source.source.url) : screenTitle(source, t);
-            return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : "eye"} size={17} />
-              <span><small>{ended ? t("screen.shareEnded", { name: source.name }) : owned ? t("channel.previewPage.stillSharing") : t("channel.previewPage.stillWatching")}</small>
+            const viewing = !ended && !owned ? roomSessionViewing(watch ? [] : [source], watch ? [source] : [], state?.subscriptions ?? [], channel) : undefined;
+            const appearance = viewing && viewingAppearance[viewing];
+            return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : appearance?.icon ?? "eye"} size={17} />
+              <span><small>{ended ? t("screen.shareEnded", { name: source.name }) : owned ? t("channel.previewPage.stillSharing") : t(appearance?.label ?? "watch.joined")}</small>
                 <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span></span>
               <Btn icon="arrowLeft" quiet size="dense" title={{ text: t("channel.previewPage.returnToRoom", { value: nameOfRoom(source.roomId) }) }}
                 cap={{ text: t("channel.previewPage.return") }} onClick={() => showSource(source.roomId, source.id)} />
