@@ -21,13 +21,6 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Browser relay stalls after local activity ends.** On Chrome 152, a
-  four-participant control with two downstream viewers can stop decoding at the
-  relay after it stops its own screen and local watching. Received frames keep
-  advancing while decoded frames, jitter-buffer output and downstream pictures
-  stop. Reproduce through the receiver and sender consumers before changing
-  forwarding; separately bypassing either encoding pool did not resolve it.
-  [Controlled evidence](./research/network-lab.md#browser-relay-after-local-unwatch)
 - [ ] **Native optional-flow acceptance.** Exercise optional admission through
   the actual Driver with selected picture and sound, changing source costs and
   decoded playback. Reuse the [SDK demand control](./research/network-lab.md#native-desired-capacity);
