@@ -431,8 +431,41 @@ impl HistoryRow {
 #[serde(rename_all = "camelCase")]
 pub struct LiveHistoryRow {
     pub nonce: String,
-    #[serde(flatten)]
+    #[serde(flatten, deserialize_with = "archive_message")]
     pub message: StoredMessage,
+}
+
+// Archive rows reuse the wire message fields, but must reject durable data the
+// importer cannot store. Serde gives the final flattened map the unclaimed keys.
+fn archive_fields<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+    input: D,
+) -> Result<T, D::Error> {
+    #[derive(Deserialize)]
+    struct Fields<T> {
+        #[serde(flatten)]
+        known: T,
+        #[serde(flatten)]
+        extra: BTreeMap<String, serde::de::IgnoredAny>,
+    }
+
+    let fields = Fields::<T>::deserialize(input)?;
+    if fields.extra.is_empty() {
+        Ok(fields.known)
+    } else {
+        Err(serde::de::Error::custom("unknown backup history field"))
+    }
+}
+
+fn archive_message<'de, D: serde::Deserializer<'de>>(input: D) -> Result<StoredMessage, D::Error> {
+    #[derive(Deserialize)]
+    struct Message {
+        #[serde(deserialize_with = "archive_fields")]
+        reactions: crate::history::MessageReactions,
+        #[serde(flatten, deserialize_with = "archive_fields")]
+        message: crate::wire::ChatMessage,
+    }
+    let row = Message::deserialize(input)?;
+    Ok(StoredMessage { message: row.message, reactions: row.reactions })
 }
 
 impl LiveHistoryRow {

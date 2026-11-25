@@ -526,6 +526,11 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         })
         .unwrap();
     assert_eq!(rows.len(), 55);
+    for path in ["", "/reactions", "/attachments/0", "/mentions/0"] {
+        let mut row = serde_json::to_value(&rows[0]).unwrap();
+        row.pointer_mut(path).unwrap()["unrecognized"] = json!("saved content");
+        assert!(serde_json::from_value::<HistoryRow>(row).is_err(), "{path}");
+    }
     assert!(
         command(
             &mut host,

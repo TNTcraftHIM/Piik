@@ -588,6 +588,8 @@ without automatic replication, ownership transfer or a second storage role.
 Both restore and copy rebuild reply excerpts and author labels from the earlier
 message in the imported history. If that message was deleted or is missing,
 the reply keeps its own body and loses its quotation.
+The supported archive formats reject unrecognized fields in history rows
+before installation, so restoring cannot silently discard saved content.
 
 Use the storage platform's consistent snapshot mechanism; native SQLite provides
 the [online backup API](https://www.sqlite.org/backup.html). For a room restore,
