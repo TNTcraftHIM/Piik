@@ -719,6 +719,117 @@ mod tests {
     };
     use rtc_shared::time::SystemInstant;
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn optional_known_picture_and_sound_wait_then_admit_without_replacing_selected() -> Result<()> {
+        use anyhow::ensure;
+        use crate::peer::tests::support::{Fixture, vp8};
+
+        let mut f = Fixture::new(vp8()).await?;
+        let result = async {
+            let sink = f.sink;
+            f.publication.video_settings = None;
+            let mut optional = f.publication.clone();
+            optional.id = Uuid::new_v4();
+            optional.session_id = Uuid::new_v4();
+            optional.user_id = Uuid::new_v4();
+            let input = f.plans[1].incoming[0].id;
+            f.plans[1].incoming[0].publication_id = optional.id;
+            let plan = f.plans.iter_mut().find(|pair| pair.id == sink).unwrap();
+            let selected = plan.outgoing[0].id;
+            let mut trial = plan.outgoing.remove(1);
+            trial.id = Uuid::new_v4();
+            trial.publication_id = optional.id;
+            trial.input_flow_id = Some(input);
+            let trial_id = trial.id;
+            let publications = vec![f.publication.clone(), optional.clone()];
+            f.driver.update(f.plans.clone(), publications.clone(), vec![]).await;
+            // This is the existing allocator feedback seam. Actual RTCs retain their
+            // own estimators; these observations are not measured physical link rates.
+            let (feedback, observation) = watch::channel(transport::Estimate::Feedback(180_000.0));
+            f.driver.pairs.get_mut(&sink).unwrap().bandwidth = observation;
+            f.until(|f| f.frame >= 120 && [MediaKind::Video, MediaKind::Audio].iter().all(|kind| {
+                f.driver.pairs[&sink].outputs.get(&(selected, *kind))
+                    .is_some_and(|output| f.observed(&output.stream, *kind).is_some())
+            })).await?;
+            let selected_video = f.output(selected, MediaKind::Video);
+            let selected_audio = f.output(selected, MediaKind::Audio);
+            let before_video = f.observed(&selected_video.1, MediaKind::Video).unwrap();
+            let before_audio = f.observed(&selected_audio.1, MediaKind::Audio).unwrap();
+            f.driver.bandwidth_plans(Instant::now());
+            let before_demand = *f.driver.pairs[&sink].demand.borrow();
+            ensure!(before_demand.minimum_bps > 80_000 && before_demand.minimum_bps < 180_000,
+                "fixture selected original cost is outside the controlled range: {before_demand:?}");
+
+            let arrival = Instant::now();
+            f.plans.iter_mut().find(|pair| pair.id == sink).unwrap().outgoing.push(trial);
+            f.driver.update(f.plans.clone(), publications.clone(), vec![]).await;
+            let start = f.frame;
+            f.until(|f| f.frame >= start + 30).await?;
+            let budgets = f.driver.bandwidth_plans(Instant::now());
+            let waiting = &budgets[&sink];
+            ensure!(waiting.waiting.contains(&trial_id) && !waiting.rejected.contains(&trial_id),
+                "unstarted optional flow must wait for capacity");
+            ensure!([MediaKind::Video, MediaKind::Audio].iter().all(|kind|
+                !f.driver.pairs[&sink].outputs.contains_key(&(trial_id, *kind))),
+                "optional picture and audio must not start separately");
+            ensure!(f.output(selected, MediaKind::Video) == selected_video && f.output(selected, MediaKind::Audio) == selected_audio);
+            let waiting_video = f.observed(&selected_video.1, MediaKind::Video).unwrap();
+            let waiting_audio = f.observed(&selected_audio.1, MediaKind::Audio).unwrap();
+            ensure!(waiting_video.0 == before_video.0 && waiting_video.1 == before_video.1
+                && waiting_video.2.wrapping_sub(before_video.2) > 0);
+            ensure!(waiting_audio.0 == before_audio.0 && waiting_audio.1 == before_audio.1
+                && waiting_audio.2.wrapping_sub(before_audio.2) > 0);
+            let waiting_demand = *f.driver.pairs[&sink].demand.borrow();
+            ensure!(waiting_demand.desired_bps.is_some_and(|bps| bps > 180_000 && bps < 400_000),
+                "known optional cost must reach SDK desired: {waiting_demand:?}");
+            ensure!(waiting_demand.minimum_bps < 180_000,
+                "unselected optional flow must not become the selected minimum");
+            let raised = Instant::now();
+            feedback.send(transport::Estimate::Feedback(400_000.0))?;
+            f.driver.refresh_outputs().await;
+            f.until(|f| [MediaKind::Video, MediaKind::Audio].iter().all(|kind| {
+                f.driver.pairs[&sink].outputs.get(&(trial_id, *kind))
+                    .is_some_and(|output| f.observed(&output.stream, *kind).is_some())
+            })).await?;
+            let admitted = Instant::now();
+            let trial_video = f.output(trial_id, MediaKind::Video);
+            let trial_audio = f.output(trial_id, MediaKind::Audio);
+            ensure!(trial_video.1 == trial_audio.1, "optional companions must retain one flow stream");
+            let progress_start = f.frame;
+            let admitted_video = f.observed(&trial_video.1, MediaKind::Video).unwrap();
+            let admitted_audio = f.observed(&trial_audio.1, MediaKind::Audio).unwrap();
+            f.until(|f| f.frame >= progress_start + 30).await?;
+            ensure!(f.output(selected, MediaKind::Video) == selected_video && f.output(selected, MediaKind::Audio) == selected_audio);
+            let active_video = f.observed(&selected_video.1, MediaKind::Video).unwrap();
+            let active_audio = f.observed(&selected_audio.1, MediaKind::Audio).unwrap();
+            ensure!(active_video.2.wrapping_sub(waiting_video.2) > 0 && active_audio.2.wrapping_sub(waiting_audio.2) > 0);
+            ensure!(f.observed(&trial_video.1, MediaKind::Video).unwrap().2.wrapping_sub(admitted_video.2) > 0);
+            ensure!(f.observed(&trial_audio.1, MediaKind::Audio).unwrap().2.wrapping_sub(admitted_audio.2) > 0);
+            let admitted_demand = *f.driver.pairs[&sink].demand.borrow();
+
+            f.plans.iter_mut().find(|pair| pair.id == sink).unwrap().outgoing.retain(|flow| flow.id != trial_id);
+            f.driver.update(f.plans.clone(), publications, vec![]).await;
+            let release_start = f.frame;
+            f.until(|f| f.frame >= release_start + 20).await?;
+            ensure!([MediaKind::Video, MediaKind::Audio].iter().all(|kind|
+                !f.driver.pairs[&sink].outputs.contains_key(&(trial_id, *kind))));
+            ensure!(f.output(selected, MediaKind::Video) == selected_video && f.output(selected, MediaKind::Audio) == selected_audio);
+            ensure!(f.observed(&selected_video.1, MediaKind::Video).unwrap().2.wrapping_sub(active_video.2) > 0);
+            ensure!(f.observed(&selected_audio.1, MediaKind::Audio).unwrap().2.wrapping_sub(active_audio.2) > 0);
+            f.driver.bandwidth_plans(Instant::now());
+            let retired_demand = *f.driver.pairs[&sink].demand.borrow();
+            ensure!(retired_demand.desired_bps.is_some_and(|bps| bps < 180_000));
+            ensure!(!f.reported.iter().any(|command| matches!(command,
+                Command::FlowState { flow_id, state: FlowState::Failed, .. } if *flow_id == selected)),
+                "optional admission retired selected media");
+            println!("NATIVE_ADMISSION before={before_demand:?} waiting={waiting_demand:?} admitted={admitted_demand:?} retired={retired_demand:?} wait_ms={} admitted_after_raise_ms={} selected_output_ids_retained=true picture_audio_progress=true trial_output_removed=true",
+                raised.duration_since(arrival).as_millis(), admitted.duration_since(raised).as_millis());
+            Ok::<_,anyhow::Error>(())
+        }.await;
+        f.close().await;
+        result
+    }
+
     #[tokio::test]
     async fn late_viewer_bootstraps_known_layers_before_feedback_then_keeps_its_floor() -> Result<()>
     {
