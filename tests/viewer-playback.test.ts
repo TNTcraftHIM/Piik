@@ -224,6 +224,54 @@ describe("Screen delivery result", () => {
   });
 });
 
+describe("Picture surface between flows", () => {
+  const stream = (id: string) => ({ id, getAudioTracks: () => [] }) as unknown as MediaStream;
+  const incumbent = { flowId: "incumbent", stream: stream("incumbent"), selected: true, switchReady: false };
+  const candidate = { flowId: "candidate", stream: stream("candidate"), selected: false, switchReady: false };
+  const source = { kind: "screen" as const, audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room",
+    source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false, subscribed: true, paused: false, awaitingRoute: true };
+  const render = (patch: Partial<ChannelStageProps["sources"][number]>) => renderToStaticMarkup(createElement(ChannelStage, {
+    theaterMode: [false, vi.fn()], sources: [{ ...source, ...patch } as ChannelStageProps["sources"][number]], focusedId: null, canSubscribe: true,
+    onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onRetryPicture: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
+    onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn(),
+  }));
+
+  it("keeps the surface and its candidate while no flow is selected", () => {
+    setCopy({ lang: "en" });
+    const steps = [
+      { stream: incumbent.stream, inputs: [incumbent, candidate] },
+      { stream: undefined, inputs: [candidate] },
+      { stream: candidate.stream, inputs: [{ ...candidate, selected: true }] },
+    ];
+    for (const step of steps) {
+      const html = render(step);
+      expect(html).toMatch(/<video[^>]*data-flow-id="candidate"/);
+      expect(html).not.toContain("c3-monitor-wait");
+      expect(html).not.toContain(en["screen.waitingRoute"]);
+      expect(html).toContain('aria-label="Stop watching Shared screen"');
+    }
+    // Mounted without a selection, the candidate prepares unseen behind the surface's own status.
+    const unselected = render(steps[1]);
+    expect(unselected).toMatch(/<video[^>]*data-selected="false"/);
+    expect(unselected).not.toMatch(/<video[^>]*data-selected="true"/);
+    expect(unselected).toContain(en["screen.waitingPicture"]);
+  });
+
+  it("releases the surface when the candidate's picture is unwatched and keeps the waiting states without any input", () => {
+    setCopy({ lang: "en" });
+    const unwatched = render({ subscribed: false, inputs: [candidate] });
+    expect(unwatched).not.toContain("<video");
+    expect(unwatched).toContain('class="c3-monitor-offer"');
+    for (const inputs of [undefined, []]) {
+      const waiting = render({ inputs });
+      expect(waiting).not.toContain("<video");
+      expect(waiting).toContain(en["screen.waitingRoute"]);
+    }
+    const failed = render({ inputs: [], awaitingRoute: false, deliveryFailed: true });
+    expect(failed).toContain(en["screen.deliveryRetry"]);
+    expect(failed).toContain('aria-label="Retry picture"');
+  });
+});
 
 it("defers buffering controls until playback settings opens", () => {
   setCopy({ lang: "en" });
