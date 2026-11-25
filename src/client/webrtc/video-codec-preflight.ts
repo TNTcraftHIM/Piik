@@ -1,7 +1,11 @@
 import { applyH264ProbeCodec, normalizeVideoOfferSdp, type BrowserVideoCodec } from "./video-codec";
 
-/** Auto proves one actual encode; it does not rate or benchmark the source. */
-export async function preferredVideoCodecForTrack(track: MediaStreamTrack, signal: AbortSignal): Promise<BrowserVideoCodec> {
+/**
+ * Auto proves one actual encode; it does not rate or benchmark the source.
+ * `contentHint` is the hint the share's sender will use, so the probe encodes
+ * the same screen-content or motion configuration.
+ */
+export async function preferredVideoCodecForTrack(track: MediaStreamTrack, signal: AbortSignal, contentHint?: string): Promise<BrowserVideoCodec> {
   let sender: RTCPeerConnection | undefined, receiver: RTCPeerConnection | undefined, clone: MediaStreamTrack | undefined;
   let poll: ReturnType<typeof setTimeout> | undefined;
   let stop!: (error: Error) => void;
@@ -22,6 +26,7 @@ export async function preferredVideoCodecForTrack(track: MediaStreamTrack, signa
     if (signal.aborted) throw new DOMException("Codec selection cancelled", "AbortError");
     if (track.kind !== "video" || !live()) return "vp8";
     clone = track.clone();
+    if (contentHint) clone.contentHint = contentHint;
     sender = new RTCPeerConnection({ iceServers: [] });
     receiver = new RTCPeerConnection({ iceServers: [] });
     const transceiver = sender.addTransceiver(clone, { direction: "sendonly" });

@@ -37,7 +37,7 @@ import type { MicrophoneInput } from "../media/microphone-input";
 import { VoiceParticipation } from "./voice-participation";
 import { debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
-import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
+import { readPreferredQuality, savePreferredQuality, screenContentHint, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
@@ -2577,7 +2577,8 @@ export class ChannelSession {
         const complete = debugOperation("capture", "codec-selection", { mode: share.codecMode });
         try {
           codec = share.codecMode === "auto"
-            ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, selection.controller.signal))
+            ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, selection.controller.signal,
+              screenContentHint(share.profile.degradationPreference, !!video.getSettings().displaySurface)))
             : manualVideoCodecPreference(share.codecMode);
           complete("selected", { codec });
         } catch (error) {

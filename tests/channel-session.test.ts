@@ -2596,6 +2596,21 @@ test("codec selection cancellation releases capture without publishing or stoppi
 });
 
 test.each([
+  ["maintain-resolution", "monitor", "detail"], ["balanced", "monitor", "motion"],
+  ["maintain-framerate", "monitor", "motion"], ["maintain-resolution", undefined, "motion"],
+] as const)("the automatic codec probe encodes with the share's mapped hint (%s, %s)", async (degradationPreference, displaySurface, hint) => {
+  const { session } = await setup();
+  const video = Object.assign(remoteTrack("video"), { getSettings: () => ({ displaySurface }) });
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => remoteStream("hint-source", [video]) } });
+  const probe = vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockRejectedValue(new DOMException("cancelled", "AbortError"));
+  session.setQuality({ ...QUALITY_PROFILES["1080p30"], degradationPreference });
+  try {
+    await expect(session.startScreen("first")).rejects.toMatchObject({ name: "AbortError" });
+    expect(probe).toHaveBeenCalledWith(video, expect.any(AbortSignal), hint);
+  } finally { session.close(); }
+});
+
+test.each([
   ["vp8", true, ["h264", "vp8"], "vp8"], ["h264", false, ["h264", "vp8"], "h264"],
   ["auto", false, ["h264"], "auto"], ["auto", false, ["h264", "vp8"], "vp8"], ["auto", true, ["h264", "vp8"], "auto"],
 ] as const)("Native codec selection uses advertised encoders and preserves manual intent (%s, H264 receive=%s, Native=%s)", async (mode, receivingH264, codecs, expected) => {

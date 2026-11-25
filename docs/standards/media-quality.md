@@ -183,7 +183,8 @@ maintain-framerate` retain their controls. A Browser display sender's
 `contentHint` follows the stored preference: `detail` for `maintain-resolution`,
 `motion` otherwise, because Chromium turns an explicit `balanced` into
 `maintain-resolution` for screen content. Cameras and received tracks keep
-`motion`, startup protection changes only the sender preference, and the
+`motion`, startup protection changes only the sender preference, the
+automatic codec preflight encodes with the share's mapped hint, and the
 encoding pool's carrier keeps its own transport hint.
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
