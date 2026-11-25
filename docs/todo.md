@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-24
+Last reviewed: 2026-11-25
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -21,10 +21,24 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
+- [ ] **Private contract subtraction.** Remove duplicate delivery-failure
+  projections, the unused Browse capacity argument and constant room limits.
+  Return invitation results in the correlated reply and require an explicit
+  HostInput hosting mode. Set attachment-entry semantics before removing its
+  capability, and settle archive validity before deriving the invitation hash
+  solely from its key. Deduplicate new-room policy defaults and name each private
+  format at its owner. Batch the private protocol change with its consumers.
+- [ ] **Native admission and negotiation owners.** Integrate the Hello-first
+  App control loop and remove the unreachable room-offer recovery branch.
+  Preserve socket cancellation, failed admission retries and the external-input
+  transport's receive-only contract. Share equivalent primary-media failure
+  predicates; identify the released resource before narrowing companion-audio retry.
 - [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
   steady selected media on a controlled link. Record the SDK estimate, media,
   padding and minimum/desired demand before changing probe policy. Distinguish
   insufficient observed capacity from a trial that has not prompted new probing.
+  Record the accepted cross-flow allocation policy separately from SDK congestion
+  control and platform frame admission.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
@@ -62,7 +76,8 @@ the feedback period; they do not delay that delivery.
   generation, a state revision, a generic activity envelope and the encoding of
   wire keys wait for a consumer. The
   [design review](./research/clean-room-design-review.md) records the
-  evidence.
+  evidence. Assess an authority-owned persistence result to replace storage
+  adapter command inference.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
@@ -249,6 +264,9 @@ the feedback period; they do not delay that delivery.
   The [evidence](./research/topology-improvement-design.md) lists the
   remaining comparisons. Extend relay-exit controls to media-only loss while
   signaling stays connected, and preserve healthy paths during control recovery.
+  Complete Browser candidate presentation after incumbent retirement and verify
+  ancestor reconnection against delayed proofs. Keep short-disconnect observations
+  separate from the confirmed-pair graph and retain the existing operation owner.
 - [ ] **The life of a message.** Decide
   [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
   search, quote behavior and the merge rule for text and reaction changes.
@@ -264,9 +282,19 @@ the feedback period; they do not delay that delivery.
   Keep image restoration owned by each physical connection. Any generated types
   must replace their old owner and retain runtime validation, omission and null
   semantics.
+- [ ] **Room record fan-out.** Share broadcast eligibility and recipient
+  expansion through the conversation outcome. Keep the Browser's current-binding
+  check and the Native request processor's local-session filter in their adapters.
+- [ ] **App configuration ownership.** Use one startup representation in both
+  readers and writers. Move owner-seed initialization into the Domain before
+  removing the App copy; retain consent scope and cache namespaces. Remove the
+  unused limits route and replace preview-alias callers together with the alias.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
+- [ ] **Connection attempt deadlines.** Trace ordinary and prepared attempts,
+  signaling recovery and data-channel readiness. Consolidate deadlines by their
+  actual owner while retaining the intended retry and resource-release behavior.
 - [ ] **Prepared socket adoption.** Verify that an active ICE engine can adopt
   an enhanced-discovery socket while keeping the physical pair and deadline.
   Retain bounded cross-peer coordination and cancellation; complete the existing
@@ -277,6 +305,14 @@ the feedback period; they do not delay that delivery.
 - [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
   separate mechanical format pass and review actionable Clippy findings by owner.
   Keep style-only changes separate from behavior fixes and new lint gates.
+- [ ] **Native frame admission.** Set one policy for fresh, forced and priming
+  frames across encoder workers. Compare the shared timestamp trace with actual
+  output feedback; keep platform timestamp acquisition and codec priming in the
+  adapters.
+- [ ] **3.0 documentation ownership.** Move current 3.0 behavior out of copied
+  2.x standards, align architecture and behavior owner links, and consolidate
+  repeated work-ledger prose without dropping unresolved feedback. Retire
+  published 2.x material and film-only controls at the accepted cutover.
 - [ ] **Whole-page collaboration.** Choose the intended co-browsing flow before
   extending synchronized playback. Evaluate a shared page with explicitly
   granted page-scoped input and each site's own collaborative links. Reuse the
