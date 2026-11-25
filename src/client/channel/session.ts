@@ -22,6 +22,7 @@ import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
@@ -1737,6 +1738,7 @@ export class ChannelSession {
       current();
       const host = await storage.open(policy);
       creation = "committed";
+      requestBrowserRoomPersistence();
       await this.registerBrowserHost(room.id, host, current);
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
@@ -2196,6 +2198,7 @@ export class ChannelSession {
           if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
           else await stage.replace(cancel.signal);
           committed = true;
+          if (!owner) requestBrowserRoomPersistence();
         }
         finally { unsubscribe(); }
         if (hosted && this.hostedRooms.get(target) === hosted) {
