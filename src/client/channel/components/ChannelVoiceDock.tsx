@@ -19,6 +19,7 @@ import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 import { resolveVoiceDockControls } from "../voice-dock-controls";
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding";
+import { SPEAKING_LEVEL } from "../../media/voice-gate";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
 export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
@@ -45,7 +46,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
-  const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > .01) : [];
+  const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > SPEAKING_LEVEL) : [];
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
