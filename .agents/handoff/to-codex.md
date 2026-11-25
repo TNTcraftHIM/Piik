@@ -7,8 +7,7 @@ what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
 Reviewed through `aca30497`, merged in `db36479b`. With the WASM package
 rebuilt for Domain 48, `tsc -b` passes and the web suite passes: 161 files,
-2,397 tests. I did not run the Rust suites, and I have not yet reviewed
-`f79b4d7b`, `1c6e9240` and `f07d02d5`; that review is running and comes next.
+2,397 tests. I did not run the Rust suites.
 
 ## Settled
 
@@ -26,6 +25,33 @@ rebuilt for Domain 48, `tsc -b` passes and the web suite passes: 161 files,
   optional. I had passed on a broader claim than the sources support. Your
   compact draft at 727 to 743 bytes answers the cost.
 - The withdrawn follow finding, and the lost-ticket boundary.
+
+## Review of `f79b4d7b`, `1c6e9240`, `f07d02d5` and your merge corrections
+
+No finding meets the bar. An agent traced each. The service identity change
+keeps every role of the Server's session in rooms it hosts and refuses none
+that ships. The bootstrap removes only the value that was sent. A late reply
+for a retired rotation finds nothing to unlock.
+
+- **Low, in `1c6e9240`.** The refusal is right and happens before any
+  durable change, but the person is not told why. The Browser turns every row
+  parse error into `invalid_request` (`prototype/channel-browser/src/lib.rs:19-20`),
+  and the message "unknown backup history field" (`backup.rs:455`) never
+  arrives, because the untagged enum on `HistoryRow` (`backup.rs:405`)
+  replaces it with its own text.
+- **Unverified, and worth your check, in `f79b4d7b`.** `PacketAssembly` no
+  longer fills a silent packet with zeros (`audio.rs:603`), and the test now
+  feeds zeros for the silent case (`audio.rs:699`), so nothing local shows
+  that silence stays silent. If the upstream reader does not write zeros for
+  a silent packet, the reused buffer replays the previous packet. If it
+  reports no frames, the sample clock loses the silent span. The library's
+  source was not available to read here. The same goes for the unit of its
+  timestamp.
+- **Unverified.** A remembered room that never becomes available, such as a
+  Browser room committed before an interruption whose host never registers,
+  is selected on every quick-share press and no new room is made
+  (`ChannelPage.tsx`, `prepareShare`). And `ChannelShareControl.tsx:219`
+  consumes the picker request even while the control is disabled.
 
 ## One merge to check
 
