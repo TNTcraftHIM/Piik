@@ -1,23 +1,28 @@
 import { useEffect, useId, useState } from "react";
 import { Glyph } from "../../ui/icons";
-import { useCopy } from "../../ui/copy";
+import { joinItems, useCopy } from "../../ui/copy";
+import { PawnSvg } from "../../components/living/Pawn";
+import { participantColor } from "../../components/living/participant-color";
 import type { ChannelController } from "../types";
 import type { ChannelRoom } from "../protocol";
 import { ChannelRoomItem } from "./ChannelRoomItem";
 import { ChannelRoomParticipants } from "./ChannelRoomParticipants";
-import { roomActivityPeople, roomHasUnread, roomSessionViewing } from "../presentation";
+import { roomActivityPeople, roomHasUnread, roomPeople, roomSessionViewing } from "../presentation";
 
 /** Folding the participant roster changes presentation, never room activities. */
-export function ChannelRoomListItem({ channel, room, selected, settingsOpen, unopened, onSelect, onManage, ordering }: {
+export function ChannelRoomListItem({ channel, room, selected, settingsOpen, unopened, onSelect, onManage, ordering, pile = false }: {
   channel: ChannelController; room: ChannelRoom; selected: boolean; settingsOpen: boolean; unopened?: boolean;
+  /** Show the people present as a small pile of figures and a count; their rows live on the couch. */
+  pile?: boolean;
   onSelect(): void; onManage(): void;
   ordering?: { index: number; total: number; onMove(direction: -1 | 1): void; onDrag(): void; onDrop(): void; onEnd(): void; active: boolean };
 }) {
-  const { t } = useCopy();
+  const { t, lang } = useCopy();
   const [open, setOpen] = useState(true), id = useId();
   const state = channel.state;
   const voices = state?.voice.filter(voice => voice.roomId === room.id) ?? [];
-  const people = state && !ordering ? roomActivityPeople(state, room.id, channel.profiles, channel) : [];
+  const people = state && !ordering && !pile ? roomActivityPeople(state, room.id, channel.profiles, channel) : [];
+  const present = state && pile && room.authorized ? roomPeople(state, room.id, channel.profiles, channel) : [];
   const screens = state?.publications.filter(source => source.roomId === room.id && source.kind === "screen") ?? [];
   const watches = state?.watchActivities.filter(source => source.roomId === room.id) ?? [];
   const [over, setOver] = useState(false);
@@ -44,6 +49,10 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         sharing={screens.some(source => channel.ownedScreens.has(source.id)) || watches.some(source => source.sessionId === channel.sessionId)}
         viewing={state && room.authorized && room.available ? roomSessionViewing(screens, watches, state.subscriptions, channel) : undefined}
         onSelect={onSelect} onManage={onManage} />
-    <div id={id} hidden={!open}>{open && people.length > 0 && <ChannelRoomParticipants channel={channel} room={room} people={people} />}</div>
+    {pile ? present.length > 0 && <span className="c3-room-pile" role="img" aria-label={joinItems(lang, present.map(person => person.name))}>
+      {present.slice(0, 3).map(person => <PawnSvg key={person.userId} centered color={participantColor(person.userId)} identity={person.userId} avatar={person.avatar} />)}
+      <span aria-hidden="true">{present.length}</span>
+    </span>
+      : <div id={id} hidden={!open}>{open && people.length > 0 && <ChannelRoomParticipants channel={channel} room={room} people={people} />}</div>}
   </div>;
 }

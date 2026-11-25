@@ -11,6 +11,8 @@ export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySe
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
 const interfaceLayoutSchema = z.enum(["workspace", "quick"]);
 export type InterfaceLayout = z.infer<typeof interfaceLayoutSchema>;
+/** A room page layout. "living" is an unaccepted prototype, selected only by the room preview; it is never stored. */
+export type RoomLayout = InterfaceLayout | "living";
 const unitCoordinate = z.number().min(0).max(1);
 const stickPosition = z.object({ x: unitCoordinate, y: unitCoordinate });
 

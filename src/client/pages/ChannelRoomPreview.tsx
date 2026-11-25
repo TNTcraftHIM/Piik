@@ -14,7 +14,7 @@ import { HTMLVideoMedia, AppPageMedia, type WatchMedia, type WatchMediaState, ty
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import type { AppDiscovery } from "../native/discovery";
-import type { InterfaceLayout } from "../lib/room-preferences";
+import type { InterfaceLayout, RoomLayout } from "../lib/room-preferences";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
@@ -66,7 +66,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     return requested.success ? requested.data : "ordinary";
   });
   const invitedRoom = new URLSearchParams(location.search).get("invite-preview") === "studio" ? "studio" : null;
-  const [layout, setLayout] = useState<InterfaceLayout>(new URLSearchParams(location.search).get("layout") === "quick" ? "quick" : "workspace");
+  const [layout, setLayout] = useState<RoomLayout>(() => {
+    const requested = new URLSearchParams(location.search).get("layout");
+    return requested === "quick" || requested === "living" ? requested : "workspace";
+  });
   const [offerLayout, setOfferLayout] = useState(firstUse);
   const changeLayout = (value: InterfaceLayout) => { setLayout(value); setOfferLayout(false); };
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));

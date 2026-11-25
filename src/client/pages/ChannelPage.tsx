@@ -52,12 +52,13 @@ import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { useClientNavigationTarget } from "../channel/client-navigation";
-import { readRoomPreferences, saveRoomPreferences, type InterfaceLayout } from "../lib/room-preferences";
+import { readRoomPreferences, saveRoomPreferences, type InterfaceLayout, type RoomLayout } from "../lib/room-preferences";
 import { useElementWidth } from "../lib/use-element-width";
 import type { ChannelController } from "../channel/types";
 import { canReceivePeerWatch } from "../channel/watch-media";
 import "../channel/bootstrap";
 import "./channel-preview.css";
+import "./channel-living.css";
 
 export function ChannelPage() {
   const [selected, setSelected] = useState(selectedRoom);
@@ -77,7 +78,7 @@ export function ChannelPage() {
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
 export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange, previewOptions }: {
   channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
-  layout?: InterfaceLayout; offerLayout?: boolean;
+  layout?: RoomLayout; offerLayout?: boolean;
   onLayoutChange?: (value: InterfaceLayout) => void;
   previewOptions?: ReactNode;
 }) {
@@ -121,6 +122,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
   const [workspaceElement, workspaceWidth] = useElementWidth();
   const sidebarsInline = layout !== "quick" && workspaceWidth > 1080;
+  // The living-room prototype re-places the same owners; under 600 px it stacks them in one column.
+  const living = layout === "living";
+  const phone = living && workspaceWidth > 0 && workspaceWidth < 600;
+  const [panelTab, setPanelTab] = useState<"chat" | "people">("chat");
   const [companionOpen, setCompanionOpen] = useState({ people: false, chat: true });
   const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
   const [newRoom, setNewRoom] = useState<string | RoomCreationInterrupted | null>(null);
@@ -292,13 +297,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (added) setSourceView({ roomId: added.roomId, focusedId: added.id });
   }, [roomId, mine.map(source => source.id).join(","), watches.map(source => source.id).join(",")]);
   const companionKind = visibleScreens.length > 0 ? "chat" : "people";
-  const companionPane = sidebarsInline ? companionKind : mobilePane;
   const roomToolOpen = toolSurface.open && (!toolSurface.mode || toolSurface.mode === "panel");
-  const companionVisible = layout !== "quick" && !overview && !roomToolOpen && (sidebarsInline
+  // Living: the right panel keeps its place with or without a picture; narrower screens open it on demand.
+  const livingPanelOpen = !overview && !roomToolOpen && (sidebarsInline || phone || mobilePane === "chat" || mobilePane === "people");
+  const companionPane = living ? panelTab : sidebarsInline ? companionKind : mobilePane;
+  const companionVisible = living ? livingPanelOpen : layout !== "quick" && !overview && !roomToolOpen && (sidebarsInline
     ? companionOpen[companionKind]
     : mobilePane === "people" || mobilePane === "chat");
   const inlineChatOpen = companionVisible && companionPane === "chat";
-  const conversationHidden = room?.authorized === false || (!roomToolOpen && (layout === "quick" || theaterVisible
+  const conversationHidden = room?.authorized === false || (!roomToolOpen && (living ? theaterVisible || !inlineChatOpen : layout === "quick" || theaterVisible
     || (visibleScreens.length > 0 ? !inlineChatOpen : !sidebarsInline && mobilePane !== "room")));
   const setConversationPopout = channel.setConversationPopout;
   useLayoutEffect(() => {
@@ -306,8 +313,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     setConversationPopout(roomId, popout);
     return () => setConversationPopout(roomId, null);
   }, [roomId, conversationHidden, roomToolOpen, toolSurface.document, setConversationPopout]);
-  const mainConversationHome = useCallback((node: HTMLDivElement | null) => { if (!visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
-  const sideConversationHome = useCallback((node: HTMLDivElement | null) => { if (visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
+  const conversationAside = living || visibleScreens.length > 0;
+  const mainConversationHome = useCallback((node: HTMLDivElement | null) => { if (!conversationAside) conversationSlot.current = node; }, [conversationAside]);
+  const sideConversationHome = useCallback((node: HTMLDivElement | null) => { if (conversationAside) conversationSlot.current = node; }, [conversationAside]);
   const availableScreens = screens.filter(value => value.roomId === roomId && !activeScreens.includes(value));
   const displayedSources = new Set([...visibleScreens, ...availableScreens].map(source => source.id));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
@@ -364,7 +372,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       }
       return;
     }
-    const heading = mobilePane === "chat" ? document.querySelector<HTMLElement>(".c3-chat-panel .c3-chat-heading button")
+    const heading = mobilePane === "chat" ? document.querySelector<HTMLElement>(".c3-chat-panel .c3-chat-heading button, .c3-living-tabs [aria-selected='true']")
       : document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
     heading?.focus();
     const escape = (event: KeyboardEvent) => {
@@ -454,7 +462,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     {newRoom !== null && <ChannelRoomCreateDialog channel={channel} creationPolicy={creationPolicy}
       initialName={typeof newRoom === "string" ? newRoom : ""} initialInterruption={newRoom instanceof RoomCreationInterrupted ? newRoom : null}
       onCreated={id => { selectRoom(id); if (newRoom instanceof RoomCreationInterrupted) { rememberSimpleShareRoom(simpleShareKey, id); setPickerRoom(id); } }} onClose={() => setNewRoom(null)} />}
-    <main ref={workspaceElement} className="c3-shell" data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
+    <main ref={workspaceElement} className={`c3-shell${living ? " c3-living" : ""}`} data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}
+      data-sidebars={living ? phone ? "phone" : sidebarsInline ? "inline" : "rail" : sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
@@ -468,7 +477,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           controls="c3-room-list" expanded={mobilePane === "rooms"} onClick={showRooms} />}
       </div><div className="lr-top c3-global-tools">
         <HeaderControls appControl={appControl} personalControls={<>
-          {onLayoutChange && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
+          {onLayoutChange && layout !== "living" && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
           <PlaybackDeviceSelect />
           <ChannelFeedbackSounds channel={channel} />
           <ChannelForwardingSettings channel={channel} />
@@ -499,7 +508,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               </h3>,
               ...groupedRooms.map((value, index) => <ChannelRoomListItem key={`room-${value.id}`} channel={channel} room={value}
                 selected={roomId === value.id} settingsOpen={managedRoomId === value.id} unopened={channel.roomOpenFailures.has(value.id)}
-                ordering={orderingRooms && groupedRooms.length > 1 ? { index, total: groupedRooms.length,
+                pile={living} ordering={orderingRooms && groupedRooms.length > 1 ? { index, total: groupedRooms.length,
                   active: activeDrag?.available === available && activeDrag.id !== value.id,
                   onDrag: () => setDraggedRoom({ id: value.id, available }), onEnd: () => setDraggedRoom(null),
                   onDrop: () => { if (activeDrag) reorderRoom(activeDrag.available, activeDrag.id, value.id); setDraggedRoom(null); },
@@ -511,12 +520,17 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         </div>
         </div>
       </aside>
-      <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />
+      <div className="c3-personal" data-voice-elsewhere={living && voiceActivity && voiceActivity.roomId !== roomId || undefined}><div ref={voiceSlot} className="c3-room-slot" />
         {self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
           <div><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>
           <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
             busy={busy("profile")} onSave={channel.updateProfile} />
         </div>}
+        {living && room?.authorized && !sharesIn(roomId) && <div className="c3-living-share">
+          <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
+            openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} /></div>}
+        {living && !overview && <Btn id="c3-companion-trigger" className="c3-living-chat" icon="chat" size="compact" quiet title="conversation.chat" cap="conversation.chat"
+          expanded={mobilePane === "chat" || mobilePane === "people"} onClick={() => setMobilePane(mobilePane === "chat" || mobilePane === "people" ? "room" : "chat")} />}
       </div>
       <section className="c3-main" aria-label={room?.name ?? t("channel.previewPage.room")}>
         <header className="c3-room-heading" data-tooltip-controls>
@@ -529,13 +543,13 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             {room && <ChannelRoomInvitation key={room.id} channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
           </div>
           <div className="c3-room-toolbar"><div className="c3-room-actions">
-            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
+            {!living && (layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
               <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
                 openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />}
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
-            {layout !== "quick" && state && !overview && !roomToolOpen && <Btn id="c3-companion-trigger" icon={companionKind === "chat" ? "chat" : "users"}
+            {layout !== "quick" && !living && state && !overview && !roomToolOpen && <Btn id="c3-companion-trigger" icon={companionKind === "chat" ? "chat" : "users"}
               title={{ text: companionVisible ? t("channel.previewPage.hideSidePanel") : t("channel.previewPage.showSidePanel") }}
               size="dense" quiet expanded={companionVisible} textTooltip
               onClick={() => {
@@ -589,7 +603,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 {canCreateRoom && <Btn id="c3-first-action" icon="plus" size="compact" tone="primary" hint="hint-create-room"
                   title={{ text: t("channel.previewPage.createYourFirstRoom") }} cap={{ text: t("channel.previewPage.createYourFirstRoom") }}
                   expanded={newRoom !== null} disabled={!connected} onClick={() => setNewRoom(t("channel.previewPage.livingRoom"))} />}
-                {offerLayout && onLayoutChange && connected && <ChannelInterfaceSuggestion value={layout}
+                {offerLayout && onLayoutChange && connected && layout !== "living" && <ChannelInterfaceSuggestion value={layout}
                   onChange={chooseInitialLayout} onDismiss={() => chooseInitialLayout(layout)} />}
               </div>}
           </section>}
@@ -598,7 +612,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
               openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} /></div>
           </StageTv></div>}
-          <ChannelStage theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
+          {living && room?.authorized && !visibleScreens.length && <div className="c3-living-tv"><StageTv hasEntry label={t("channel.previewPage.startSharing")}>
+            <div className="c3-quick-start"><Btn icon="cast" size="compact" tone={joinVoice ? undefined : "primary"} title={{ text: t("channel.previewPage.startSharing") }}
+              cap={{ text: t("channel.previewPage.startSharing") }} disabled={!connected || !room.available || sharesIn(roomId)} onClick={() => setPickerRoom(roomId)} /></div>
+          </StageTv></div>}
+          <ChannelStage fit={living} theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
@@ -655,6 +673,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           muted={(myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true) || (channel.voicePlaybackByUser.get(publication.userId)?.muted ?? false)}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>
+      {living && !overview && <div className="c3-living-tabs" role="tablist">
+        {(["chat", "people"] as const).map(tab => <button key={tab} type="button" role="tab" className="c3-living-tab" aria-selected={panelTab === tab}
+          aria-controls={tab === "people" ? "c3-people" : undefined} onClick={() => setPanelTab(tab)}>
+          <Glyph name={tab === "chat" ? "chat" : "users"} size={16} />{t(tab === "chat" ? "conversation.chat" : "channel.people.users")}</button>)}
+        {!sidebarsInline && mobilePane !== "room" && <BackButton onClick={returnToRoom} />}
+      </div>}
       <div className="c3-chat-panel"><div ref={sideConversationHome} className="c3-room-slot" /></div>
       {layout !== "quick" && <ChannelPeople channel={channel} roomId={roomId} active={companionVisible && companionPane === "people"} onBack={returnToRoom} />}
       <div className="c3-room-presence" data-empty={!room?.authorized || undefined}>
