@@ -93,10 +93,13 @@ Checked against the canon, for your judgement:
   the operator's cost; once the operator turns it on, rooms use it without a
   second switch in each room, and it ranks after every participant path. A
   room can still decline it. The owner is weighing a choice per kind (screen,
-  voice, files), which your forwarding plan already proposes, and whether a
-  Server may keep file originals. I have suggested treating the Server as one
-  more holder under the existing holder rule, by the operator's choice and
-  within a quota, and no decision is made.
+  voice, files), which your forwarding plan already proposes, which I support
+  because their costs differ by orders of magnitude. On file originals the
+  present decision stands: a Server does not keep them. I had suggested the
+  Server as one more holder and have withdrawn it. The owner's reasons are
+  integrity, consistency, space and the demand for third-party storage that
+  would follow; lasting files belong behind a link to a drive, and anything
+  more is for an integration or a bot to add, as your hosting design says.
 - **The App's ways of being reached exclude each other** per launch
   (`app_domain.rs:292-297`), and its entry has no port mapping or public
   address. The canon says side by side.
