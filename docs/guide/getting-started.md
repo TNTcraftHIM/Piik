@@ -17,7 +17,7 @@ A **site** can have several rooms. The site owner decides who can create them an
 
 ## Join a friend's room
 
-1. Open the complete 3.0 link in a computer or phone browser. The site opens
+1. Open the complete 3.0 link in an up-to-date computer or phone browser. The site opens
    directly and remembers your identity in this browser.
 2. A room link opens that room. If you received a site address, choose a room
    from **Rooms**. Enter the **room password** if Piik asks for one.
