@@ -53,6 +53,13 @@ the feedback period; they do not delay that delivery.
   control connection. Preserve original-page playback when the selected video
   element changes its resource URL; keep media-byte grants bound to the selected
   resource. [Original-page controls](./verification-status.md#current-evidence)
+- [ ] **Contracts fixed before release.** Decide
+  [ADR-0017](./adr/0017-contracts-fixed-before-release.md): the compatibility
+  rule, one schema source, one reply shape, storage versions with migrations,
+  and a room store's epoch and change sequence. None can be corrected after
+  the first 3.0 release. The
+  [design review](./research/clean-room-design-review.md) lists four product
+  decisions the owner keeps.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
