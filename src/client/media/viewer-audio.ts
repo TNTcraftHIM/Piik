@@ -53,6 +53,7 @@ export class ViewerAudio {
     private readonly onChange: (snapshot: ViewerAudioSnapshot) => void,
     private readonly voiceContext?: VoicePlaybackContext,
     private readonly maxLevel = 2,
+    private readonly onOutputReady?: (ready: boolean) => void,
   ) {
     this.detachElement = playbackOutput.attach(video);
     this.level = video.volume;
@@ -200,6 +201,7 @@ export class ViewerAudio {
     // while the requested listening level stays owned by the gain graph.
     this.nativeVolume = this.video.volume;
     this.nativeMuted = this.video.muted;
+    this.onOutputReady?.(boosted || !this.detachElement.getWaiting());
   };
 
   private readonly onPlay = (): void => {
