@@ -1,7 +1,7 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { roomCreationPolicySchema } from "../src/client/channel/protocol";
-import { roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch, simpleShareRoom } from "../src/client/channel/room-creation";
+import { roomCreationPolicyFor, roomDraft, roomSettings, readSimpleShareRoom, rememberSimpleShareRoom, roomSettingsPatch, simpleShareRoom, simpleShareRoomKey } from "../src/client/channel/room-creation";
 
 test("room capacity points to recovery from both room creation entries", () => {
   expect(channelErrorPresentation("room_limit", key => key)).toEqual({
@@ -46,13 +46,28 @@ test("policy changes discard admission drafts and send only necessary invitation
   expect(roomSettingsPatch({ password: "old draft" }, oldRoom, true)).toEqual({});
 });
 
-test("simple sharing returns to a room the person created and can share in before creating another", () => {
+test("simple sharing returns only to the room it made and creates another when that room cannot take the share", () => {
   const room = (id: string, creatorId: string, authorized = true, available = true) => ({ id, creatorId, authorized, available });
-  const rooms = [room("friend", "friend"), room("offline", "me", true, false), room("locked", "me", false), room("mine", "me"), room("later", "me")];
+  const rooms = [room("work", "me"), room("friend", "friend"), room("offline", "me", true, false), room("locked", "me", false), room("shared", "me")];
   const sharesIn = (...ids: string[]) => (id: string) => ids.includes(id);
-  expect(simpleShareRoom(rooms, "me", sharesIn())?.id).toBe("mine");
-  expect(simpleShareRoom(rooms.slice(0, 3), "me", sharesIn())).toBeUndefined();
-  // A room that already holds this person's share offers no picker, so a new start goes to the next room or a new one.
-  expect(simpleShareRoom(rooms, "me", sharesIn("mine"))?.id).toBe("later");
-  expect(simpleShareRoom(rooms, "me", sharesIn("mine", "later"))).toBeUndefined();
+  // A room the person made for another audience never receives a simple share.
+  expect(simpleShareRoom(rooms, "me", null, sharesIn())).toBeUndefined();
+  expect(simpleShareRoom(rooms, "me", "shared", sharesIn())?.id).toBe("shared");
+  expect(simpleShareRoom(rooms.filter(value => value.id !== "shared"), "me", "shared", sharesIn())).toBeUndefined();
+  for (const id of ["friend", "offline", "locked"]) expect(simpleShareRoom(rooms, "me", id, sharesIn())).toBeUndefined();
+  // A room that already holds this person's share offers no picker, so a new start makes a new room.
+  expect(simpleShareRoom(rooms, "me", "shared", sharesIn("shared"))).toBeUndefined();
+});
+
+test("simple sharing remembers its room per site and person on this device", () => {
+  const saved = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => saved.set(key, value) });
+  try {
+    const key = simpleShareRoomKey("site", "me");
+    expect(readSimpleShareRoom(key)).toBeNull();
+    rememberSimpleShareRoom(key, "shared");
+    expect(readSimpleShareRoom(key)).toBe("shared");
+    expect(readSimpleShareRoom(simpleShareRoomKey("other-site", "me"))).toBeNull();
+    expect(simpleShareRoomKey("site", undefined)).toBeNull();
+  } finally { vi.unstubAllGlobals(); }
 });
