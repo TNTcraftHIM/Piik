@@ -174,6 +174,7 @@ struct App {
     config: Config,
     port: u16,
     token: String,
+    host_creation: tokio::sync::RwLock<()>,
     registry: Mutex<Registry>,
     closing: watch::Sender<bool>,
     launch: Mutex<Option<hosted::Launch>>,
@@ -287,7 +288,8 @@ impl App {
         watch::Receiver<Option<Result<(), String>>>,
     )> {
         let key = (site.to_owned(), channel, user);
-        let mut registry = loop {
+        let (_creation, mut registry) = loop {
+            let creation = self.host_creation.read().await;
             let registry = self.registry.lock().await;
             if *self.closing.borrow() {
                 bail!("hosting_unavailable");
@@ -296,10 +298,11 @@ impl App {
                 bail!("site_not_approved");
             }
             let Some(host) = registry.hosts.get(&key).filter(|host| host.finished() || *host.stop.borrow()) else {
-                break registry;
+                break (creation, registry);
             };
             let task = host.task.clone();
             drop(registry);
+            drop(creation);
             self.join_host(&key, task).await;
         };
         if let Some(host) = registry.hosts.get(&key) {
@@ -481,6 +484,7 @@ pub async fn serve(
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites,
             approvals,
@@ -3156,6 +3160,7 @@ mod lifecycle_tests {
             },
             port: 0,
             token: "owned".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::from([
@@ -3573,6 +3578,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "owned".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(site.clone(), permission)]),
@@ -3869,6 +3875,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(remote.into(), permission.clone())]),
@@ -4173,6 +4180,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::new(),
@@ -4357,6 +4365,7 @@ mod lifecycle_tests {
                 },
                 port: 39731,
                 token: "test".into(),
+                host_creation: Default::default(),
                 registry: Mutex::new(Registry {
                     sites,
                     approvals,
@@ -4586,6 +4595,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(site.clone(), permission.clone())]),

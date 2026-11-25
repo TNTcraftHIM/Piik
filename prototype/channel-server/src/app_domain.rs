@@ -409,8 +409,9 @@ async fn run(
                     let _ = request.result.send(Err("hosted_channel_requires_server".into()));
                     continue;
                 }
-                // Keep the existing creation gate through shutdown and replacement.
-                // Remote approved sites with another authority keep their own hosts.
+                // Keep host creation exclusive through shutdown and replacement;
+                // ordinary registry reads do not wait for Native retirement.
+                let creation = app.host_creation.write().await;
                 let mut registry = app.registry.lock().await;
                 let domain_id = domain.identity().0;
                 let keys: Vec<_> = registry.hosts.keys()
@@ -423,9 +424,10 @@ async fn run(
                     restart.push((key, host.credential.clone()));
                     hosts.push(host);
                 }
+                drop(registry);
                 stop_hosts(hosts).await;
                 let result = domain.restore(request.metadata, &request.credential);
-                drop(registry);
+                drop(creation);
                 if result.is_err() {
                     // Restore the retained runtimes; their remote readiness must not
                     // hold the Domain loop or its stop signal after a failed import.
@@ -496,6 +498,260 @@ async fn local_https(selected: Option<&str>, port: u16) -> Result<web::LanHttps,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn restore_keeps_host_creation_exclusive_without_holding_registry_reads() {
+        use super::super::{host_task, CaptureTargetReader, Config, Desktop, Host, Registry};
+        use futures_util::{SinkExt, StreamExt};
+        use std::{
+            collections::BTreeMap,
+            io::Cursor,
+            path::PathBuf,
+            time::{Duration, Instant},
+        };
+        use tokio::sync::{oneshot, Mutex};
+        use tokio_tungstenite::{
+            connect_async,
+            tungstenite::{client::IntoClientRequest, Message},
+        };
+        use uuid::Uuid;
+
+        for reject in [false, true] {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            let data = tempfile::tempdir().unwrap();
+            std::fs::write(
+                data.path().join("index.html"),
+                "<html><head></head><body>Test</body></html>",
+            )
+            .unwrap();
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            drop(listener);
+            let app = Arc::new(App {
+                config: Config {
+                    data_root: data.path().into(),
+                    assets: data.path().into(),
+                    open_browser: false,
+                    terminal_notice: None,
+                    page_player: None,
+                    website_permission_reset: None,
+                    window_navigation: None,
+                    cloudflared: PathBuf::new(),
+                    ice_servers: vec![],
+                    update: Default::default(),
+                },
+                port: 0,
+                token: "test".into(),
+                host_creation: Default::default(),
+                registry: Mutex::new(Registry {
+                    sites: super::super::sites::Sites::open(data.path()).unwrap(),
+                    approvals: BTreeMap::new(),
+                    hosts: BTreeMap::new(),
+                    local: None,
+                }),
+                closing: watch::channel(false).0,
+                launch: Mutex::new(None),
+                desktop: Desktop::new().unwrap(),
+                voice_shortcuts: Default::default(),
+                external_inputs: Default::default(),
+                update: super::super::update::Owner::disabled(),
+                capture_targets: CaptureTargetReader::default(),
+                capture_microphones: CaptureTargetReader::default(),
+            });
+            let mut progress = begin(
+                &app,
+                Request {
+                    mode: Mode::External,
+                    port: NonZeroU16::new(port),
+                    lan_address: None,
+                    language: None,
+                    public_origin: Some("https://restore.test".into()),
+                },
+            )
+            .await
+            .unwrap();
+            let domain = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    match progress.borrow().clone() {
+                        Progress::Ready(ready) => break ready.domain,
+                        Progress::Failed(_) => panic!("fixture domain failed"),
+                        Progress::Starting => {}
+                    }
+                    progress.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let origin = domain.origin().to_owned();
+            let owner_key = domain.owner_key();
+            let mut join = format!("{}/prototype/channel", origin.replacen("http", "ws", 1))
+                .into_client_request()
+                .unwrap();
+            join.headers_mut().insert("Origin", origin.parse().unwrap());
+            let (mut socket, _) = connect_async(join).await.unwrap();
+            socket
+                .send(Message::Text(
+                    json!({
+                        "type":"join", "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+                        "name":"Owner", "ownerKey":owner_key, "signingKey":vec![1u8; 32],
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let credential = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let message = socket.next().await.unwrap().unwrap();
+                    if let Message::Text(text) = message {
+                        let value: Value = serde_json::from_str(&text).unwrap();
+                        if value["type"] == "welcome" {
+                            break value["credential"].as_str().unwrap().to_owned();
+                        }
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            let client = reqwest::Client::new();
+            let backup_url = format!("{origin}/prototype/channel/backup");
+            let bytes = client
+                .get(&backup_url)
+                .bearer_auth(&credential)
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap();
+            let staging = tempfile::tempdir().unwrap();
+            let piik_channel_native::backup::StagedBackup::Domain(mut metadata) =
+                piik_channel_native::backup::stage(Cursor::new(bytes), staging.path()).unwrap()
+            else {
+                panic!("domain backup expected")
+            };
+            metadata.owner_key = "restored-owner".into();
+            let mut archive = vec![];
+            piik_channel_native::backup::write_domain(&metadata, &mut archive).unwrap();
+            let rejection = reject.then(|| {
+                let database = rusqlite::Connection::open(data.path().join("domain/channel.sqlite")).unwrap();
+                database.execute_batch("CREATE TRIGGER reject_restore BEFORE INSERT ON domain_user WHEN EXISTS(SELECT 1 FROM checkpoint WHERE instr(body, 'restored-owner') > 0) BEGIN SELECT RAISE(ABORT, 'restore_rejected'); END;").unwrap();
+                database
+            });
+
+            let (stop, mut stopped) = watch::channel(false);
+            let (retiring, entered) = oneshot::channel();
+            let (release, release_join) = oneshot::channel();
+            let (commands, _receiver) = mpsc::channel(1);
+            let previous = Host {
+                credential: credential.clone(),
+                commands,
+                ready: watch::channel(Some(Ok(()))).1,
+                stop,
+                task: host_task(tokio::spawn(async move {
+                    stopped.changed().await.unwrap();
+                    retiring.send(()).unwrap();
+                    release_join.await.unwrap();
+                    Ok(())
+                })),
+            };
+            let permission = {
+                let mut registry = app.registry.lock().await;
+                registry.hosts.insert(
+                    (origin.clone(), domain.identity().0, Uuid::new_v4()),
+                    previous,
+                );
+                registry.permission(&origin).unwrap().clone()
+            };
+            let restore = tokio::spawn(async move {
+                client
+                    .put(backup_url)
+                    .bearer_auth(&credential)
+                    .header("Content-Type", "application/zip")
+                    .body(archive)
+                    .send()
+                    .await
+                    .unwrap()
+            });
+            tokio::time::timeout(Duration::from_secs(5), entered)
+                .await
+                .unwrap()
+                .unwrap();
+            let requested_at = Instant::now();
+            let launcher = tokio::time::timeout(
+                Duration::from_millis(200),
+                super::super::launcher(State(app.clone())),
+            )
+            .await;
+            let launcher_wait = requested_at.elapsed();
+            assert_eq!(
+                domain.owner_key(),
+                owner_key,
+                "retirement precedes authority replacement"
+            );
+            let creating_app = app.clone();
+            let creating_origin = origin.clone();
+            let identity = domain.identity();
+            let mut creating = tokio::spawn(async move {
+                creating_app
+                    .ensure_host(
+                        &creating_origin,
+                        &permission,
+                        identity.0,
+                        Uuid::new_v4(),
+                        "late-old-credential".into(),
+                        "Pending host".into(),
+                    )
+                    .await
+            });
+            let creation_waits = tokio::time::timeout(Duration::from_millis(50), &mut creating)
+                .await
+                .is_err();
+            release.send(()).unwrap();
+            let response = tokio::time::timeout(Duration::from_secs(5), restore)
+                .await
+                .unwrap()
+                .unwrap();
+            let status = response.status();
+            let created = tokio::time::timeout(Duration::from_secs(5), creating)
+                .await
+                .unwrap()
+                .unwrap();
+            let restored_key = domain.owner_key();
+            drop(socket);
+            app.shutdown().await;
+            drop(rejection);
+
+            assert!(
+                creation_waits,
+                "a new host must not start before the restore commits"
+            );
+            assert!(created.is_ok());
+            assert_eq!(
+                status,
+                if reject {
+                    reqwest::StatusCode::CONFLICT
+                } else {
+                    reqwest::StatusCode::OK
+                }
+            );
+            assert_eq!(
+                restored_key,
+                if reject {
+                    owner_key.as_str()
+                } else {
+                    "restored-owner"
+                }
+            );
+            assert!(
+                launcher.is_ok_and(|response| response.is_ok()),
+                "launcher waited {launcher_wait:?} for Native retirement"
+            );
+            eprintln!("Launcher response while Native retirement was held: {launcher_wait:?}");
+        }
+    }
 
     #[test]
     fn startup_request_does_not_freeze_the_http_port_override() {

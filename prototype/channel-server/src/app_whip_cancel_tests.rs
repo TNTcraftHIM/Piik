@@ -89,6 +89,7 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
         },
         port: address.port(),
         token: "owned".into(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites,
             approvals: BTreeMap::from([(site.clone(), permission)]),
