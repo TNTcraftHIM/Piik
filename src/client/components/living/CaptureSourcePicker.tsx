@@ -3,6 +3,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
 import { ChannelDiagnosisHelp } from "../../channel/components/ChannelDiagnosisHelp";
+import { diagnoseChannelFact } from "../../channel/diagnosis";
+import { channelErrorPresentation } from "../../channel/error-presentation";
 import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -69,7 +71,6 @@ export function CaptureSourcePicker({
   onExternalInput,
   onPreview,
   onRefresh,
-  nativeFailureMessage,
   onCancel,
   browserSupported = true,
   cameraSupported = true,
@@ -99,7 +100,6 @@ export function CaptureSourcePicker({
     signal?: AbortSignal,
   ) => Promise<string | null>;
   onRefresh: () => void;
-  nativeFailureMessage?: string;
   onCancel: () => void;
   browserSupported?: boolean;
   cameraSupported?: boolean;
@@ -145,6 +145,11 @@ export function CaptureSourcePicker({
     : (nativeSources.kind === "unsupported" || nativeSources.kind === "failed")
       ? `host.sourcePicker.${nativeSources.kind}` as const
       : null;
+  const nativeFailure = nativeTab && nativeSources.kind === "failed" ? nativeSources.error : undefined;
+  const nativeDiagnosis = nativeFailure ? diagnoseChannelFact({ area: "error", code: nativeFailure }) : null;
+  const issueMessage = nativeDiagnosis ? t(nativeDiagnosis.message)
+    : nativeFailure ? channelErrorPresentation(nativeFailure, t, "host.sourcePicker.failed").message
+    : issueKey ? t(issueKey) : null;
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
@@ -402,8 +407,8 @@ export function CaptureSourcePicker({
             <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
               <Glyph name="refresh" className="lr-spin" size={18} />{t("host.sourcePicker.loading")}
             </span>
-          ) : issueKey ? (
-            <Pill icon="alert" label={nativeSources.kind === "failed" ? nativeFailureMessage ?? t(issueKey) : t(issueKey)} comic="warning" />
+          ) : issueMessage ? (
+            <Pill icon="alert" label={issueMessage} comic="warning" />
           ) : browserCapture || activeTab === "camera" || activeTab === "external" ? null : sources.length === 0 ? (
             <span
               className="lr-source-picker-status"
@@ -415,7 +420,7 @@ export function CaptureSourcePicker({
             </span>
           ) : null}
           {nativeTab && (nativeSources.kind === "failed" || (nativeSources.kind === "ready" && sources.length === 0)) &&
-            <ChannelDiagnosisHelp diagnosis={{ topic: "capture" }} />}
+            <ChannelDiagnosisHelp diagnosis={nativeDiagnosis ?? { topic: "capture" }} />}
         </div>
       </div>
     </div>
