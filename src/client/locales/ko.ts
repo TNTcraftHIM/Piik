@@ -1336,6 +1336,7 @@ export const ko = {
   "host.advanced.execution.softwareHint": "이번 공유에 소프트웨어 인코딩을 사용해요.",
   "channel.error.captureEncodingUnsupported": "연결된 App에서는 선택한 인코딩 방식을 사용할 수 없어요.",
   "host.advanced.codec.h264Hint": "H.264 영상 형식",
+  "host.advanced.lockedWhileSharing": "공유 중에는 바꿀 수 없어요. 공유를 멈추면 바꿀 수 있어요.",
 
   "host.details": "연결 정보",
   "connection.room": "방 연결",

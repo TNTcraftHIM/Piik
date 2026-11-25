@@ -1501,6 +1501,7 @@ export const zh = {
   "host.advanced.execution.softwareHint": "本次分享使用软件编码。",
   "channel.error.captureEncodingUnsupported": "当前 App 无法使用所选编码方式。",
   "host.advanced.codec.h264Hint": "H.264 视频格式",
+  "host.advanced.lockedWhileSharing": "分享中无法更改，停止分享后即可调整。",
 
   "host.details": "连接详情",
   "connection.room": "房间连接",

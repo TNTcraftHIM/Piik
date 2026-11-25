@@ -31,7 +31,7 @@ import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSoun
 import { ChannelForwardingSettings } from "../channel/components/ChannelForwardingSettings";
 import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
 import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
-import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings } from "../channel/room-creation";
+import { RoomCreationInterrupted, roomCreationPolicyFor, readSimpleShareRoom, rememberSimpleShareRoom, roomDraft, roomSettings, simpleShareRoom, simpleShareRoomKey } from "../channel/room-creation";
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
@@ -228,11 +228,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     requestAnimationFrame(() => document.getElementById("c3-first-action")?.focus());
   };
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
+  const simpleShareKey = simpleShareRoomKey(state?.channel.id, self?.id);
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
+    const existing = self && simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey), sharesIn);
+    if (existing) { selectRoom(existing.id); setPickerRoom(existing.id); return; }
     const operation = preparingShare.current = {};
     try {
       const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"));
+      rememberSimpleShareRoom(simpleShareKey, id);
       if (preparingShare.current !== operation) return;
       selectRoom(id); setPickerRoom(id);
     } catch (error) {
@@ -252,6 +256,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const watches = state?.watchActivities ?? [];
   const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
   const activeWatches = watches.filter(activity => ownsWatch(activity.id) || channel.waitingWatchPages?.has(activity.id) || state?.watchSubscriptions.some(value => value.id === activity.id));
+  const sharesIn = (id: string) => mine.some(source => source.roomId === id) || activeWatches.some(source => source.roomId === id && ownsWatch(source.id));
   const activeSources = [...activeScreens, ...activeWatches, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id))];
   const visibleScreens = activeSources.filter(source => source.roomId === roomId);
   const otherScreens = activeSources.filter(source => source.roomId !== roomId);
@@ -295,6 +300,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const voiceStreams = useVoicePlayback(state, sessionId, streams);
   const [voiceContext] = useState(() => new VoicePlaybackContext());
   const failure = channelErrorPresentation(channel.error, t);
+  // Name the failed room only when it is not the one on screen; a removed room has no name left to show.
+  const errorRoomName = channel.errorRoomId && channel.errorRoomId !== roomId ? rooms.find(value => value.id === channel.errorRoomId)?.name : undefined;
   useEffect(() => {
     if (!state) return;
     channel.browse(roomId);
@@ -389,15 +396,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
-    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{channel.errorRoomId
-      ? joinItems(lang, [t("channel.siteSettings.roomId", { id: channel.errorRoomId }), failure.message]) : failure.message}</span>
+    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{errorRoomName
+      ? joinItems(lang, [errorRoomName, failure.message]) : failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
       onClose={closeRoomSettings} />}
     {newRoom !== null && <ChannelRoomCreateDialog channel={channel} creationPolicy={creationPolicy}
       initialName={typeof newRoom === "string" ? newRoom : ""} initialInterruption={newRoom instanceof RoomCreationInterrupted ? newRoom : null}
-      onCreated={id => { selectRoom(id); if (newRoom instanceof RoomCreationInterrupted) setPickerRoom(id); }} onClose={() => setNewRoom(null)} />}
+      onCreated={id => { selectRoom(id); if (newRoom instanceof RoomCreationInterrupted) { rememberSimpleShareRoom(simpleShareKey, id); setPickerRoom(id); } }} onClose={() => setNewRoom(null)} />}
     <main ref={workspaceElement} className="c3-shell" data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
@@ -473,9 +480,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             {room && <ChannelRoomInvitation key={room.id} channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
           </div>
           <div className="c3-room-toolbar"><div className="c3-room-actions">
-            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !mine.some(source => source.roomId === roomId) && !activeWatches.some(source => source.roomId === roomId && ownsWatch(source.id)) &&
+            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
               <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-                openRequested={layout !== "quick" && pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} />}
+                openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} />}
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}

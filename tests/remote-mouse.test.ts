@@ -61,6 +61,11 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
       if (changed(current.deps, deps)) { current.deps = deps; current.value = callback; }
       return current.value;
     },
+    useEffectEvent: (callback: (...args: unknown[]) => unknown) => {
+      const current = slot();
+      current.deps = [callback];
+      return current.value ??= (...args: unknown[]) => (current.deps![0] as typeof callback)(...args);
+    },
     onDocumentInactive, useEffect: effect, useLayoutEffect: effect, Glyph: () => null, RemoteDirectionPad,
   });
   const nodes = (element: Element): Element[] => [element, ...[element.props.children].flat(Infinity)
@@ -199,7 +204,7 @@ it("retains a shared button until its final contact ends and releases remaining 
   } finally { view.dispose(); }
 });
 
-it("tucks only an idle edge mini and cancels the timer on interaction, expansion, hiding and disposal", () => {
+it("tucks only an idle edge mini, cancels the timer on interaction, expansion and disposal, and re-arms it after hiding", () => {
   vi.useFakeTimers();
   const view = mouse(0);
   try {
@@ -216,10 +221,24 @@ it("tucks only an idle edge mini and cancels the timer on interaction, expansion
     view.find("lr-remote-mouse").props.onPointerUp(view.event(10, 0)); view.render();
     expect(vi.getTimerCount()).toBe(1);
     view.owner.hidden = true; view.listeners.get("visibilitychange")?.();
-    expect(vi.getTimerCount()).toBe(0);
-    view.dispose();
+    expect(vi.getTimerCount()).toBe(1);
+    view.dispose(); expect(vi.getTimerCount()).toBe(0);
     const pending = mouse(0);
     expect(vi.getTimerCount()).toBe(1); pending.dispose(); expect(vi.getTimerCount()).toBe(0);
+  } finally { view.dispose(); vi.useRealTimers(); }
+});
+
+it("docks a dragged mini again when the window loses focus before the idle time passes", () => {
+  vi.useFakeTimers();
+  const view = mouse(0);
+  try {
+    view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
+    view.find("lr-remote-mouse").props.onPointerMove(view.event(10, 0));
+    view.find("lr-remote-mouse").props.onPointerUp(view.event(10, 0)); view.render();
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS - 1);
+    view.owner.defaultView.dispatchEvent(new Event("blur"));
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS); view.render();
+    expect(view.docked()).toBe("left");
   } finally { view.dispose(); vi.useRealTimers(); }
 });
 
