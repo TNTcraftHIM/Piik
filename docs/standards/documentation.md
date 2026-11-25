@@ -20,9 +20,10 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
 | Action grouping, surfaces, accessible layout, illustration, palette and motion | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
 | Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
+| 3.0 media | [Media quality](./media-quality.md) | Browser and App capture, encoders, adaptation and audio |
 | 3.0 remote input | [Remote control](./remote-control.md) | Grants, targets and release; usage stays in the reader guide |
 | Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
-| Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [media](./media-quality.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
+| Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
 | 3.0 architecture | [ADR-0016](../adr/0016-shared-rust-core.md) | Shared core, runtime adapters and version scope |
 | Current 3.0 domain models | [Site/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Detailed authority, runtime, routing and persistence boundaries |
 | 3.0 forwarding design | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) | Target forwarding model and candidate delivery details |

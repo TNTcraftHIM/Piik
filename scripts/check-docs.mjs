@@ -69,9 +69,9 @@ const exactWarningBudgets = new Map([
   ["docs/status.md", [120, 12_000]],
   ["docs/todo.md", [160, 16_000]],
   ["docs/standards/README.md", [180, 16_000]],
-  ...["rooms-access", "routing-transport", "media-quality", "presentation-lifecycle", "remote-control"]
+  ...["rooms-access", "routing-transport", "presentation-lifecycle", "remote-control"]
     .map((name) => [`docs/standards/${name}.md`, [180, 16_000]]),
-  ...["configuration", "engineering", "naming", "versioning"]
+  ...["configuration", "engineering", "media-quality", "naming", "versioning"]
     .map((name) => [`docs/standards/${name}.md`, [250, 20_000]]),
 ]);
 const prefixWarningBudgets = [

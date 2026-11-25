@@ -202,7 +202,7 @@ danmaku or reaction effects. The separate 3.0 implementation follows the accepte
 
 Text, reactions and danmaku introduce no microphone capture or additional media
 peers. Published room voice and optional Host source commentary follow the
-[current microphone contract](../standards/media-quality.md#capture-and-controls).
+[current microphone contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md#capture-and-controls).
 
 ### Room Voice Transport Assessment
 
@@ -271,7 +271,7 @@ These were synthetic local decoding/forwarding results, not production App
 integration, public-NAT reachability, echo cancellation or 21-person acceptance.
 The shipped integration above supersedes their proposed speaking/listening-grant
 policy. Current dual-microphone behavior belongs to
-[media quality](../standards/media-quality.md#capture-and-controls). Deliberately
+[media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md#capture-and-controls). Deliberately
 recapturing received voice put it into source audio; supported exclusion removed
 it. Headphones alone do not prevent system-loopback recapture, and that routing
 control is not a physical echo-cancellation result.

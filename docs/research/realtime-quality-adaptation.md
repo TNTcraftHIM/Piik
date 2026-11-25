@@ -3,7 +3,7 @@
 - Initial review: 2026-08-30; dated follow-ups record subsequent evidence
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
 - Status: historical Browser/LiveKit SDK measurements and subsequent implementation evidence; current product behavior is owned by
-  [media quality](../standards/media-quality.md) and
+  [media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md) and
   [ADR-0007](../adr/0007-path-isolated-representation-quality.md)
 
 ## Findings
@@ -504,7 +504,7 @@ not media behavior or settings.
 
 The earlier Browser measurements above do not describe the current Native or
 pooled implementation. A 2026-10-15 producer-to-consumer review distinguishes
-these recovery owners; the [media-quality standard](../standards/media-quality.md)
+these recovery owners; the [media-quality standard](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md)
 owns their required behavior.
 
 | Path | Demand and recovery boundary |

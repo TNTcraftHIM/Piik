@@ -79,7 +79,7 @@ and [website preview and publishing](./operations/website.md).
 | The founding ideas everything else follows | [Canon](./canon.md) |
 | Published 2.x invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
 | Published 2.x viewer connections | [Routing and transport](./standards/routing-transport.md) |
-| Published 2.x screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
+| 3.0 screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
 | Published 2.x Host and Viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
