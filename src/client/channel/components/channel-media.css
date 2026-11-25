@@ -129,7 +129,9 @@
 @container (max-width: 280px) {
   .c3-mini-controls { --mini-controls-inset: 2px; width: calc(100% - 2 * var(--mini-controls-inset)); gap: 0; padding: 2px; }
   .c3-mini-controls .c3-mini-space { display: none; }
-  /* Leave room for the shared timeline readout and direct actions at tile minimum. */
+}
+@container (max-width: 256px) {
+  /* Keep the direct actions readable in the smallest tiles. */
   .c3-watch-inline-volume { display: none; }
   .c3-watch-volume { display: grid; }
 }

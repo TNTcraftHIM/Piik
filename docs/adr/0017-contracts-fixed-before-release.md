@@ -11,15 +11,16 @@ and room stores hold the released shapes, and later versions have to work with
 them. Some contracts are costly to change after that; others can wait for a
 consumer. [Versioning](../standards/versioning.md) promises that an older App
 keeps working with a newer site within a major version, and that forward
-upgrades preserve durable authority. The code does not yet say how:
+upgrades preserve durable authority. The private implementation currently has
+these boundaries:
 
 - `Join` requires the protocol number to match the current wire version
   (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
   reader accepts additions; no rule says which additions a reader may ignore.
-- The review at `35034f34` found that Browser accepts any `room_reply.result.type`
-  (`src/client/channel/protocol.ts`) and rejects only `"error"`
-  (`src/client/channel/session.ts`), so with a version mismatch or a bug an
-  unknown type resolves most room requests as success.
+- The Browser's pending request validates its terminal result
+  (`src/client/channel/session.ts`). Unknown or mismatched outcomes reject that
+  operation. The first published reader must retain this boundary when an
+  extension is selected.
 - A room store opens only at one exact `user_version`
   (`prototype/channel-core/src/storage.rs`), and the Browser store aborts any
   upgrade (`prototype/channel-browser/src/room-host.ts`). This protects data;
