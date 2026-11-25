@@ -209,7 +209,9 @@ one's own voice or original byte source.
 
 The room manager sets the default number of downstream connections. A live
 screen follows the room default until its publisher chooses a direct limit
-for that share. A limit of one lets the publisher send to one viewer or
+for that share. A speaker's own voice does not follow it: speech goes to up to
+sixteen listeners the speaker has a pair with, and the default bounds the
+relays that carry it further. A limit of one lets the publisher send to one viewer or
 relay, which can serve further viewers. The setting follows the publication
 when its capture source changes and expires when sharing stops. Changes use
 the existing route transition. The user's other publications, voice, file

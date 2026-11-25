@@ -194,6 +194,40 @@ and undirected edges S–A, S–B, B–A and A–W, the tree S→A→B strands W
 S→B→A→W serves all three viewers. This is a static alternative; its transition
 must still respect the live operation's overlap and proof budget.
 
+## Voice Fan-out Measured
+
+The room planner was run with every pair confirmed and everyone in voice, and
+one speaker's flows were counted. Under the room default of two downstream
+connections the speaker sent to two listeners however many it could reach:
+
+| In voice | Listeners | Direct from the speaker | Deepest listener |
+| --- | --- | --- | --- |
+| 3 | 2 | 2 | 1 hop |
+| 4 | 3 | 2 | 2 hops |
+| 6 | 5 | 2 | 2 hops |
+| 8 | 7 | 2 | 3 hops |
+
+The delay of a Browser relay was measured in Chrome 158 in one page on one
+audio clock. A 20 ms tone burst once a second was sent as Opus over loopback
+connections, and its onset was timed where it was generated and where each
+receiver decoded it. A relay re-sent the track it received, as the Browser
+client does. Medians of 35 bursts, with the tenth and ninetieth percentiles
+within 3 ms of them:
+
+| Path | Onset delay | Added by the hop |
+| --- | --- | --- |
+| Direct | 40.9 ms | |
+| One Browser relay | 91.8 ms | 50.9 ms |
+| Two Browser relays | 139.4 ms | 47.6 ms |
+
+Each receiving connection reported a jitter-buffer delay of about 30 ms. This
+is a floor: loopback has no transit time, jitter or loss, and a real path adds
+its own transit and a larger buffer at every hop. It does not measure a Native
+forwarder, which forwards packets without decoding. A speech copy is about
+64 kbit/s with its headers, so sixteen direct listeners cost about one megabit
+of upload. [G.114](https://www.itu.int/rec/T-REC-G.114) prefers a one-way
+delay under 150 ms.
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to
@@ -203,7 +237,8 @@ must still respect the live operation's overlap and proof budget.
    glitch at the cut.
 4. The cost of one re-encoding hop: delay, resolution, frame rate.
 5. Whether a node's proved capacity repeats from day to day.
-6. A hop chain for voice, with a Native forwarder and with a Browser.
+6. A hop chain for voice, with a Native forwarder. The Browser hop is
+   measured above.
 7. Idle audio connections on a phone, at 3, 7 and 19. On a desktop Browser,
    twenty idle pairs cost about 2.4 KiB/s per endpoint
    ([network lab](./network-lab.md#idle-physical-connection-cost)).

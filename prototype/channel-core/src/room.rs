@@ -18,6 +18,11 @@ use uuid::Uuid;
 use crate::publication::SCREEN_PREPARE_MS;
 
 const REQUIRED_REPAIR_MS: u64 = 5_000;
+/// How many listeners a speaker sends to directly. Speech is about 64 kbit/s a
+/// copy, so sixteen cost about a megabit, while each Browser relay re-encodes
+/// and adds about 50 ms to it (docs/research/topology-improvement-design.md).
+/// A relay therefore carries speech only to a listener the speaker cannot reach.
+const VOICE_DIRECT_LIMIT: usize = 16;
 
 #[derive(Clone, Default)]
 struct Activity {
@@ -1593,11 +1598,14 @@ impl RoomRuntime {
                     *reserved.get_mut(&(flow.sender, flow.receiver)).unwrap() -= 1;
                 }
             }
-            let mut screen_limits = limits.clone();
+            let mut publication_limits = limits.clone();
+            if publication.info.kind == Kind::Voice {
+                publication_limits.source_direct_limit = Some(VOICE_DIRECT_LIMIT);
+            }
             if publication.info.kind == Kind::Screen {
                 // A screen source owns its outputs. Forwarders share their
                 // remaining capacity across all other screens in the room.
-                screen_limits.source_direct_limit = publication
+                publication_limits.source_direct_limit = publication
                     .info
                     .screen
                     .as_ref()
@@ -1605,7 +1613,7 @@ impl RoomRuntime {
                     .map(usize::from);
                 for (&(sender, receiver), &count) in &reserved {
                     if count > 0 && sender != publication.info.session_id {
-                        screen_limits
+                        publication_limits
                             .shared
                             .entry(sender)
                             .or_default()
@@ -1620,15 +1628,15 @@ impl RoomRuntime {
                 &connected,
                 &offered(&relays, carried),
                 &helpers,
-                &screen_limits,
+                &publication_limits,
                 &neighbors,
                 now,
             );
             if !publication.info.paused {
                 publication.collect_frontiers(&subscribers, &neighbors, &offered(&new_relays, carried), &helpers,
-                    &screen_limits, &mut self.delivery_frontiers);
+                    &publication_limits, &mut self.delivery_frontiers);
             }
-            publication.bound_screen_preparation(&screen_limits, &helpers);
+            publication.bound_screen_preparation(&publication_limits, &helpers);
             if publication.info.kind == Kind::Screen {
                 for flow in publication.relay_flows(&helpers) {
                     *reserved.entry((flow.sender, flow.receiver)).or_default() += 1;
@@ -3407,6 +3415,9 @@ mod tests {
             )
             .unwrap();
         }
+        // A speaker reaches its own listeners directly, so the room default binds only
+        // a relay: 1 carries the speech of 5 to 3 and 4, and lowering the default
+        // to one makes it shed a child.
         let mut pairs = confirmed_pairs(&[(1, 2), (1, 3), (1, 4), (2, 5)]);
         room.reconcile_with_pairs(&endpoints, 2, &pairs);
         for flow in room.flows().collect::<Vec<_>>() {
@@ -3422,7 +3433,7 @@ mod tests {
         }
         let old: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
         assert!(!old.is_empty());
-        room.set_default_relay_capacity(2);
+        room.set_default_relay_capacity(1);
         room.reconcile_with_pairs(&endpoints, 10, &pairs);
         let deadline = room.next_route_deadline();
         assert!(deadline.is_some());
@@ -3448,7 +3459,7 @@ mod tests {
             ),
             Err("unassigned_flow")
         );
-        room.set_default_relay_capacity(2);
+        room.set_default_relay_capacity(1);
         room.reconcile_with_pairs(&endpoints, 22, &pairs);
         let replacement = room
             .flows()
@@ -3460,7 +3471,7 @@ mod tests {
                 replacement.sender,
                 replacement.receiver
             ),
-            (id(21), id(5), id(3))
+            (id(25), id(5), id(3))
         );
         assert!(old
             .iter()
@@ -3491,7 +3502,7 @@ mod tests {
             2
         );
         assert_ne!(replacement.id, abandoned.id);
-        assert!(room.flows().any(|flow| flow.publication_id == id(25)
+        assert!(room.flows().any(|flow| flow.publication_id == id(21)
             && flow.sender == id(1)
             && flow.receiver == id(3)));
     }
@@ -3703,6 +3714,63 @@ mod tests {
             .flows()
             .any(|flow| flow.publication_id == id(10) && flow.sender == id(2)));
         assert!(room.subscriptions(id(4)).contains(&id(10)));
+    }
+
+    #[test]
+    fn a_speaker_reaches_every_listener_it_has_a_pair_with() {
+        let id = Uuid::from_u128;
+        let endpoints: BTreeMap<_, _> = (1..=8)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member { user_id: id(value) },
+                        can_use_peer_transport: true,
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "voice".into(),
+                "Voice".into(),
+                Default::default(),
+                id(1),
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        for peer in 1..=8 {
+            room.set_voice(endpoints[&id(peer)].member, id(peer), true, false, false)
+                .unwrap();
+        }
+        let voice = id(21);
+        room.publish(endpoints[&id(1)].member, id(1), voice, Kind::Voice, None, None)
+            .unwrap();
+        // Every pair but the speaker's own pair with 8, which any listener can bridge.
+        let mut pairs = BTreeSet::new();
+        for a in 1..=8 {
+            for b in a + 1..=8 {
+                if (a, b) != (1, 8) {
+                    pairs.insert((id(a), id(b)));
+                }
+            }
+        }
+        room.reconcile_with_pairs(&endpoints, 1, &pairs);
+        let parent = |receiver: u128| {
+            room.flows()
+                .find(|flow| flow.publication_id == voice && flow.receiver == id(receiver))
+                .map(|flow| flow.sender)
+        };
+        // The room default of two downstream connections is sized for pictures.
+        for listener in 2..=7 {
+            assert_eq!(parent(listener), Some(id(1)));
+        }
+        assert!(parent(8).is_some_and(|relay| relay != id(1)));
     }
 
     #[test]
