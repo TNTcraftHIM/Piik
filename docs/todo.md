@@ -69,10 +69,11 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Restored message attribution.** Verify the Server-hosted backup path's
-  acceptance of imported author identities. Decide the room creator's trust
-  boundary before adding export proofs or changing historical attribution.
-  A writer's signature authenticates the served page, not each archived sender.
+- [ ] **Native room-open diagnostics.** Surface identifiable local lock and
+  duplicate-file failures through the existing hosting description. Keep Browser
+  and App diagnostic lifetimes separate; unreadable files whose room cannot be
+  identified remain device-level failures. Prefer an on-demand operator view
+  before adding persistent room-list state.
 - [ ] **Standalone Server owner entry.** Replace the documented durable-key URL
   with a local operator bootstrap flow using the existing owner identity.
   Keep ticket issuance at an authenticated local maintenance boundary; App
@@ -194,8 +195,10 @@ the feedback period; they do not delay that delivery.
   retain the grant and receive authorized mouse events, but Windows `SendInput`
   rejects a button event and subsequent release attempts. The reporter still
   sees remote control stop after returning to the desktop in v2.8.0; obtain a
-  matching diagnostic and distinguish mouse from keyboard input. Capture whether local
-  physical input also stops during the refusal to identify its OS trigger.
+  matching diagnostic and distinguish mouse from keyboard input. The v2.8.0
+  reporter confirms physical mouse input still works and restoring Host Chrome
+  before disconnection restores control without a new grant. Compare the input
+  stage counters across that minimize/restore interval.
   Keep the existing grant/release semantics and locate the OS rejection trigger
   before adding desktop recovery. Any recovery must restore the calling thread's
   desktop context and release owned handles. The local controlled Chrome trial
@@ -215,9 +218,10 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **Refresh the MPD script runtime.** QuickJS-NG 0.18.0, including
-  allocation-failure cleanup fixes, merged in [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793)
-  on 2026-11-24. Verify MPD parser and Rust binding behavior when a published
+- [ ] **Refresh the MPD script runtime.** QuickJS-NG updates beyond 0.18.0,
+  including allocation-failure cleanup fixes, merged in
+  [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793) on 2026-11-24.
+  Verify MPD parser and Rust binding behavior when a published
   crate includes the update, before replacing the 0.14.0 pin.
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
