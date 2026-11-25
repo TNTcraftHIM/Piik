@@ -242,6 +242,12 @@ the feedback period; they do not delay that delivery.
   earlier version kept, delete as today, one revision per message, and search
   at the writer. Five points of the stored format are settled before it is
   first published.
+- [ ] **One vocabulary for extension.** Decide
+  [ADR-0020](./adr/0020-one-vocabulary-for-extension.md): points,
+  contributions, scopes, kinds and static compositions; a kind with a fallback
+  as the only thing that crosses machines; a program as a participant. Its
+  envelope joins the contract settled before release, and watch-together is
+  the first feature moved onto it as proof.
 - [ ] **Separate the canon from derived design in the documents.** Where a
   record states a founding idea beside defaults, numbers or mechanisms, link
   the [canon](./canon.md) and keep the derived design. Start with
