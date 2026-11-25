@@ -501,9 +501,7 @@ impl Encoder {
                                     rate_control_fps = measured_fps;
                                 }
                             }
-                            dropper.set_rates(target_kbps, fps);
-                            dropper.leak(fps.round() as u32);
-                            let dropped = dropper.drop_frame() && !force;
+                            let dropped = dropper.should_drop_at_rate(target_kbps, fps) && !force;
                             if dropped {
                                 policy.report_drop();
                                 continue;

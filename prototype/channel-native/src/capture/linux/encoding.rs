@@ -693,11 +693,7 @@ async fn run(
                     }
                 }
                 let mut feedback = feedback.lock().unwrap();
-                feedback
-                    .dropper
-                    .set_rates(current.bitrate as f32 / 1_000.0, fps);
-                feedback.dropper.leak(fps.round() as u32);
-                if feedback.dropper.drop_frame() && !force {
+                if feedback.dropper.should_drop_at_rate(current.bitrate as f32 / 1_000.0, fps) && !force {
                     feedback.policy.report_drop();
                     continue;
                 }
