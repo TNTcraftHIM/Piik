@@ -245,6 +245,8 @@ export class ChannelSession {
     predecessor: { kind: "watch" | "screen"; id: string };
     browser: boolean;
   }>();
+  // Sources this page left, by room: until the room sees the leave it can still name them on a successor.
+  private declinedSources = new Map<string, string>();
   private watchPlayers = new Map<string, WatchPlayer>();
   private sourceSelections = new Map<string, SourceSelection>();
   private local = new Map<string, { admitted: boolean; roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; audio?: HostAudio; camera?: boolean }>();
@@ -720,52 +722,34 @@ export class ChannelSession {
       }
     }
     const previousState = this.view.state;
-    const followingWatch = (oldId: string | undefined, roomId: string) => !!oldId && (this.watchPlayers.has(oldId) || this.waitingWatchPages.has(oldId))
-      && previousState?.watchSubscriptions.some(sub => sub.id === oldId)
-      && previousState.watchActivities.some(old => old.id === oldId && old.roomId === roomId);
-    const followingScreen = (oldId: string | undefined, roomId: string) => !!oldId && this.watching.has(oldId)
-      && previousState?.subscriptions.includes(oldId)
-      && previousState.publications.some(old => old.kind === "screen" && old.id === oldId && old.roomId === roomId);
     const canFollow = (roomId: string) => state.channel.rooms.some(room => room.id === roomId && room.authorized && room.available);
-    const follows = (source: { kind: "watch" | "screen"; id: string } | undefined, roomId: string) =>
-      source?.kind === "watch" ? followingWatch(source.id, roomId) : followingScreen(source?.id, roomId);
-    type Predecessor = NonNullable<ChannelSnapshot["watchActivities"][number]["predecessor"]>;
-    // The room still names the last confirmed source until a successor joins.
-    const pendingPredecessor = (predecessor: Predecessor, roomId: string) =>
-      [...this.waitingWatchPages].find(([id, waiting]) => waiting.roomId === roomId
-        && (predecessor.kind === "watch" && predecessor.id === id
-          || waiting.predecessor.kind === predecessor.kind && waiting.predecessor.id === predecessor.id));
-    const nextScreens = new Map<string, { roomId: string; predecessor: Predecessor }>();
-    for (const next of state.publications) {
-      if (next.kind !== "screen" || !next.predecessor || !canFollow(next.roomId)) continue;
-      const prior = pendingPredecessor(next.predecessor, next.roomId);
-      if (prior || follows(next.predecessor, next.roomId)) {
-        nextScreens.set(next.id, { roomId: next.roomId, predecessor: prior ? { kind: "watch", id: prior[0] } : next.predecessor });
-      }
+    // A room names a predecessor only in the snapshot of a viewer that watched it, until that viewer joins or
+    // declines the successor, so a named successor is followed unless this page holds, opens or declined it.
+    // A named predecessor never returns: a declined source that is neither present nor named is settled.
+    for (const [id, roomId] of this.declinedSources) {
+      if (canFollow(roomId) && !state.watchActivities.some(next => next.id === id || next.predecessor?.id === id)
+        && !state.publications.some(next => next.id === id || next.kind === "screen" && next.predecessor?.id === id)) this.declinedSources.delete(id);
     }
-    const nextWatches = new Map<string, Predecessor>();
-    for (const next of state.watchActivities) {
-      if (!next.predecessor || !canFollow(next.roomId) || this.waitingWatchPages.has(next.id)) continue;
-      const predecessor = next.predecessor;
-      const prior = pendingPredecessor(predecessor, next.roomId);
-      if (!prior && !follows(predecessor, next.roomId)) continue;
-      const priorMode = prior?.[1].priorMode ?? (predecessor.kind === "watch"
-        ? previousState?.watchSubscriptions.find(sub => sub.id === predecessor.id)?.mode : undefined) ?? "direct";
+    const declined = (next: { id: string; predecessor?: { id: string } }) => this.declinedSources.has(next.id) || !!next.predecessor && this.declinedSources.has(next.predecessor.id);
+    const nextScreens = state.publications.filter(next => next.kind === "screen" && next.predecessor && canFollow(next.roomId) && !declined(next)
+      && !this.watching.has(next.id) && !state.subscriptions.includes(next.id));
+    const nextWatches = state.watchActivities.filter(next => next.predecessor && canFollow(next.roomId) && !declined(next)
+      && !this.watchPlayers.has(next.id) && !this.pendingWatchPlayers.has(next.id) && !this.waitingWatchPages.has(next.id)
+      && !state.watchSubscriptions.some(sub => sub.id === next.id));
+    for (const next of nextWatches) {
+      const predecessor = next.predecessor!;
+      // The receiving method is this page's choice: carry it from the source it watched, through any successor still pending.
+      const priorMode = [...this.waitingWatchPages].find(([id, waiting]) => id === predecessor.id || waiting.predecessor.id === predecessor.id)?.[1].priorMode
+        ?? previousState?.watchSubscriptions.find(sub => sub.id === predecessor.id)?.mode ?? "direct";
       this.waitingWatchPages.set(next.id, { roomId: next.roomId, priorMode, predecessor, browser: canWatchInBrowser(next.source) });
-      nextWatches.set(next.id, prior ? { kind: "watch", id: prior[0] } : predecessor);
     }
     if (restoring) {
-      // Closing a viewer offline removes its local player before the room can see the leave.
+      // A leave made offline never reached the room, which still names the successor.
       for (const next of state.watchActivities) {
-        if (next.predecessor && canFollow(next.roomId) && !nextWatches.has(next.id)
-          && !this.watchPlayers.has(next.id) && !this.pendingWatchPlayers.has(next.id) && !this.waitingWatchPages.has(next.id)) {
-          this.write({ type: "join_watch", roomId: next.roomId, id: next.id, mode: null });
-        }
+        if (next.predecessor && canFollow(next.roomId) && declined(next)) this.write({ type: "join_watch", roomId: next.roomId, id: next.id, mode: null });
       }
       for (const next of state.publications) {
-        if (next.kind === "screen" && next.predecessor && canFollow(next.roomId) && !nextScreens.has(next.id) && !this.watching.has(next.id)) {
-          this.write({ type: "subscribe", publicationId: next.id, enabled: false });
-        }
+        if (next.kind === "screen" && next.predecessor && canFollow(next.roomId) && declined(next)) this.write({ type: "subscribe", publicationId: next.id, enabled: false });
       }
     }
     for (const [id, watch] of this.watching) {
@@ -808,14 +792,6 @@ export class ChannelSession {
     // Keep the room's facts for reprojection and forwarding independently of displayed pictures.
     this.roomSnapshot = withoutRoomPictures(state);
     const visible = this.projectActivity(state);
-    if (nextWatches.size) visible.watchActivities = visible.watchActivities.map(activity => {
-      const predecessor = nextWatches.get(activity.id);
-      return predecessor ? { ...activity, predecessor } : activity;
-    });
-    if (nextScreens.size) visible.publications = visible.publications.map(publication => {
-      const replacement = nextScreens.get(publication.id);
-      return replacement ? { ...publication, predecessor: replacement.predecessor } : publication;
-    });
     const sameChannel = this.historyChannel === state.channel.id;
     if (!sameChannel) { this.closeInteractions(); this.readings.clear(); }
     this.historyChannel = state.channel.id;
@@ -861,12 +837,13 @@ export class ChannelSession {
         this.patch({});
         continue;
       }
-      if (nextWatches.has(id) || restoring && !player && (waiting.browser || !joined)) {
+      if (nextWatches.includes(next) || restoring && !player && (waiting.browser || !joined)) {
         const socket = this.socket;
         const opening = waiting.browser ? this.joinWatch(id) : this.request({ type: "join_watch", roomId: waiting.roomId, id, mode: "direct" }, undefined, waiting.roomId);
         void opening.catch(() => {
           if (this.socket === socket && this.waitingWatchPages.get(id) === waiting) {
             this.waitingWatchPages.delete(id);
+            this.declineSuccessor(waiting.roomId, { kind: "watch", id });
             this.patch({});
           }
         });
@@ -877,7 +854,12 @@ export class ChannelSession {
       if (waiting.priorMode === "peer" || !this.view.pagePlayer || next.playback.timeline === "program")
         void this.joinWatch(id, "peer").catch(() => {});
     }
-    for (const [id, next] of nextScreens) void this.watch(id, next.roomId).catch(() => {});
+    for (const next of nextScreens) {
+      const socket = this.socket;
+      void this.watch(next.id, next.roomId).catch(() => {
+        if (this.socket === socket && !this.watching.has(next.id)) this.declineSuccessor(next.roomId, { kind: "screen", id: next.id });
+      });
+    }
     const historyProfiles = Object.values(this.view.messagesByRoom).flatMap(historyProfileIds);
     void this.loadProfiles([...state.users.map(user => user.id), ...historyProfiles]).catch(() => {});
     if (refreshHelper) void this.syncAppWatching(true);
@@ -2390,6 +2372,7 @@ export class ChannelSession {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
       this.watching.get(publicationId)?.retry?.controller.abort();
       this.watching.set(publicationId, watch);
+      this.declinedSources.delete(publicationId);
       try {
         const app = this.app;
         const publication = this.view.state?.publications.find(value => value.id === publicationId);
@@ -2436,6 +2419,8 @@ export class ChannelSession {
     }
     return this.action(`watch:${publicationId}`, async () => {
       this.retireWatch(publicationId);
+      const roomId = this.view.state?.publications.find(value => value.id === publicationId)?.roomId;
+      if (roomId) this.declinedSources.set(publicationId, roomId);
       this.refreshActivity();
       if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
     });
@@ -2745,6 +2730,7 @@ export class ChannelSession {
   }
   private async joinWatchAndSyncClock(id: string, player: WatchPlayer, mode: WatchMode): Promise<void> {
     player.mode = mode;
+    this.declinedSources.delete(id);
     const start = performance.now();
     await this.request({ type: "join_watch", roomId: player.roomId, id, mode }, event => {
       if (!player.signal.aborted && event.type === "room_reply" && event.result.type === "watch_ready"
@@ -3232,11 +3218,14 @@ export class ChannelSession {
     if (player?.owner || (!waiting && !player && !candidate?.mode)) return;
     this.waitingWatchPages.delete(id);
     const roomId = player?.roomId ?? waiting?.roomId ?? candidate!.roomId;
+    this.declinedSources.set(id, roomId);
+    if (waiting) this.declinedSources.set(waiting.predecessor.id, roomId);
     this.retireWatchPlayer(id);
     this.refreshActivity();
     this.browseRooms();
     if (this.view.connection === "connected") {
       const predecessor = waiting?.predecessor;
+      // The room may already have moved this handoff to a later successor this page has not seen.
       if (predecessor && !this.roomSnapshot?.watchSubscriptions.some(sub => sub.id === id)) {
         if (predecessor.kind === "watch") this.write({ type: "join_watch", roomId, id: predecessor.id, mode: null });
         else this.write({ type: "subscribe", publicationId: predecessor.id, enabled: false });
@@ -3244,6 +3233,13 @@ export class ChannelSession {
       await this.request({ type: "join_watch", roomId, id, mode: null }, undefined, roomId);
     }
   };
+  /** Tells the room this page will not follow a successor it named, so the room stops naming it. */
+  private declineSuccessor(roomId: string, source: { kind: "watch" | "screen"; id: string }): void {
+    if (this.declinedSources.has(source.id)) return;
+    this.declinedSources.set(source.id, roomId);
+    void this.request(source.kind === "watch" ? { type: "join_watch", roomId, id: source.id, mode: null }
+      : { type: "subscribe", publicationId: source.id, enabled: false }, undefined, roomId).catch(() => {});
+  }
   stopWatch = async (id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement" = "stop-requested"): Promise<void> => {
     const player = this.watchPlayers.get(id);
     if (!player?.owner) return;
@@ -3836,6 +3832,7 @@ export class ChannelSession {
     this.screenShares.clear();
     for (const id of this.pendingWatchPlayers.keys()) this.retirePendingWatchPlayer(id);
     this.waitingWatchPages.clear();
+    this.declinedSources.clear();
     for (const id of this.watchPlayers.keys()) this.retireWatchPlayer(id, "session-released");
     this.app?.stopCaptures();
     this.input.reset();
