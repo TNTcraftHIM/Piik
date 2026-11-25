@@ -35,7 +35,7 @@ import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import type { MicrophoneInput } from "../media/microphone-input";
 import { VoiceParticipation } from "./voice-participation";
-import { debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
+import { browserDebugEnabled, debugEvent, debugOperation, debugRecord, registerDebugCollector } from "../lib/debug";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
@@ -163,6 +163,16 @@ function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
     return rest;
   });
   return { ...state, channel: { ...state.channel, rooms } };
+}
+
+// A routing replay needs identifiers, counts and states. Names, titles, bodies,
+// passwords, invitations, images, watch locations and file references are
+// removed; so are signatures and signing keys, which only add bulk.
+const HOST_TRACE_OMITTED = new Set(["name", "title", "text", "query", "password", "credential", "inviteKey", "ownerKey",
+  "icon", "picture", "avatar", "url", "mediaUrl", "resourceId", "sha256", "payload", "signature", "signingKey", "secret"]);
+
+function hostTrace(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value, (key, item: unknown) => HOST_TRACE_OMITTED.has(key) ? undefined : item));
 }
 
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
@@ -591,6 +601,7 @@ export class ChannelSession {
       const hosted = this.hostedRooms.get(event.roomId), socket = this.socket;
       if (!hosted || hosted.bindingId !== event.input.bindingId) return;
       const binding = hosted.bindingId;
+      if (browserDebugEnabled) debugRecord("room-host", "input", { roomId: event.roomId, input: hostTrace(event.input) });
       void hosted.host.dispatch(event.input).then(output => {
         if (this.hostedRooms.get(event.roomId) === hosted && hosted.bindingId === binding && this.socket === socket) {
           const result = (output as { reply?: { result?: { type?: string; dataRemoved?: boolean } } }).reply?.result;
@@ -923,6 +934,8 @@ export class ChannelSession {
     if (command.type === "flow_state") {
       const { pairId, flowId, state } = command;
       debugEvent("channel", "flow-state-sent", { pairId, flowId, state });
+    } else if (command.type === "host_register" && browserDebugEnabled) {
+      debugRecord("room-host", "registered", { summary: hostTrace(command.room), resumeBinding: command.resumeBinding ?? null });
     }
   }
 

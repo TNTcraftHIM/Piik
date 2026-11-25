@@ -15562,6 +15562,80 @@ test.each([false, true])("exports flow reports and plan retirement only with Bro
   } finally { session.close(); }
 });
 
+async function debugChannelSession(enabled: boolean) {
+  vi.resetModules();
+  vi.stubGlobal("window", Object.assign(new EventTarget(), {
+    location: new URL(enabled ? "https://channel.test/?debug=1" : "https://channel.test/"),
+    setTimeout, clearTimeout,
+  }));
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const { ChannelSession: DebugSession } = await import("../src/client/channel/session");
+  const { ChannelConversation: DebugConversation } = await import("../src/client/channel/conversation");
+  vi.spyOn(DebugConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
+  const { exportBrowserDebug } = await import("../src/client/lib/debug");
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  return { ...await setup(1000, false, "room=first", true, ["first"], "saved", DebugSession), exportBrowserDebug };
+}
+
+test.each([false, true])("records the Browser room host's summary and inputs whole, without free text, only with debug enabled (%s)", async enabled => {
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const host = {
+    summary: async () => ({ id: "first", name: "Private room name", icon: "couch", creatorId: "self", access: "public" as const,
+      hidden: false, hasPassword: true, voiceBitrate: 64_000, relayCapacity: 2 }),
+    bind: vi.fn(async (_binding: string) => {}),
+    dispatch: vi.fn(async (_input: unknown) => ({ bindingId: "binding" })),
+    close: vi.fn(async () => {}),
+  };
+  // Thirty endpoints confirm 435 pairs, far past the 64 items an ordinary event keeps.
+  const sessions = Array.from({ length: 30 }, () => crypto.randomUUID());
+  const confirmedPairs = sessions.flatMap((first, index) => sessions.slice(index + 1).map(second => [first, second]));
+  const endpoints = Object.fromEntries(sessions.map(id => [id, { signingKey: Array(32).fill(7), member: { userId: id },
+    connected: true, canUsePeerTransport: true }]));
+  const context = { connection: crypto.randomUUID(), sessionId: sessions[1], requestId: "request", now: 1_000 };
+  const publicationId = crypto.randomUUID();
+  const commands = [
+    { type: "publish", publication: { id: publicationId, roomId: "first", kind: "screen", source: { kind: "screen", name: "Private window" } } },
+    { type: "set_title", publicationId, title: "Private title" },
+    { type: "start_watch", roomId: "first", id: crypto.randomUUID(), source: { type: "media", url: "https://media.example/private.mp4" },
+      playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 0 },
+      byteSource: { sessionId: sessions[1], resourceId: "private-resource", format: "file" } },
+    { type: "conversation", packet: { sender: sessions[1], payload: "Private message body", signature: [1, 2, 3] } },
+    { type: "enter_room", roomId: "first", password: "private-password", inviteKey: "private-invite" },
+  ];
+  try {
+    const registering = (session as unknown as { registerBrowserHost(id: string, value: typeof host, current: () => void): Promise<void> })
+      .registerBrowserHost("first", host, () => {});
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
+    socket.receive({ type: "ack", requestId: socket.sent.findLast(command => command.type === "host_register")!.requestId });
+    await registering;
+    socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
+    const inputs = commands.map((command, index) => ({ hostingMode: "lightweight", channelOwnerId: "self", now: 1_000 + index,
+      bindingId: "binding", hostSessionId: sessions[0], revision: 7 + index, confirmedPairs,
+      failedPairs: [{ first: sessions[0], second: sessions[1], revision: 6 }], endpoints, action: { type: "command", context, command } }));
+    for (const input of inputs) socket.receive({ type: "host_input", roomId: "first", input });
+    await vi.waitFor(() => expect(host.dispatch).toHaveBeenCalledTimes(inputs.length));
+    expect(host.dispatch.mock.calls.map(([input]) => input)).toEqual(inputs);
+    const report = await exportBrowserDebug();
+    const records = JSON.parse(report).events.filter((event: { scope: string }) => event.scope === "room-host");
+    if (!enabled) { expect(records).toEqual([]); return; }
+    expect(records.map((record: { event: string }) => record.event)).toEqual(["registered", ...inputs.map(() => "input")]);
+    expect(records.some((record: { truncated?: boolean }) => record.truncated)).toBe(false);
+    // The shared secret-key filter also removes hasPassword, which routing never reads.
+    expect(records[0].details).toEqual({ resumeBinding: null, summary: { id: "first", creatorId: "self", access: "public",
+      hidden: false, voiceBitrate: 64_000, relayCapacity: 2 } });
+    const [published] = records.slice(1).map((record: { details: { roomId: string; input: typeof inputs[number] } }) => record.details);
+    expect(published.roomId).toBe("first");
+    expect(published.input).toEqual({ ...inputs[0], endpoints: Object.fromEntries(sessions.map(id => [id, { member: { userId: id },
+      connected: true, canUsePeerTransport: true }])), action: { type: "command", context,
+      command: { type: "publish", publication: { id: publicationId, roomId: "first", kind: "screen", source: { kind: "screen" } } } } });
+    expect(published.input.confirmedPairs).toHaveLength(435);
+    expect(records[3].details.input.action.command.byteSource).toEqual({ sessionId: sessions[1], format: "file" });
+    for (const text of ["Private", "private", "media.example", "signingKey", "signature"]) expect(report).not.toContain(text);
+  } finally { session.close(); }
+});
+
 test.each(["ack", "error"] as const)("a retired publish %s cannot admit or remove the pending replacement", async reply => {
   const { session, socket } = await setup();
   const id = crypto.randomUUID();
