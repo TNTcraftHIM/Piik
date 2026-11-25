@@ -151,7 +151,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true, lastMessageSeq: room.id === "friday" ? sampleMessages.at(-1)?.seq ?? 0 : messagesByRoom[room.id]?.at(-1)?.seq ?? 0,
       delivery: { hostSessionId: appSessionId, bindingId: `sample-binding-${room.id}` },
-      serviceRelay: { enabled: settingsByRoom[room.id]?.allowServiceRelay ?? false, available: false },
+      serviceRelay: { enabled: settingsByRoom[room.id]?.allowServiceRelay ?? true, available: false },
       fileActivity: [],
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])]
         : ["sample-ada-session", "sample-bo-session", ...(multiRoom ? ["sample-dora-session"] : [])], capabilities: { attachments: true },
@@ -242,7 +242,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),
     connectionMetrics: async () => ({ samples: [], unavailable: false }),
     appConnectionMetrics: async roomId => ({ sessionId: appSessionId, bindingId: `sample-binding-${roomId}`, connections: [] }),
-    canUnmute: () => true, voiceMicrophonePending: () => false,
+    canUnmute: () => true, voiceMicrophonePending: () => false, voiceBusy: () => false,
     setMuted: async (roomId: string, muted: boolean) => setVoiceByRoom(previous => previous[roomId]
       ? { ...previous, [roomId]: { ...previous[roomId], muted } } : previous),
     setDeafened: async (roomId: string, deafened: boolean) => setVoiceByRoom(previous => previous[roomId]

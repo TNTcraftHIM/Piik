@@ -93,6 +93,7 @@ Piik App 可创建本地房间或临时公网邀请，也能在后台为已授�
 
 [3.0 部署步骤](./prototype/channel-server/README.md#public-origin-and-udp)介绍 HTTPS、
 固定媒体 UDP 和公网地址映射。Rust Server 读取进程环境变量，不会自动读取 `.env`。
+站点转发默认关闭，可按需启用。[站点转发设置](./prototype/channel-server/README.md#site-forwarding)
 
 [**3.0 Server 部署 →**](./prototype/channel-server/README.md#run) · [环境变量模板](./deploy/container/.env.example) · [从源码运行](./docs/README.md#run-from-source)
 

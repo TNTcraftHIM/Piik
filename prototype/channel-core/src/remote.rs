@@ -306,7 +306,7 @@ impl RemoteRoom {
         hosting_mode: crate::wire::HostingMode,
         channel_owner_id: Uuid,
         endpoints: BTreeMap<Uuid, Endpoint>,
-        service_endpoint: Option<ServiceEndpoint>,
+        service_endpoint: Option<ServiceTransit>,
         pairs: impl Iterator<Item = (Uuid, Uuid)>,
         action: HostAction,
         now: u64,
@@ -317,7 +317,8 @@ impl RemoteRoom {
         };
         let sessions = match self.binding.as_ref().zip(self.projection.as_ref()) {
             Some((binding, projection)) if binding.applied_revision >= binding.scope_floor => {
-                Self::projected_sessions(binding, projection, service_endpoint, actor)
+                let service = service_endpoint.map(|service| service.endpoint);
+                Self::projected_sessions(binding, projection, service, actor)
             }
             _ => BTreeSet::new(),
         };

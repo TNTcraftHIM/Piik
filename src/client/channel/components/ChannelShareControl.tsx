@@ -92,9 +92,9 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
   </details>;
 }
 
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerOpened, onWatch }: {
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerRequestHandled, onWatch }: {
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
-  openRequested?: boolean; onPickerOpened?(): void; onWatch(): void;
+  openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(): void;
 }) {
   const { t } = useCopy();
   const settingsLabel = t("screen.shareSettings");
@@ -130,6 +130,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const activeCodec = sharing ? channel.screenCodec(sharing.id) : undefined;
   const codecMode = activeCodec?.mode ?? channel.videoCodecMode;
   const sourceCodec = activeCodec?.primary ?? codecMode;
+  const encoderLocked = sharing ? t("host.advanced.lockedWhileSharing") : undefined;
   const encodingExecution = (sharing ? channel.screenEncodingExecution(sharing.id) : undefined) ?? channel.encodingExecution;
   const canChooseExecution = sources.kind === "ready" && sources.softwareEncodingCodecs.includes("h264")
     && (sourceCodec === "auto" || sourceCodec === "h264")
@@ -158,6 +159,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const sourcePending = channel.pending.has(`screen:${roomId}`);
   const busy = sourcePending || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
+  const canOpenSourcePicker = !captureRequest && !disabled && !busy && !qualityPending && !microphonePending;
   const cancellable = !!captureRequest || sourcePending && !channel.sourceSelectionCommitting(roomId);
   const preparation = channel.browserCapturePreparation(roomId);
   const directLimit = settingsOpen && sharing?.kind === "screen" ? <ScreenDirectLimit key={sharing.id} sharing={sharing} channel={channel}
@@ -208,10 +210,14 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
   useEffect(() => { setExternalOpen(false); }, [roomId]);
   useEffect(() => {
-    if (!openRequested || disabled || !panel.current) return;
-    panel.current.showPopover();
-    onPickerOpened?.();
-  }, [openRequested, disabled, onPickerOpened]);
+    if (!openRequested || !panel.current) return;
+    const source = trigger.current?.querySelector("button");
+    if (canOpenSourcePicker && source) {
+      source.scrollIntoView({ block: "nearest" });
+      panel.current.showPopover({ source });
+    }
+    onPickerRequestHandled?.();
+  }, [openRequested, canOpenSourcePicker, onPickerRequestHandled]);
   const start = (operation: () => Promise<void>) => {
     close();
     void operation().catch(() => {}); // The session owns the operation's error.
@@ -224,7 +230,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             onClick={() => activateNativePicker(captureRequest.activationURL)} />
         </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
         hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
-        disabled={disabled || busy || qualityPending || microphonePending} busy={sourcePending} expanded={open}
+        disabled={!canOpenSourcePicker} busy={sourcePending} expanded={open}
         hasPopup="dialog" controls={id} popoverTarget={id} />}
       {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
         cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
@@ -267,10 +273,10 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             maxFramerate: Math.min(quality.maxFramerate, captureFramerateCeiling(resolution, VIDEO_CAPTURE_LIMITS)) })} />
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
             onChange={next => setQuality({ ...quality, ...next })} />
-          <VideoCodecControl value={codecMode}
-            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} />
-          {canChooseExecution && <EncodingExecutionControl value={encodingExecution}
-            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setEncodingExecution} />}</>}
+          <VideoCodecControl value={codecMode} lockedReason={encoderLocked}
+            disabled={disabled || busy || !!captureRequest} onChange={channel.setVideoCodecMode} />
+          {canChooseExecution && <EncodingExecutionControl value={encodingExecution} lockedReason={encoderLocked}
+            disabled={disabled || busy || !!captureRequest} onChange={channel.setEncodingExecution} />}</>}
         audio={<>
           {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio &&
             <div className="lr-door-group lr-source-audio-settings">

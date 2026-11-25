@@ -20,34 +20,35 @@ signed, so a change to a row breaks no signature.
 1. **A message is one row at the room's writer.** The writer, not the sender,
    decides its sequence, author and time. This is the present rule.
 2. **Edit.** Only the author edits, and only the text and its mentions. The
-   writer replaces them in one transaction and records when. No earlier
-   version is kept, and there is no time limit. A reply that quotes the
-   message has its quote refreshed in the same transaction. The interface
-   marks the message as edited, because others may have read the original.
+   writer replaces them and records when. No earlier version is kept, and
+   there is no time limit. The interface marks the message as edited, because
+   others may have read the original. How a reply's quote follows an edit is
+   decided with the feature: a reply stores a short copy of the quoted text
+   today, and refreshing every quote in one transaction has no bound.
 3. **Delete.** As today: the author or someone who manages the room removes
-   the row, and an opaque marker stops the same send from being accepted
-   again. Its files stop being delivered. A reply to a deleted message keeps
-   its place and says that the quoted message was deleted. Copies that people
-   already received cannot be recalled.
-4. **One revision per message.** It covers the text and the reactions. One
-   record announces a changed message to the readers present. A reader who was
-   away sees the current row when it fetches that page. Nothing else
-   synchronises.
-5. **Search runs at the writer**, which owns the history. A query returns the
-   matching messages a page at a time, through the records paging already
-   uses. The rule is a plain match of the query within the text, written once
-   in the core for both stores. It is correct for every language without a
-   tokenizer. An index is an optimisation that can be added later and rebuilt
-   from the text.
+   the row, an opaque marker stops the same send from being accepted again,
+   and its files stop being delivered. Copies that people already received
+   cannot be recalled. Whether a reply keeps a marker for a deleted target is
+   decided with its interface.
+4. **Announcing a change.** A changed message is announced to the readers
+   present, and a reader who was away sees the current row when it fetches
+   that page. Nothing else synchronises. The rule that merges a change of text
+   with a change of reactions is set when editing is built; a later change of
+   reactions must never hide an earlier change of text.
+5. **Search runs at the writer**, which owns the history. It is a literal
+   match of the query within the text, with its treatment of case and of
+   equivalent characters stated, over a bounded scan that returns a page and
+   the position it reached. It is written once in the core for both stores. It
+   does not claim to understand the words of any language. An index is an
+   optimisation that can be added later and rebuilt from the text.
 6. **Edit and search are capabilities** a writer announces, under the
    compatibility rule of [ADR-0017](./0017-contracts-fixed-before-release.md),
-   so either can ship after the first release.
+   so either can ship after the first release. Their stored fields and events
+   are set with the feature that uses them.
 
-Settled before the stored format is first published: the time of the last
-edit, the meaning of the one revision, the record for a changed message, the
-marker a reply keeps when its target is deleted, and that a backup's rows
-either define an unknown field or refuse it. Today an unknown field is
-dropped on import without notice.
+Settled before the stored format is first published: a supported backup must
+not drop a row's data without notice. Today an unknown field is discarded on
+import.
 
 ## Not Built
 
@@ -64,8 +65,6 @@ dropped on import without notice.
 
 ## Consequences
 
-- The room store gains one field and one meaning for its revision, and the
-  wire gains two commands and one record.
 - The interface gains an edit action on one's own messages, an edited mark,
   and a search field in the room.
 - A room with a long history is searched by reading it. If that proves slow,

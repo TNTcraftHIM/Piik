@@ -3,7 +3,7 @@
 mod support;
 use piik_channel_core::{
     conversation::ConversationCommand,
-    host::RoomResult,
+    host::{RoomResult, ServiceEndpoint, ServiceTransit, TransitKinds},
     wire::{AudienceState, Event, PairInfo, RoomAccess},
     Effects,
 };
@@ -45,14 +45,24 @@ fn join(net: &mut RoomNetwork, connection: Uuid, operator: bool) -> Uuid {
     .unwrap()
 }
 
+const ALL_KINDS: TransitKinds = TransitKinds { screen: true, voice: true, files: true };
+
 fn register_service(net: &mut RoomNetwork, session: Option<Uuid>) -> Result<Effects, &'static str> {
+    register_service_kinds(net, session, ALL_KINDS)
+}
+
+fn register_service_kinds(
+    net: &mut RoomNetwork,
+    session: Option<Uuid>,
+    kinds: TransitKinds,
+) -> Result<Effects, &'static str> {
     let endpoint = session
         .map(|session_id| {
             net.authority
                 .current_connection(session_id)
-                .map(|connection_id| piik_channel_core::host::ServiceEndpoint {
-                    session_id,
-                    connection_id,
+                .map(|connection_id| ServiceTransit {
+                    endpoint: ServiceEndpoint { session_id, connection_id },
+                    kinds,
                 })
                 .ok_or("service_unavailable")
         })
@@ -583,7 +593,8 @@ fn public_owner_opt_in_readback_distinguishes_availability_selection_and_work() 
         row.service_relay
             .map(|relay| (relay.enabled, relay.available))
     };
-    assert_eq!(projected(&net, host), Some((false, false)));
+    // A new room uses the service once the site offers it.
+    assert_eq!(projected(&net, host), Some((true, false)));
     assert_eq!(projected(&net, viewer), None);
     let policy = serde_json::to_value(net.policy(&room)).unwrap();
     assert!(!topology(&mut net, host, &room).service_available);
@@ -838,12 +849,86 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
 }
 
 #[test]
+fn channel_rejects_service_work_of_a_kind_its_operator_turned_off() {
+    let mut net = RoomNetwork::new();
+    let [host, viewer, service] = std::array::from_fn(|_| Uuid::new_v4());
+    let source = join(&mut net, host, false);
+    join(&mut net, viewer, false);
+    let relay = join(&mut net, service, true);
+    let room = private_room(&mut net, host, viewer);
+    let effects = register_service(&mut net, Some(relay)).unwrap();
+    accepted(net.deliver(effects));
+    bridge(&mut net, host, viewer, service, source, relay, &room, true);
+    let screen_off = TransitKinds { screen: false, ..ALL_KINDS };
+    let effects = register_service_kinds(&mut net, Some(relay), screen_off).unwrap();
+    let mut rejected = false;
+    for (connection, event) in effects.events {
+        if let Event::HostInput { room_id, mut input } = event {
+            // A host that ignores the operator keeps the service on the screen path.
+            input.service_endpoint.as_mut().unwrap().kinds = ALL_KINDS;
+            let output = net.host_turn(&room_id, input);
+            let request = json!({"type":"host_output","roomId":room_id,"output":output});
+            let request = piik_channel_core::wire::Request::parse(&request.to_string()).unwrap();
+            let reply = net.authority.handle(connection, request, 100);
+            rejected |= reply.events.iter().any(|(_, event)| {
+                matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")
+            });
+        }
+    }
+    assert!(rejected);
+}
+
+#[test]
+fn a_service_that_offers_no_kind_reads_as_unavailable() {
+    let mut net = RoomNetwork::new();
+    let [host, viewer, service] = std::array::from_fn(|_| Uuid::new_v4());
+    join(&mut net, host, false);
+    join(&mut net, viewer, false);
+    let relay = join(&mut net, service, true);
+    let room = private_room(&mut net, host, viewer);
+    let offer = |net: &mut RoomNetwork, kinds| {
+        let effects = register_service_kinds(net, Some(relay), kinds).unwrap();
+        accepted(net.deliver(effects));
+        let state = net.state(host);
+        let row = state.channel.rooms.iter().find(|row| row.id == room);
+        let projected = row.and_then(|row| row.service_relay).map(|relay| relay.available);
+        (projected, topology(net, host, &room).service_available)
+    };
+    // The master switch is on, and the operator turned every kind off.
+    let none = TransitKinds { screen: false, voice: false, files: false };
+    assert_eq!(offer(&mut net, none), (Some(false), false));
+    let voice = TransitKinds { voice: true, ..none };
+    assert_eq!(offer(&mut net, voice), (Some(true), true));
+}
+
+#[test]
+fn public_read_grants_the_registered_server_no_participant_role() {
+    let mut net = RoomNetwork::new();
+    let [host, service] = std::array::from_fn(|_| Uuid::new_v4());
+    join(&mut net, host, false);
+    let session_id = join(&mut net, service, true);
+    let room = net.create(host, RoomAccess::Public, false);
+    net.authority.set_room_writer(ServiceEndpoint { session_id, connection_id: service }).unwrap();
+
+    // The local room fixture generates an ordinary public reader's projection.
+    // The authority knows this socket belongs to the Server with forwarding off.
+    let reply = net.command(service, json!({"type":"browse","roomId":room,"active":true}));
+    assert!(reply.events.iter().any(|(_, event)| matches!(event,
+        Event::Error { code, .. } if code == "invalid_room_projection"
+    )));
+    let state = net.state(host);
+    let view = state.channel.rooms.iter().find(|view| view.id == room).unwrap();
+    assert!(!view.participant_session_ids.contains(&session_id));
+}
+
+#[test]
 fn public_read_alone_does_not_keep_withdrawn_service_work() {
     let mut net = RoomNetwork::new();
     let [host, viewer, service, operator_page] = std::array::from_fn(|_| Uuid::new_v4());
     let source = join(&mut net, host, false);
     join(&mut net, viewer, false);
     let relay = join(&mut net, service, true);
+    net.authority.set_room_writer(ServiceEndpoint { session_id: relay, connection_id: service }).unwrap();
     let person = join(&mut net, operator_page, true);
     let room = net.create(host, RoomAccess::Public, false);
     let effects = register_service(&mut net, Some(relay)).unwrap();
@@ -1010,11 +1095,10 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
         Event::Welcome { session_id, .. } if *session_id == relay)));
     assert!(
         matches!(
-            net.authority
-                .set_service_endpoint(Some(piik_channel_core::host::ServiceEndpoint {
-                    session_id: relay,
-                    connection_id: service,
-                })),
+            net.authority.set_service_endpoint(Some(ServiceTransit {
+                endpoint: ServiceEndpoint { session_id: relay, connection_id: service },
+                kinds: ALL_KINDS,
+            })),
             Err("service_unavailable")
         ),
         "a delayed old Welcome cannot register the replacement socket"

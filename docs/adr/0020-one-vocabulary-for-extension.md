@@ -20,90 +20,71 @@ code they never approved, stored history cannot be undone, and each
 participant may run different extensions, so the shared rules have to stay
 fixed.
 
-Today a new activity touches about eleven files outside the interface, a
-headless text participant already joins like a person, and the standards
-refuse a generic plugin framework. Three designers worked from the
-requirements and this evidence without reading the repository, one of them
-asked to find where a plugin boundary costs more than it gives. They agree on
-what follows.
+Three designers worked from the requirements and this evidence without
+reading the repository, one of them asked to find where a plugin boundary
+costs more than it gives. The implementer then traced the proposal against
+the present consumers, authority, layouts and record formats. This record
+holds what survived both.
 
 ## Decision
 
 1. **One vocabulary, four places.** A *point* is a typed place of attachment
-   declared by its owner. A *contribution* is data attached to a point, with
-   code loaded when needed. A *scope* is a lifetime that undoes everything
-   registered in it. A *kind* names shared room data. A *composition* is a
-   named list of parts. Authority never comes from being an extension: it
-   comes from admission, or from operating a machine.
+   declared by its owner. A *contribution* is what attaches to it. A *kind*
+   names shared room data. Authority never comes from being an extension: it
+   comes from admission, or from operating a machine. The words are settled
+   now. A point becomes a type in the code when its owning operation has a
+   second consumer.
 
    | Place | What runs there | What it can never do |
    | --- | --- | --- |
    | The room's writer | The compiled core only | Run community code, or let one record alter or block another |
    | A person's client | Parts compiled into the build | Start capture, the microphone or control except through that person's act |
-   | A participant process | A bot or API client | More than a person can do on the wire, or be present without a marker |
+   | A participant process | A bot or API client | More than a person can do on the wire |
    | The operator's machine | Providers | Decide admission or order |
 
-2. **A kind is the only thing that crosses machines.** It is namespaced and
-   carries a major version, an opaque payload and a short fallback text. The
-   writer orders and stores it under one of three classes: *history*,
-   appended; *state*, the latest value per key with a revision that a write
-   must match; and *signal*, relayed and not stored. The writer checks the
-   sender, the class rule, size and rate, and never the meaning. Built-in
-   kinds are declared in the same registry. They may have validators compiled
-   into the core, and that privilege is stated openly.
-3. **Without the extension, a person sees the fallback.** Records stay with
-   the room, are exported as they are, and are never migrated by the core.
-   Removing an extension stops rendering and nothing else.
-4. **The client is a tree of scopes**: application, channel, room, activity,
-   capture. Every registration returns the means to undo it, and a scope that
-   ends undoes them in reverse. This is the split of the session hub that
-   [ADR-0015](./0015-browser-session-lifetime-owners.md) decided, not a layer
-   above it. Events notify; nothing intercepts. The consent to capture, the
-   indicators of who sees and hears, the join flow, the pools and the planner
-   belong to the kernel and are not points.
-5. **Compositions are static.** The full place and plain screen sharing are
-   two lists of the same parts, resolved when the client is built. A missing
-   need is a build error that names it. There is no loader, dependency solver
-   or reload at run time.
-6. **A program is a participant.** The writer records at admission that it is
-   a program and who added it, and the kernel draws that marker. It has a
-   person's actions and limits. Nothing reads a room without appearing in it.
-7. **Providers stay on the operator's side, compiled in.** Storage has an
-   internal interface, because three implementations exist. Reachability and
-   forwarding get a published interface when a second independent implementer
-   appears.
-8. **Internal, proposed, stable.** A point starts internal and free to change.
-   It becomes a promise when two independent consumers use it, one of them
-   outside the tree, a conformance test exists, and its absence has a defined
-   result. After that it only grows, and a break is a new name. The first
-   release publishes the wire and storage contract and nothing of the client's
-   part interface.
-9. **Proof before promise.** Watch-together moves onto the framework first.
-   Then a second activity must land without a change to the kernel, a hundred
-   joins and leaves must return every connection, listener and timer to its
-   baseline, a build without the part must show the fallback without error,
-   the plain-sharing build must contain no conversation code, and the session
-   hub must shrink by more than the framework adds. If a built-in needs a side
-   door, or the code has grown after two features, the scopes and kinds stay
-   and the part interface is dropped.
-
-## Settled Before The First Release
-
-These go into [ADR-0017](./0017-contracts-fixed-before-release.md)'s contract,
-which deferred the activity envelope until a consumer needed it.
-
-- The envelope on every room record: kind, major version, class, opaque
-  payload and fallback text.
-- A record of an unknown kind in a known class is ordered and stored. An
-  unknown field is kept. An unknown class is refused with a stated reason.
-- The handshake carries a version and an open set of capability names in both
-  directions, and the writer states its limits.
-- The membership record says whether a participant is a program and who added
-  it.
-- Refusals carry reasons from an open set, and an unknown reason is a plain
-  failure.
-- Stored records keep their payload as committed, under a format version.
-- One reserved field for rules that a kind might later bring to the writer.
+2. **One outer form for durable room history.** Every history record the writer orders
+   carries a namespaced type, a version, typed content, and the references the
+   writer has to see: the files it carries and the record it relates to.
+   Built-in records are the types the core reserves. The writer checks their
+   content by schema, as it does today, and a short reserved name keeps their
+   cost small. A community type carries opaque content and a required
+   fallback text. Whether a writer accepts an unknown type, and how an unknown
+   type is copied into another room, must be settled before admitting those
+   writes. A shared outer form does not itself require accepting unknown types.
+   Deleting a record removes its content, fallback and derived images, retires
+   its attachment deliveries and clears automatic quotations in later replies.
+   Keep only the sequence and retry digest needed to prevent resurrection.
+   Active screens, synchronized playback and transport control retain their
+   own lifetimes. Validate deletion, purge, restore and identity-remapping copy
+   on the typed draft before changing the contract in
+   [ADR-0017](./0017-contracts-fixed-before-release.md).
+3. **Each owner undoes its own registrations.** A lifetime owner releases its
+   listeners and the leases it borrowed when it ends, as
+   [ADR-0015](./0015-browser-session-lifetime-owners.md) decided. Ending one
+   owner does not end another: closing a tool, browsing another room or
+   leaving one use of a shared connection leaves the other activities
+   running. Events notify; nothing intercepts.
+4. **The full place and plain screen sharing are two views of one session**,
+   not two builds. Typed imports already make a missing dependency a compile
+   error. There is no loader, dependency solver or reload at run time.
+5. **A program is a participant.** A program is marked when it is enrolled
+   through an authenticated act; an ordinary credential cannot show whether a
+   person or software holds it. Current history reads require an admitted
+   session and room access; they do not require the separate Browse state.
+   Any stronger visible-reading rule needs its own product decision.
+6. **Providers stay on the operator's side, compiled in**, behind internal
+   contracts where interchangeable implementations really exist. Planner and
+   transport interfaces are not published without a consumer.
+7. **Internal, proposed, stable** applies to extension points. A point starts
+   internal, and becomes a promise when independent consumers use it, a
+   conformance test exists and its absence has a defined result. The
+   compatibility of the wire and of stored data stays with its present owner.
+8. **A paired experiment before any part interface.** Apply the same
+   ADR-0015 extraction to two arms of one feature, starting at watch media or
+   at the stage's handoff. Credit the part interface only with the mappings
+   and dependencies it removes beyond that extraction. Check that sibling uses
+   survive and leases are returned. An abstraction that does not earn its
+   place is not kept.
 
 ## Later, Under Conditions
 
@@ -111,32 +92,16 @@ which deferred the activity envelope until a consumer needed it.
   served by the person's own channel and pinned by its hash. It waits for the
   first activity that someone outside the tree wants to write.
 - **Community rules at the writer**, as a pure function that accepts or
-  refuses a record, wait for two real activities that the three classes and a
+  refuses a record, wait for two real activities that a generic record and a
   referee participant cannot express, and for a measured bound on what it
   costs a Browser that hosts a room.
 
 ## Not Built
 
 Community code in the writer or in a client's own realm. Hooks that intercept
-or rewrite another person's record. Permissions or roles for extensions.
-A registry run by the project, or code loaded from an address. Undoing a
-shared effect: a retraction is another ordered record. A point with a
+or rewrite another person's record. Permissions or roles for extensions. A
+registry run by the project, or code loaded from an address. A point with a
 definition and no second provider or consumer.
-
-## Where The Designs Differed
-
-| Topic | Positions | Taken here |
-| --- | --- | --- |
-| Provider interfaces | Three published seams (two); storage only, internal (one) | Storage only, until a second implementer exists |
-| Classes of shared state | Three (two); two, without signals (one) | Three, since signaling already exists |
-| Rules of a community activity | A referee participant (two); the same reducer in every client (one) | Left to the first real activity |
-
-## Consequences
-
-- The sentence in the engineering standard that refuses a generic plugin
-  framework gives way to this record for the points it defines.
-- The activity envelope moves from deferred to settled before release.
-- Each owner taken out of the session hub is written as a scope.
 
 ## References
 
@@ -157,3 +122,17 @@ definition and no second provider or consumer.
   what complete access to internals cost.
 - [Extending Caddy](https://caddyserver.com/docs/extending-caddy): modules
   compiled in, with provision, validation and cleanup.
+- [Matrix client-server API](https://spec.matrix.org/latest/client-server-api/)
+  and [room version 11](https://spec.matrix.org/latest/rooms/v11/): one event
+  form for every type, a reserved namespace, and redaction that strips content
+  and keeps a skeleton.
+- [XEP-0424, Message Retraction](https://xmpp.org/extensions/xep-0424.html):
+  archives may keep a tombstone in place of the retracted message.
+- [Mattermost v1.0 post validation](https://github.com/mattermost/mattermost/blob/v1.0.0/model/post.go#L99-L101)
+  and [v10.11 post model](https://github.com/mattermost/mattermost/blob/v10.11.0/server/public/model/post.go):
+  one post form whose early validator accepted only built-in types, later extended
+  with prefixed custom types.
+- [Extensions over Any](https://protobuf.dev/design-decisions/extensions-over-any/):
+  what a string type name costs on every record.
+- [Discord message resource](https://docs.discord.com/developers/resources/message):
+  a closed set of types, with a second component model added beside the first.

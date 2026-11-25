@@ -118,7 +118,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                     password: None,
                     voice_bitrate: None,
                     relay_capacity: None,
-                    allow_service_relay: Some(true),
+                    allow_service_relay: Some(false),
                 },
             },
         })
@@ -126,7 +126,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
     assert!(work.policy.is_some());
     let output = host.abort("storage_failed".into()).unwrap();
     assert!(
-        !host.policy().allow_service_relay,
+        host.policy().allow_service_relay,
         "a failed policy commit must roll back the saved choice"
     );
     assert!(

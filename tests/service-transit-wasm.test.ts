@@ -7,7 +7,7 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   const [ownerUser, viewerUser, operatorUser, owner, viewer, service, binding, ownerSocket, serviceSocket] = Array.from({ length: 9 }, () => crypto.randomUUID());
   const settings = { name: "Private", icon: "couch", access: "private", hidden: true };
   const policy = JSON.parse(rust.create_room_policy(JSON.stringify({ ...settings, id: "transit-adapter", creatorId: ownerUser, password: null })));
-  expect(policy.allowServiceRelay).toBe(false);
+  expect(policy.allowServiceRelay).toBe(true);
   policy.grants.push(viewerUser);
   const host = new rust.RoomHost(JSON.stringify(policy));
   const endpoints = Object.fromEntries([[owner, ownerUser], [viewer, viewerUser], [service, operatorUser]].map(([session, user]) => [session, { member: { userId: user }, connected: true, canUsePeerTransport: true, signingKey: Array(32).fill(0) }]));
@@ -15,7 +15,8 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   let serviceEndpoint: { sessionId: string; connectionId: string } | null = { sessionId: service, connectionId: serviceSocket };
   let confirmedPairs: string[][] = [];
   const turn = (action: object, failedPairs: object[] = [], commit = true) => {
-    const work = JSON.parse(host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: ownerUser, hostSessionId: owner, revision: ++revision, endpoints, confirmedPairs, serviceEndpoint, failedPairs, action })));
+    const offer = serviceEndpoint && { ...serviceEndpoint, kinds: { screen: true, voice: true, files: true } };
+    const work = JSON.parse(host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: ownerUser, hostSessionId: owner, revision: ++revision, endpoints, confirmedPairs, serviceEndpoint: offer, failedPairs, action })));
     expect(work.history).toBeNull();
     return JSON.parse(commit ? host.finish() : host.abort("storage_failed"));
   };
@@ -24,7 +25,9 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   try {
     const initial = turn({ type: "sync" });
     expect(initial.projection.historyLineage).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    expect(turn(preference(true), [], false).reply.result).toEqual({ type: "error", code: "storage_failed" });
+    expect(turn(preference(false), [], false).reply.result).toEqual({ type: "error", code: "storage_failed" });
+    expect(JSON.parse(host.policy()).allowServiceRelay).toBe(true);
+    expect(turn(preference(false)).reply.result.type).toBe("done");
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(false);
     expect(turn(preference(true)).reply.result.type).toBe("done");
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(true);
@@ -70,7 +73,7 @@ test("public Read does not retain pure site forwarding after the saved preferenc
   let confirmedPairs: string[][] = [];
   const turn = (action: object, failedPairs: object[] = []) => {
     host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: owner, hostSessionId: owner, revision: ++revision,
-      endpoints, confirmedPairs, serviceEndpoint: { sessionId: service, connectionId: service }, failedPairs, action }));
+      endpoints, confirmedPairs, serviceEndpoint: { sessionId: service, connectionId: service, kinds: { screen: true, voice: true, files: true } }, failedPairs, action }));
     return JSON.parse(host.finish());
   };
   const preference = (allowed: boolean) => ({ type: "command", context: context(owner),

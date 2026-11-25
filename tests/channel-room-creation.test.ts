@@ -1,7 +1,7 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { roomCreationPolicySchema } from "../src/client/channel/protocol";
-import { roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch } from "../src/client/channel/room-creation";
+import { roomCreationPolicyFor, roomDraft, roomSettings, readSimpleShareRoom, rememberSimpleShareRoom, roomSettingsPatch, simpleShareRoom, simpleShareRoomKey } from "../src/client/channel/room-creation";
 
 test("room capacity points to recovery from both room creation entries", () => {
   expect(channelErrorPresentation("room_limit", key => key)).toEqual({
@@ -44,4 +44,26 @@ test("policy changes discard admission drafts and send only necessary invitation
   const oldRoom = { access: "public", hidden: false, hasPassword: true } as const;
   expect(roomSettingsPatch(stale, oldRoom, true)).toEqual({ name: "Renamed", access: "private", hidden: true, password: null });
   expect(roomSettingsPatch({ password: "old draft" }, oldRoom, true)).toEqual({});
+});
+
+test("simple sharing returns to its own authorized room even while its host is offline", () => {
+  const room = (id: string, creatorId: string, authorized = true, available = true) => ({ id, creatorId, authorized, available });
+  const rooms = [room("work", "me"), room("friend", "friend"), room("offline", "me", true, false), room("locked", "me", false), room("shared", "me")];
+  expect(simpleShareRoom(rooms, "me", null)).toBeUndefined();
+  expect(simpleShareRoom(rooms, "me", "shared")?.id).toBe("shared");
+  expect(simpleShareRoom(rooms, "me", "offline")?.id).toBe("offline");
+  for (const id of ["deleted", "friend", "locked"]) expect(simpleShareRoom(rooms, "me", id)).toBeUndefined();
+});
+
+test("simple sharing remembers its room per site and person on this device", () => {
+  const saved = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => saved.set(key, value) });
+  try {
+    const key = simpleShareRoomKey("site", "me");
+    expect(readSimpleShareRoom(key)).toBeNull();
+    rememberSimpleShareRoom(key, "shared");
+    expect(readSimpleShareRoom(key)).toBe("shared");
+    expect(readSimpleShareRoom(simpleShareRoomKey("other-site", "me"))).toBeNull();
+    expect(simpleShareRoomKey("site", undefined)).toBeNull();
+  } finally { vi.unstubAllGlobals(); }
 });

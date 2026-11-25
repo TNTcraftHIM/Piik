@@ -26,8 +26,9 @@ const RESOLUTION_HINTS: Partial<Record<keyof typeof QUALITY_RESOLUTIONS, CopyKey
   "2160p": "host.video.resolution2160p",
 };
 
-export function VideoCodecControl({ value, disabled, onChange }: {
-  value: BrowserVideoCodecMode; disabled?: boolean; onChange: (mode: BrowserVideoCodecMode) => void;
+/** `lockedReason` disables the choice and replaces each hint with why it cannot change now. */
+export function VideoCodecControl({ value, disabled, lockedReason, onChange }: {
+  value: BrowserVideoCodecMode; disabled?: boolean; lockedReason?: string; onChange: (mode: BrowserVideoCodecMode) => void;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -36,8 +37,8 @@ export function VideoCodecControl({ value, disabled, onChange }: {
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
       {(["vp8", "auto", "h264"] as const).map(mode => {
         const label = mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase();
-        return <Chip key={mode} name={`${id}-codec`} value={mode} selected={mode === value} disabled={disabled}
-          title={label} hint="hint-codec" hintText={t(`host.advanced.codec.${mode}Hint`)} onClick={() => onChange(mode)}>
+        return <Chip key={mode} name={`${id}-codec`} value={mode} selected={mode === value} disabled={disabled || !!lockedReason}
+          title={label} hint="hint-codec" hintText={lockedReason ?? t(`host.advanced.codec.${mode}Hint`)} onClick={() => onChange(mode)}>
           {label}
         </Chip>;
       })}
@@ -45,8 +46,8 @@ export function VideoCodecControl({ value, disabled, onChange }: {
   </div>;
 }
 
-export function EncodingExecutionControl({ value, disabled, onChange }: {
-  value: EncodingExecution; disabled?: boolean; onChange: (mode: EncodingExecution) => void;
+export function EncodingExecutionControl({ value, disabled, lockedReason, onChange }: {
+  value: EncodingExecution; disabled?: boolean; lockedReason?: string; onChange: (mode: EncodingExecution) => void;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -54,8 +55,8 @@ export function EncodingExecutionControl({ value, disabled, onChange }: {
     <span className="lr-door-glyph"><Glyph name="sliders" size={19} />{t("host.advanced.execution")}</span>
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.execution")}>
       {(["auto", "software"] as const).map(mode => <Chip key={mode} name={`${id}-execution`} value={mode}
-        selected={mode === value} disabled={disabled} title={t(`host.advanced.execution.${mode}`)}
-        hint="hint-codec" hintText={t(`host.advanced.execution.${mode}Hint`)} onClick={() => onChange(mode)}>
+        selected={mode === value} disabled={disabled || !!lockedReason} title={t(`host.advanced.execution.${mode}`)}
+        hint="hint-codec" hintText={lockedReason ?? t(`host.advanced.execution.${mode}Hint`)} onClick={() => onChange(mode)}>
         {t(`host.advanced.execution.${mode}`)}
       </Chip>)}
     </div>

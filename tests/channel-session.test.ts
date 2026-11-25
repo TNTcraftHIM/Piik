@@ -696,7 +696,9 @@ test("restoring the viewed room does not turn its navigation state into an invit
 });
 
 test("a saved owner credential retires only the consumed owner URL parameter and owns reconnect and reload", async () => {
-  const { session, socket } = await setup(3, false, "owner=owner-secret&room=first&invite=friend-link&other=keep", true, undefined, "ignores-write");
+  const fixture = await setup(3, false, "");
+  const state = fixture.session.getSnapshot().state!;
+  fixture.session.close();
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); } });
@@ -704,9 +706,13 @@ test("a saved owner credential retires only the consumed owner URL parameter and
   const replaceState = vi.fn((_state: unknown, _title: string, url: string) => { location.href = new URL(url, location.href).href; });
   vi.stubGlobal("history", { state: previousHistory, replaceState });
   location.search = "?theme=dark";
+  location.hash = "owner=owner-secret&room=first&invite=friend-link&other=keep";
+  const session = new ChannelSession();
   let reloaded: ChannelSession | undefined;
   try {
-    const state = session.getSnapshot().state!;
+    session.start();
+    const socket = ChannelSocket.current; await socket.onopen?.();
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
     socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner-credential", sessionId: "endpoint", state });
     expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
     await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe("https://channel.test/__channel-preview"));
@@ -726,30 +732,52 @@ test("a saved owner credential retires only the consumed owner URL parameter and
 });
 
 test("a consumed App launch ticket retires after welcome even if Browser storage is unavailable", async () => {
-  const { session, socket } = await setup(3, false, "launch=one-use", true, undefined, "ignores-write");
+  const { session, socket } = await setup(3, false, "owner=manual&launch=one-use&launch=unused", true, undefined, "ignores-write");
   try {
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "one-use" });
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner", sessionId: "endpoint", state: session.getSnapshot().state! });
-    expect(location.hash).toBe("");
+    expect(location.hash).toBe("#owner=manual&launch=unused");
     vi.useFakeTimers();
     socket.close(); await vi.advanceTimersByTimeAsync(1000); await ChannelSocket.current.onopen?.();
     const join = ChannelSocket.current.sent.find(command => command.type === "join");
-    expect(join).toMatchObject({ credential: "personal-owner" });
+    expect(join).toMatchObject({ credential: "credential" });
     expect(join).not.toHaveProperty("ownerKey");
   } finally { session.close(); }
 });
 
-test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverable when Browser storage %s", async failure => {
+test.each(["throws", "ignores-write"] as const)("owner bootstrap stays in the URL for reload when Browser storage %s", async failure => {
   const { session, socket } = await setup(3, false, "owner=owner-secret&other=keep", true, undefined, failure);
-  const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
-  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => { if (failure === "throws") throw new Error("storage unavailable"); } });
+  let reloaded: ChannelSession | undefined;
   try {
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner-credential", sessionId: "endpoint", state: session.getSnapshot().state! });
-    expect(replaceState).not.toHaveBeenCalled();
+    expect(history.replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe("#owner=owner-secret&other=keep");
     expect(session.getSnapshot().connection).toBe("connected");
     vi.useFakeTimers(); socket.close(); await vi.advanceTimersByTimeAsync(1000); await ChannelSocket.current.onopen?.();
-    expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret", credential: "personal-owner-credential" });
+    const resumed = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(resumed).toMatchObject({ credential: "credential" });
+    expect(resumed).not.toHaveProperty("ownerKey");
+    session.close();
+    reloaded = new ChannelSession(); reloaded.start(); await ChannelSocket.current.onopen?.();
+    const join = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(join).toMatchObject({ ownerKey: "owner-secret" });
+    expect(join).not.toHaveProperty("credential");
+  } finally { session.close(); reloaded?.close(); }
+});
+
+test("an ordinary Welcome does not consume an owner bootstrap", async () => {
+  const fixture = await setup(3, false, "");
+  const state = fixture.session.getSnapshot().state!;
+  fixture.session.close();
+  state.channel.ownerId = "different-owner";
+  location.hash = "owner=owner-secret";
+  const session = new ChannelSession();
+  try {
+    session.start();
+    const socket = ChannelSocket.current; await socket.onopen?.();
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "ordinary-credential", sessionId: "endpoint", state });
+    expect(location.hash).toBe("#owner=owner-secret");
+    session.reconnect(); await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
   } finally { session.close(); }
 });
 
@@ -10390,6 +10418,7 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(join).toMatchObject({ ownerKey: "restored-owner" });
     for (const field of ["credential", "sessionId", "roomId"]) expect(join).not.toHaveProperty(field);
     expect(saved).not.toHaveBeenCalled();
+    location.hash = "owner=restored-owner&room=other-room&invite=friend-link&other=keep";
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "restored-personal-credential", sessionId: "endpoint", state });
     await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon });
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
@@ -10398,6 +10427,11 @@ test("domain restore closes the old connection, admits archived keys only after 
     document.dispatchEvent(new Event("pointerdown"));
     await Promise.resolve();
     expect(contexts).toHaveLength(2);
+    expect.soft(location.hash).toBe("#owner=restored-owner&room=other-room&invite=friend-link&other=keep");
+    session.reconnect(); await ChannelSocket.current.onopen?.();
+    const resumed = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(resumed).toMatchObject({ credential: "restored-personal-credential" });
+    expect(resumed).not.toHaveProperty("ownerKey");
   } finally { session.close(); }
 });
 

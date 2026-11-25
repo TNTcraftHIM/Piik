@@ -39,6 +39,7 @@ pub struct Channel {
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
     ice_servers: Vec<Value>,
     pub(crate) service_endpoint: Option<crate::host::ServiceEndpoint>,
+    pub(crate) service_kinds: crate::host::TransitKinds,
 }
 
 pub(crate) struct HostAcceptance {
@@ -197,6 +198,7 @@ impl Channel {
             input_registrations: BTreeMap::new(),
             ice_servers,
             service_endpoint: None,
+            service_kinds: Default::default(),
         }
     }
 
@@ -1175,7 +1177,10 @@ impl Channel {
             self.hosting_mode,
             self.identity.owner_id,
             endpoints,
-            self.service_endpoint,
+            self.service_endpoint.map(|endpoint| crate::host::ServiceTransit {
+                endpoint,
+                kinds: self.service_kinds,
+            }),
             self.transports.confirmed_pairs(&self.identity),
             action,
             self.now,
@@ -1457,6 +1462,14 @@ impl Channel {
         const MAX_PUBLICATIONS: usize = 2 * MAX_SESSIONS;
         const MAX_TREE_EDGES: usize = MAX_SESSIONS - 1;
         let endpoints = self.identity.endpoints();
+        // Public Read does not make the Server socket a participant in another writer's room.
+        let service_only = self.room_writer
+            .map(|writer| writer.session_id)
+            .filter(|session| *session != binding.session);
+        let participant = |session: &Uuid| {
+            Some(*session) != service_only
+                && projection.views.get(session).is_some_and(|view| view.authorized)
+        };
         if projection.views.len() > MAX_SESSIONS
             // Each publication can retain committed and prepared tree flows.
             || projection.flows.len() > MAX_PUBLICATIONS * (MAX_TREE_EDGES + MAX_TREE_EDGES)
@@ -1469,13 +1482,9 @@ impl Channel {
             || projection
                 .participant_session_ids
                 .iter()
-                .any(|session| !projection.views.get(session).is_some_and(|v| v.authorized))
+                .any(|session| !participant(session))
             || projection.voice.iter().any(|voice| {
-                voice.room_id != id
-                    || !projection
-                        .views
-                        .get(&voice.session_id)
-                        .is_some_and(|v| v.authorized)
+                voice.room_id != id || !participant(&voice.session_id)
             })
         {
             return Err("invalid_room_projection");
@@ -1490,7 +1499,8 @@ impl Channel {
             || projection.relay_session_ids.iter().any(|id| {
                 !endpoints.get(id).is_some_and(|e| e.can_use_peer_transport)
                     || projection.views.get(id).is_some_and(|view| view.relay_override == Some(0))
-                    || (self.hosting_mode == HostingMode::Hosted && *id == binding.session && Some(*id) != service)
+                    || Some(*id) != service && (Some(*id) == service_only
+                        || self.hosting_mode == HostingMode::Hosted && *id == binding.session)
             })
         {
             return Err("invalid_room_projection");
@@ -1523,10 +1533,7 @@ impl Channel {
                 || viewers.len() != activity.viewer_session_ids.len()
                 || viewers.contains(&activity.session_id)
                 || viewers != subscribed
-                || !projection
-                    .views
-                    .get(&activity.session_id)
-                    .is_some_and(|v| v.authorized)
+                || !participant(&activity.session_id)
                 || !endpoints
                     .get(&activity.session_id)
                     .is_some_and(|e| e.member.user_id == activity.user_id)
@@ -1544,11 +1551,7 @@ impl Channel {
                 });
                 if !endpoints.get(&source.session_id).is_some_and(|endpoint| {
                     endpoint.can_use_peer_transport && endpoint.member.user_id == activity.user_id && (endpoint.connected || retained)
-                }) || !projection
-                    .views
-                    .get(&source.session_id)
-                    .is_some_and(|view| view.authorized)
-                {
+                }) || !participant(&source.session_id) {
                     return Err("invalid_room_projection");
                 }
             }
@@ -1557,13 +1560,16 @@ impl Channel {
         let mut watch_trees: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
         let mut file_trees = BTreeMap::new();
         for (recipient, view) in &projection.views {
+            let ordinary = participant(recipient);
             if view.file_availability.as_ref().is_some_and(|observation| {
-                !view.authorized
+                !ordinary
                     || !view.reading
                     || !file_availability_limit
                         .is_some_and(|limit| observation.available.len() <= limit)
             }) || view.transit_endpoint.is_some_and(|endpoint| {
-                !projection.allow_service_relay || Some(endpoint) != self.service_endpoint
+                !projection.allow_service_relay
+                    || Some(endpoint) != self.service_endpoint
+                    || byte_transit(view) && !self.service_kinds.files
             }) {
                 return Err("invalid_room_projection");
             }
@@ -1582,7 +1588,7 @@ impl Channel {
                     .relay_override
                     .is_some_and(|capacity| capacity > crate::MAX_RELAY_CAPACITY)
                 || view.handoffs.len() > MAX_SESSIONS + MAX_PUBLICATIONS
-                || view.handoffs.iter().any(|p| !view.authorized || match p.target {
+                || view.handoffs.iter().any(|p| !ordinary || match p.target {
                     crate::wire::ViewSource::Screen(id) => !projection.publications.iter().any(|publication| publication.kind == Kind::Screen && publication.id == id),
                     crate::wire::ViewSource::Watch(id) => !watch_ids.contains(&id),
                 })
@@ -1602,12 +1608,12 @@ impl Channel {
                 || view.subscriptions.len() > MAX_PUBLICATIONS
                 || view.screen_helpers.len() > MAX_PUBLICATIONS
                 || view.screen_helpers.iter().any(|(id, &helper)| {
-                    !view.authorized || !view.subscriptions.contains(id)
+                    !ordinary || !view.subscriptions.contains(id)
                         || !screen_helper_pair(*recipient, helper, &endpoints)
                         || !(endpoints[&helper].connected || room.projection.as_ref()
                             .and_then(|p| p.views.get(recipient))
                             .is_some_and(|v| v.screen_helpers.get(id) == Some(&helper)))
-                        || !projection.views.get(&helper).is_some_and(|v| v.authorized)
+                        || !participant(&helper)
                         || !projection.publications.iter().any(|p| {
                             p.id == *id && p.kind == Kind::Screen && p.session_id != *recipient
                         })
@@ -1620,7 +1626,7 @@ impl Channel {
                         })
                 })
                 || view.files.len() > FILE_REGISTRATION_LIMIT
-                || (!view.authorized
+                || (!ordinary
                     && (view.reading
                         || !view.watch_subscriptions.is_empty()
                         || view.transit_endpoint.is_none() && !view.watch_bytes.is_empty()
@@ -1647,7 +1653,7 @@ impl Channel {
                 return Err("invalid_room_projection");
             }
             for plan in &view.watch_bytes {
-                if !view.authorized
+                if !ordinary
                     && (plan.receiving
                         || plan.source.session_id == *recipient
                         || plan.upstream.is_none()
@@ -1683,7 +1689,7 @@ impl Channel {
             }
             for file in &view.files {
                 if file.room_id != id
-                    || !view.authorized
+                    || !ordinary
                         && (file.receiving
                             || file.source_id == Some(*recipient)
                             || file.upstream.is_none()
@@ -1818,10 +1824,7 @@ impl Channel {
                 || !endpoints
                     .get(&publication.session_id)
                     .is_some_and(|e| e.member.user_id == publication.user_id)
-                || !projection
-                    .views
-                    .get(&publication.session_id)
-                    .is_some_and(|view| view.authorized)
+                || !participant(&publication.session_id)
                 || self.remote.iter().any(|(other_id, other)| {
                     other_id != id
                         && other
@@ -1852,22 +1855,22 @@ impl Channel {
             .map(|flow| (flow.id, flow))
             .collect();
         let mut inputs = BTreeSet::new();
+        let transit = |id| projection.views.get(&id).is_some_and(|v| v.transit_endpoint.is_some());
         for flow in &projection.flows {
             let (confirmed_or_retired, admitted) = current_pair(flow.sender, flow.receiver);
             if !(confirmed_or_retired || (admitted && previous.contains_key(&flow.id)))
                 || !flow_ids.insert(flow.id)
                 || !inputs.insert((flow.publication_id, flow.receiver, flow.selected))
+                || !publications.contains_key(&flow.publication_id)
                 || flow.sender == flow.receiver
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
-                || !projection.views.get(&flow.sender).is_some_and(|v| {
-                    (v.authorized || v.transit_endpoint.is_some())
-                        && publications.contains_key(&flow.publication_id)
-                })
-                || !projection.views.get(&flow.receiver).is_some_and(|v| {
-                    (v.authorized || v.transit_endpoint.is_some())
-                        && publications.contains_key(&flow.publication_id)
-                })
+                || !(participant(&flow.sender) || transit(flow.sender))
+                || !(participant(&flow.receiver) || transit(flow.receiver))
+                || (transit(flow.sender) || transit(flow.receiver))
+                    && !publications
+                        .get(&flow.publication_id)
+                        .is_some_and(|publication| self.service_kinds.media(publication.kind))
                 || previous.get(&flow.id).is_some_and(|old| {
                     old.publication_id != flow.publication_id
                         || old.sender != flow.sender

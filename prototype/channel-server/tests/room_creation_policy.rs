@@ -151,6 +151,7 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
         (POLICY_ENV, "public"),
         (MODE_ENV, "public"),
         ("PIIK_CHANNEL_SERVICE_TRANSIT", "public"),
+        ("PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN", "public"),
         ("PIIK_CHANNEL_ICE_SERVERS", "[false]"),
     ] {
         let output = timeout(

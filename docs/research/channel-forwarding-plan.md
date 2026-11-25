@@ -339,15 +339,21 @@ retention nor a download source after all valid holders leave. An external
 storage link is opened through its provider.
 [File delivery](../../prototype/channel-core/src/file_delivery.rs) · [WebRTC Data Channels](https://www.rfc-editor.org/rfc/rfc8831.html)
 
-The current prototype has one operator transit switch
-(`PIIK_CHANNEL_SERVICE_TRANSIT`, off by default) and a room service-relay
-permission. It can assign screen, voice and file flows to that service.
-For an operator who wants finer control, the proposed setting selects which
-of those payload types the service will carry. Eligibility is the intersection
-of the selected types, the service's actual capabilities and the room's grant.
+The [site forwarding settings](../../prototype/channel-server/README.md#site-forwarding)
+determine which traffic the operator offers.
+A room uses the offer unless its manager declines it. Eligibility is the
+intersection of the offered kinds, the service's actual capabilities and the
+room's grant. The service ranks after every participant path when a route is
+assigned: a receiver is given a path through it only when no participant path
+can serve that receiver then. When the service needs a scarce output that a
+participant path would use, it takes the output only if that serves more
+receivers in total. The planner keeps complete incumbent paths first, so a
+receiver already served through the service keeps that route until it fails or
+demand ends, even if a participant path appears later. A screen viewer can
+still take the direct path from its source that any relayed viewer can take.
 This is one routing policy. Channel hosting mode continues to determine
 where history and thumbnails are stored.
-[Runtime switch](../../prototype/channel-server/src/lib.rs) · [Service transit tests](../../prototype/channel-core/tests/service_transit.rs)
+[Operator switches](../../prototype/channel-server/src/main.rs) · [Service transit tests](../../prototype/channel-core/tests/service_transit.rs)
 
 Suppose B publishes, C watches and their working room path is B–A–C. The
 pool can seek B–C because A is their only intermediate, or the publication

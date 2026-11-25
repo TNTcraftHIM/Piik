@@ -1049,7 +1049,7 @@ async fn start_server(
         folder,
         Router::new(),
         udp,
-        false,
+        None,
         async {
             let _ = stopped.await;
         },
@@ -1095,7 +1095,7 @@ async fn wildcard_listeners_host_native_rooms_and_retire_on_stop() {
             folder.path().to_owned(),
             Router::new(),
             udp,
-            false,
+            None,
             async {
                 let _ = stopped.await;
             },

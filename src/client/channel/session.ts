@@ -33,12 +33,11 @@ import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
-import { MicrophoneInput } from "../media/microphone-input";
+import type { MicrophoneInput } from "../media/microphone-input";
+import { VoiceParticipation } from "./voice-participation";
 import { debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
-import { acquireMediaStream } from "../media/capture-stream";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
-import { audioInputConstraints } from "../media/audio-capture";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
@@ -74,19 +73,6 @@ type RoomHistorySource =
   | { kind: "restore"; archive: Blob; stage?: BrowserRoomStage; owner?: {
       current(): void; native?: Pick<NativeRoomHosting, "restore">;
     } };
-
-interface MicrophoneRequest {
-  controller: AbortController;
-  context: AudioContext | null;
-  input: MicrophoneInput | null;
-  promise?: Promise<MicrophoneInput>;
-}
-
-interface VoiceParticipation {
-  publicationId: string | null;
-  muted: boolean;
-  deafened: boolean;
-}
 
 interface ScreenWatch {
   playbackError?: ScreenPlaybackError;
@@ -169,6 +155,16 @@ function stored(key: string, value?: string): string | null {
   } catch { return null; }
 }
 
+type OwnerBootstrap = { key: string; parameter?: "launch" | "owner" };
+
+function ownerBootstrapFromLocation(): OwnerBootstrap | undefined {
+  const parameters = new URLSearchParams(location.hash.slice(1));
+  const launch = parameters.get("launch");
+  if (launch !== null) return { key: launch, parameter: "launch" };
+  const owner = parameters.get("owner");
+  return owner === null ? undefined : { key: owner, parameter: "owner" };
+}
+
 function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
   if (!state.channel.rooms.some(room => room.picture)) return state;
   const rooms = state.channel.rooms.map(room => {
@@ -218,8 +214,7 @@ export class ChannelSession {
   private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
   private invitationOrigin = location.origin;
-  private ownerKey = new URLSearchParams(location.hash.slice(1)).get("launch")
-    ?? new URLSearchParams(location.hash.slice(1)).get("owner") ?? undefined;
+  private ownerBootstrap = ownerBootstrapFromLocation();
   private roomId = selectedRoom();
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
@@ -231,9 +226,6 @@ export class ChannelSession {
   private localNativeEndpoints = new Set<string>();
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
-  private microphone: MicrophoneInput | null = null;
-  private microphoneRequest: MicrophoneRequest | null = null;
-  private voiceParticipation = new Map<string, VoiceParticipation>();
   private watching = new Map<string, ScreenWatch>();
   private historyChannel: string | null = null;
   private histories = new Map<string, RoomHistory>();
@@ -255,6 +247,23 @@ export class ChannelSession {
   private watchPlayers = new Map<string, WatchPlayer>();
   private sourceSelections = new Map<string, SourceSelection>();
   private local = new Map<string, { admitted: boolean; roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; audio?: HostAudio; camera?: boolean }>();
+  private readonly voice = new VoiceParticipation({
+    local: this.local,
+    view: () => this.view,
+    snapshot: () => this.roomSnapshot,
+    lifetime: () => this.captureLifetime.signal,
+    action: (key, work) => this.action(key, work),
+    request: command => this.request(command),
+    send: command => this.send(command),
+    write: command => this.write(command),
+    unpublishMissing: (state, scope) => this.unpublishMissing(state, scope),
+    publish: (roomId, stream, microphone, publicationId) => this.publish("voice", roomId, stream, { microphone, publicationId }),
+    retire: id => this.retireCapture(id),
+    refresh: () => this.refreshActivity(),
+    levels: roomId => this.media.voiceActivity(roomId),
+    saveInput: voiceInput => { this.patch({ voiceInput }); saveRoomPreferences({ voiceInput }); },
+    report: error => this.patch({ error }),
+  });
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
@@ -469,14 +478,15 @@ export class ChannelSession {
     const socket = new WebSocket(url);
     const decoder = new ChannelEventDecoder();
     const credential = newIdentity ? undefined : this.credential;
-    const ownerKey = newIdentity ? undefined : this.ownerKey;
+    let sentBootstrap: OwnerBootstrap | undefined;
     this.socket = socket;
     this.patch({ connection: this.view.sessionId ? "reconnecting" : "connecting" });
     socket.onopen = async () => {
       try {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey, sessionId: this.view.sessionId ?? undefined });
+        sentBootstrap = newIdentity ? undefined : this.ownerBootstrap;
+        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.closeConnection();
@@ -494,9 +504,13 @@ export class ChannelSession {
           this.closeConnection(); this.patch({ error: "incompatible_protocol" }); return;
         }
         const event = decoder.decode(raw, wireBytes);
-        const skipRoom = event.type === "welcome" ? acceptWelcome?.(event) : undefined;
-        if (event.type === "welcome") acceptWelcome = undefined;
-        this.receive(event, skipRoom);
+        if (event.type === "welcome") {
+          const skipRoom = acceptWelcome?.(event);
+          const bootstrap = sentBootstrap;
+          acceptWelcome = undefined;
+          sentBootstrap = undefined;
+          this.receive(event, skipRoom, bootstrap);
+        } else this.receive(event);
       } catch {
         this.patch({ error: "invalid_response" });
         // Later frames may omit pictures; recovery must start with a complete Welcome.
@@ -516,7 +530,7 @@ export class ChannelSession {
     socket.onerror = () => { /* The close event owns retry. */ };
   }
 
-  private receive(event: ChannelEvent, skipRestoreRoom?: string): void {
+  private receive(event: ChannelEvent, skipRestoreRoom?: string, bootstrap?: OwnerBootstrap): void {
     if (event.type === "welcome") {
       this.endRecovery();
       const resumed = this.view.sessionId === event.sessionId;
@@ -524,16 +538,21 @@ export class ChannelSession {
       if (!resumed) this.releaseHosts();
       this.credential = event.credential;
       const saved = stored(credentialKey, event.credential) === event.credential;
-      const parameters = new URLSearchParams(location.hash.slice(1));
       const owner = event.state.sessions.find(session => session.id === event.sessionId)?.userId === event.state.channel.ownerId;
-      const bootstrap = parameters.has("launch") ? "launch" : "owner";
-      if ((saved || bootstrap === "launch") && owner && parameters.get(bootstrap) === this.ownerKey) {
-        this.ownerKey = undefined;
-        parameters.delete(bootstrap);
-        const hash = parameters.toString();
-        try {
-          history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
-        } catch { /* The welcome credential owns reconnect even if URL editing is unavailable. */ }
+      if (bootstrap && owner) {
+        this.ownerBootstrap = undefined;
+        const parameter = bootstrap.parameter;
+        // A manual Server link still provides admission on reload if storage failed.
+        if (parameter && (saved || parameter === "launch")) {
+          const parameters = new URLSearchParams(location.hash.slice(1));
+          if (parameters.get(parameter) === bootstrap.key) {
+            const remaining = [...parameters].filter(([name, value]) => name !== parameter || value !== bootstrap.key);
+            const hash = new URLSearchParams(remaining).toString();
+            try {
+              history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
+            } catch { /* The welcome credential owns reconnect even if URL editing is unavailable. */ }
+          }
+        }
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
@@ -689,16 +708,7 @@ export class ChannelSession {
         this.retireCapture(id);
       }
     }
-    for (const [roomId, intent] of this.voiceParticipation) {
-      const voice = state.voice.find(member => member.sessionId === sessionId && member.roomId === roomId);
-      const { publicationId } = intent;
-      const stream = publicationId ? this.local.get(publicationId)?.stream : undefined;
-      if (voice && stream) stream.getAudioTracks().forEach(track => { track.enabled = !intent.muted; });
-      if (!voice && !this.view.pending.has(`voice:${roomId}`)) {
-        this.voiceParticipation.delete(roomId);
-        if (publicationId) this.retireCapture(publicationId);
-      }
-    }
+    this.voice.update(state);
     for (const publication of state.publications) if (publication.kind === "screen") {
       const local = this.local.get(publication.id);
       if (local) {
@@ -874,10 +884,7 @@ export class ChannelSession {
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
     }
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
-      if (!restoring && room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)
-        && this.voiceParticipation.get(room.id)?.publicationId === null && !this.view.pending.has(`voice:${room.id}`)) {
-        this.reconcileLocalMedia(state, room.id);
-      }
+      if (!restoring && room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)) this.voice.resumed(state, room.id);
       if (room.id !== this.roomId && room.reading && room.authorized && room.available
         && previousRooms?.some(previous => previous.id === room.id && !previous.available)) {
         this.readingRooms.add(room.id);
@@ -886,26 +893,25 @@ export class ChannelSession {
     this.applyForwarding(sessionId, this.roomSnapshot, userId);
     this.input.update();
     this.browseRooms();
-    this.releaseUnusedMicrophone();
   }
 
-  private reconcileLocalMedia(state: ChannelSnapshot, voiceRoomId?: string): void {
+  private reconcileLocalMedia(state: ChannelSnapshot): void {
+    this.unpublishMissing(state);
     for (const publication of state.publications) {
-      if (publication.sessionId !== this.view.sessionId) continue;
-      if (voiceRoomId !== undefined && (publication.roomId !== voiceRoomId || publication.kind !== "voice")) continue;
-      if (!this.local.has(publication.id)) {
-        this.write({ type: "unpublish", publicationId: publication.id });
-      } else if (publication.kind === "screen") {
-        const share = this.screenShares.get(publication.roomId);
-        if (share?.id === publication.id && share.paused !== undefined && share.paused !== publication.paused)
-          this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
-      }
+      if (publication.sessionId !== this.view.sessionId || publication.kind !== "screen" || !this.local.has(publication.id)) continue;
+      const share = this.screenShares.get(publication.roomId);
+      if (share?.id === publication.id && share.paused !== undefined && share.paused !== publication.paused)
+        this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
     }
-    for (const member of state.voice) {
-      if (member.sessionId !== this.view.sessionId || (voiceRoomId !== undefined && member.roomId !== voiceRoomId)) continue;
-      const intent = this.voiceParticipation.get(member.roomId);
-      if (!intent || member.muted !== intent.muted || member.deafened !== intent.deafened)
-        this.write({ type: "voice", roomId: member.roomId, joined: !!intent, muted: intent?.muted ?? true, deafened: intent?.deafened ?? false });
+    this.voice.reconcile(state);
+  }
+
+  /** Withdraws this session's publications that no local capture carries, only in one room and kind when given. */
+  private unpublishMissing(state: ChannelSnapshot, scope?: { roomId: string; kind: "screen" | "voice" }): void {
+    for (const publication of state.publications) {
+      if (publication.sessionId !== this.view.sessionId || this.local.has(publication.id)
+        || scope && (publication.roomId !== scope.roomId || publication.kind !== scope.kind)) continue;
+      this.write({ type: "unpublish", publicationId: publication.id });
     }
   }
 
@@ -1225,7 +1231,7 @@ export class ChannelSession {
           if (event.state === "prepared") void this.commitExternalScreen(app, event).catch(() => {});
           if (event.state === "closed") this.forgetInactiveScreen(event.publicationId);
           this.patch({});
-        }, () => this.app === app && this.view.connection === "connected" && this.voiceParticipation.size > 0);
+        }, () => this.app === app && this.view.connection === "connected" && this.voice.joined());
         this.app = app;
       }
     }
@@ -1395,7 +1401,6 @@ export class ChannelSession {
       const pending = new Set(this.view.pending);
       pending.delete(key);
       this.patch({ pending });
-      this.releaseUnusedMicrophone();
     }
   }
 
@@ -1996,12 +2001,12 @@ export class ChannelSession {
     if (!response.ok) throw new Error("backup_identity_required");
     const identity = z.object({ domainId: z.string(), user: userSchema }).parse(await response.json()); check();
     if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
-    const previous = { credential: this.credential, ownerKey: this.ownerKey, roomId: this.roomId,
+    const previous = { credential: this.credential, ownerBootstrap: this.ownerBootstrap, roomId: this.roomId,
       hash: location.hash };
     const rollback = () => {
       this.close(); this.credential = previous.credential;
       if (previous.credential) stored(credentialKey, previous.credential);
-      this.ownerKey = previous.ownerKey; this.roomId = previous.roomId;
+      this.ownerBootstrap = previous.ownerBootstrap; this.roomId = previous.roomId;
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
       this.start();
     };
@@ -2013,7 +2018,8 @@ export class ChannelSession {
 
   private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string },
     skipRoom?: string, onFailure = this.close): Promise<number> {
-    this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = "";
+    this.close(); this.credential = identity.credential; this.roomId = "";
+    this.ownerBootstrap = identity.ownerKey === undefined ? undefined : { key: identity.ownerKey };
     const generation = this.identityGeneration;
     const lifetime = this.captureLifetime.signal;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -2072,7 +2078,6 @@ export class ChannelSession {
       if (!canResume()) throw new Error("disconnected");
       if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
       await this.connectBackupIdentity(domainId, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
-      if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
       const { name, icon } = this.view.state!.channel;
       return { name, icon };
     } catch (error) {
@@ -2098,7 +2103,7 @@ export class ChannelSession {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     if (state.channel.hostingMode === "hosted") return this.importHostedRoomCopy(archive, settings, current);
     const runtime = await loadRoomHosting();
-    const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
+    const policy = await runtime.createRoomPolicy({ ...settings, id: crypto.randomUUID(), creatorId: self.id });
     current();
     let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined;
     let cancelReservation: (() => void) | undefined;
@@ -2467,7 +2472,7 @@ export class ChannelSession {
       }
       capture.admitted = true;
       if (kind === "screen") this.observeScreen(id, stream);
-      else primary?.addEventListener("ended", () => this.voiceCaptureEnded(id, stream), { once: true });
+      else primary?.addEventListener("ended", () => this.voice.captureEnded(id, stream), { once: true });
       return id;
     } catch (error) {
       if (this.local.get(id) === capture) this.retireCapture(id);
@@ -3736,112 +3741,17 @@ export class ChannelSession {
       await this.request({ type: "unpublish", publicationId }, undefined, browser.roomId);
   }
 
-  private voiceCaptureEnded(id: string, stream: MediaStream): void {
-    const capture = this.local.get(id);
-    if (capture?.stream !== stream) return;
-    const roomId = capture.roomId;
-    const voice = this.view.state?.voice.find(member => member.sessionId === this.view.sessionId && member.roomId === roomId);
-    this.retireCapture(id);
-    this.refreshActivity();
-    this.send({ type: "unpublish", publicationId: id });
-    if (voice) this.send({ type: "voice", roomId, joined: true, muted: true, deafened: voice.deafened });
-  }
-
-  private async getMicrophone(): Promise<MicrophoneInput> {
-    if (this.microphone?.stream.active) return this.microphone;
-    if (this.microphoneRequest) return this.microphoneRequest.promise!;
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("microphone_unavailable");
-    const signal = this.captureLifetime.signal;
-    // Resume during the gesture, before device permission consumes activation.
-    const context = new AudioContext();
-    const resumed = context.resume().then(() => true, () => false);
-    const request: MicrophoneRequest = { controller: new AbortController(), context, input: null };
-    const requestSignal = AbortSignal.any([signal, request.controller.signal]);
-    request.promise = (async () => {
-      let stream: MediaStream | undefined, input: MicrophoneInput | undefined;
-      try {
-        stream = await this.captureVoiceMicrophone(this.view.voiceInput, requestSignal);
-        requestSignal.throwIfAborted();
-        if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
-        const captured = input = new MicrophoneInput(stream, context, this.view.voiceInput.volume, () => {
-          for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream);
-          captured.close();
-          if (this.microphone === captured) this.microphone = null;
-        });
-        request.input = captured;
-        request.context = null;
-        captured.onProcessingError = () => { captured.close(); this.microphone = null; for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream); this.patch({ error: "voice_noise_processing_failed" }); };
-        await captured.configure(stream, Boolean(this.view.voiceInput.voiceProcessing && this.view.voiceInput.strongerSuppression));
-        const started = await resumed;
-        requestSignal.throwIfAborted();
-        if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
-        captured.volume(this.view.voiceInput.volume);
-        this.microphone = captured;
-        request.input = null;
-        return captured;
-      } catch (error) {
-        if (input) input.close();
-        else stream?.getTracks().forEach(track => track.stop());
-        void request.context?.close().catch(() => {});
-        request.context = null;
-        throw error;
-      }
-    })().finally(() => { if (this.microphoneRequest === request) this.microphoneRequest = null; });
-    this.microphoneRequest = request;
-    return request.promise;
-  }
-
-  setInputVolume = (volume: number): void => {
-    this.microphone?.volume(volume);
-    this.microphoneRequest?.input?.volume(volume);
-    const voiceInput = { ...this.view.voiceInput, volume };
-    this.patch({ voiceInput });
-    saveRoomPreferences({ voiceInput });
-  };
-
+  joinVoice = this.voice.join;
+  leaveVoice = this.voice.leave;
+  setMuted = this.voice.setMuted;
+  setDeafened = this.voice.setDeafened;
+  canUnmute = this.voice.canUnmute;
+  voiceMicrophonePending = this.voice.microphonePending;
+  voiceBusy = this.voice.busy;
+  voiceActivity = this.voice.activity;
+  setInputVolume = this.voice.setInputVolume;
+  configureVoiceInput = this.voice.configureInput;
   microphones = () => browserCaptureDevices("audioinput");
-
-  private microphoneConstraints(settings: RoomPreferences["voiceInput"]): MediaStreamConstraints {
-    return { audio: { ...audioInputConstraints(settings.voiceProcessing),
-      ...(settings.voiceProcessing && settings.strongerSuppression ? { noiseSuppression: false, channelCount: 1 } : {}),
-      ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false };
-  }
-
-  private captureVoiceMicrophone(settings: RoomPreferences["voiceInput"], signal: AbortSignal): Promise<MediaStream> {
-    const requested = this.microphoneConstraints(settings);
-    const complete = debugOperation("capture", "microphone", { requested });
-    return acquireMediaStream(() => navigator.mediaDevices.getUserMedia(requested), signal).then(stream => {
-      complete("applied", { trackId: stream.getAudioTracks()[0]?.id });
-      return stream;
-    }).catch(error => {
-      complete("failed", {}, error);
-      if (error instanceof DOMException && error.name === "NotAllowedError") throw new Error("voice_microphone_permission_denied");
-      throw error;
-    });
-  }
-
-  configureVoiceInput = (settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void> => this.action("voice-input", async () => {
-    const signal = this.captureLifetime.signal;
-    if (this.microphoneRequest) await this.microphoneRequest.promise;
-    signal.throwIfAborted();
-    const previous = this.view.voiceInput;
-    const voiceInput = { ...previous, ...settings };
-    const enhanced = Boolean(voiceInput.voiceProcessing && voiceInput.strongerSuppression);
-    const input = this.microphone;
-    if (input && (voiceInput.deviceId !== previous.deviceId || voiceInput.voiceProcessing !== previous.voiceProcessing
-      || enhanced !== Boolean(previous.voiceProcessing && previous.strongerSuppression))) {
-      let captured: MediaStream | undefined = await this.captureVoiceMicrophone(voiceInput, input.signal);
-      try {
-        signal.throwIfAborted();
-        if (this.microphone !== input) throw new DOMException("Microphone capture cancelled", "AbortError");
-        await input.configure(captured, enhanced);
-        captured = undefined;
-      } finally { captured?.getTracks().forEach(track => track.stop()); }
-    }
-    const applied = { ...voiceInput, volume: this.view.voiceInput.volume };
-    this.patch({ voiceInput: applied });
-    saveRoomPreferences({ voiceInput: applied });
-  });
 
   setListeningVolume = (volume: number): void => {
     this.patch({ listeningVolume: volume });
@@ -3861,147 +3771,6 @@ export class ChannelSession {
     const value = { volume: 1, muted: false, ...values.get(userId), ...patch };
     if (value.volume === 1 && !value.muted) values.delete(userId); else values.set(userId, value);
     this.patch({ voicePlaybackByUser: values });
-  }
-
-  joinVoice = (roomId: string, listenOnly = false, providedStream?: MediaStream): Promise<void> => this.action(`voice:${roomId}`, async () => {
-    if (this.voiceParticipation.has(roomId)) return;
-    const intent: VoiceParticipation = { publicationId: null, muted: listenOnly, deafened: false };
-    this.voiceParticipation.set(roomId, intent);
-    let supplied = listenOnly ? undefined : providedStream;
-    try {
-      const microphone = !listenOnly && !supplied ? await this.getMicrophone() : undefined;
-      if (this.voiceParticipation.get(roomId) !== intent) throw new DOMException("Voice left", "AbortError");
-      await this.request({ type: "voice", roomId, joined: true, muted: intent.muted, deafened: intent.deafened });
-      if (this.voiceParticipation.get(roomId) !== intent) throw new DOMException("Voice left", "AbortError");
-      if (!intent.muted && (supplied || microphone)) {
-        const capture = supplied ?? microphone!.stream.clone();
-        supplied = undefined;
-        const id = intent.publicationId = crypto.randomUUID();
-        await this.publish("voice", roomId, capture, { microphone, publicationId: id });
-        if (this.voiceParticipation.get(roomId) !== intent) throw new DOMException("Voice left", "AbortError");
-        capture.getAudioTracks().forEach(track => { track.enabled = !intent.muted; });
-        this.refreshActivity();
-      } else {
-        supplied?.getTracks().forEach(track => track.stop());
-      }
-    } catch (error) {
-      supplied?.getTracks().forEach(track => track.stop());
-      const left = this.voiceParticipation.get(roomId) !== intent;
-      if (!left) this.voiceParticipation.delete(roomId);
-      if (intent.publicationId) this.retireCapture(intent.publicationId);
-      this.releaseUnusedMicrophone();
-      if (left) throw new DOMException("Voice left", "AbortError");
-      await this.request({ type: "voice", roomId, joined: false, muted: true, deafened: false }).catch(() => {});
-      throw error;
-    }
-  });
-
-  leaveVoice = (roomId: string): Promise<void> => {
-    const id = this.voiceParticipation.get(roomId)?.publicationId;
-    this.voiceParticipation.delete(roomId);
-    if (id) this.retireCapture(id);
-    this.refreshActivity();
-    return this.syncVoiceParticipation(roomId);
-  };
-
-  voiceMicrophonePending = (roomId: string): boolean => {
-    const intent = this.voiceParticipation.get(roomId);
-    return !!intent && !intent.muted && this.view.pending.has(`voice:${roomId}`);
-  };
-
-  canUnmute = (roomId: string): boolean => {
-    const intent = this.voiceParticipation.get(roomId);
-    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
-    if (!intent || !room?.authorized) return false;
-    const stream = intent.publicationId ? this.local.get(intent.publicationId)?.stream : undefined;
-    return !!stream?.getAudioTracks().some(track => track.readyState === "live")
-      || this.view.connection === "connected" && room.available && !this.view.pending.has(`voice:${roomId}`);
-  };
-
-  voiceActivity = async (roomId: string, localOnly = false): Promise<ReadonlyMap<string, number>> => {
-    const sessionId = this.view.sessionId;
-    const intent = this.voiceParticipation.get(roomId);
-    if (!sessionId || !intent || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return new Map();
-    const levels = new Map(localOnly ? [] : await this.media.voiceActivity(roomId));
-    if (this.view.sessionId !== sessionId || this.voiceParticipation.get(roomId) !== intent
-      || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return new Map();
-    for (const id of levels.keys()) if (id === sessionId || intent.deafened
-      || !this.view.state.voice.some(voice => voice.roomId === roomId && voice.sessionId === id && !voice.muted)) levels.delete(id);
-    const capture = intent.publicationId ? this.local.get(intent.publicationId) : undefined;
-    if (!intent.muted && capture?.roomId === roomId && capture.kind === "voice" && capture.microphone
-      && capture.stream.getAudioTracks().some(track => track.readyState === "live" && track.enabled)) {
-      levels.set(sessionId, capture.microphone.level());
-    }
-    return levels;
-  };
-
-  setMuted = (roomId: string, muted: boolean): Promise<void> => {
-    const intent = this.voiceParticipation.get(roomId);
-    if (!intent) return Promise.resolve();
-    if (!muted && !this.canUnmute(roomId)) return Promise.reject(new Error("capture_unavailable"));
-    intent.muted = muted;
-    const stream = intent.publicationId ? this.local.get(intent.publicationId)?.stream : undefined;
-    stream?.getAudioTracks().forEach(track => { track.enabled = !muted; });
-    this.refreshActivity();
-    if (!muted && !stream) return this.action(`voice:${roomId}`, async () => {
-      try {
-        const microphone = await this.getMicrophone();
-        if (this.voiceParticipation.get(roomId) !== intent || intent.muted) return;
-        const capture = microphone.stream.clone();
-        const id = intent.publicationId = crypto.randomUUID();
-        await this.publish("voice", roomId, capture, { microphone, publicationId: id });
-        if (this.voiceParticipation.get(roomId) !== intent) throw new DOMException("Voice left", "AbortError");
-        capture.getAudioTracks().forEach(track => { track.enabled = !intent.muted; });
-        this.refreshActivity();
-        await this.request({ type: "voice", roomId, joined: true, muted: intent.muted, deafened: intent.deafened });
-      } catch (error) {
-        const left = this.voiceParticipation.get(roomId) !== intent;
-        if (intent.publicationId) this.retireCapture(intent.publicationId);
-        if (!left) { intent.publicationId = null; intent.muted = true; }
-        this.refreshActivity();
-        if (left) throw new DOMException("Voice left", "AbortError");
-        throw error;
-      }
-    });
-    return this.syncVoiceParticipation(roomId);
-  };
-
-  setDeafened = (roomId: string, deafened: boolean): Promise<void> => {
-    const intent = this.voiceParticipation.get(roomId);
-    if (!intent) return Promise.resolve();
-    intent.deafened = deafened;
-    this.refreshActivity();
-    return this.syncVoiceParticipation(roomId);
-  };
-
-  private syncVoiceParticipation(roomId: string): Promise<void> {
-    const intent = this.voiceParticipation.get(roomId);
-    // Listening can change while an unmute is still waiting for capture or publication.
-    const member = this.roomSnapshot?.voice.find(value => value.roomId === roomId && value.sessionId === this.view.sessionId);
-    const muted = !intent || intent.muted || (!this.local.get(intent.publicationId ?? "")?.admitted && (member?.muted ?? true));
-    const command = { type: "voice" as const, roomId, joined: !!intent, muted, deafened: intent?.deafened ?? false };
-    if (this.view.connection !== "connected") return Promise.resolve();
-    if (this.view.pending.has(`voice:${roomId}`)) {
-      // Local intent can stop a source while an earlier authority reply is pending.
-      this.send(command);
-      return Promise.resolve();
-    }
-    return this.action(`voice:${roomId}`, async () => {
-      try { await this.request(command); }
-      catch (error) { if (!(error instanceof Error) || error.message !== "disconnected") throw error; }
-    });
-  }
-
-  private releaseUnusedMicrophone(): void {
-    if ([...this.voiceParticipation.values()].some(intent => intent.publicationId || !intent.muted)) return;
-    const request = this.microphoneRequest;
-    this.microphoneRequest = null;
-    request?.controller.abort();
-    request?.input?.close();
-    void request?.context?.close().catch(() => {});
-    if (request) request.context = null;
-    this.microphone?.close();
-    this.microphone = null;
   }
 
   reconnect = (): void => {
@@ -4046,9 +3815,8 @@ export class ChannelSession {
     this.media.reset();
     this.local.clear();
     this.localNativeEndpoints.clear();
-    this.voiceParticipation.clear();
+    this.voice.close();
     for (const id of this.watching.keys()) this.retireWatch(id);
-    this.releaseUnusedMicrophone();
     this.signals = [];
   }
 
@@ -4056,22 +3824,19 @@ export class ChannelSession {
     this.local.get(id)?.audio?.dispose();
     this.local.delete(id);
     this.media.removeLocal(id);
-    for (const intent of this.voiceParticipation.values()) {
-      if (intent.publicationId === id) { intent.publicationId = null; intent.muted = true; }
-    }
+    this.voice.captureRetired(id);
   }
 
   private refreshActivity(): void {
     if (this.view.state) this.patch({ state: this.projectActivity(this.view.state) });
     this.input.update();
-    this.releaseUnusedMicrophone();
   }
 
   private projectActivity(state: ChannelSnapshot): ChannelSnapshot {
     const sessionId = this.view.sessionId;
     const subscriptions = state.subscriptions.filter(id => {
       const publication = state.publications.find(value => value.id === id);
-      return publication?.kind === "voice" ? this.voiceParticipation.has(publication.roomId) : this.watching.has(id);
+      return publication?.kind === "voice" ? this.voice.joined(publication.roomId) : this.watching.has(id);
     });
     // Only authority updates retire leases and assign transports. Local stop
     // intent changes what this page presents, even while the host is unreachable.
@@ -4085,15 +3850,7 @@ export class ChannelSession {
             audience: publication.audience.filter(viewer => viewer.sessionId !== sessionId || this.watching.has(publication.id)),
           } : publication;
         }),
-      voice: state.voice.flatMap(member => {
-        if (member.sessionId !== sessionId) return [member];
-        const intent = this.voiceParticipation.get(member.roomId);
-        if (!intent) return [];
-        const capture = intent.publicationId ? this.local.get(intent.publicationId) : undefined;
-        const active = !intent.muted && capture?.admitted
-          && capture.stream.getAudioTracks().some(track => track.readyState === "live" && track.enabled);
-        return [{ ...member, muted: !active, deafened: intent.deafened }];
-      }),
+      voice: this.voice.project(state.voice),
       ...this.projectWatches(state),
       subscriptions,
       failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),

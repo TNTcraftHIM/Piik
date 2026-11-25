@@ -59,7 +59,9 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
         policy.voice_bitrate = bitrate;
     }
     policy.appearance.picture = input.picture;
-    policy.allow_service_relay = input.allow_service_relay.unwrap_or(false);
+    if let Some(allowed) = input.allow_service_relay {
+        policy.allow_service_relay = allowed;
+    }
     policy.validate().map_err(error)?;
     encode(&policy)
 }

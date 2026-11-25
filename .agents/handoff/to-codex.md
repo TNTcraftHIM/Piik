@@ -5,268 +5,196 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `79c94549`, merged in `2f031b78`. `tsc -b` passes. The web
-suite first failed 22 tests in `watch-bytes-wasm` and `channel-session` because
-my WASM package was stale; after `build.mjs` those files and `watch-bytes`
-pass, 622 tests. I did not rerun the whole suite after the rebuild, and I did
-not run the Rust suites.
+Reviewed through `7f52281b`, merged in `5c92bd89`. After rebuilding the WASM
+package, `tsc -b` passes and the web suite passes: 159 files, 2,344 tests on
+the merge and 2,348 with the two lanes below. I did not run the Rust suites.
 
 ## Settled
 
-- Your six batch outcomes, the canon's hold wording and the history count.
-- **The six commits of this batch: no finding.** One agent traced each against
-  the bar. Two notes, no change asked. In the Browser an `ack` event resolves
-  whatever request is waiting without checking its kind (`session.ts:633`),
-  which the present Core never sends for those commands. After `8855f53a` the
-  result file is written only once the dialog is dismissed, and nothing reads
-  it.
+- Your outcomes on the wording, the ADR scopes, the removal copy, the
+  signing boundary and the lineage. I agree that registration cannot order
+  copies by lineage.
+- **ADR-0019** is revised to your outcomes in this push: the quote policy and
+  a deleted-reply marker wait for their features, the merge rule for text and
+  reactions is set with editing, search is a stated literal match over a
+  bounded scan and claims nothing about language, and stored fields come with
+  the capability that uses them.
+- **Your fourteen commits: no finding against them.** Two agents traced each.
+  The one-use ticket is sound: 122 random bits, memory only, sixty seconds,
+  consumed under the domain lock, minted only by the App's own page. The
+  lineage is written with the history in one transaction in both stores, and
+  every cursor a reader holds is scoped.
 
-## Restored history: confirmed
+## Findings and notes from that review
 
-I confirm the boundary: the writer owns a durable lineage, a restore creates a
-new one atomically with the installation, the projection carries it with the
-last sequence, and a reader whose lineage differs resets its marker to zero. A
-finer rule that kept the marker at the restore point is not worth a second
-field for an event this rare. For the design:
+1. **The standalone Server still puts the durable owner key in a URL.** The
+   README tells the operator to open `…#owner=<owner-key>`
+   (`prototype/channel-server/README.md:132`) and the page reads it
+   (`session.ts:221-222`). You said this path is unchanged. I checked the reach of
+   that key myself: it derives the owner's credential only
+   (`identity.rs:223-232`), and other people's credentials are random and
+   stored as digests. So whoever reads that browser history can become the
+   site owner, and nothing more. A reviewer had claimed it signs every
+   credential; that was wrong. Low priority: the same one-use ticket, printed
+   at start or minted by a command, would close it.
+2. **Low.** After a domain restore the durable key stays in page memory
+   (`session.ts:2016`) and is sent in every later Join. The welcome clears it
+   only when a launch or owner value was in the fragment (`:530`).
+3. **A viewer that is never placed waits without end.** A viewer with no
+   eligible parent is not placed and no failure is recorded
+   (`routes.rs:304-313`), so the tile shows "Waiting for a video route" with
+   no action and no bound (`ChannelStage.tsx:364-376`). The canon asks that
+   every attempt end in success, bounded waiting or a clear failure. Failing
+   an unplaced viewer at the existing repair deadline (`room.rs:1641-1643`)
+   would give the interface a fact to show.
+4. **The mini mouse stops docking after the window loses focus.** `release()`
+   clears the idle timer and never re-arms `park()`
+   (`RemoteMouse.tsx:104-113`), and window inactivity now calls it. `5e373321`
+   re-arms it. It changes one of your assertions, that hiding leaves no dock
+   timer, which was the defect. Decline that commit alone if you disagree.
+5. **Unverified, one line each.** A page whose ticket was used but which never
+   processed a welcome sends the dead ticket beside its saved credential and
+   is refused (`identity.rs:260`). A cold browser may need more than sixty
+   seconds. `FileStore.retain` overwrites by address without checking content
+   (`file-store.ts:124-132`). When a replacement's state update is dropped
+   after a pair failure, a viewer following A to B to C is not moved to C.
+6. **Withdrawn before it reached you.** A reviewer reported a false error
+   banner during an automatic follow. Replaying it showed the state arrives
+   before the refused reply, and the aborted join is not reported.
 
-- Every cursor a reader holds is scoped by lineage: the read marker, a page
-  cursor and the follow-latest position. A cursor from another lineage is
-  discarded, not translated.
-- A restore returns the room to the backup. Messages deleted after it come
-  back by design, and the restore dialog should say so.
-- An attachment's identity is its digest and does not depend on lineage, so
-  retained copies stay valid.
-- A room backup also restores the policy whole, so revoked grants and a reset
-  invitation return (`stored_room.rs:100-110`). Decide that with finding 1
-  below.
-- A question, not a finding: an audit could find no record of which saved
-  copy of a room is current. Any session of the creator may register once the
-  host's socket is gone (`channel.rs:833-842`), so a Browser copy and a
-  restored copy could take turns and split the history. Could registration
-  carry the lineage and last sequence, so that an older copy is refused?
+## The silent relay: a step your measurement points to
 
-## Findings from audits run while I waited
-
-Security first. The first is an authorization failure by the product's own
-words, so I have also put it to the owner.
-
-1. **Removing a member and the invitation stay separate. Decided by the
-   owner; no code change.** `revoke` removes the grant (`room.rs:793-800`) and
-   `enter` admits anyone who presents the invitation or the password again
-   (`access.rs:208-227`), so a removed person can return with the old link.
-   The owner wants the two responsibilities kept apart, as a kick is apart
-   from a ban elsewhere. What was wrong was the guide, which said a new grant
-   was needed. The commit after this one says plainly that the link or the
-   password still admits, and that resetting them keeps the person out.
-   Blocking an identity would be a separate feature, and nobody has asked for
-   it.
-2. **The creator of a Server-hosted room can attribute messages to other
-   people. Traced by an agent; I have not verified it.** The creator restores
-   a backup through `PUT …/rooms/{room}/backup` (`domain_backup.rs:82-128`).
-   The restore checks domain, room and creator (`hosted_room.rs:214-217`) and
-   not the authors of history rows (`backup.rs:313-330`, `438-480`). The
-   server's writer then serves those rows as written by the named users. A
-   room copy already remaps authors to archive identities; the same remap, or
-   refusing authors the server did not confirm, would close it.
-3. **The owner key travels in a URL. Code verified; the browser's handling is
-   not.** The App opens `…#owner=KEY` (`app_domain.rs:322-326`) and the page
-   keeps the key (`session.ts:219`). A browser normally records an opened
-   address in its history, which may sync. Any Join that carries the key
-   becomes the owner, and the key cannot be rotated. Passing it through the
-   App's token-checked control connection, or making it single use, would
-   close it.
-4. **Concerns nobody confirmed**, one line each: no limit on guesses of a room
-   password (`access.rs:91-98`); every anonymous Join creates and saves a
-   user; the owner key is compared without a constant-time comparison.
-5. **Documents that say more than the code enforces.** The network model says
-   a carrier cannot substitute identity or permissions
-   (`channel-network-design.md:107-108`), and the room-data model says signing
-   authenticates the host (`:180`). Both hold only relative to the key map the
-   channel hands out. I corrected the reader guide in `d54bbb00`.
-
-Checked against the canon, for your judgement:
-
-- **Server forwarding is not a fallback today.** Once on, it joins the relays
-  with no rank below participants and a larger connection limit
-  (`room.rs:580`, `routes.rs:322-340`, `discovery.rs:748-753`). The owner's
-  direction: the operator's switch stays off by default, because bandwidth is
-  the operator's cost; once the operator turns it on, rooms use it without a
-  second switch in each room, and it ranks after every participant path. A
-  room can still decline it. The owner also decided the choice per kind that
-  your forwarding plan proposes: screen, voice and files each have a switch,
-  one master switch turns all three on or off together, and everything is off
-  by default. Their costs differ by orders of magnitude, which is why an
-  operator may want to separate them. On file originals the
-  present decision stands: a Server does not keep them. I had suggested the
-  Server as one more holder and have withdrawn it. The owner's reasons are
-  integrity, consistency, space and the demand for third-party storage that
-  would follow; lasting files belong behind a link to a drive, and anything
-  more is for an integration or a bot to add, as your hosting design says.
-- **The App's ways of being reached exclude each other** per launch
-  (`app_domain.rs:292-297`), and its entry has no port mapping or public
-  address. The canon says side by side.
-- **Browser voice is reported ready without delivered audio**
-  (`media.ts:371-373`).
-- **Standby connections exist without an activity asking** (`discovery.rs:668`,
-  `:711`). The owner settled this in the canon, which was too tight: when
-  idle, the pool may build and check connections ahead of need. No code
-  changes.
-- **Simple sharing creates a room on every start** and leaves it when the
-  picker is cancelled (`ChannelPage.tsx:230-244`). Mine to propose.
-
-## Canon
-
-Two changes from the owner since your merge. `c618565c` loosens how
-connections are built: mostly by the activity that needs one, and when idle
-the pool may build and check some ahead of need. The commit of this push adds
-one statement: a small core, open to extension, where an API, bots and plugins
-use the same actions and the same authority as a person. The owner gave it as
-the reason a Server keeps no file originals: what the core leaves out, the
-community can add. I am surveying extension models and will send the smallest
-surface I can defend, because whatever a bot relies on becomes a public
-promise.
+Your hard-exit run is the measurement I asked for: signaling offline at
+0.15 s, the connection disconnected at 6 to 7 s, failed at 16 s, and a new
+frame 0.13 s after the failure. Ten of the sixteen seconds wait for the
+browser's final verdict while two independent facts already say the parent is
+gone. A proposal in the terms of ADR-0018, decision 4: when a parent's
+signaling session is offline and its connection reports disconnected, open
+the existing prepared repair. It commits only on proof and is abandoned if
+the incumbent resumes, so a false alarm costs a short duplicate and a healthy
+pair that only lost control traffic is untouched. No timer is added; both
+facts come from the stack. Would you run the same hard exit with that
+opening and report the gap?
 
 ## Queue
 
-- **`6b3a81df fix(copy)`**: the tile for a watched source that left said the
-  sharer ended the share. It appears for a dropped connection and an offline
-  host too. Five locales now say the share has ended.
-- **`d54bbb00 docs(guide)`**: both room guides say that access is not
-  encryption and what a site operator can read.
-- **`5cc583dc docs(adr)`**: ADR-0018 rewritten to your nine outcomes.
-- **The commit after this one**: a scope line on ADR-0001, 0002, 0005, 0007,
-  0009, 0010 and 0013 saying what holds for 3.0, and the two words that
-  changed meaning, host and relay, in the naming standard. ADR-0008 and 0011
-  need your statement of what applies to 3.0; I could not tell.
+- **Interface lane**, merged as `efdf3029`: `044c183d`, `4224c0a3` and
+  `2b19a34c` make simple sharing share only into the room it made on this
+  device, remembered by identifier beside the room order, so a person's other
+  rooms never receive a share they did not start there; `92270668` names a
+  room in the error banner instead of its identifier; `5361b417` says why the
+  codec choice is locked while sharing; `5e373321` is the mouse above.
+- **Voice owner lane**, merged as `d2443b97`: `dae3f2a1` moves voice
+  participation into `voice-participation.ts`, `10e8a277` keeps one loop for
+  stale local publications, `fc3eb735` corrects ADR-0015. `session.ts` went
+  from 4,096 lines to 3,892 with your batch in it, and the owner is 392. No
+  test was edited. Your regions in `session.ts` are byte-identical to your
+  line.
+- **Server forwarding** arrives as one commit once it is rebased onto Domain
+  47. Its review found and fixed one real defect: a strict participant-first
+  pass could spend the source's outputs on direct listeners and leave those
+  reachable only through the service unserved. The rule is now participants
+  first unless the joint plan serves more receivers.
 
-## ADR-0020: one vocabulary for extension
+## Claims: four more lanes, started now
 
-The owner wants bots, API clients, plugins, new activities and providers to
-be the same kind of thing underneath, with built-ins on the same points, and
-the scaffolding designed now, after the harness whose every part is a plugin.
-That reverses two things you and I had agreed: the standard's refusal of a
-generic plugin framework, and the deferral of the activity envelope in
-ADR-0017. [ADR-0020](../../docs/adr/0020-one-vocabulary-for-extension.md) is
-proposed. Three designers worked from the requirements and from the primary
-documents of that harness and of seven older designs; the one asked to find
-where a plugin boundary costs more than it gives reached the same shape.
+Each runs on its own branch off this queue. These are holds until they land.
 
-What I expect you to test, and where the proposal already agrees with you:
+- **Push to talk and voice activation, Browser part.**
+  `src/client/media/microphone-input.ts` gains one gate on the audio thread;
+  the voice settings and shortcut components, `room-preferences.ts` and the
+  locales. Open microphone stays the default. Mute stays the hard override
+  and no command is sent per press. Nothing changes on the wire. A key held
+  outside the App's window needs a native part, which is not in this lane.
+- **Presentation.** The voice dock's label (joining, connected, joined, from
+  facts the client has), the wait tile's hint when a room has declined the
+  site's forwarding, and the failures of quick start and of joining voice
+  shown at their own controls.
+- **Content hint, which I owed.** One function in
+  `src/client/media/quality.ts` maps the stored picture preference to the
+  hint, used by the original sender, clones, a live change, a rollback and the
+  pool's producer: Clarity gives `detail` with maintain-resolution, Balanced
+  gives `motion` with balanced, Fluency gives `motion` with
+  maintain-framerate. No new setting and no change of default. The start-up
+  override stops reaching the hint. The reason Balanced keeps `motion`: under
+  `detail`, libwebrtc turns an explicit balanced into maintain-resolution for
+  screen content, which would fold three choices into two. I will send the
+  measurement matrix with the commit.
+- **Offline traces for stage 0 of ADR-0018, Browser export only.** Under the
+  existing debug switch: the room host records its inputs, each participant
+  logs flow assignments and link states beside the events it logs today, and
+  a compact sample each second keeps derived numbers only, with no address.
 
-- **No loader and no solver.** Compositions are static lists resolved at
-  build, and a missing need is a build error. Nothing is loaded at run time.
-- **The writer runs the compiled core only** and never reads a payload's
-  meaning. A kind is ordered and stored under one of three classes: history,
-  state with a revision to match, and signal.
-- **A point with one role is not declared.** It needs a definition, a
-  provider and a consumer in the tree. Reachability and forwarding get no
-  published interface; storage gets an internal one because three
-  implementations exist.
-- **Proof before promise, with a stop.** Watch-together moves first. A second
-  activity must then land without a kernel change, and the session hub must
-  shrink by more than the framework adds. If a built-in needs a side door,
-  the part interface is dropped and only scopes and kinds stay.
-- **Scopes are the ADR-0015 owners.** Not a layer above them.
+## ADR-0020, revised to your review
 
-What changes for the contract, if you take it: the record envelope (kind,
-major version, class, opaque payload, fallback), unknown kinds stored and
-unknown classes refused, capability names in the handshake, a program marker
-with who added it in the membership record, and one reserved field. Please
-give its nine decisions an outcome, and say what the envelope would cost in
-the present wire.
+I take your nine outcomes, and the record now says what survived both the
+designers and your tracing. The words and the four places stay. Built-in
+records keep their compiled forms, and a generic record for a community kind
+becomes a capability when the first extension needs it; your measurements of
+the envelope are in the record. Owners undo their own registrations and no
+owner ends another. The full place and simple sharing are two views of one
+session. A program is marked at an authenticated enrollment. The pilot is your
+paired experiment at watch media or the stage handoff.
 
-## ADR-0019: the life of a message
+One of your outcomes I am reopening, on evidence. You deferred the uniform
+record form and measured what a draft costs. The owner asked that this be
+decided by what mature projects do, and I had recommended waiting, as you did.
+A survey of the specifications says otherwise. Every system in which others
+define stored record types has one outer form from its first release: Matrix,
+XMPP, ActivityPub, Nostr, IRCv3 with tags, and Mattermost, which is a single
+vendor's product. The systems that began with a specific message and added
+extension later carry two models for good: Slack's attachments beside Block
+Kit, Discord's two component models, and Matrix's own message content,
+whose extensible form was proposed in 2019, accepted in 2023 and still needs
+a new room version. Systems that never admit outside types, Signal and
+Telegram, live well with specific formats and a version number. We intend to
+admit them, so the record now takes the uniform form.
 
-The owner wants sending, editing, deleting and searching decided for 3.0, and
-kept simple. [ADR-0019](../../docs/adr/0019-the-life-of-a-message.md) is
-proposed. It rests on a map of the present model and on how Matrix, XMPP and
-two chat services define the same things. In short: edit by the author only,
-one row with no earlier version and no time limit; delete as today; one
-revision per message covering text and reactions; search at the writer as a
-plain match in the core, with an index as a later optimisation; edit and
-search announced as capabilities so either can ship after release.
+The same survey answers your two costs:
 
-What I would settle before the stored format is first published, since each
-touches a row: the time of the last edit, the meaning of the one revision, the
-record for a changed message, the marker a reply keeps when its target is
-deleted (today the reply field is dropped, `storage.rs:560`), and unknown
-fields in a backup's rows, which are dropped on import without notice today
-(`backup.rs:430-436`). Two facts from the map that an edit has to respect: a
-reply stores a 160-unit copy of the quoted text (`history.rs:281-300`), and
-mention offsets point into the text. Please give its six decisions an outcome.
+- **Bytes.** Uniform means a shared outer form, not untyped content. Every
+  such system still checks its own types by schema. So core types can use a
+  short reserved name and need no fallback text, which a text message already
+  is. The counter-evidence is real, and it is in the record: protobuf
+  regretted the forty to eighty bytes a string type name costs on every
+  record. Please measure a draft with reserved short names against your
+  727 and 789.
+- **Deletion.** Matrix and XMPP delete by stripping content and keeping a
+  skeleton, which is close to the opaque marker you keep today. The lesson
+  they give is that the writer can only withdraw what it can see, so the
+  files a record carries and the record it relates to belong in the outer
+  form, not inside opaque content.
 
-## ADR-0018
+And you found that an authorized history read does not require presence
+today; if nothing must read a room unseen, that is a gap to close whatever
+happens to this record.
 
-I take eight of your outcomes as written. They are better than what I sent:
-my own reading of the tree confirms that every reported state change sends a
-full snapshot to every session, so a report each second cannot ride any
-existing message, and that Native has no decode, render, freeze or
-limitation counters and no round-trip time on an idle pair.
+## Server forwarding: the commit, and one gap it leaves
 
-One problem I keep open, without my solution: how long a viewer waits after a
-parent dies silently. Nothing measures it, and it is bounded only by
-connection failure. Could the lab kill a relay process under a moving screen
-and record the time to the next rendered frame at its viewers?
+`039a5dfe` is the lane as one commit, rebased onto Domain 47, with its
+review correction folded in. On this branch the WASM package rebuilds, `tsc`
+passes, the web suite passes with 2,349 tests and `cargo test` passes for
+channel-core. The channel-native suites were not run.
 
-Next on my side for stage 0: the fields an offline replay needs from the
-Browser's existing debug export, and the questions the first traces should
-answer. "Shadow" already names a prepared switch leg in `publication.rs`, so
-the ADR says replayed decision.
+It meets your condition that unknown or failed candidates must not hold back
+an available fallback: the participant-first tree is kept only when it serves
+as many receivers as the joint tree. A receiver already on the service stays
+there until that route fails; moving it back is ADR-0018 work.
 
-Discontinuous transmission for room voice looks like a small change of its
-own with your measurement behind it. Yours, unless you want me to take it.
-
-## Frontend: the next extraction, and a claim to agree
-
-An agent mapped every mutable field of the session hub to its writers and
-retirement points. Its recommendation, which I agree with, is voice before the
-rest of the reader:
-
-- **Why not the reader first.** Its lifetime is not settled: readings retire
-  per socket (`session.ts:536`), histories per binding (`:782`), and an
-  interaction survives a reconnect through the view (`:1481`). That needs a
-  decision before code moves.
-- **VoiceParticipation.** `voiceParticipation`, `microphone` and
-  `microphoneRequest` move with fourteen methods and the voice arms of
-  `applyState`, `reconcileLocalMedia` and `projectActivity`. Five writers
-  elsewhere disappear, among them the generic `action()` releasing the
-  microphone and `retireCapture` rewriting voice intent. About 270 lines leave
-  the hub for an owner of about 220. Twelve existing tests pin the late-result,
-  cancellation and immediate-mute behaviour.
-- **A correction to ADR-0015.** It says room voice and share commentary share
-  one microphone. They do not; the test "screen commentary owns a separate
-  microphone" pins it.
-
-## Claims: three lanes started at the owner's request
-
-The owner asked me to take implementation work so that more moves at once,
-frontend and interaction first, and some of what would be yours. Each lane
-runs on its own branch off this queue and arrives as queue commits with its
-checks, for you to take or decline one by one. If you are working in any of
-these regions, say so and I will rebase or hold.
-
-- **Voice owner.** `src/client/channel/session.ts`, the voice region (about
-  lines 3680 to 3935) and the voice arms of `applyState`,
-  `reconcileLocalMedia` and `projectActivity`; a new
-  `src/client/channel/voice-participation.ts`; the correction to ADR-0015. A
-  move with no behaviour change, held by the existing session tests.
-- **Interface.** `src/client/pages/ChannelPage.tsx` (simple sharing must not
-  leave a room behind; the error banner's raw room identifier),
-  `ChannelShareControl.tsx` (the codec control gives its reason when disabled)
-  and the locale files.
-- **Server forwarding, as the owner decided it.** Core `routes.rs`, `room.rs`
-  and `access.rs`, the Server's configuration and its documents: the service
-  ranks after every participant path, a room uses it by default once the
-  operator offers it, and the operator gets one master switch with a switch
-  per kind. This is planner code, and you asked that none change before a
-  reviewed design. It is the owner's decision on what a fallback means, so I
-  am preparing it as one commit for your judgement, not merging it past you.
+The gap, confirmed with a temporary test and not fixed: in a public room the
+Service's session has ordinary read access (`access.rs:167`), so a modified
+room host can list it as a plain participant relay with forwarding off, and
+the channel accepts the projection. The exclusion of the Server's own
+session covers hosted rooms only (`channel.rs:1498`). Recognising that
+session by identity in every room it does not host, and requiring the transit
+view for any role it takes, would close it.
 
 ## Still owed
 
-The content-hint mapping from persistent intent, and the presentation of a
-current attempt that has no route and of a room whose storage is unavailable.
+An isolated fixture for the attribution finding, as you asked. The
+presentation of a room whose storage is unavailable, which needs the reason
+from the native runtime. The smallest flow for several App entries at once.
 
 ## Holds
 
-None.
+The four claims above.

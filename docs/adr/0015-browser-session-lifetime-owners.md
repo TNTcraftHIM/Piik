@@ -64,7 +64,7 @@ owner per lifetime. This decision applies that rule to the Browser session.
 | 0 | First RoomReader test seam, if needed | First binding-scoped history scenario | Its private test setup |
 | 1 | `RoomReader` per room binding | History pages, follow-latest, the interaction session and the read cursor | `PendingHistory` in the request map, three loops that walk every request, `readings` and `historyChannel` bookkeeping |
 | 2 | Initiating dialog or page control | One result per started operation | The flags that arbitrate the global error slot |
-| 3 | `VoiceParticipation` | Publication and mute per room | `voiceParticipation` and the voice arms of `applyState` |
+| 3 | `VoiceParticipation` | Participation, mute, deafen and the voice publication per room, and the microphone the rooms share | `voiceParticipation`, `microphone` and `microphoneRequest`, the voice arms of `applyState`, `reconcileLocalMedia` and `projectActivity`, and the microphone release in `action()`, `refreshActivity` and `applyState` |
 | 4 | `Stage` per room | Source selection, screen share and watch-together, which share one stage slot | `sourceSelections`, `screenShares`, both watch-player maps and the three per-share setting loops |
 | 5 | `ScreenWatches` | Viewing subscriptions and the App helper | `watching` and its playback-error edges |
 | 6 | `BrowserHosting` | Hosted rooms and their cleanup | `hostedRooms` and `hostCleanup` |
@@ -75,8 +75,11 @@ between steps. Step 0 adds only the dependency needed by the first RoomReader te
 Request correlation stays with the session. RoomReader assembles confirmed pages
 and applies live changes within the binding. Optimistic updates keep their
 operation identity until confirmation or failure.
-The microphone capture is shared by room voice and share commentary, so
-it stays one shared lease that steps 3 and 4 both use.
+Room voice and share commentary capture separate microphones. The voice rooms
+share one microphone, which `VoiceParticipation` releases after its last
+consumer, and commentary stays with its share in step 4. The session keeps the
+local publications, personal playback and the input preference, and voice uses
+them through one interface.
 
 ## Consequences
 

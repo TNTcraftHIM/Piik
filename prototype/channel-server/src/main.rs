@@ -1,5 +1,8 @@
 use anyhow::{ensure, Context};
-use piik_channel_core::wire::{HostingMode, RoomCreationPolicy};
+use piik_channel_core::{
+    host::TransitKinds,
+    wire::{HostingMode, RoomCreationPolicy},
+};
 use piik_channel_native::peer::server_udp::ServerUdp;
 use piik_channel_prototype::{domain::Domain, listener_client_address, serve_server, web};
 use serde::de::{value::StrDeserializer, DeserializeOwned};
@@ -9,6 +12,15 @@ use std::{
 };
 
 mod release;
+
+fn switch(key: &str, default: bool) -> anyhow::Result<bool> {
+    match std::env::var(key) {
+        Ok(value) if value == "true" => Ok(true),
+        Ok(value) if value == "false" => Ok(false),
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        _ => anyhow::bail!("{key} must be true or false"),
+    }
+}
 
 fn first_start_setting<T: DeserializeOwned>(key: &str, default: T) -> anyhow::Result<T> {
     match std::env::var(key) {
@@ -31,12 +43,13 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         RoomCreationPolicy::Ordinary,
     )?;
     let hosting_mode = first_start_setting("PIIK_CHANNEL_HOSTING_MODE", HostingMode::Lightweight)?;
-    let transit_enabled = match std::env::var("PIIK_CHANNEL_SERVICE_TRANSIT") {
-        Ok(value) if value == "true" => true,
-        Ok(value) if value == "false" => false,
-        Err(std::env::VarError::NotPresent) => false,
-        _ => anyhow::bail!("PIIK_CHANNEL_SERVICE_TRANSIT must be true or false"),
+    // The master switch offers every kind; the operator can turn one kind off.
+    let kinds = TransitKinds {
+        screen: switch("PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN", true)?,
+        voice: switch("PIIK_CHANNEL_SERVICE_TRANSIT_VOICE", true)?,
+        files: switch("PIIK_CHANNEL_SERVICE_TRANSIT_FILES", true)?,
     };
+    let transit = switch("PIIK_CHANNEL_SERVICE_TRANSIT", false)?.then_some(kinds);
     let stop = piik_channel_native::shutdown_signal()?;
     let port = std::env::var("PIIK_CHANNEL_PORT")
         .unwrap_or_else(|_| "8791".into())
@@ -137,7 +150,7 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         directory,
         routes,
         udp,
-        transit_enabled,
+        transit,
         stop,
     )
     .await?;

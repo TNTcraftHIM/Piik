@@ -1,8 +1,8 @@
 // Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
   "room.transit.title": "站点转发协助",
-  "room.transit.allow": "允许站点转发",
-  "room.transit.note": "直连不可用时，允许此站点转发本房间已分配的媒体和文件数据，不授予聊天或历史读取权限。此选择保存在房间设置中。",
+  "room.transit.allow": "使用站点转发",
+  "room.transit.note": "站点提供转发时，本房间默认允许用它兜底。关闭后，站点不会代转本房间的画面、语音或文件。",
   "room.transit.unavailable": "站点暂未提供转发；房间设置已保留。",
   "connection.siteForwarding": "站点转发",
   "connection.webpage": "网页",
@@ -1501,6 +1501,7 @@ export const zh = {
   "host.advanced.execution.softwareHint": "本次分享使用软件编码。",
   "channel.error.captureEncodingUnsupported": "当前 App 无法使用所选编码方式。",
   "host.advanced.codec.h264Hint": "H.264 视频格式",
+  "host.advanced.lockedWhileSharing": "分享中无法更改，停止分享后即可调整。",
 
   "host.details": "连接详情",
   "connection.room": "房间连接",

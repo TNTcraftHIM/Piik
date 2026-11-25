@@ -84,6 +84,10 @@ export const ko = {
   "room.settings.removePassword": "비밀번호 삭제",
   "room.settings.hidden": "입장 권한이 없는 사용자에게 숨기기",
   "room.relay.default": "방 기본 전달 한도",
+  "room.transit.title": "사이트 전달 지원",
+  "room.transit.allow": "사이트 전달 사용",
+  "room.transit.note": "사이트가 전달을 제공하면 이 방은 기본으로 예비 경로를 사용할 수 있어요. 끄면 사이트를 통해 이 방의 화면, 음성, 파일을 전달하지 않아요.",
+  "room.transit.unavailable": "지금은 사이트 전달을 사용할 수 없어요. 방 설정은 유지돼요.",
   "room.action.cancel": "취소",
   "room.action.save": "저장",
   "room.action.create": "방 만들기",
@@ -1336,6 +1340,7 @@ export const ko = {
   "host.advanced.execution.softwareHint": "이번 공유에 소프트웨어 인코딩을 사용해요.",
   "channel.error.captureEncodingUnsupported": "연결된 App에서는 선택한 인코딩 방식을 사용할 수 없어요.",
   "host.advanced.codec.h264Hint": "H.264 영상 형식",
+  "host.advanced.lockedWhileSharing": "공유 중에는 바꿀 수 없어요. 공유를 멈추면 바꿀 수 있어요.",
 
   "host.details": "연결 정보",
   "connection.room": "방 연결",

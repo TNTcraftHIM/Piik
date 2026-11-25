@@ -4,7 +4,9 @@ This reference preserves the published 2.x environment contract, with
 [immutable validation source](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/server/config)
 and its [matching environment example](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/.env.example). The current Rust branch
 uses the [Server/App startup owner](../../prototype/channel-server/README.md#run)
-and matching [deployment templates](../deployment.md). Keep real values in the
+and matching [deployment templates](../deployment.md). See the operator
+switches in [3.0 site forwarding settings](../../prototype/channel-server/README.md#site-forwarding).
+Keep real values in the
 service secret store or an untracked access-restricted environment file.
 
 ## Ownership

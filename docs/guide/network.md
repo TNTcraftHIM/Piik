@@ -26,8 +26,10 @@ firewall rules. A working web page does not establish that peer traffic is allow
 - Try a browser profile with default WebRTC settings, as described below.
 - If your group can use a shared virtual network, follow the [virtual LAN steps](#optional-a-virtual-lan).
 - On a managed network, ask the network administrator about blocked UDP, or use another network.
-- If the site runs on Piik Server, ask the site operator whether site forwarding is available.
-  A room manager can then enable **Allow site forwarding** under **Room settings → Connection**.
+- If you joined a Piik Server site, ask the site operator whether it offers
+  forwarding for the affected picture, voice or file. When offered, Piik can use
+  it as a fallback. In **Room settings → Connection**, check that **Use site forwarding**
+  is on if you manage the room.
 
 Piik selects routes automatically. The App's automatic **Public invite** uses
 Cloudflare Tunnel for the invitation page and signaling. Picture, voice and file

@@ -683,8 +683,8 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         let new_owner = Uuid::new_v4();
         let copy_policy = policy("copied", new_owner, RoomAccess::Private);
         assert!(
-            !copy_policy.allow_service_relay,
-            "a new room does not inherit consent for a site's service"
+            copy_policy.allow_service_relay,
+            "a copy is a new room and takes the new-room default"
         );
         assert!(!copy_policy.view(owner).unwrap().authorized);
         assert!(!copy_policy.accepts_invite(&invitation));
@@ -1067,52 +1067,52 @@ fn service_relay_choice_commits_only_for_current_owner_and_survives_reopen() {
     let reader = Uuid::new_v4();
     let mut host =
         StoredRoomHost::create(&path, policy("relay-choice", owner, RoomAccess::Public)).unwrap();
-    assert!(!host.policy().allow_service_relay);
+    assert!(host.policy().allow_service_relay);
     let update = |allowed| {
         json!({"type":"update_room","roomId":"relay-choice", "name":"Relay choice",
         "icon":"couch","access":"public","hidden":false,"allowServiceRelay":allowed})
     };
     let database = rusqlite::Connection::open(&path).unwrap();
     database.execute_batch("CREATE TRIGGER reject_service_choice BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
-    let failed = command(&mut host, owner, owner, update(true));
+    let failed = command(&mut host, owner, owner, update(false));
     assert!(
         matches!(failed.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
     );
     assert!(
-        !host.policy().allow_service_relay,
+        host.policy().allow_service_relay,
         "failed checkpoint must abort the in-memory policy too"
     );
     drop(host);
     let mut host = StoredRoomHost::open(&path).unwrap();
     assert!(
-        !host.policy().allow_service_relay,
-        "failed enable must not persist through reopen"
+        host.policy().allow_service_relay,
+        "failed decline must not persist through reopen"
     );
     database
         .execute_batch("DROP TRIGGER reject_service_choice")
         .unwrap();
 
-    let denied = command(&mut host, owner, reader, update(true));
+    let denied = command(&mut host, owner, reader, update(false));
     assert!(
         matches!(denied.reply.unwrap().result, RoomResult::Error { code } if code == "forbidden")
     );
-    assert!(!host.policy().allow_service_relay);
-    let saved = command(&mut host, owner, owner, update(true));
+    assert!(host.policy().allow_service_relay);
+    let saved = command(&mut host, owner, owner, update(false));
     assert!(matches!(saved.reply.unwrap().result, RoomResult::Done));
-    let mut unrelated_update = update(false);
+    let mut unrelated_update = update(true);
     unrelated_update
         .as_object_mut()
         .unwrap()
         .remove("allowServiceRelay");
     command(&mut host, owner, owner, unrelated_update);
     assert!(
-        host.policy().allow_service_relay,
+        !host.policy().allow_service_relay,
         "omitting the setting keeps the saved choice"
     );
 
     let mut retired = input(owner, owner, |context| HostAction::Command {
         context,
-        command: Request::parse(&update(false).to_string()).unwrap().command,
+        command: Request::parse(&update(true).to_string()).unwrap().command,
     });
     retired.endpoints.remove(&owner);
     let denied = host.dispatch(retired).unwrap();
@@ -1122,16 +1122,16 @@ fn service_relay_choice_commits_only_for_current_owner_and_survives_reopen() {
     drop(host);
     let mut host = StoredRoomHost::open(&path).unwrap();
     assert!(
-        host.policy().allow_service_relay,
+        !host.policy().allow_service_relay,
         "departed owner endpoint cannot rewrite retained policy"
     );
-    let disabled = command(&mut host, owner, owner, update(false));
-    assert!(matches!(disabled.reply.unwrap().result, RoomResult::Done));
+    let allowed = command(&mut host, owner, owner, update(true));
+    assert!(matches!(allowed.reply.unwrap().result, RoomResult::Done));
     drop(host);
     let host = StoredRoomHost::open(&path).unwrap();
     assert!(
-        !host.policy().allow_service_relay,
-        "explicit disable is durable too"
+        host.policy().allow_service_relay,
+        "explicit allow is durable too"
     );
     drop((host, database));
     std::fs::remove_file(path).unwrap();

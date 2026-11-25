@@ -217,7 +217,7 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
         directory.path().to_owned(),
         axum::Router::new(),
         udp,
-        false,
+        None,
         std::future::pending(),
     ));
     let mut upgrade = format!("ws://{address}/prototype/channel")

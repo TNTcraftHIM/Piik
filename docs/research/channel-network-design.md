@@ -492,14 +492,22 @@ and uses the existing candidate-failure memory, rather than a second retry loop.
 ### Site Forwarding Assistance
 
 A Server operator may offer its existing Native endpoint for forwarding; the
-capability is disabled by default. Each room owner separately permits it through
-the saved room setting `allowServiceRelay`, using the ordinary policy update and
-commit boundary. Whole-room backups retain this preference; copies created as
-new rooms start with it disabled.
+capability is disabled by default. One switch offers screen, voice and files
+together, and the operator can turn each kind off. A room uses the offer unless
+its owner declines it through the saved room setting `allowServiceRelay`, using
+the ordinary policy update and commit boundary. New rooms, including copies,
+start with it allowed; whole-room backups retain the saved choice.
 
-The setting permits use of the service when the existing routing owner needs
-another reachable path. It does not replace a healthy P2P path. The domain
-registers only its own Native's current authenticated session and connection;
+The service ranks after every participant path when a route is assigned: the
+routing owner assigns it a receiver only when no participant path can serve
+that receiver then. A scarce output goes to the service only when that serves
+more receivers in total. A receiver already served through the service keeps
+that route until it fails or demand ends, even if a participant path appears
+later; a screen viewer can still take the direct path from its source that any
+relayed viewer can take. The service does not replace a healthy P2P path, and
+the domain rejects a projection that gives the service a kind its operator has
+not offered. The domain registers only its own Native's current authenticated
+session and connection;
 room plans bind service work to that exact live connection. Reconnection retires
 old leases and derives fresh ones from the saved choice and current availability.
 Disabling the service withdraws its work without clearing room preferences;

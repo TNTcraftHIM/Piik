@@ -91,6 +91,8 @@ For an authorized isolated trial, copy the template outside the checkout as
    Import a private owner seed as `PIIK_CHANNEL_OWNER_KEY` using
    [`fly secrets import --stage --app <app-name>`](https://docs.fly.io/flyctl/cmd/fly_secrets_import)
    from private stdin; keep credentials out of the template and shell history.
+   Enable [site forwarding](../prototype/channel-server/README.md#site-forwarding)
+   in the trial configuration to verify the Server media path.
 4. Run `fly deploy --config /path/to/fly.toml --ha=false`. This uses the chosen
    image and creates the configured volume on first deployment. Verify that
    exactly one Machine has the volume attached. Keep that single authority;

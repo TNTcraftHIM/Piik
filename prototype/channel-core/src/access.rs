@@ -140,7 +140,8 @@ impl RoomState {
             hidden,
             voice_bitrate: default_voice_bitrate(),
             relay_capacity: default_relay_capacity(),
-            allow_service_relay: false,
+            // A room uses the site's forwarding once offered; its manager may decline.
+            allow_service_relay: true,
             password_hash: None,
             invite_hash: None,
             invite_key: None,
