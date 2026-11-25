@@ -73,6 +73,10 @@ the feedback period; they do not delay that delivery.
   acceptance of imported author identities. Decide the room creator's trust
   boundary before adding export proofs or changing historical attribution.
   A writer's signature authenticates the served page, not each archived sender.
+- [ ] **Standalone Server owner entry.** Replace the documented durable-key URL
+  with a local operator bootstrap flow using the existing owner identity.
+  Keep ticket issuance at an authenticated local maintenance boundary; App
+  launch tickets do not supply a remote Server administration entry.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
