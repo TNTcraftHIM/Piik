@@ -3235,3 +3235,33 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn owner_room_backup_rejects_busy_restore_before_reading_upload() {
+    use axum::{body::{Body, Bytes}, extract::State, http::{header, HeaderMap, StatusCode}};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open(folder.path(), "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let mut headers = HeaderMap::new();
+    let (commands, _writer) = mpsc::channel(1);
+    {
+        let mut hub = domain.hub.lock().unwrap();
+        hub.room_commands = Some(commands);
+        let mut owner = Endpoint::connect(&mut hub);
+        owner.request(&mut hub, json!({"type":"join","ownerKey":"owner","name":"Owner"}));
+        let welcome = owner.drain().into_iter().find(|event| event["type"] == "welcome").unwrap();
+        let credential = welcome["credential"].as_str().unwrap();
+        headers.insert(header::AUTHORIZATION, format!("Bearer {credential}").parse().unwrap());
+    }
+    headers.insert(header::CONTENT_TYPE, "application/zip".parse().unwrap());
+    let _busy = domain.room_restore.clone().try_acquire_owned().unwrap();
+    let polled = Arc::new(AtomicBool::new(false));
+    let observed = polled.clone();
+    let body = Body::from_stream(futures_util::stream::once(async move {
+        observed.store(true, Ordering::SeqCst);
+        Ok::<_, std::io::Error>(Bytes::new())
+    }));
+    let (status, _) = backup::restore(State(domain), headers, body).await.unwrap_err();
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(!polled.load(Ordering::SeqCst));
+}
