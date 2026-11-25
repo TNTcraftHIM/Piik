@@ -5,7 +5,7 @@ This guide covers the 3.0 internal test. For the published version, use the [roo
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
 Choose a room you can enter from the sidebar to read chat, join voice, share your screen or watch a friend.
-The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. To read messages in a private room, the site owner needs access to it too.
+The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. To read messages in a private room, the site owner needs access to it too. Access controls what Piik shows; it is not encryption. The site carries chat between people, so whoever operates the site can read what passes through it, and a Server-hosted room keeps its records on the operator's machine.
 
 - **The couch** shows who is in the current room, including people who are just reading chat.
 - **Under a room name on the left**, you see people in voice, sharing, watching or transferring files, including anyone forwarding to others. The icons beside their names show what they are doing.
