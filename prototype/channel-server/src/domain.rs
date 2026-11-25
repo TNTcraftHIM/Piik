@@ -182,7 +182,12 @@ impl Hub {
             }
         }
         if let Some(client) = self.clients.get(&connection) {
-            if client.events.try_send(event).is_err() {
+            #[cfg(test)]
+            let host_input = matches!(event, Event::HostInput { .. });
+            let sent = client.events.try_send(event);
+            #[cfg(test)]
+            admission_queue_probe::record(connection, client, host_input, &sent);
+            if sent.is_err() {
                 let _ = client.close.send(true);
             }
         }
@@ -884,6 +889,12 @@ impl Domain {
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod runtime_tests;
+
+// Measurement only (branch claude/admission-measure): queue-depth probe and
+// the ignored admission-burst test. Compiled only into the crate's test binary.
+#[cfg(test)]
+#[path = "admission_queue_probe.rs"]
+mod admission_queue_probe;
 
 #[cfg(test)]
 mod tests {
