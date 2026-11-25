@@ -13,7 +13,7 @@ You choose which pictures to watch.
 ## Start or change a share
 
 1. Select the room, then **Start sharing** in its header.
-2. Choose **Browser**, **Camera**, or an App window/screen where available.
+2. Choose **Browser → Share a screen**, **Camera**, or an available App window or screen.
    Select the source and its sound options. An App picker may ask you to finish
    the selection in the App.
 3. Check your local preview. Friends see your share under **Available to watch**
