@@ -5,73 +5,75 @@
 
 ## Context
 
-3.0 is unpublished. Until its first release a private wire or storage shape is
-replaced without aliases, dual readers or migrations. After it, every
-installed App and every room store in the field holds the old shape for good.
-Some defects can therefore be fixed only now.
+3.0 is unpublished, so a private wire or storage shape is replaced without
+aliases, dual readers or migrations. After the first release, installed Apps
+and room stores hold the released shapes, and later versions have to work with
+them. Some contracts are costly to change after that; others can wait for a
+consumer. [Versioning](../standards/versioning.md) promises that an older App
+keeps working with a newer site within a major version, and that forward
+upgrades preserve durable authority. The code does not yet say how:
 
-Two of them contradict what [versioning](../standards/versioning.md) promises.
-It says an older installed App keeps working with a newer site within a major
-version, and that forward upgrades preserve durable authority. The code cannot
-keep either promise:
-
-- `Join` requires the protocol number to equal one value
-  (`prototype/channel-core/src/lib.rs`), and types sent to clients reject
-  unknown fields. Any wire change breaks every older App. A shipped reader
-  cannot be made tolerant afterwards.
-- A room store opens only when `user_version` equals one value
+- `Join` requires the protocol number to equal 46
+  (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
+  reader accepts additions; no rule says which additions a reader may ignore.
+- The Browser accepts any `room_reply.result.type`
+  (`src/client/channel/protocol.ts`) and rejects only `"error"`
+  (`src/client/channel/session.ts`), so with a version mismatch or a bug an
+  unknown type resolves most room requests as success.
+- A room store opens only at one exact `user_version`
   (`prototype/channel-core/src/storage.rs`), and the Browser store aborts any
-  upgrade (`prototype/channel-browser/src/room-host.ts`). The first schema
-  change after release would make every existing room unreadable.
-
-The [design review](../research/clean-room-design-review.md) found the same
-gaps from two directions: three designs written from the requirements alone
-all chose the shapes below, and three audits of the tree found their absence.
+  upgrade (`prototype/channel-browser/src/room-host.ts`). This protects data;
+  no format change has needed an upgrade yet.
 
 ## Decision
 
-1. **Compatibility.** A connection states a major version and its
-   capabilities. The major must match. Within a major every change is an
-   addition. Readers of data sent to a client ignore unknown fields and
-   unknown event types, and descriptive enumerations carry an unknown value.
-   Commands sent to an authority stay strict, and a sender uses a new field or
-   command only after the receiver has advertised it. Browser, Native and the
-   text SDK behave the same. Peers learn each other's features through the
-   domain, not by assuming the same build.
-2. **One schema source.** The core's wire types are the schema. TypeScript
-   declarations are generated from them and checked in, and a check fails when
-   they drift. Incoming frames are validated in the core. No second schema is
-   written by hand.
-3. **One reply.** A request has exactly one final reply under its request id.
-   A failure carries a code from a closed set, whether the operation was
-   rejected or its outcome is unknown, and whether a retry can help. A
-   mutation carries an idempotency key so that a retry is safe. An event
-   without a request id is a notification and expects no reply; a copy sent to
-   an observer is a notification.
-4. **A state revision.** State sent to a client carries a revision. Sending
-   only what changed can follow later behind a capability; the revision cannot
-   be added later for readers that never expected it.
-5. **Commands by scope.** A command is addressed to the domain, a room, a
-   publication or a pair by its type, so routing is exhaustive. Room
-   activities share one envelope with a body tagged by kind, which is the
-   extension point for a new activity.
-6. **Storage versions.** Each durable format has one integer version owned by
-   the core. Ordered forward migrations run in one transaction on a copy of
-   the store. A store newer than the code is refused. An added optional field
-   needs no new version; anything else needs a migration. The numbers restart
-   at one for the release.
-7. **Lineage and position.** A room store carries an epoch that a restore or
-   a copy replaces, and one room-wide change sequence that every committing
-   transaction advances. A reader resumes from an epoch and a sequence, and a
-   deletion reaches it as a change. Sequence numbers are not reused within an
-   epoch.
-8. **One set of history rules.** The core owns the history rules and the
-   tombstone shape over a small storage port, and both adapters execute it.
-   The Browser writer commits with strict durability and asks for persistent
-   storage, because the architecture promises that history is committed before
-   it is confirmed.
-9. **Bytes.** Keys and signatures travel as base64url text. Bulk bytes cross
-   the WebAssembly boundary as bytes, not as arrays of numbers.
+### Settled before the first public release
+
+1. **Compatibility.** A stable wire baseline, plus extensions the recipient
+   selects. A written matrix covers an old client with a new domain, an old
+   writer with a new domain, unsupported actions, and the direction of
+   stored-data upgrades. Readers ignore additions defined as descriptive, not
+   unknown authority or an unknown final outcome: an unknown reply type is an
+   error, and an unknown host-input action needs a positive capability check.
+   Extension points are explicit instead of a general tolerance
+   ([RFC 9413](https://www.rfc-editor.org/rfc/rfc9413.html)). The first
+   release's readers decide what later versions may add.
+2. **Replies.** A request ends in an explicit terminal outcome that tells
+   rejected from unknown, and a copy sent to an observer is separate from the
+   requester's reply. Idempotency is scoped by operation: chat already has
+   durable nonces, and an invitation rotation is recovered by reading current
+   state. A history page as one bounded batch is measured against the present
+   101 signed replies per page: 50 messages, 50 reaction snapshots and one
+   terminator. A released client that reads an unknown outcome as success
+   cannot be corrected from the domain.
+3. **Storage.** The first public format of each store is recorded as release
+   fixtures. A concrete transactional upgrade is added when a format actually
+   changes, and a store newer than the code is refused, with no general
+   migration framework. Every later upgrade starts from the released format.
+4. **Restored history.** A restore gives the room's history a new lineage that
+   invalidates old read positions, and a normal restart keeps them. A position
+   a released reader saved without a lineage cannot later be told apart from
+   one that a restore made stale.
+5. **History rules and durability.** One owner holds the history rules that
+   both writers execute. Authoritative IndexedDB writes use strict durability,
+   because the architecture promises that history is committed before it is
+   confirmed. Persistent storage guards against eviction and is requested at
+   explicit hosting, not on every reconnect. A confirmed message that was lost
+   cannot be recovered by a later version.
+
+### Deferred until a consumer needs it
+
+- **Schema source.** First a bounded proof: generate the types for
+  `UserInfo.avatar` and `SetProfile.avatar`, keep required, omitted and null
+  semantics and runtime validation, and remove the old owner if it works.
+- **State revision.** Reopens when a delta or resume consumer needs it.
+  Readers already accept an added top-level field.
+- **Activity envelope.** Dispatch over the owned kinds is exhaustive now. A
+  generic envelope reopens when a concrete extension shows that it removes
+  work without erasing the different authority and lifetime of each kind.
+- **Bytes.** Effect outputs become binary first: a 64 KiB watch delivery
+  measured 66,773 bytes as binary and 240,441 bytes in outgoing JSON effects.
+  The encoding of small wire keys reopens only if a measurement supports it.
 
 ## Not Decided Here
 
@@ -80,7 +82,7 @@ all chose the shapes below, and three audits of the tree found their absence.
   above hold for the present JSON as well, so the format can be weighed
   separately.
 - One SQLite schema in every runtime, using SQLite on the Browser's private
-  file system in place of IndexedDB. It would make decision 8 structural. It
+  file system in place of IndexedDB. It would make decision 5 structural. It
   needs a measurement of size and start-up cost first.
 - Moving the client engine into the core. It is internal and can change after
   a release.
@@ -89,12 +91,9 @@ all chose the shapes below, and three audits of the tree found their absence.
 
 - The wire and both stores change shape once more before release, under the
   present rule for private experiments.
-- [Versioning](../standards/versioning.md) states the compatibility rule that
-  the code then implements, and loses the sentences the code never honoured.
-- A feature added after release becomes an addition behind a capability
-  instead of a new major version.
-- Each new activity kind stops costing a sweep across the domain, the writer
-  and both clients.
+- [Versioning](../standards/versioning.md) states the compatibility matrix the
+  code implements, and a feature added after release is an extension the
+  recipient selects, not a new major version.
 
 ## References
 

@@ -1,7 +1,7 @@
 # 3.0 Design Review Against Clean-Room Designs
 
 - Date: 2026-11-25
-- Reviewed tree: `a1c4e023`
+- Reviewed tree: `35034f34`
 - Status: evidence for decisions, not a decision. The proposals it supports are
   in [ADR-0017](../adr/0017-contracts-fixed-before-release.md) and
   [TODO](../todo.md).
@@ -11,9 +11,9 @@
 Every earlier review of 3.0 started from the code, so each one inherited the
 code's boundaries. This review asked what an architect would build from the
 requirements alone and compared the answer with what exists. Where independent
-designs agree with each other and differ from the tree, path dependence is the
-likeliest cause. Where they agree with the tree, the choice follows from the
-product.
+designs agree with each other and differ from the tree, the comparison is worth
+testing; it does not show which side is right, and the designers are one model
+family. Where they agree with the tree, the choice follows from the product.
 
 ## Method
 
@@ -62,17 +62,17 @@ audits reached the same point from the code in every row marked †.
 | --- | --- | --- |
 | Client logic † | The client engine is a state machine in the shared core, in a Worker in the browser. The interface holds no domain state: intents go in, view slices come out. | A 4,060-line TypeScript hub; the participant's rules exist again in Rust. |
 | Schema † | One schema language is the source for wire and stored blobs. Only the core encodes and decodes; TypeScript types are generated. | Five hand-kept copies. |
-| Compatibility † | A major version must match, and everything else is additive and announced by capability ([Protocol Buffers](https://protobuf.dev/programming-guides/proto3/), [RFC 9413](https://www.rfc-editor.org/rfc/rfc9413.html)). | The protocol number must equal 46, and readers reject unknown fields. |
+| Compatibility † | A major version must match, and everything else is additive and announced by capability ([Protocol Buffers](https://protobuf.dev/programming-guides/proto3/), [RFC 9413](https://www.rfc-editor.org/rfc/rfc9413.html)). | The protocol number must equal 46. One outer watch-activity metadata reader accepts additions; source kinds, source fields and playback types are still validated. |
 | Synchronisation † | A snapshot, then ordered events with a revision; a gap means subscribe again. History is paged, never part of the snapshot. | A full snapshot to every session on every change. |
-| Requests † | A request id, an idempotency key on every mutation, and one reply. Errors are a closed code set with a stable reason and a retry class ([status codes](https://grpc.io/docs/guides/status-codes/)). | Several reply forms; about 120 string codes; rejected and unknown are not told apart. |
-| Storage † | One SQLite file per room with one schema in all three runtimes, using [SQLite on OPFS](https://sqlite.org/wasm/doc/trunk/persistence.md) in the browser. Numbered forward migrations run on a copy; a newer file is refused. | Two adapters with different shapes; an exact-version check and no upgrade path. |
-| Topology | The plan is replicated desired state and every endpoint reconciles its links to it ([controller pattern](https://kubernetes.io/docs/concepts/architecture/controller/)). The lower endpoint id always offers, so collisions cannot occur. | Imperative flows, leases and handoffs. |
-| Capacity | A budget in bits, 70 to 80% of an uplink learned from sustained aggregate send. Two links degrading together mean the shared uplink. Depth is bounded. | Two peers per kind for every endpoint, the source and voice included; depth unbounded. |
+| Requests † | A request id, an idempotency key on every mutation, and one reply. Errors are a closed code set with a stable reason and a retry class ([status codes](https://grpc.io/docs/guides/status-codes/)). | Several reply forms and about 120 string codes that do not tell rejected from unknown. In the Browser an unknown reply type resolves most room requests as success. |
+| Storage † | One SQLite file per room with one schema in all three runtimes, using [SQLite on OPFS](https://sqlite.org/wasm/doc/trunk/persistence.md) in the browser. Numbered forward migrations run on a copy; a newer file is refused. | Two adapters with different shapes and an exact-version check. No format change has needed an upgrade yet. |
+| Topology | The plan is replicated desired state and every endpoint reconciles its links to it ([controller pattern](https://kubernetes.io/docs/concepts/architecture/controller/)). The lower endpoint id always offers, so collisions cannot occur. | One transport book in the domain; each session reconciles to its own filtered projection. Media proof and handoff are imperative. |
+| Capacity | A budget in bits, 70 to 80% of an uplink learned from sustained aggregate send. Two links degrading together mean the shared uplink. Depth is bounded. | A fanout peer count, 2 by default, set per room from 1 to 20 and per session from 0 to 20. Capacity is not measured in bits, and depth is unbounded. |
 | Picture † | Two modes. Sharp uses the `text` hint, never downscales and refines a still frame. Smooth uses `motion` ([content hints](https://www.w3.org/TR/mst-content-hint/)). | Every share is hinted `motion`. |
 | Connectivity † | The site's own endpoint answers STUN and offers a passive TCP candidate ([RFC 6544](https://www.rfc-editor.org/rfc/rfc6544)). | No TCP path; third-party STUN. |
 | Revocation | A lease: an endpoint that cannot hear the room authority for 6 to 10 s closes its links and stops capture. | None. |
 | Extension † | Every activity, built-in ones included, implements one trait. A whiteboard is a schema, a reducer, a panel and two registry lines. | About eleven non-interface files per new kind. |
-| Verification | A whole room runs in one process on virtual time with injected faults ([simulation testing](https://apple.github.io/foundationdb/testing.html)). | None. |
+| Verification | A whole room runs in one process on virtual time with injected faults ([simulation testing](https://apple.github.io/foundationdb/testing.html)). | Control-plane tests run on explicit time with scripted pair and media failures. No seeded simulation of whole runtimes. |
 
 ## Where The Tree Knows More Than The Designs
 
@@ -93,14 +93,18 @@ audits reached the same point from the code in every row marked †.
   3 Mbps, and the designs' own arithmetic has the site endpoint saturating
   first.
 
-  The evidence favours the techniques for the cases they target. Carrier-grade
-  NATs allocate ports sequentially in 22 to 26% of networks and randomly in 36
-  to 45% ([Richter et al., 2016](https://arxiv.org/abs/1605.05606)).
-  Port prediction raised hole-punching success from 44.6% to 84.3% in one
-  measurement ([Guha and Francis, 2005](https://www.usenix.org/legacy/event/imc05/tech/full_papers/guha/guha_html/)).
-  A port search against one hard NAT succeeds about 64% of the time after 256
-  probes and 98% after 1,024, and against two hard NATs effectively never
-  ([Tailscale](https://tailscale.com/blog/how-nat-traversal-works)). Mesh VPNs
+  The published figures support the techniques for the cases they target.
+  [Richter et al., 2016](https://arxiv.org/abs/1605.05606) classify the port
+  allocation observed on TCP connections by autonomous systems detected as
+  carrier-grade NAT: sequential in 22 to 26% and random in 36 to 45%.
+  [Guha and Francis, 2005](https://www.usenix.org/legacy/event/imc05/tech/full_papers/guha/guha_html/)
+  estimate TCP hole punching over the NAT pairings they sampled at 44.6%
+  without port prediction and 84.3% with it. A port search succeeds about 64%
+  of the time after 256 probes and 98% after 1,024 when one side keeps a stable
+  mapping and the hard side opens 256 ports; with destination-dependent
+  mappings on both sides the chance is small but not zero
+  ([Tailscale](https://tailscale.com/blog/how-nat-traversal-works)). None of
+  these is a field measurement of UDP traversal for this product. Mesh VPNs
   that skip these techniques have a funded relay network to fall back on.
   Piik does not, so they are how it replaces relay capacity.
 
@@ -131,13 +135,22 @@ Findings with their lines are in the audit record that produced
 [ADR-0017](../adr/0017-contracts-fixed-before-release.md). The ones no design
 could have seen:
 
-- The Browser writer confirms a message before it is durable. IndexedDB
-  transactions default to relaxed durability, and the code does not request
-  persistent storage.
-- Restoring an archive rewinds the message sequence and brings back deleted
-  messages and revoked grants. Archives carry no integrity field.
-- Browser and Native already behave differently as a room's writer in four
-  places, because that role is written once in each.
+- The Browser writer can confirm a message before it is durable, because
+  IndexedDB transactions default to relaxed durability. Persistent storage
+  guards against eviction, which is a separate matter.
+- A reader that was offline across a restore can miss new messages when the
+  restored sequence catches up to its old cursor. A normal restart should keep
+  read positions, and a restore should invalidate them. Room copies already
+  have distinct IDs.
+- The room writer's role is written twice, once in Native and once in the
+  Browser, with no reachable difference found. The copies differ in the
+  `host_session_id` check, first broadcastable record against one per reply,
+  skipping replies addressed to itself, and a dispatch error ending Native's
+  loop. None changes an outcome for input the current domain produces: it
+  names the binding session as both recipient and `host_session_id`, each
+  commit yields at most one broadcastable record, the Native writer is never a
+  reader while the Browser writer tab usually is, and storage failures return
+  through `abort` in both.
 - The five cursors on a writer binding reduce to one applied position and
   named barriers.
 

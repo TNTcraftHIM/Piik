@@ -54,10 +54,12 @@ the feedback period; they do not delay that delivery.
   element changes its resource URL; keep media-byte grants bound to the selected
   resource. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Contracts fixed before release.** Decide
-  [ADR-0017](./adr/0017-contracts-fixed-before-release.md): the compatibility
-  rule, one schema source, one reply shape, storage versions with migrations,
-  and a room store's epoch and change sequence. None can be corrected after
-  the first 3.0 release. The
+  [ADR-0017](./adr/0017-contracts-fixed-before-release.md): before the first
+  public 3.0 release, settle the compatibility baseline and matrix, explicit
+  reply outcomes, release storage fixtures, a new history lineage on restore,
+  and one owner for history rules with strict IndexedDB durability. Schema
+  generation, a state revision, a generic activity envelope and the encoding of
+  wire keys wait for a consumer. The
   [design review](./research/clean-room-design-review.md) records the
   evidence.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
