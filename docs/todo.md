@@ -30,7 +30,8 @@ the feedback period; they do not delay that delivery.
   action. New peers, access or forwarding changes may enable a later attempt.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
-  changing the selected device. Room microphones, source audio inputs and
+  changing the selected device. Check audible message alerts with the App in
+  the foreground and background. Room microphones, source audio inputs and
   system-output capture retain their separate scopes.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during

@@ -21,7 +21,7 @@ vi.mock("react", async importOriginal => {
   };
 });
 
-it("offers output recovery for the actual video of a page-supplied player", async () => {
+it.each([false, true])("offers output recovery for a page-supplied player with a presented frame: %s", async presented => {
   setCopy({ lang: "en" });
   const video = Object.assign(new EventTarget(), {
     readyState: 0, paused: true, ended: false, duration: 0, currentTime: 0,
@@ -46,9 +46,15 @@ it("offers output recovery for the actual video of a page-supplied player", asyn
   try {
     await vi.waitFor(() => expect(playbackOutput.failed).toBe(true));
     expect(render()).toContain("c3-watch-output");
+    if (presented) {
+      Object.assign(video, { readyState: 4, videoWidth: 1280 });
+      player.presentFrame();
+      expect(player.waitingForPicture).toBe(false);
+      expect(render()).toContain("c3-watch-output");
+    }
     await playbackOutput.choose("alternate");
     expect(render()).not.toContain("c3-watch-output");
-    expect(render()).toContain(t("en", "watch.waiting"));
+    expect(render().includes(t("en", "watch.waiting"))).toBe(!presented);
   } finally {
     player.close();
     await playbackOutput.choose("");
