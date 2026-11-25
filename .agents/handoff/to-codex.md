@@ -253,14 +253,8 @@ This is your code, so judge it on the diff. I read it line by line and take it.
   close left it rejected for the rest of the session. Both tests fail without
   the change. The step also leaves three different currency predicates in that
   owner, which is the class the decision names and is not touched here.
-- **Research, not product.** An offline study of placement is being written
-  on `claude/topology-stage0`, as test-only code in `channel-core/tests`,
-  excluded from the ordinary suite. On synthetic sessions it drives the real
-  planner and compares its trees with the best attainable on the same
-  confirmed pairs, then applies the one-leaf move of ADR-0018's stage 1 as a
-  what-if and looks for reversals under joining and leaving. It is evidence
-  for deciding that record. If you already have an exact solver or a gap
-  measurement, tell me and I will build on it.
+- `1ff929a9` records an offline placement study in the topology evidence
+  note. See the next section.
 - Seven removals from the client audit, one per commit, merged in
   `c5d523d5`. About 2,000 lines, of which the logic is:
   - `1715a191` exports only their own tests called. It met your `90194143`
@@ -287,6 +281,64 @@ This is your code, so judge it on the diff. I read it line by line and take it.
   - The session's actions are listed three times (the class, `ChannelActions`,
     the hook). `implements` fails only on `watch`, whose public shape differs
     from its internal one. Not done; it removes nothing by itself.
+
+## Research for ADR-0018: what the planner leaves on the table
+
+A test-only harness drives the real authority and room host on synthetic
+sessions and compares each tree with the best attainable on the same confirmed
+pairs, solved exactly. It is on the side branch `test/placement-study` at
+`84b46474`: 2,500 lines under `channel-core/tests`, every test ignored. I kept
+it off this branch because it has to keep compiling with the core, which is
+your cost, so say whether you want it on the line. The record is in
+`topology-improvement-design.md` under "Offline Placement Study". It models
+placement only, and its NAT mix is invented.
+
+At the default limit of two, median over seeds:
+
+| Viewers | Extra hops per viewer | Deepest viewer, planner and attainable | Instants not optimal |
+| --- | --- | --- | --- |
+| 4 | 0.00 | 1.50 and 1.43 | 0% |
+| 8 | 0.13 | 2.40 and 2.00 | 45% |
+| 16 | 0.33 | 3.68 and 2.77 | 75% |
+| 32 | 0.51 | 5.31 and 3.78 | 88% |
+
+What follows from it, for your judgement:
+
+1. **Coverage is already right.** No viewer waited while a linked parent had
+   a free place. The loss is depth only, and a room of four has none. So this
+   work is not needed for the first release, and its value starts at about
+   sixteen viewers.
+2. **Stage 1 as worded recovers a tenth of the loss.** A leaf move over
+   confirmed pairs has recurring opportunities (59% of sessions of 16, 96% of
+   32) and never cycled, but it closes 9 to 14%. The shallow places are free
+   and the pairs to them are missing. The plan tries an unverified pair only
+   when a needed path is incomplete, so depth never prompts one.
+3. **The same move allowed one pair attempt recovers most of it**: 93 to 98%
+   of the distance to the optimum on every connectable pair, by arithmetic on
+   the observed trees, for about 20 attempts in a session of 16 and 72 in one
+   of 32. I propose stage 1 reads "one leaf to a strictly shallower free
+   place, and the pool may try the one pair that reaches it", which folds the
+   useful part of stage 3 into it. The canon already lets the pool build
+   connections ahead of need when idle. The attempt count depends on the
+   invented connectivity; the direction does not.
+4. **Repairs look like the main source.** The loss before the first departure
+   is under half the session's. A repair places orphans by fewest hops on the
+   pairs that exist, and nothing improves them later. The same one-pair
+   attempt after a repair is the natural place to spend it.
+5. **Stage 2's evidence needs sharper words.** A refused viewer whose linked
+   parents are all full is rare at a limit of two or more. "Placed deeper
+   while a parent stayed healthy" is true of almost every viewer below the
+   first level, because the sharer is full, and cannot justify anything.
+6. **A seam stage 1 will need.** The existing switch cannot be pointed at a
+   chosen parent through public entry points: the shortcut targets only the
+   source, once per viewer. The study moved a leaf by unsubscribing and
+   subscribing it, which is break before make. The planner put it at exactly
+   the predicted depth every time.
+
+What it cannot say: whether a hop costs anything a person sees. That is the
+re-encoding measurement already listed as open, and it decides whether any of
+this is worth building.
+
 ## Subtraction audit
 
 The owner asked for subtraction at the level of logic: fewer concepts,
