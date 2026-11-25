@@ -157,7 +157,8 @@
 .c3-living .c3-monitor-wait { font-size: 14px; }
 /* Television off and the couch are one scene: a 16:9 set at about 60 % of the stage, the couch under it. */
 .c3-living .c3-living-tv { display: grid; place-items: center; padding: 16px 16px 0; }
-.c3-living .c3-living-tv .lr-tv { width: min(60%, 720px); min-width: min(240px, 100%); }
+/* Width also yields to height (16:9 within what the couch, bars and notices leave), so the scene never touches my bar. */
+.c3-living .c3-living-tv .lr-tv { width: min(60%, 720px, calc((100cqb - 440px) * 16 / 9)); min-width: min(240px, 100%); }
 .c3-living .c3-living-tv .lr-tv-screen.has-entry { aspect-ratio: 16 / 9; min-height: 0; height: auto; }
 .c3-living .c3-living-tv .c3-quick-start { padding: 16px; }
 
