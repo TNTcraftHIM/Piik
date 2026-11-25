@@ -25,8 +25,7 @@ to each symptom. A shared guard is useful only if it restores the real contract.
 When a transition needs another repair, or a flag only distinguishes callers,
 trace its writers and retirement before adding handling. The
 [failure boundary](../../../docs/standards/engineering.md#failure-boundaries)
-says which cases earn new state, a timer, a retry or a fallback, and which
-should stop at their owner.
+guides proposals for additional recovery.
 
 For UI, inspect the existing interaction and visual primitives before adding a
 control, panel, status or animation. A reused component must still have the

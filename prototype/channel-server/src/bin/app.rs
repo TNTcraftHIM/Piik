@@ -23,6 +23,22 @@ fn main() -> Result<()> {
 }
 
 fn app_main() -> Result<()> {
+    // The App may load bundled resources throughout its lifetime. Keep their
+    // directory in place while any profile is using this installation.
+    #[cfg(windows)]
+    let _program_directory = {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows::Win32::Storage::FileSystem::{
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        };
+        let executable = env::current_exe().context("Locate the App executable")?;
+        std::fs::File::options()
+            .read(true)
+            .share_mode((FILE_SHARE_READ | FILE_SHARE_WRITE).0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+            .open(executable.parent().context("Locate the App directory")?)
+            .context("Open the App program directory")?
+    };
     #[cfg(target_os = "windows")]
     let terminal = env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_some()
         || env::args_os()

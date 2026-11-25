@@ -4,9 +4,9 @@ import type { ChannelController } from "../types";
 import type { ChannelUser as User } from "../protocol";
 import { listeningVoicePublications, roomPresentUserIds, roomActivityPeople, userProfile } from "../presentation";
 import { ChannelUser } from "./ChannelUser";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
-export function ChannelPeople({ channel, roomId, active, onBack }: { channel: ChannelController; roomId: string; active: boolean; onBack(): void }) {
+export const ChannelPeople = memo(function ChannelPeople({ channel, roomId, active, onBack }: { channel: ChannelController; roomId: string; active: boolean; onBack(): void }) {
   const { t } = useCopy();
   const { state, self } = channel;
   const [directory, setDirectory] = useState<{ ids: string[]; next?: string | null }>({ ids: [] });
@@ -87,4 +87,4 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
         onClick={() => { void load(directory.next ?? undefined); }} />}
     </div>
   </aside>;
-}
+});

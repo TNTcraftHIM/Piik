@@ -194,50 +194,40 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 
 ## Failure Boundaries
 
-A condition the product gives a correct outcome for is behaviour: a user
-cancels, input is malformed, access is denied. Write it as an ordinary typed
-result. A condition with no specified correct outcome is an error. Whatever
-detects it stops the operation and reports the truth to the owner of the
-operation that is waiting. That owner recovers by the path it already has:
-retire and recreate, restart, or the requester asking again. Restart, crash, timeout and network loss share one
-path when the action they need is the same. Armstrong's
+Handle expected outcomes such as cancellation, malformed input and denial
+through the operation's existing contract. When an error prevents completion,
+stop the affected operation and report the failure to its waiting owner.
+Reuse existing recovery when restart, crash, timeout or network loss calls for
+the same action. See Armstrong's
 [error-handling philosophy](https://erlang.org/download/armstrong_thesis_2003.pdf)
-and [fail fast](https://martinfowler.com/ieeeSoftware/failFast.pdf) give the
-reasoning.
+and [fail fast](https://martinfowler.com/ieeeSoftware/failFast.pdf).
 
-Some responses are cheap and stable, and need no justification: checking that
-a result is still current before applying it, ordering acquisition and release
-at the owner, removing a limit that turns valid work away, removing a duplicate
-copy, and routing a failure to the party that is waiting.
+A check for a stale result, an ordering fix or routing a failure to its waiter
+can restore the contract at the existing owner. State the expected outcome
+and verify the affected path. Feature state and performance controls follow
+the requirements and lifetime of their own operation.
 
-New state, a timer or deadline, a retry, a fallback path, a queue, or a second
-copy of a rule in another layer has to earn its place. One of these warrants it:
+For extra failure recovery, such as a retry, timeout, queue or fallback,
+consider what the existing path would leave unresolved.
 
-- a trust boundary, where unknown input is validated once as it enters;
-- authority or privacy, which fail closed;
-- a durable or irreversible effect, or a loss the requester cannot repeat;
-- no existing path gives the waiting party a truthful outcome;
-- an observed failure, frequent enough that the general recovery is not
-  acceptable. Observed means a report, a measurement or a reproduction through
-  the real producers. A constructed interleaving shows that something is
-  possible, not that it happens.
+- invalid input crossing a trust boundary,
+- a failure to enforce authority or privacy,
+- a durable or irreversible effect, or work the requester cannot repeat,
+- a waiting party that receives no truthful outcome,
+- user or resource impact demonstrated by a report, measurement or trace
+  through real producers.
 
-Reachability, symmetry with another case, completeness, a consequence that
-heals by itself and tolerance of a faulty peer are not reasons by themselves.
+First check whether correcting ownership or using the existing failure path
+settles the outcome. Put any necessary retry at the owner that can repeat the
+operation safely and bound the work. See the
+[end-to-end argument](https://web.mit.edu/Saltzer/www/publications/endtoend/endtoend.pdf).
+Share a rule in the core when its meaning and lifetime match across runtimes
+and sharing reduces total ownership cost.
 
-Before adding such a mechanism, ask in order whether the case can be made
-impossible by giving the fact one writer or the lifetime one owner, whether it
-can join a failure path that already exists, and whether a truthful error to
-the waiting party is enough. Recover at one owner, the endpoint that owns the
-outcome or the owner of the lifetime, and retry at one layer, idempotent and
-bounded, as the [end-to-end argument](https://web.mit.edu/Saltzer/www/publications/endtoend/endtoend.pdf)
-places it. A rule that two runtimes need lives in the core.
-
-A commit that adds such a mechanism handles one case. Its body names the case,
-what happens without it, the evidence, and why no existing path covers it. In
-review, a mechanism that does not meet this section is a finding, including
-one already in the tree. When the answer is unclear, fail fast and record in
-[TODO](../todo.md) the observation that would change it.
+A single correction at the owner can resolve several symptoms with the same
+cause. Explain what the existing path misses and how the change was verified.
+Record a question in [TODO](../todo.md) when it matters to future work, with
+the observation or decision that would settle it.
 
 ## Implementation Rules
 

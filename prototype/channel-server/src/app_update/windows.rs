@@ -329,10 +329,18 @@ fn replace(plan: &Plan, workspace: &Path) -> Result<()> {
     let previous = workspace.join("previous");
     plan.layout.check(&plan.root)?;
     if let Err(error) = fs::rename(&plan.root, &previous) {
-        let _ = start(plan);
-        return Err(error).context(
-            "Replacement could not start; old App directory retained and restart requested",
-        );
+        let hint = if error.raw_os_error() == Some(32) {
+            " Close other Apps using this installation and retry."
+        } else {
+            ""
+        };
+        let restart = match start(plan) {
+            Ok(()) => "The old App was started.".to_owned(),
+            Err(restart) => format!("The old App could not restart: {restart:#}"),
+        };
+        return Err(error).with_context(|| {
+            format!("Update could not move the App directory. The old version is intact. {restart}{hint}")
+        });
     }
     if let Err(error) = fs::rename(&incoming, &plan.root) {
         fs::rename(&previous, &plan.root)
@@ -362,7 +370,7 @@ pub(super) fn run(path: PathBuf) -> Result<()> {
         "Unexpected update plan path"
     );
     let plan: Plan = read_json(&path)?;
-    let outcome = (|| -> Result<()> {
+    let handoff = (|| -> Result<Process> {
         matching_workspace(&workspace, &plan)?;
         let options = match super::Config::packaged() {
             super::Config::Enabled(options) => options,
@@ -407,6 +415,11 @@ pub(super) fn run(path: PathBuf) -> Result<()> {
         let mut line = String::new();
         std::io::stdin().read_line(&mut line)?;
         ensure!(line == "APPLY\n", "Update handoff was cancelled");
+        Ok(parent)
+    })();
+    #[cfg(feature = "capture")]
+    let report_failure = handoff.is_ok() && !plan.headless;
+    let outcome = handoff.and_then(|parent| {
         parent.wait()?;
         // The single-threaded helper has finished its pipe handshake. Null
         // inherited handles let CreateProcess initialize the new console's own
@@ -418,7 +431,7 @@ pub(super) fn run(path: PathBuf) -> Result<()> {
             );
         }
         replace(&plan, &workspace)
-    })();
+    });
     let _ = write_new(
         &workspace.join("result.json"),
         &Outcome {
@@ -426,6 +439,12 @@ pub(super) fn run(path: PathBuf) -> Result<()> {
             detail: outcome.as_ref().err().map(|error| format!("{error:#}")),
         },
     );
+    #[cfg(feature = "capture")]
+    if report_failure {
+        if let Err(error) = &outcome {
+            crate::app_windows::report_error(&format!("{error:#}"));
+        }
+    }
     outcome
 }
 

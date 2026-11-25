@@ -155,7 +155,7 @@ pub async fn serve_server(
     std::fs::create_dir_all(directory.join("rooms"))?;
     for entry in std::fs::read_dir(directory.join("rooms"))? {
         anyhow::ensure!(entry?.path().extension().and_then(|value| value.to_str()) != Some("sqlite"),
-            "unsupported_room_storage_layout: preserve rooms/*.sqlite and import supported room backups into the scoped room directory");
+            "unsupported_room_storage_layout: found a database directly under rooms/. Keep the data directory and use the build that created it to export room backups, or start an empty site with a separate PIIK_CHANNEL_DATA_DIR");
     }
     let address = listener.local_addr()?;
     let (commands, mut restores) = mpsc::channel::<domain::RestoreDomain>(1);

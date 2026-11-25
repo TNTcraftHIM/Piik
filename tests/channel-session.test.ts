@@ -1273,6 +1273,11 @@ test("an undelivered reaction reply is unconfirmed at once while a writer reject
     expect(request).toMatchObject({ type: "react", nonce: 1 });
     expect(peer.interactions.at(-1)).not.toBe(request);
     expect(peer.interactions.at(-1)).toEqual(request);
+    socket.receive({ type: "error", requestId: request.requestId, code: "room_busy" });
+    expect(interaction.getSnapshot()).toMatchObject({ pending: null, error: "unconfirmed" });
+    vi.advanceTimersByTime(800);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" })).toBe(true);
+    expect(peer.interactions.at(-1)).toEqual(request);
     peer.reply(request, { type: "reaction", nonce: 1, snapshot: null, event: null });
     expect(interaction.getSnapshot()).toMatchObject({ pending: null, error: null, reactions: [] });
     vi.advanceTimersByTime(800);
@@ -1282,20 +1287,32 @@ test("an undelivered reaction reply is unconfirmed at once while a writer reject
   } finally { session.close(); }
 });
 
-test("a refused interaction subscription is subscribed again by the next readings sync", async () => {
+test.each(["room_reply", "error"] as const)("a refused interaction subscription only settles its own handshake via %s", async type => {
   const { session, socket, peer } = await setup(1000, true, "room=first", false);
   try {
     await vi.waitFor(() => expect(peer.interactions).toHaveLength(1));
     const refused = session.getSnapshot().interactionsByRoom.get("first")!;
-    socket.receive({ type: "room_reply", roomId: "first", requestId: peer.interactions[0].requestId, result: { type: "error", code: "room_busy" } });
+    const first = peer.interactions[0];
+    const refuse = (requestId: string) => socket.receive(type === "room_reply"
+      ? { type, roomId: "first", requestId, result: { type: "error", code: "room_busy" } }
+      : { type, requestId, code: "room_busy" });
+    refuse("another-readers-chat");
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(refused);
+    refuse(first.requestId);
     expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
     socket.receive({ type: "state", state: session.getSnapshot().state! });
     await vi.waitFor(() => expect(peer.interactions).toHaveLength(2));
     expect(peer.interactions[1]).toMatchObject({ type: "interaction_ready", roomId: "first" });
     const replacement = session.getSnapshot().interactionsByRoom.get("first")!;
     expect(replacement).not.toBe(refused);
+    refuse(first.requestId);
+    peer.reply(first, { type: "error", code: "rate_limited" });
+    peer.reply(first, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["heart"], publicationReactions: [] });
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(replacement);
+    expect(replacement.getSnapshot().ready).toBe(false);
     peer.reply(peer.interactions[1], { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave"], publicationReactions: [] });
-    expect(replacement.getSnapshot().ready).toBe(true);
+    peer.reply(peer.interactions[1], { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["heart"], publicationReactions: [] });
+    expect(replacement.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
   } finally { session.close(); }
 });
 

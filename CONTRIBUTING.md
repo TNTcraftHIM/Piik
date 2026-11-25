@@ -119,12 +119,10 @@ The implementing agent owns the active line, currently `feat/channel-prototype`
 for isolated 3.0. A reviewing agent keeps `refactor/claude-review` as a short
 patch queue on top of that line. Neither agent commits to the other's branch.
 
-The owner decides what merges into `main`, what is released, and anything that
-sends user data off a device. The owner has delegated the rest: a change that
-both agents agree on, with its support stated, needs no further approval.
-Support is a mature project, a published source, a measurement or reasoning
-set out in the commit. Taking a queue commit is agreement, and a decline with
-its reason is answered on the code.
+The same user authorization and delivery rules apply with one agent or two.
+Within that scope the implementer may take a supported change on the active
+line. Review agreement records a technical decision. Existing approval for
+the task carries through the review.
 
 - **One behaviour per commit.** A queue commit carries one change, its
   regression check and, in its body, the structural reason. The implementer
@@ -166,9 +164,6 @@ its next round without the owner, as does a batch of unreviewed commits, and
 its answer arrives as a push to the queue. A round is sized to what changed: a
 small push gets a short answer. Decisions the owner kept wait for the owner in
 either mailbox.
-
-The project runs with one agent as well as with two. Nothing outside this
-section depends on a second agent being present.
 
 ## Research Standard
 

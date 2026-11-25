@@ -64,6 +64,7 @@ interface RoomReading {
   history?: Promise<void>;
   followLatest?: symbol;
   interaction?: RoomInteractionSession;
+  interactionReadyRequestId?: string;
 }
 
 type RoomBackupMetadata = Extract<BackupMetadata, { kind: "room" }>;
@@ -631,6 +632,13 @@ export class ChannelSession {
         this.retireRequest(event.requestId);
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
+      } else if (event.type === "error" && event.requestId) {
+        for (const reading of this.readings.values()) {
+          if (reading.interactionReadyRequestId === event.requestId || reading.interaction?.getSnapshot().pending?.requestId === event.requestId) {
+            this.settleInteraction(reading.roomId, event.requestId);
+            break;
+          }
+        }
       } else if (event.type === "error" && !event.requestId) {
         if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
           this.closeConnection();
@@ -966,9 +974,12 @@ export class ChannelSession {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
       return;
     }
-    const interaction = this.view.interactionsByRoom.get(reply.roomId);
-    if (interaction && this.readings.get(reply.roomId)?.bindingId === reply.bindingId) {
+    const reading = this.readings.get(reply.roomId);
+    const interaction = reading?.interaction;
+    if (interaction && reading.bindingId === reply.bindingId) {
       if (record.type === "interaction_ready") {
+        if (reading.interactionReadyRequestId !== reply.requestId) return;
+        delete reading.interactionReadyRequestId;
         interaction.setSupportedReactions(record.reactionIds);
         interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
         for (const snapshot of record.publicationReactions) this.applyPublicationReactionSnapshot(reply.roomId, snapshot);
@@ -1440,7 +1451,10 @@ export class ChannelSession {
   private closeInteraction(roomId: string): void {
     this.view.interactionsByRoom.get(roomId)?.close();
     const reading = this.readings.get(roomId);
-    if (reading) delete reading.interaction;
+    if (reading) {
+      delete reading.interaction;
+      delete reading.interactionReadyRequestId;
+    }
     const interactionsByRoom = new Map(this.view.interactionsByRoom);
     if (interactionsByRoom.delete(roomId)) this.patch({ interactionsByRoom });
   }
@@ -1449,7 +1463,7 @@ export class ChannelSession {
     const interaction = this.view.interactionsByRoom.get(roomId);
     if (!interaction) return;
     // The next readings sync subscribes a replacement for a refused subscription.
-    if (!interaction.getSnapshot().ready) this.closeInteraction(roomId);
+    if (this.readings.get(roomId)?.interactionReadyRequestId === requestId) this.closeInteraction(roomId);
     else if (rejected) interaction.receive({ type: "room-interaction-rejected", requestId, reason: rejected });
     else interaction.undelivered(requestId);
   }
@@ -1476,9 +1490,10 @@ export class ChannelSession {
               : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
         if (!command) return false;
         const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
+        if (command.type === "interaction_ready") current.interactionReadyRequestId = requestId;
         void this.conversation.send(command, requestId).catch(() => {
           if (this.readings.get(reading.roomId) !== current || current.interaction !== interaction) return;
-          this.settleInteraction(reading.roomId, requestId, "busy");
+          this.settleInteraction(reading.roomId, requestId);
         });
         return nonce === undefined ? true : { nonce };
       }, Date.now, undefined, event => this.playFeedback(reading.roomId, event));

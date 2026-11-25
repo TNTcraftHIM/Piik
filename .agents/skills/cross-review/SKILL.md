@@ -40,16 +40,12 @@ commit without saying why in your mailbox.
 Write only your own mailbox. Put outcomes for what you received first, then
 new requests.
 
-A finding states the invariant it breaks, the file and line, the sequence that
-shows it, and the smallest correction at the owning boundary. Send it only when
-the sequence can be shown from the code and the author would fix it. Say
-whether you traced it in code or reproduced it by running. Judge a new flag,
-state, timer, retry or fallback against the
+A finding names the affected contract, file and line, reachable sequence and
+impact. Say whether you traced it in code or reproduced it by running, and
+suggest the smallest correction at the owning boundary. Judge proposed
+additional recovery against the
 [failure boundary](../../../docs/standards/engineering.md#failure-boundaries).
-A reviewer asked to find problems always finds something, and applying every
-finding adds layers and handling for cases that do not happen, so declining
-is part of the method. A commit you add
-states in its body what it rests on: a specification, a primary source, a
+A commit you add states in its body what it rests on: a specification, a primary source, a
 measurement or the project's own recorded evidence. Mark what you could not
 build or run.
 
