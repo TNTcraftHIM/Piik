@@ -79,7 +79,6 @@ pub(crate) enum RetirementReason {
     TerminalDataChannel,
     SignalingFailed,
     EventFailed,
-    NegotiationFailed,
     DriverShutdown,
 }
 #[derive(Clone, Copy, Serialize)]

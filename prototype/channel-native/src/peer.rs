@@ -1048,7 +1048,7 @@ impl NativePeers {
                         }
                         Turn::Tick | Turn::Bandwidth => {
                             d.deadlines().await;
-                            d.refresh_media(false).await;
+                            d.refresh_outputs().await;
                         }
                     }
                     d.reconcile_encodings().await;
@@ -1833,7 +1833,7 @@ impl Driver {
         self.sources
             .retain(|id, source| !capture.producer.owns(*id, source.kind));
         self.relay.retain(&self.sources.keys().copied().collect());
-        self.refresh_media(false).await;
+        self.refresh_outputs().await;
         // Android can stop the incumbent when a new projection is authorized.
         // Its prepared replacement still owns the publication until commit/cancel.
         if self
@@ -1865,7 +1865,7 @@ impl Driver {
         }
         self.sources.remove(&source);
         self.relay.remove(source);
-        self.refresh_media(false).await
+        self.refresh_outputs().await
     }
 
     #[cfg(feature = "capture")]
@@ -1907,7 +1907,7 @@ impl Driver {
             self.sources.remove(&source);
             self.relay.remove(source);
         }
-        self.refresh_media(false).await
+        self.refresh_outputs().await
     }
 
     #[cfg(feature = "capture")]
@@ -2006,11 +2006,8 @@ impl Driver {
             .filter(|id| !retained.contains(id))
             .copied()
             .collect();
-        let mut released = false;
         for id in removed {
-            released |= self
-                .retire_pair(id, RetirementReason::ProjectionRemoved)
-                .await;
+            self.retire_pair(id, RetirementReason::ProjectionRemoved).await;
         }
         for plan in plans {
             let id = plan.id;
@@ -2063,7 +2060,7 @@ impl Driver {
                 self.fail(id, RetirementReason::SetupFailed).await;
             }
         }
-        self.refresh_media(released).await;
+        self.refresh_outputs().await;
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
             self.report_room_data_ready(id).await;
         }
@@ -2262,7 +2259,7 @@ impl Driver {
             for signal in pending.signals {
                 self.signal(id, signal).await?;
             }
-            self.refresh_media(false).await;
+            self.refresh_outputs().await;
             self.report_room_data_ready(id).await;
             Ok::<_, anyhow::Error>(())
         }
@@ -2497,7 +2494,7 @@ impl Driver {
                 self.offer(id).await?;
             }
             self.reconcile_receivers(id).await?;
-            self.refresh_media(false).await;
+            self.refresh_outputs().await;
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
                 if p.pc.remote_description().await {
@@ -2690,14 +2687,13 @@ impl Driver {
         }
         Ok(())
     }
-    async fn retire_pair(&mut self, id: Uuid, reason: RetirementReason) -> bool {
+    async fn retire_pair(&mut self, id: Uuid, reason: RetirementReason) {
         if let Some(pending) = self.preparings.remove(&id) {
             pending.close().await;
         }
         let Some(pair) = self.pairs.remove(&id) else {
-            return false;
+            return;
         };
-        let released = !pair.outputs.is_empty();
         let peer = pair.plan.peer_id;
         // Cleanup progresses even when a detach queue is full. Shutdown joins the same task.
         self.retiring_pair = Some(tokio::spawn(close_pair(pair, reason)));
@@ -2715,7 +2711,6 @@ impl Driver {
             let _ = self.retirement_failed.send(error).await;
             std::future::pending::<()>().await;
         }
-        released
     }
     async fn fail(&mut self, id: Uuid, reason: RetirementReason) {
         self.retire_pair(id, reason).await;
@@ -3520,7 +3515,7 @@ impl Driver {
             }
         }
         self.sources.insert(source.id, source.clone());
-        self.refresh_media(false).await;
+        self.refresh_outputs().await;
         match media {
             InitialMedia::Rtp(packets) => {
                 for packet in packets {
@@ -3547,44 +3542,9 @@ impl Driver {
             }
         }
     }
-    async fn refresh_media(&mut self, released: bool) {
-        let released = self.refresh_outputs().await || released;
-        if !released {
-            return;
-        }
-        let mut retry = Vec::new();
-        for (id, pair) in &mut self.pairs {
-            let before = pair.rejected_outputs.len();
-            // Normal retirement on any pair permits one companion-audio retry.
-            // Failed primary/candidate flows still belong to the route owner.
-            pair.rejected_outputs.retain(|(flow, kind), _| {
-                *kind != MediaKind::Audio
-                    || !pair.outputs.contains_key(&(*flow, MediaKind::Video))
-                    || !pair
-                        .plan
-                        .outgoing
-                        .iter()
-                        .any(|binding| binding.id == *flow && binding.selected)
-            });
-            if pair.rejected_outputs.len() != before {
-                retry.push(*id);
-            }
-        }
-        if !retry.is_empty() {
-            self.refresh_outputs().await;
-        }
-        for id in retry {
-            if let Err(error) = self.offer(id).await {
-                eprintln!("Native pair negotiation failed: {error}");
-                self.fail(id, RetirementReason::NegotiationFailed).await;
-            }
-        }
-    }
-
-    async fn refresh_outputs(&mut self) -> bool {
+    async fn refresh_outputs(&mut self) {
         // Forward the exact admitted input, including shadow branches. Selection
         // belongs to local playback and cannot recreate a prewarmed sender.
-        let mut released = false;
         for pair in self.pairs.values_mut() {
             pair.rejected_outputs.retain(|key, rejected| {
                 pair.plan.outgoing.iter().any(|flow| {
@@ -3615,7 +3575,6 @@ impl Driver {
                 .collect();
             for key in retired {
                 pair.outputs.remove(&key).unwrap().close(&pair.pc).await;
-                released = true;
             }
         }
         let budgets = self.bandwidth_plans(Instant::now());
@@ -3696,7 +3655,6 @@ impl Driver {
         for (flow_id, pair_id) in failed {
             self.fail_flow(pair_id, flow_id).await;
         }
-        released
     }
 }
 fn signal_candidate(

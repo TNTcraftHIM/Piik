@@ -428,7 +428,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     let mut retirement =
         Box::pin(driver.retire_pair(id, crate::diagnostics::RetirementReason::ProjectionRemoved));
     let done = tokio::select! {
-        result = &mut retirement => panic!("retirement completed before transport removal: {result}"),
+        _ = &mut retirement => panic!("retirement completed before transport removal"),
         request = requests.recv() => match request {
             Some(Command::Remove(pair, generation, done)) => {
                 assert_eq!((pair, generation), (id, instance));

@@ -939,8 +939,9 @@ video intent and preferred original supply, independently of the current grant.
 Input bitrate does not establish the cost of a converted representation; any
 unresolved source demand keeps the connection target unknown. These targets
 do not become media ceilings. An unfittable trial retires
-its outputs without retiring selected media or the connection. Normal sender
-retirement permits one companion-audio retry.
+its outputs without retiring selected media or the connection. A rejected
+companion-audio output retries when its source or flow changes; retiring an
+unrelated connection does not change that rejection.
 
 A producer reconciles only its own actual output demand. It reuses a warm baseline
 at full demand and independently encodes constrained outputs; zero allocation

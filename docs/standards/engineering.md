@@ -135,6 +135,8 @@ of the same resource generation.
 Detect optional platform features through bounded capability checks and actual
 operation results, not OS/browser version allowlists. Keep API availability,
 permission and successful execution distinct; version data is diagnostic context.
+For a platform-specific failure, compare a current supported runtime before
+changing product behavior around an older test engine.
 
 Preserve meaningful authorization and resource bounds; prove that a producer's
 valid aggregate output fits its consumer, including serialization overhead.

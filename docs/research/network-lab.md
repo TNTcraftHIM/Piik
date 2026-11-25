@@ -631,6 +631,29 @@ window delivered about 30 fps. The source track and healthy sibling retained
 their behavior. This verifies that control's delivery and recovery, without a
 route switch; it is not a comparative Internet performance or NAT-success result.
 
+A four-arm in-process control on `2e051685` used two real RTCs and the pinned
+[str0m probe controller](https://github.com/TNTcraftHIM/str0m/blob/2d0d6eaaf4d19d7530588f695cd631eedf42acf5/src/bwe/probe/control.rs)
+with its Netem: 25 seconds per arm, 20 ms each way, a 100 kB forward queue and
+no configured random loss. Selected RTP stayed at 2 Mbps. At 8 seconds,
+`minimum` stayed at 2 Mbps; the trial arm raised `desired` from 2 to 5 Mbps.
+Both media sections were already negotiated. The fixture admitted the fixed
+3 Mbps optional flow when the SDK estimate reached the combined 5 Mbps cost.
+
+| Link | Arm | Desired after request | Optional RTP after request |
+| --- | --- | --- | --- |
+| 6 Mbps | Steady | 2 Mbps | None requested |
+| 6 Mbps | Trial | 5 Mbps | 84.592 ms; estimate crossed 5 Mbps at 61 ms |
+| 3 Mbps | Steady | 2 Mbps | None requested |
+| 3 Mbps | Trial | 5 Mbps | Not admitted; estimate remained below 5 Mbps |
+
+Both trial arms emitted an SDK probe in the request's virtual-clock turn;
+exponential probing took precedence over allocation probing. All four arms
+received 6,244,500 bytes of selected RTP payload. Estimate, media, explicit
+padding and RTX were recorded separately. This supports keeping SDK probing:
+the constrained trial probed but lacked capacity. Full Native Driver admission
+and decoded-picture quality were outside this control; these timings are not
+field performance guarantees.
+
 ### Duplicate NACK Feedback
 
 A controlled Windows UDP comparison uses Piik's `Transport.write_au`, real

@@ -910,7 +910,10 @@ gh workflow run repository-hygiene.yml --ref feat/channel-prototype -f channel_n
 This opt-in job builds and links test programs without running them. It skips
 the maintenance build and publication jobs; ordinary branch pushes stay quiet.
 
-Browser checks require `agent-browser` and its installed Chromium. The runner
+Browser checks require `agent-browser` and a current browser. Set
+`AGENT_BROWSER_EXECUTABLE_PATH` to choose the installed Chrome/Chromium executable;
+otherwise the CLI uses its managed browser. Record the actual browser version
+with acceptance results. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite
 services, runs acceptance, and stops them on exit. It does not leave a preview
 service running or restart another instance. Default acceptance covers multiple
