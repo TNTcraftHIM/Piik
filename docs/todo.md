@@ -231,7 +231,12 @@ the feedback period; they do not delay that delivery.
   primary evidence on how mature overlays measure, explore and stay stable,
   then propose one. The earlier decisions against a weighted route score, an
   all-pairs probe and periodic rebalancing are inputs to revisit with that
-  evidence, each with the reason it gave.
+  evidence, each with the reason it gave. The same design settles two shapes
+  it depends on. One is how dense the pool's standby connections should be:
+  they are ring neighbours and a bounded alternate today, and a denser mesh
+  would give faster repair and more candidates to improve with. The other is
+  voice, which follows the room fanout today and so reaches most listeners
+  over several hops.
 - [ ] **Separate the canon from derived design in the documents.** Where a
   record states a founding idea beside defaults, numbers or mechanisms, link
   the [canon](./canon.md) and keep the derived design. Start with
