@@ -231,19 +231,14 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Design quiet topology improvement.** The
-  [canon](./canon.md#media-and-network) asks for a topology that keeps
-  improving by itself, judged by actual playback and by how well two nodes
-  suit each other, without disturbing what works. No design exists yet. Gather
-  primary evidence on how mature overlays measure, explore and stay stable,
-  then propose one. The earlier decisions against a weighted route score, an
-  all-pairs probe and periodic rebalancing are inputs to revisit with that
-  evidence, each with the reason it gave. The same design settles two shapes
-  it depends on. One is how dense the pool's standby connections should be:
-  they are ring neighbours and a bounded alternate today, and a denser mesh
-  would give faster repair and more candidates to improve with. The other is
-  voice, which follows the room fanout today and so reaches most listeners
-  over several hops.
+- [ ] **Quiet topology improvement.** Decide
+  [ADR-0018](./adr/0018-quiet-topology-improvement.md): direct voice,
+  capacity learned from what a node carried, placement by proved facts, and
+  one proved move at a time for repair and promotion. Stage 0 comes first: a
+  report a second from each endpoint, a decision log and the planner in
+  shadow. Its records decide every later stage. The
+  [evidence](./research/topology-improvement-design.md) lists the
+  measurements still missing.
 - [ ] **Separate the canon from derived design in the documents.** Where a
   record states a founding idea beside defaults, numbers or mechanisms, link
   the [canon](./canon.md) and keep the derived design. Start with
