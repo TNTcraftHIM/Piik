@@ -864,7 +864,9 @@ export class ChannelSession {
       if (nextWatches.has(id) || restoring && !player && (waiting.browser || !joined)) {
         const socket = this.socket;
         const opening = waiting.browser ? this.joinWatch(id) : this.request({ type: "join_watch", roomId: waiting.roomId, id, mode: "direct" }, undefined, waiting.roomId);
-        void opening.catch(() => {
+        void opening.catch(error => {
+          // A replacement projection can arrive after the join reports the activity gone.
+          if (error instanceof Error && error.message === "watch_unavailable") return;
           if (this.socket === socket && this.waitingWatchPages.get(id) === waiting) {
             this.waitingWatchPages.delete(id);
             this.patch({});

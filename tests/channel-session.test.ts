@@ -12205,7 +12205,7 @@ test("two waiting successors retain a viewer's peer choice when the App can open
   } finally { session.close(); }
 });
 test.each([
-  ["watch", "connected"], ["watch", "reconnected"], ["watch", "left"],
+  ["watch", "error first"], ["screen", "error first"], ["watch", "connected"], ["watch", "reconnected"], ["watch", "left"],
   ["screen", "connected"], ["screen", "reconnected"], ["screen", "left"], ["screen", "revoked"],
 ] as const)("consecutive watch replacements follow a %s successor while the previous join is pending (%s)", async (kind, mode) => {
   const { session, socket } = await setup(1000, false);
@@ -12230,6 +12230,11 @@ test.each([
     socket.receive({ type: "state", state: { ...base, watchActivities: [original], watchSubscriptions: [{ id: original.id, mode: "direct" }] } });
     socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
     expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: middle.id, mode: "direct" });
+    if (mode === "error first") {
+      const join = socket.sent.findLast(command => command.type === "join_watch")!;
+      socket.receive({ type: "room_reply", roomId: middle.roomId, requestId: join.requestId, result: { type: "error", code: "watch_unavailable" } });
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
     if (mode === "left") {
       const leave = session.leaveWatch(middle.id);
       expect(socket.sent.filter(c => c.type === "join_watch" && c.mode === null).map(c => c.id)).toEqual([original.id, middle.id]);
