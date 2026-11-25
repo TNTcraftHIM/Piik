@@ -233,7 +233,6 @@ impl RemoteRoom {
                 view.subscriptions.clear();
                 view.watch_subscriptions.clear();
                 view.watch_bytes.clear();
-                view.failed_subscriptions.clear();
                 view.files.clear();
                 view.reading = false;
                 view.transit_endpoint = None;
@@ -458,7 +457,6 @@ impl RemoteRoom {
             publications: vec![],
             voice: vec![],
             subscriptions: vec![],
-            failed_subscriptions: vec![],
         })
     }
 }

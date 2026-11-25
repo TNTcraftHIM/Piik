@@ -92,6 +92,11 @@ function takesViewingPriority(next: ParticipantViewing, current?: ParticipantVie
   return current === undefined || viewingAppearance[next].rank > viewingAppearance[current].rank;
 }
 
+/** The room reports delivery to this endpoint in its own audience entry: one person can watch from several endpoints. */
+export function screenDeliveryFailed(publication: ChannelPublication, sessionId: string | null): boolean {
+  return publication.audience.some(entry => entry.sessionId === sessionId && entry.state === "failed");
+}
+
 /** The navigation row describes this endpoint. A person's row can combine several endpoints. */
 export function roomSessionViewing(screens: readonly ChannelPublication[], watches: readonly WatchActivity[],
   subscriptions: readonly string[], local: LocalWatchPresentation): ParticipantViewing | undefined {

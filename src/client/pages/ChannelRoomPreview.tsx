@@ -129,8 +129,14 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
     kind: "screen" as const, source: { kind: index === 1 ? "camera" as const : "screen" as const, name: longNames ? "A shared evening with friends and a very long source name" : ["A little place to stay", "Studio camera", "Drawing together"][index % 3] }, title: null, paused: index === 0 && picture === "paused", videoSettings: screenVideoSettings(sample.channel.quality) })))
     .filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id))
-    .map(publication => ({ ...publication, title: titles[publication.id] ?? null, directLimit: directLimits[publication.id] ?? undefined, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
-      .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
+    .map(publication => {
+      const audience = audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
+        .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [];
+      // The room reports a failed picture in this endpoint's own audience entry.
+      const failed = publication.id === samplePictureId && omitSamplePicture && picture === "failed" && !unwatched.has(samplePictureId);
+      return { ...publication, title: titles[publication.id] ?? null, directLimit: directLimits[publication.id] ?? undefined, audience: failed
+        ? [...audience.filter(viewer => viewer.sessionId !== sample.channel.sessionId), { sessionId: sample.channel.sessionId!, state: "failed" as const }] : audience };
+    });
   const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
   const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
   const needsSamples = ownedScreens.size > 0 || subscriptions.length > 0 || !!watchActivity;
@@ -254,7 +260,6 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId) && !(hostOffline && voice.roomId === "friday")),
     users,
     subscriptions,
-    failedSubscriptions: omitSamplePicture && picture === "failed" && subscriptions.includes(samplePictureId) ? [samplePictureId] : [],
     // A selected flow with no stream is connecting. Without one the viewer has no route yet.
     pairs: omitSamplePicture && picture === "connecting" ? [{ id: "sample-pair", peerId: `${screenUsers[0].id}-session`, canReceiveVideoLayers: false, rooms: ["friday"],
       outgoing: [], incoming: [{ id: "sample-flow", publicationId: samplePictureId, selected: true, inputFlowId: null }] }] : sample.channel.state!.pairs,

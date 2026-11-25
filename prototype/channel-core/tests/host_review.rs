@@ -270,7 +270,6 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         });
         let recipient = initial.projection.views.get_mut(&reader_session).unwrap();
         recipient.subscriptions.push(publication);
-        recipient.failed_subscriptions.push(publication);
         recipient
             .files
             .push(piik_channel_core::file_room::FilePlan {
@@ -312,11 +311,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                     _ => None,
                 })
                 .unwrap();
-            assert!(
-                state.publications.is_empty()
-                    && state.subscriptions.is_empty()
-                    && state.failed_subscriptions.is_empty()
-            );
+            assert!(state.publications.is_empty() && state.subscriptions.is_empty());
         }
 
         let pending = core.handle(
@@ -369,7 +364,14 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                     })
                     .unwrap();
                 assert_eq!(state.files.len(), 1);
-                assert_eq!(state.failed_subscriptions, vec![publication]);
+                let failed = piik_channel_core::wire::PublicationAudience {
+                    session_id: reader_session,
+                    state: piik_channel_core::wire::AudienceState::Failed,
+                };
+                assert!(state
+                    .publications
+                    .iter()
+                    .any(|p| p.id == publication && p.audience.contains(&failed)));
                 core.expire(RECOVERY_MS + 2)
             }
             "rebind" | "resume" => core.handle(
@@ -405,9 +407,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                 })
                 .unwrap();
             assert!(
-                state.publications.is_empty()
-                    && state.files.is_empty()
-                    && state.failed_subscriptions.is_empty(),
+                state.publications.is_empty() && state.files.is_empty(),
                 "{case} retained retired activity"
             );
         }

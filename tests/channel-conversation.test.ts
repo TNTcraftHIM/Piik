@@ -14,7 +14,7 @@ function conversationState(host: string, sender: string, binding: string, domain
       voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,
       reading: true, participantSessionIds: [host, sender], lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
       delivery: { hostSessionId: host, bindingId: binding },
-    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], iceServers: [], pairs: [],
+    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], iceServers: [], pairs: [],
   };
 }
 

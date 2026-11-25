@@ -35,7 +35,7 @@ it("projects joined watch people independently of transport and deduplicates the
     lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
   }] }, users: ["owner", "viewer", "direct", "relay"].map(id => ({ id, name: id, version: "a".repeat(64) })),
     sessions: sessions.map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
-    publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   });
   expect(watchAudience(state, activity)).toEqual([{ userId: "viewer", name: "viewer", avatar: undefined }, { userId: "direct", name: "direct", avatar: undefined }]);
   expect(roomActivityPeople(state, "room").map(({ id, sharing, viewing }) => ({ id, sharing, viewing }))).toEqual([
@@ -134,7 +134,7 @@ it("shows each person's room activity across endpoints and keeps chat presence i
       source: { kind: "screen", name: null }, title: null, audience: [{ sessionId: "self-page", state: "active" }],
       videoSettings: { ceiling: { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 4_000_000 }, degradationPreference: "balanced" },
     }], voice: [{ roomId: "room", sessionId: "self-page", muted: true, deafened: true }],
-    subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   });
   expect(roomPeople(state, "room").map(person => person.userId)).toEqual(["self", "chat"]);
   const activities = () => roomActivityPeople(state, "room");

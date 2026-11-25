@@ -3777,7 +3777,6 @@ export class ChannelSession {
       voice: this.voice.project(state.voice),
       ...this.projectWatches(state),
       subscriptions,
-      failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),
     };
   }
 

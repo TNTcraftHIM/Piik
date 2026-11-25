@@ -9,7 +9,7 @@ import { FeedbackAudio } from "../src/client/channel/feedback-audio";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
-import { listeningVoicePublications } from "../src/client/channel/presentation";
+import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";
 import { resolveVoiceDockControls } from "../src/client/channel/voice-dock-controls";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
@@ -167,7 +167,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding" } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
-    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
@@ -1573,21 +1573,29 @@ test("App hosting uses its own participant while Browser rooms retain their page
 
 test("authority delivery results follow this page's watch intent and clear on current recovery", async () => {
   const { session, socket } = await setup();
-  const state = { ...session.getSnapshot().state!, publications: [
-    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
-  ], subscriptions: ["screen"], failedSubscriptions: ["screen"] };
+  const initial = session.getSnapshot().state!;
+  // This person's other endpoint also watches and has failed: only this page's own entry counts.
+  const delivery = (own: "active" | "failed") => ({ ...initial,
+    sessions: [...initial.sessions, { ...initial.sessions[0], id: "other-endpoint" }], publications: [
+      { audience: [{ sessionId: "endpoint", state: own }, { sessionId: "other-endpoint", state: "failed" }], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
+    ], subscriptions: ["screen"] });
+  const failed = () => screenDeliveryFailed(session.getSnapshot().state!.publications[0], session.getSnapshot().sessionId);
   try {
-    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state: delivery("failed") });
+    expect(failed()).toBe(false);
     const watching = session.watch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await watching;
-    socket.receive({ type: "state", state });
-    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"], failedSubscriptions: ["screen"] });
-    socket.receive({ type: "state", state: { ...state, failedSubscriptions: [] } });
-    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"], failedSubscriptions: [] });
-    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state: delivery("failed") });
+    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"] });
+    expect(failed()).toBe(true);
+    socket.receive({ type: "state", state: delivery("active") });
+    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"] });
+    expect(failed()).toBe(false);
+    socket.receive({ type: "state", state: delivery("failed") });
     const stopping = session.unwatch("screen");
-    expect(session.getSnapshot().state).toMatchObject({ subscriptions: [], failedSubscriptions: [] });
+    expect(session.getSnapshot().state).toMatchObject({ subscriptions: [] });
+    expect(failed()).toBe(false);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await stopping;
   } finally { session.close(); }
