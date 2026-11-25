@@ -655,6 +655,8 @@ export function ChannelAudio({ publicationId, stream, muted, volume, voiceContex
 }) {
   const ref = useRef<HTMLAudioElement>(null);
   const output = useRef<ViewerAudio | null>(null);
+  const playing = useRef(false);
+  const outputReady = useRef(false);
   const [blocked, setBlocked] = useState(false);
   const { t } = useCopy();
   const track = stream.getAudioTracks()[0];
@@ -663,7 +665,11 @@ export function ChannelAudio({ publicationId, stream, muted, volume, voiceContex
     if (!element) return;
     element.srcObject = stream;
     // Room and person levels each range from 0 to 2, as in the shared voice sink.
-    const playback = output.current = new ViewerAudio(element, () => {}, voiceContext, 4);
+    playing.current = false;
+    const playback = output.current = new ViewerAudio(element, () => {}, voiceContext, 4, ready => {
+      outputReady.current = ready;
+      if (playing.current && !element.paused) onRendering(publicationId, stream, ready ? "playing" : "blocked");
+    });
     playback.bind(stream);
     let current = true;
     setBlocked(false);
@@ -674,6 +680,7 @@ export function ChannelAudio({ publicationId, stream, muted, volume, voiceContex
     });
     return () => {
       current = false;
+      playing.current = false;
       onRendering(publicationId, stream, undefined);
       playback.dispose();
       output.current = null;
@@ -682,10 +689,22 @@ export function ChannelAudio({ publicationId, stream, muted, volume, voiceContex
     };
   }, [publicationId, stream, track, voiceContext, onRendering]);
   useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, track, volume, muted]);
-  const stopRendering = () => onRendering(publicationId, stream, undefined);
-  return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)}
-    onPlaying={() => onRendering(publicationId, stream, "playing")} onWaiting={stopRendering}
-    onPause={stopRendering} onEnded={stopRendering} onEmptied={stopRendering} />
+  const stopRendering = () => {
+    playing.current = false;
+    onRendering(publicationId, stream, undefined);
+  };
+  return <><audio ref={ref} aria-label={label}
+    onPlaying={() => {
+      playing.current = true;
+      setBlocked(false);
+      onRendering(publicationId, stream, outputReady.current ? "playing" : "blocked");
+    }} onWaiting={stopRendering}
+    onPause={({ currentTarget }) => {
+      if (!currentTarget.paused || currentTarget.srcObject !== stream || currentTarget.ended) return;
+      playing.current = false;
+      setBlocked(true);
+      onRendering(publicationId, stream, "blocked");
+    }} onEnded={stopRendering} onEmptied={stopRendering} />
     {blocked && <ChannelAction icon="speaker" label={t("screen.playNamed", { label })}
-      onClick={() => { void ref.current?.play().then(() => setBlocked(false)).catch(() => {}); }} />}</>;
+      onClick={() => { void ref.current?.play().catch(() => {}); }} />}</>;
 }

@@ -42,7 +42,7 @@ struct Hub {
     authority: Authority,
     launch_tickets: BTreeMap<String, Instant>,
     clients: BTreeMap<Uuid, Client>,
-    storage: storage::Storage,
+    storage: storage::DomainStorage,
     // A background room operation can retain the Hub after the listener closes.
     _directory_owner: Option<std::fs::File>,
     invitation_origin: Option<String>,
@@ -106,6 +106,11 @@ impl Hub {
                 .unwrap_or((connection, request.request_id.clone())),
             _ => (connection, request.request_id.clone()),
         };
+        let user_change = matches!(
+            request.command,
+            piik_channel_core::wire::Command::Join { .. }
+                | piik_channel_core::wire::Command::SetProfile { .. }
+        );
         let before = (metadata && !room_projection).then(|| self.authority.clone());
         let mut effects = self.authority.handle(connection, request, now());
         let failed = effects
@@ -113,9 +118,12 @@ impl Hub {
             .iter()
             .any(|(target, event)| *target == connection && matches!(event, Event::Error { .. }));
         if metadata && !failed {
-            let checkpoint =
-                serde_json::to_value(self.authority.export_backup()).expect("typed metadata");
-            if self.storage.save(&checkpoint).is_err() {
+            let saved = if user_change {
+                self.storage.save_user(&self.authority, connection)
+            } else {
+                self.storage.save_header(&self.authority)
+            };
+            if saved.is_err() {
                 if room_projection {
                     self.apply(effects);
                     self.send(
@@ -402,9 +410,7 @@ async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: Str
     if removed {
         let before = hub.authority.clone();
         let effects = hub.authority.finish_hosted_deletion(&id);
-        let checkpoint =
-            serde_json::to_value(hub.authority.export_backup()).expect("typed metadata");
-        let saved = hub.storage.save(&checkpoint).is_ok();
+        let saved = hub.storage.save_header(&hub.authority).is_ok();
         if saved {
             hub.apply(effects);
             hub.send(
@@ -657,14 +663,12 @@ impl Domain {
                 error.into()
             }
         })?;
-        let mut storage = storage::Storage::open(&directory.join("channel.sqlite"))
+        let storage = storage::DomainStorage::open(&directory.join("channel.sqlite"))
             .map_err(anyhow::Error::from_boxed)?;
         let checkpoint = storage.load().map_err(anyhow::Error::from_boxed)?;
         let created = checkpoint.is_none();
         let authority = match checkpoint {
-            Some(checkpoint) => {
-                let metadata = serde_json::from_value::<DomainMetadata>(checkpoint)
-                    .context("unsupported_domain_checkpoint: preserve the existing data and use a supported backup or a fresh directory")?;
+            Some(metadata) => {
                 anyhow::ensure!(
                     server_mode.is_some()
                         || metadata.state.hosting_mode() == HostingMode::Lightweight,
@@ -683,9 +687,9 @@ impl Domain {
                 authority
             }
         };
-        storage
-            .save(&serde_json::to_value(authority.export_backup())?)
-            .map_err(anyhow::Error::from_boxed)?;
+        if created {
+            storage.save_header(&authority).map_err(anyhow::Error::from_boxed)?;
+        }
         Ok(Domain {
             hub: Arc::new(Mutex::new(Hub {
                 authority,
@@ -764,11 +768,10 @@ impl Domain {
             .clone()
             .into_authority(self.ice_servers.clone())
             .map_err(anyhow::Error::msg)?;
-        let checkpoint = serde_json::to_value(metadata)?;
         let mut hub = self.hub.lock().unwrap();
         anyhow::ensure!(hub.authority.is_owner_credential(credential), "forbidden");
         hub.storage
-            .save(&checkpoint)
+            .replace(metadata)
             .map_err(anyhow::Error::from_boxed)?;
         hub.authority = authority;
         hub.launch_tickets.clear();
@@ -961,9 +964,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("domain.sqlite");
         let authority = Authority::new("owner".into(), vec![]).unwrap();
-        let mut storage = storage::Storage::open(&path).unwrap();
+        let storage = storage::DomainStorage::open(&path).unwrap();
         storage
-            .save(&serde_json::to_value(authority.export_backup()).unwrap())
+            .save_header(&authority)
             .unwrap();
         let connection = Uuid::new_v4();
         let (events, mut receiver) = mpsc::channel(64);
@@ -1089,7 +1092,7 @@ mod tests {
                 ..
             }
         )));
-        let saved = hub.storage.load().unwrap().unwrap();
+        let saved = serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap();
         assert!(saved["state"]["hostedRooms"]
             .as_object()
             .unwrap()

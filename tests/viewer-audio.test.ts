@@ -64,6 +64,34 @@ describe("Viewer local audio", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it("reports the usable voice output independently of local mute and a refused native sink", async () => {
+    await playbackOutput.choose("headphones");
+    let refused = true;
+    const video = Object.assign(new PlaybackVideo(), {
+      async setSinkId() { if (refused) throw Error("unavailable"); },
+    });
+    class VoiceContext extends PlaybackContext { async setSinkId() {} }
+    vi.stubGlobal("AudioContext", VoiceContext);
+    const ready = vi.fn();
+    const audio = new ViewerAudio(video as unknown as HTMLAudioElement, vi.fn(), new VoicePlaybackContext(), 4, ready);
+    try {
+      audio.bind(new AudioStream([audioTrack()]) as unknown as MediaStream);
+      await vi.waitFor(() => expect(playbackOutput.failedFor(video as unknown as HTMLAudioElement)).toBe(true));
+      expect(ready).toHaveBeenLastCalledWith(false);
+      audio.setLevel(2);
+      PlaybackContext.instances[0].start();
+      await vi.waitFor(() => expect(ready).toHaveBeenLastCalledWith(true));
+      audio.setMuted(true);
+      expect(ready).toHaveBeenLastCalledWith(true);
+      audio.setLevel(1);
+      expect(ready).toHaveBeenLastCalledWith(false);
+      refused = false;
+      await playbackOutput.choose("headphones");
+      expect(ready).toHaveBeenLastCalledWith(true);
+      expect(video.muted).toBe(true);
+    } finally { audio.dispose(); await playbackOutput.choose(""); }
+  });
+
   it("retains gain on its mute echo when the system ignores volume writes", () => {
     const video = new PlaybackVideo();
     Object.defineProperty(video, "volume", { get: () => 1, set: () => {} });

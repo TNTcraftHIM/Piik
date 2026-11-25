@@ -199,6 +199,8 @@ describe("release automation", () => {
       git("tag", "v1.0.0");
       // The tag might belong to an unfinished draft: publication can resume.
       expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });
+      commit("fix(ops): validate deployment rollback", "deploy/release-server.sh");
+      expect(plan()).toMatchObject({ version: "development", publish: false });
       for (const path of ["site/film/art.js", "site/docs/package.json", "site/docs/package-lock.json",
         "site/docs/.vitepress/config.mjs", "docs/guide/troubleshooting.md", "docs/deployment.md", "README.zh-CN.md",
         "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",

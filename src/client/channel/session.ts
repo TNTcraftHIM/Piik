@@ -840,7 +840,9 @@ export class ChannelSession {
       if (nextWatches.includes(next) || restoring && !player && (waiting.browser || !joined)) {
         const socket = this.socket;
         const opening = waiting.browser ? this.joinWatch(id) : this.request({ type: "join_watch", roomId: waiting.roomId, id, mode: "direct" }, undefined, waiting.roomId);
-        void opening.catch(() => {
+        void opening.catch(error => {
+          // The activity is gone: nothing to decline, and this entry keeps the receiving method for the successor the room names next.
+          if (error instanceof Error && error.message === "watch_unavailable") return;
           if (this.socket === socket && this.waitingWatchPages.get(id) === waiting) {
             this.waitingWatchPages.delete(id);
             this.declineSuccessor(waiting.roomId, { kind: "watch", id });

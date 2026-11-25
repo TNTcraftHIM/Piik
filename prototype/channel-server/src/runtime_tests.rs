@@ -73,6 +73,9 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
     let open = |owner| Domain::open(&folder, owner, "http://localhost".into(), None, vec![]);
     let domain = open("saved-owner").unwrap();
     let identity = domain.identity();
+    drop(domain);
+    let domain = open("different-owner").unwrap();
+    assert_eq!(domain.identity(), identity);
     let old_checkpoint;
     {
         let mut hub = domain.hub.lock().unwrap();
@@ -117,20 +120,15 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
             .any(|event| event["type"] == "error"));
     }
     let path = folder.join("channel.sqlite");
-    let mut checkpoint = storage::Storage::open_existing(&path)
-        .unwrap()
-        .load()
-        .unwrap()
-        .unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let body: String = db.query_row("SELECT body FROM checkpoint", [], |row| row.get(0)).unwrap();
+    let mut checkpoint: Value = serde_json::from_str(&body).unwrap();
     checkpoint["state"]["hostedRooms"]["studio"] = json!({
         "id":"studio","name":"Studio","icon":"data:image/png;base64,iVBORw0KGgo=",
         "creatorId":identity.1,"access":"private","hidden":true,"hasPassword":false
     });
     for unsupported in [old_checkpoint, checkpoint] {
-        storage::Storage::open_existing(&path)
-            .unwrap()
-            .save(&unsupported)
-            .unwrap();
+        db.execute("UPDATE checkpoint SET body=?1", [unsupported.to_string()]).unwrap();
         let original = std::fs::read(&path).unwrap();
         assert!(open("saved-owner")
             .err()
@@ -139,7 +137,24 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
             .contains("unsupported_domain_checkpoint"));
         assert_eq!(std::fs::read(&path).unwrap(), original);
     }
+    db.execute("DELETE FROM checkpoint", []).unwrap();
+    assert!(open("saved-owner").err().unwrap().to_string().contains("invalid_storage_schema"));
+    drop(db);
     std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
+fn previous_domain_sqlite_format_is_rejected_without_modification() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("channel.sqlite");
+    let authority = Authority::new("old-owner".into(), vec![]).unwrap();
+    let mut old = storage::Storage::open(&path).unwrap();
+    old.save(&serde_json::to_value(authority.export_backup()).unwrap()).unwrap();
+    drop(old);
+    let original = std::fs::read(&path).unwrap();
+    let result = Domain::open(directory.path(), "new-owner", "http://localhost".into(), None, vec![]);
+    assert!(result.err().unwrap().to_string().contains("unsupported_storage_version"));
+    assert_eq!(std::fs::read(path).unwrap(), original);
 }
 
 #[test]
@@ -176,9 +191,9 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         owner.drain();
         observer.drain();
         let initial_profile = read_profile(&mut hub, &mut owner, user);
-        let saved = hub.storage.load().unwrap().unwrap();
+        let saved = serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap();
         let failure = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
-        failure.execute_batch("CREATE TRIGGER reject_profile BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+        failure.execute_batch("CREATE TRIGGER reject_profile BEFORE UPDATE ON domain_user BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
         owner.request(&mut hub, json!({"type":"set_profile", "name":"New profile", "avatar":avatar, "requestId":"profile"}));
         let failed = owner.drain();
         assert!(failed.iter().any(|event| event["type"] == "error"
@@ -188,7 +203,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
             .iter()
             .any(|event| event["type"] == "ack" || event["type"] == "state"));
         assert!(observer.drain().is_empty());
-        assert_eq!(hub.storage.load().unwrap().unwrap(), saved);
+        assert_eq!(serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap(), saved);
         assert_eq!(hub.authority.owner_name(), Some("Friend"));
         assert_eq!(read_profile(&mut hub, &mut observer, user), initial_profile);
         failure
@@ -249,8 +264,9 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         clients: BTreeMap::new(),
         invitation_origin: None,
         room_commands: None,
-        storage: storage::Storage::open(&path).unwrap(),
+        storage: storage::DomainStorage::open(&path).unwrap(),
     };
+    hub.storage.save_header(&hub.authority).unwrap();
     let mut owner = Endpoint::join(&mut hub, "owner");
     let mut guest = Endpoint::join(&mut hub, "invite");
     owner.drain();
@@ -283,7 +299,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         original
     );
     assert_eq!(
-        hub.storage.load().unwrap().unwrap()["state"],
+        serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap()["state"],
         original
     );
     database
@@ -301,9 +317,8 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let _: piik_channel_core::wire::Snapshot =
         serde_json::from_value(state["state"].clone()).unwrap();
     drop(hub);
-    let store = storage::Storage::open(&path).unwrap();
-    let mut restored = serde_json::from_value::<DomainMetadata>(store.load().unwrap().unwrap())
-        .unwrap()
+    let store = storage::DomainStorage::open(&path).unwrap();
+    let mut restored = store.load().unwrap().unwrap()
         .into_authority(vec![])
         .unwrap();
     let saved = serde_json::to_value(restored.export_state()).unwrap();
@@ -332,8 +347,9 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
         clients: BTreeMap::new(),
         invitation_origin: None,
         room_commands: None,
-        storage: storage::Storage::open(Path::new(":memory:")).unwrap(),
+        storage: storage::DomainStorage::open(Path::new(":memory:")).unwrap(),
     };
+    hub.storage.save_header(&hub.authority).unwrap();
     let mut active = Endpoint::join(&mut hub, "owner");
     let mut retired = Endpoint::join(&mut hub, "invite");
     retired.request(&mut hub, json!({"type":"leave","requestId":"leaving"}));
@@ -431,7 +447,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         std::env::temp_dir().join(format!("piik-directory-failure-{}.sqlite", Uuid::new_v4()));
     let room_path =
         std::env::temp_dir().join(format!("piik-host-policy-{}.sqlite", Uuid::new_v4()));
-    let directory_store = storage::Storage::open(&directory_path).unwrap();
+    let directory_store = storage::DomainStorage::open(&directory_path).unwrap();
     let mut room_store = storage::Storage::open(&room_path).unwrap();
     let mut hub = Hub {
         launch_tickets: BTreeMap::new(),
@@ -442,6 +458,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         invitation_origin: None,
         room_commands: None,
     };
+    hub.storage.save_header(&hub.authority).unwrap();
     let mut operator = Endpoint::join(&mut hub, "owner");
     let mut viewer = Endpoint::join(&mut hub, "invite");
     let mut host = RoomHost::new(
@@ -525,7 +542,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         "the real room store committed first"
     );
     assert_eq!(
-        hub.storage.load().unwrap().unwrap()["state"]["hostedRooms"]["hosted"]
+        serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap()["state"]["hostedRooms"]["hosted"]
             ["access"],
         "public",
         "the directory checkpoint really failed"
@@ -601,6 +618,8 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .execute_batch("DROP TRIGGER reject_checkpoint;")
         .unwrap();
     let mut invited = Endpoint::join(&mut hub, "invite");
+    let recovered = serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap();
+    assert_eq!(recovered["state"]["hostedRooms"]["hosted"]["access"], "private");
     complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
     database.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
     invited.request(
@@ -858,7 +877,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
     );
     assert_eq!(
         domain_db
-            .query_row("SELECT count(*) FROM message", [], |row| row
+            .query_row("SELECT count(*) FROM sqlite_schema WHERE name='message'", [], |row| row
                 .get::<_, u64>(0))
             .unwrap(),
         0
@@ -1347,7 +1366,7 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
         .unwrap()
         .unwrap();
     assert!(
-        !checkpoint.to_string().contains(invitation),
+        !serde_json::to_string(&checkpoint).unwrap().contains(invitation),
         "the invitation address is not domain identity or room data"
     );
     stop.send(()).unwrap();
@@ -2824,7 +2843,7 @@ async fn domain_backup_restarts_its_operator_and_preserves_other_domain_room_fil
     // Reject only the new durable record. Ordinary old-domain admissions can
     // still commit, proving the service reopens its old operator after failure.
     let reject = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
-    reject.execute_batch("CREATE TRIGGER reject_restore BEFORE UPDATE ON checkpoint WHEN instr(NEW.body, 'restored-owner') > 0 BEGIN SELECT RAISE(ABORT, 'restore_rejected'); END;").unwrap();
+    reject.execute_batch("CREATE TRIGGER reject_restore BEFORE INSERT ON domain_user WHEN EXISTS(SELECT 1 FROM checkpoint WHERE instr(body, 'restored-owner') > 0) BEGIN SELECT RAISE(ABORT, 'restore_rejected'); END;").unwrap();
     let (status, failure) = room_backup_http(
         address,
         "/prototype/channel/backup",

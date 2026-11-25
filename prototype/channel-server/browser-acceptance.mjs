@@ -691,7 +691,9 @@ async function roomOwner(initial, serverRoom) {
     "Server room chat and signed history use the domain WebSocket");
   await until("another current reader receives the Server's signed confirmation", () => evaluate(2,
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(serverRoom)}]`), messages => messages?.some(message => message.text === "Server room through the domain WebSocket"));
-  assert.equal((await view(0)).state.pairs.length, 0, "confirmed conversation needs no peer transport");
+  assert((await view(0)).state.pairs.every(pair =>
+    pair.rooms.length === 0 && pair.incoming.length === 0 && pair.outgoing.length === 0),
+    "confirmed conversation needs no room or media lease");
   const room = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'private',hidden:true,password:'browser-room-password'})");
   const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
   await action(2, "close()");
@@ -769,12 +771,19 @@ async function roomOwner(initial, serverRoom) {
   assert.equal(stored.policy.creatorId, initial[1].self.id);
   const db = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
   try {
-    assert.equal(db.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='table' AND name='message'").get().count, 0);
     const checkpoint = db.prepare("SELECT body FROM checkpoint WHERE id=1").get().body;
     assert(!checkpoint.includes(stored.policy.passwordHash), "domain must not retain Browser room password hashes");
     assert(!checkpoint.includes("Confirmed on B"), "domain must not checkpoint Browser room history");
   } finally { db.close(); }
 
+  assert(!(await view(0)).state.channel.rooms.some(entry => entry.id === room),
+    "the channel owner needs an invitation to discover this hidden private room");
+  const siteOwnerSession = (await view(0)).sessionId;
+  await browser(0, "open", invite);
+  await until("the channel owner earns ordinary room admission by invitation", () => view(0), value =>
+    value.connection === "connected" && value.sessionId === siteOwnerSession &&
+    value.state.channel.rooms.some(entry => entry.id === room && entry.authorized));
   const serverPicture = await capturedScreen(0, serverRoom);
   await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
   await action(2, `watch(${JSON.stringify(serverPicture)})`);
@@ -815,6 +824,9 @@ async function roomOwner(initial, serverRoom) {
   assert(!(await view(1)).state.voice.some(member => member.roomId === room));
   await progressing(2, serverPicture);
   await browser(2, "click", '.c3-room-link[aria-label="Browser-owned room"]');
+  await browser(0, "click", '.c3-room-link[aria-label="Browser-owned room"]');
+  await until("the channel owner reads the reopened room", () => view(0), value =>
+    value.state.channel.rooms.some(entry => entry.id === room && entry.reading));
   for (let start = 0; start < 100; start += 20) {
     await evaluate(2, `(async () => {
       for (let index = ${start}; index < ${start + 20}; index++) {
@@ -823,28 +835,34 @@ async function roomOwner(initial, serverRoom) {
       return true;
     })()`);
   }
-  // The host pages 50 retained messages at a time, independently of the larger
-  // reading window. Keep the 100-message payload trial and read both pages.
+  // Escaped control characters make this trial reach the byte limit before the record limit.
   const historyPages = [];
-  for (const method of ['loadLatestHistory', 'loadHistory']) {
+  let page = [];
+  while (page.length < 100) {
     await evaluate(2, 'window.__channelProbe.clearProtocol()');
+    const method = page.length ? 'loadHistory' : 'loadLatestHistory';
     await action(2, `${method}(${JSON.stringify(room)})`);
     const records = (await sample(2)).protocol.filter(event => event.direction === 'received'
       && event.type === 'conversation' && event.room === room);
     const end = records.findLast(event => event.result === 'history_end');
     assert(end, 'a signed history request completes with its own END record');
+    assert(end.historyCount > 0 && end.historyCount <= 50, 'a history page advances within the 50-record limit');
+    assert(!historyPages.some(previous => previous.requestId === end.request), 'each page has a fresh request');
     const pageRecords = records.filter(event => event.request === end.request);
-    assert.equal(pageRecords.filter(event => event.result === 'history_message').length, 50,
-      'each maximum history page delivers all 50 signed message records');
-    assert.equal(pageRecords.filter(event => event.result === 'message_reactions').length, 50,
-      'each history message retains its signed reaction snapshot');
+    assert.equal(pageRecords.filter(event => event.result === 'history_message').length, end.historyCount);
+    const reactionSnapshots = pageRecords.filter(event => event.result === 'message_reactions').length;
+    assert.equal(reactionSnapshots, end.historyCount, 'each history message retains its signed reaction snapshot');
     assert.equal(pageRecords.filter(event => event.result === 'history_end').length, 1);
-    assert.equal(end.historyCount, 50, 'END confirms the complete page count');
-    historyPages.push({ requestId: end.request, messages: end.historyCount, reactionSnapshots: 50, endMarkers: 1 });
+    const current = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message =>
+      ({ seq: message.seq, characters: message.text.length }))`);
+    assert.equal(current.length, page.length + end.historyCount, 'each signed page adds distinct rows');
+    if (page.length) assert(current[0].seq < page[0].seq, 'the history cursor advances to older rows');
+    page = current;
+    historyPages.push({ requestId: end.request, messages: end.historyCount, reactionSnapshots, endMarkers: 1 });
   }
-  const page = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message => ({ seq: message.seq, characters: message.text.length }))`);
-  assert.deepEqual(page.map(message => message.characters), Array(100).fill(2000),
-    'two complete signed pages retain all 100 maximum-size test messages');
+  assert(historyPages[0].messages < 50, 'escaped messages reach the byte limit before the record limit');
+  assert.deepEqual(page.slice(-100).map(message => message.characters), Array(100).fill(2000),
+    'signed pages retain all 100 maximum-size test messages');
   assert(page.every((message, index) => index === 0 || message.seq === page[index - 1].seq + 1),
     'history pagination preserves every confirmed sequence without gaps or duplicates');
   const hostedWS = await Promise.all([0, 1, 2].map(async index => (await sample(index)).conversationWS[room] ?? null));
@@ -859,7 +877,7 @@ async function roomOwner(initial, serverRoom) {
       "cross-room shared transport", "room voice", "owner signaling resume", "scoped shutdown", "retained paused directory",
       "owner reopen without capture revival", "maximum valid history page", "participant-signed fake reply rejected", "normal chat after rejected reply"],
     conversationTransport: { serverRoomWS: serverWS, hostedRoomWS: hostedWS, rejectedReply },
-    domainMessageCopies: 0, maximumHistoryPage: { messagesPerPage: 50, retainedMessages: 100, charactersPerMessage: 2000,
+    domainMessageCopies: 0, maximumHistoryPage: { messageLimitPerPage: 50, retainedMessages: 100, charactersPerMessage: 2000,
       pages: historyPages, transport: "signed WebSocket records" } }, null, 2));
   console.log("Browser owns policy/history and room activities; domain only retains its directory; unrelated media survives owner shutdown");
 }

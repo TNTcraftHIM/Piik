@@ -12205,7 +12205,7 @@ test("two waiting successors retain a viewer's peer choice when the App can open
   } finally { session.close(); }
 });
 test.each([
-  ["watch", "connected"], ["watch", "reconnected"], ["watch", "left"],
+  ["watch", "error first"], ["screen", "error first"], ["watch", "connected"], ["watch", "reconnected"], ["watch", "left"],
   ["screen", "connected"], ["screen", "reconnected"], ["screen", "left"], ["screen", "revoked"],
 ] as const)("consecutive watch replacements follow a %s successor while the previous join is pending (%s)", async (kind, mode) => {
   const { session, socket } = await setup(1000, false);
@@ -12230,6 +12230,11 @@ test.each([
     socket.receive({ type: "state", state: { ...base, watchActivities: [original], watchSubscriptions: [{ id: original.id, mode: "direct" }] } });
     socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
     expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: middle.id, mode: "direct" });
+    if (mode === "error first") {
+      const join = socket.sent.findLast(command => command.type === "join_watch")!;
+      socket.receive({ type: "room_reply", roomId: middle.roomId, requestId: join.requestId, result: { type: "error", code: "watch_unavailable" } });
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
     if (mode === "left") {
       const leave = session.leaveWatch(middle.id);
       expect(socket.sent.filter(c => c.type === "join_watch" && c.mode === null).map(c => c.id)).toEqual([original.id, middle.id]);
@@ -12276,7 +12281,7 @@ test.each([
     expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
   } finally { session.close(); }
 });
-test("a successor the room names after the pending join failed is still followed", async () => {
+test.each(["watch_unavailable", "room_busy"] as const)("a successor the room names after the pending join failed with %s is still followed", async code => {
   const { session, socket } = await setup(1000, false);
   vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
   const base = session.getSnapshot().state!;
@@ -12297,11 +12302,12 @@ test("a successor the room names after the pending join failed is still followed
     const join = joins(middle.id, "direct");
     expect(join).toHaveLength(1);
     // A raised projection floor withholds the snapshot naming latest while the error is released at once.
-    socket.receive({ type: "room_reply", roomId: "first", requestId: join[0].requestId, result: { type: "error", code: "watch_unavailable" } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join[0].requestId, result: { type: "error", code } });
     await new Promise(resolve => setTimeout(resolve, 0));
     socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
     expect(joins(middle.id, "direct")).toHaveLength(1);
-    expect(joins(middle.id, null)).toHaveLength(1);
+    // An activity that is gone needs no decline. Any other failure tells the room this page will not follow it.
+    expect(joins(middle.id, null)).toHaveLength(code === "watch_unavailable" ? 0 : 1);
     socket.receive({ type: "state", state: { ...base, watchActivities: [latest] } });
     await vi.waitFor(() => expect(joins(latest.id, "direct")).toHaveLength(1));
     expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: original.id });
