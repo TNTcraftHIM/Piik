@@ -330,8 +330,8 @@ the feedback period; they do not delay that delivery.
   candidate. At integration, resolve main CI against the Rust release jobs and
   coordinate the Pages guides, latest downloads and Demo with the published
   version. Pin historical 2.x references at the final 2.x revision.
-  Decide the container `latest` policy with the owner and publish the 2.x
-  pinning guidance before changing the default major
+  Publish the 2.x pinning guidance and verify clear startup refusal for recognized
+  incompatible configuration before changing the default major
   ([evidence](./research/container-tags.md)).
   End separate 2.x maintenance at the accepted 3.0 cutover. Decide
   separately whether to offer a short room-code locator.

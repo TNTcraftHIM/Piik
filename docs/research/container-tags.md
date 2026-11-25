@@ -1,16 +1,20 @@
 # Container Tags Across A Breaking Major
 
-Evidence for one decision at the 3.0 cutover: what the container image's
-`latest` tag means afterwards. It is not decided, and the owner will decide it
-when the release is prepared. Reviewed 2026-11-25 from project documentation,
-image definitions, source code and firsthand operator reports.
+Evidence about one channel at the 3.0 cutover: the container image's `latest`
+tag. The rules are already set by [versioning](../standards/versioning.md): a
+major is an incompatible public contract and nothing is promised across it,
+`latest` moves when a version becomes the latest release, and a deliberate
+break needs clear upgrade instructions and mismatches that
+[fail clearly](../standards/versioning.md#major-upgrade-guidance). This note
+examines those boundaries in other projects. Reviewed 2026-11-25 from project
+documentation, image definitions, source code and firsthand operator reports.
 
 ## The Situation
 
 The published 2.x Compose file defaults to the `latest` image, and the 2.x
 first-install guide does not tell an operator to pin a version. 3.0 reads
 different environment variables and a different data layout, and has no
-in-place migration. If `latest` moves to 3.0, pulling and recreating the service
+in-place migration. When `latest` moves to 3.0, pulling and recreating the service
 replaces a working 2.x server with a build that cannot read its configuration
 or its data.
 
