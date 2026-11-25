@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChannelRoomPage } from "./ChannelPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { Btn, Chip } from "../components/living/primitives";
@@ -105,7 +105,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   });
   const picture = new URLSearchParams(location.search).get("picture");
   const samplePictureId = "sample-screen-0";
-  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "no-route" || picture === "paused");
+  const sampleFlowsShown = picture === "candidate" || picture === "handoff";
+  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "no-route" || picture === "paused" || sampleFlowsShown);
   const actionFails = (name: string) => { if (new URLSearchParams(location.search).get("fails") === name) throw new Error("request_timeout"); };
   const [streams, setStreams] = useState(new Map<string, MediaStream>());
   const [unwatched, setUnwatched] = useState(new Set<string>());
@@ -159,6 +160,28 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       canvases.current = [];
     };
   }, [needsSamples]);
+  // The sample picture over two flows. picture=candidate holds a live candidate while nothing is selected;
+  // picture=handoff walks from the selected flow through that moment to the candidate being selected.
+  const [handoffStep, setHandoffStep] = useState(picture === "candidate" ? 1 : 0);
+  const sampleStream = streams.get(samplePictureId);
+  const sampleFlows = useMemo(() => sampleFlowsShown && sampleStream
+    ? [new MediaStream(sampleStream.getVideoTracks()), new MediaStream(sampleStream.getVideoTracks())] : undefined, [sampleStream]);
+  useEffect(() => {
+    if (picture !== "handoff" || !sampleFlows) return;
+    const [incumbent] = sampleFlows;
+    const timers = [1, 2].map(step => window.setTimeout(() => {
+      // A withdrawn or closed flow leaves its stream empty, as the transport does.
+      if (step === 1) for (const track of incumbent.getTracks()) incumbent.removeTrack(track);
+      setHandoffStep(step);
+    }, step * 4000));
+    return () => timers.forEach(window.clearTimeout);
+  }, [sampleFlows]);
+  const sampleInputs = sampleFlows && [
+    [{ flowId: "sample-flow", stream: sampleFlows[0], selected: true, switchReady: false }, { flowId: "sample-candidate", stream: sampleFlows[1], selected: false, switchReady: false }],
+    [{ flowId: "sample-candidate", stream: sampleFlows[1], selected: false, switchReady: false }],
+    [{ flowId: "sample-candidate", stream: sampleFlows[1], selected: true, switchReady: false }],
+  ][handoffStep];
+  const selectedSample = sampleInputs?.find(input => input.selected);
   useEffect(() => {
     if (!watchActivity || watchMode === "available") { setWatchPlayers(new Map()); return; }
     const recorded = watchMode === "owner" || watchMode === "viewer" || watchMode === "blocked";
@@ -280,7 +303,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
   const pendingScreenRoom = capturePendingSample ? "friday" : browserSourcePending;
-  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...streams].filter(([id]) => id !== samplePictureId)) : streams, error: null, siteURL: "https://friends.example/",
+  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...[...streams].filter(([id]) => id !== samplePictureId),
+      ...selectedSample ? [[samplePictureId, selectedSample.stream] as const] : []]) : streams, error: null, siteURL: "https://friends.example/",
     pending: pendingScreenRoom ? new Set([...sample.channel.pending, `screen:${pendingScreenRoom}`]) : sample.channel.pending,
     watchPlayers, roomOpenFailures: unopened && hostOffline ? new Map([["friday", unopened]]) : sample.channel.roomOpenFailures,
     watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
@@ -358,7 +382,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     messagesByRoom,
     interactionsByRoom: sample.channel.interactionsByRoom,
     ownedScreens, localScreens: ownedScreens,
-    screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
+    screenInputs: new Map(sampleInputs ? [[samplePictureId, sampleInputs]] : []), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
     browse: () => {}, sendMessage: sample.onSend,
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
     historyByRoom: Object.fromEntries(state.channel.rooms.map(room => [room.id, { hasMore: false, atLatest: true }])),

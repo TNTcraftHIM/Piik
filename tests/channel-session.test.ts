@@ -7087,8 +7087,9 @@ const remoteTrack = (kind: "audio" | "video") => Object.assign(new EventTarget()
 const lastClone = (track: MediaStreamTrack) => vi.mocked(track.clone).mock.results.at(-1)?.value;
 
 const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(new EventTarget(), {
-  id, getTracks: () => tracks, getVideoTracks: () => tracks.filter(track => track.kind === "video"),
+  id, getTracks: () => [...tracks], getVideoTracks: () => tracks.filter(track => track.kind === "video"),
   getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
+  removeTrack: (track: MediaStreamTrack) => { if (tracks.includes(track)) tracks.splice(tracks.indexOf(track), 1); },
 }) as unknown as MediaStream;
 
 function channelEncodingFixture() {
@@ -7928,7 +7929,8 @@ test("a relay shares one video consumer across children and releases only its ow
     media.reset();
     expect(resumed.pause).toHaveBeenCalledOnce(); expect(resumed.remove).toHaveBeenCalledOnce();
     expect(resumed.srcObject).toBeNull();
-    expect(stream.getTracks()).toEqual([nextVideo, audio]);
+    // Closing the pair empties what it received; only the capture owner stops tracks.
+    expect(stream.getTracks()).toEqual([]);
     for (const track of [video, nextVideo, audio]) expect(track.stop).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
 });
@@ -9425,7 +9427,7 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
   }));
   const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
   const remoteA = vi.spyOn(pcA, "setRemoteDescription"), remoteB = vi.spyOn(pcB, "setRemoteDescription");
-  const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }] }) as unknown as MediaStream;
+  const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }], removeTrack() {} }) as unknown as MediaStream;
   try {
     a.setOutgoing(new Map([["voice-flow", { kind: "voice", stream: stream("original") }]]));
     pcA.onnegotiationneeded?.();
@@ -9523,7 +9525,7 @@ test("an earlier answer cannot finish a newer exchange on the same transport", a
   }));
   const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
   const remoteA = vi.spyOn(pcA, "setRemoteDescription");
-  const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }] }) as unknown as MediaStream;
+  const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }], removeTrack() {} }) as unknown as MediaStream;
   try {
     a.setOutgoing(new Map([["voice-flow", { kind: "voice", stream: stream("old") }]]));
     pcA.onnegotiationneeded?.();
@@ -9596,6 +9598,27 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
   } finally { session.close(); }
 });
 
+test("closing a pair empties its received streams before the connection ends their tracks", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const receive = vi.fn(), send = vi.fn();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send, receive, connected: () => {}, roomData: () => {}, failed: vi.fn() });
+  const pc = RoomPeerConnection.instances[0];
+  const video = remoteTrack("video"), audio = remoteTrack("audio"), stream = remoteStream("picture", [video, audio]);
+  let present: MediaStreamTrack[] | undefined;
+  pc.close.mockImplementation(() => { present = stream.getTracks(); pc.connectionState = "closed"; });
+  transport.signal({ exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "picture" },
+    tracks: [{ flowId: "picture-flow", streamId: stream.id }] });
+  await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+  pc.ontrack?.({ streams: [stream] });
+  expect(receive).toHaveBeenLastCalledWith("picture-flow", stream);
+  transport.close();
+  // A video still showing an ended track paints black; an emptied stream keeps its last frame.
+  expect(present).toEqual([]);
+  expect(pc.close).toHaveBeenCalledOnce();
+  for (const track of [video, audio]) expect(track.stop).not.toHaveBeenCalled();
+});
+
 test("source replacement releases unmapped streams and ignores their late track events", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
@@ -9604,7 +9627,7 @@ test("source replacement releases unmapped streams and ignores their late track 
   const pc = RoomPeerConnection.instances[0], stop = vi.fn();
   const stream = (id: string) => {
     const track = { stop };
-    return { id, getTracks: () => [track] } as unknown as MediaStream;
+    return { id, getTracks: () => [track], removeTrack() {} } as unknown as MediaStream;
   };
   const old = stream("old-source"), current = stream("current-source");
   const offer = (streams: Array<[string, MediaStream]>) => transport.signal({

@@ -1,8 +1,9 @@
 export type VideoFit = "contain" | "cover" | "fill";
 export type VideoRotation = 0 | 90 | 180 | 270;
+export type VideoSize = { width: number; height: number };
 export type PicturePoint = { x: number; y: number };
 
-export function videoBoxSize(video: HTMLVideoElement): { width: number; height: number } {
+export function videoBoxSize(video: HTMLElement): VideoSize {
   const style = getComputedStyle(video);
   // clientWidth/clientHeight round fractional grid cells, which shifts input
   // and distorts fit after a quarter-turn.
@@ -31,23 +32,40 @@ export function rotatePictureDelta(point: PicturePoint, rotation: VideoRotation,
 // Playback, remote input and magnification share the rendered picture dimensions.
 export function videoPictureSize(video: HTMLVideoElement, width: number, height: number, rotation = videoRotation(video)): { width: number; height: number } {
   if (video.style.objectFit === "fill") return { width, height };
-  const sourceWidth = video.videoWidth || 16, sourceHeight = video.videoHeight || 9;
+  return fitPictureSize({ width: video.videoWidth || 16, height: video.videoHeight || 9 }, { width, height }, video.style.objectFit, rotation);
+}
+
+function fitPictureSize(source: VideoSize, box: VideoSize, fit: string, rotation: VideoRotation): VideoSize {
+  const { width: sourceWidth, height: sourceHeight } = source;
+  const { width, height } = box;
   const sideways = rotation === 90 || rotation === 270;
   const pictureWidth = sideways ? sourceHeight : sourceWidth, pictureHeight = sideways ? sourceWidth : sourceHeight;
-  const fit = video.style.objectFit === "cover" ? Math.max : Math.min;
-  const scale = fit(width / pictureWidth, height / pictureHeight);
+  const fitScale = fit === "cover" ? Math.max : Math.min;
+  const scale = fitScale(width / pictureWidth, height / pictureHeight);
   return { width: pictureWidth * scale, height: pictureHeight * scale };
 }
 
 // Keep the existing video cell and parent (fullscreen and overlays own them).
 // Its fitted picture rotates into that cell; zoom composes this same transform.
-export function applyVideoRotation(video: HTMLVideoElement, rotation: VideoRotation): void {
+export function applyVideoRotation(video: HTMLVideoElement, rotation: VideoRotation, heldSize?: VideoSize): void {
   video.dataset.pictureRotation = String(rotation);
   const { width, height } = videoBoxSize(video);
   if (!width || !height) return;
-  const original = videoPictureSize(video, width, height, 0);
-  const picture = videoPictureSize(video, width, height, rotation);
+  // The held layer already takes its fitted size, but rotation still fits the player.
+  const original = heldSize ? { width, height } : videoPictureSize(video, width, height, 0);
+  const playerBox = heldSize && video.parentElement ? videoBoxSize(video.parentElement) : undefined;
+  const picture = heldSize && playerBox
+    ? fitPictureSize(heldSize, playerBox, video.style.objectFit, rotation)
+    : videoPictureSize(video, width, height, rotation);
   const sideways = rotation === 90 || rotation === 270;
+  // The live element clips object-fit: cover to its cell before the transform.
+  if (playerBox && video.style.objectFit === "cover") {
+    const vertical = Math.max(0, (height - playerBox.height) / 2);
+    const horizontal = Math.max(0, (width - playerBox.width) / 2);
+    video.style.clipPath = `inset(${vertical}px ${horizontal}px)`;
+  } else {
+    video.style.removeProperty("clip-path");
+  }
   const scaleX = (sideways ? picture.height : picture.width) / original.width;
   const scaleY = (sideways ? picture.width : picture.height) / original.height;
   video.style.setProperty("--picture-transform", `rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`);
