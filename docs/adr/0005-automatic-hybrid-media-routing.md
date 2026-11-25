@@ -1,6 +1,7 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
 - Status: Accepted
+- Scope: published 2.x routing. 3.0 keeps its principles, automatic routing with no tier by endpoint kind, through [ADR-0016](./0016-shared-rust-core.md). Its route controller and its LiveKit parts do not apply to 3.0.
 - Date: 2026-08-20
 - Last updated: 2026-08-30
 

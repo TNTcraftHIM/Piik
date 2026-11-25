@@ -1,6 +1,7 @@
 # ADR-0007: Framework-Owned Media Quality Adaptation
 
 - Status: Accepted
+- Scope: published 2.x. 3.0 keeps the principle that the media framework owns adaptation. The LiveKit and Pion mechanisms do not apply to 3.0.
 - Date: 2026-08-19
 - Last reviewed: 2026-09-01
 

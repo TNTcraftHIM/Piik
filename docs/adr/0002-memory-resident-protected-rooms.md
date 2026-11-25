@@ -1,6 +1,7 @@
 # ADR-0002: Durable Room Authority And Scoped Viewer Access
 
 - Status: Accepted; implemented
+- Scope: published 2.x. For 3.0, [ADR-0016](./0016-shared-rust-core.md) and the [room-data model](../research/channel-storage-and-identity.md) replace the room authority and storage described here.
 - Date: 2026-09-10
 
 ## Context

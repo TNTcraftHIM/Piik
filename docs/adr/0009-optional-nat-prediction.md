@@ -1,6 +1,7 @@
 # ADR-0009: Optional Connection-Local NAT Prediction
 
 - Status: accepted as an optional Site and App capability
+- Scope: published 2.x, where prediction is optional. For 3.0 the [canon](../canon.md) makes direct paths worth real effort, and [NAT traversal](../research/nat-traversal.md) describes the runtime.
 - Date: 2026-09-02
 - Updated: 2026-10-16 (automatic use of available capability)
 

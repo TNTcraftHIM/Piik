@@ -1,6 +1,7 @@
 # ADR-0001: P2P-First Media Topology
 
 - Status: Historical MVP baseline; superseded for current routing by ADR-0005
+- Scope: the durable rationale below is restated in the [canon](../canon.md) and still holds. The MVP decision is history.
 - Date: 2026-08-18
 
 ## Durable Rationale

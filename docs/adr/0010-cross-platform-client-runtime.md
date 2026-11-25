@@ -1,6 +1,7 @@
 # ADR-0010: Cross-Platform App Runtime
 
 - Status: accepted capability-provider architecture and native endpoint media boundary
+- Scope: published 2.x. For 3.0, [ADR-0016](./0016-shared-rust-core.md) replaces the TypeScript core, and the App shows the shared interface in a system web view.
 - Date: 2026-09-05
 - Superseded in part: items 1, 5, 7, 12 (its supervisor sentence), 13, 14, and
   the local-package consequence were amended in place by
