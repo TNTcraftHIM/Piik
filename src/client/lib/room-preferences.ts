@@ -3,6 +3,7 @@ import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 import { feedbackClipSchema } from "../channel/feedback-clip";
 import { voiceShortcutBindingSchema } from "../channel/voice-shortcut-binding";
+import { microphoneModes, SPEAKING_LEVEL_DBFS, VOICE_ACTIVATION_RANGE_DBFS } from "../media/voice-gate";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
@@ -35,6 +36,10 @@ const roomPreferencesSchema = z.object({
   voiceInput: z.object({ deviceId: z.string(), volume: z.number().min(0).max(2), voiceProcessing: z.boolean(), strongerSuppression: z.boolean().optional() })
     .default({ deviceId: "", volume: 1, voiceProcessing: true }),
   voiceListeningVolume: z.number().min(0).max(2).default(1),
+  voiceTransmission: z.object({
+    mode: z.enum(microphoneModes),
+    activationThreshold: z.number().min(VOICE_ACTIVATION_RANGE_DBFS[0]).max(VOICE_ACTIVATION_RANGE_DBFS[1]),
+  }).catch({ mode: "open", activationThreshold: SPEAKING_LEVEL_DBFS }),
   voiceShortcuts: z.object({
     microphone: voiceShortcutBindingSchema.nullable().optional(),
     listening: voiceShortcutBindingSchema.nullable().optional(),

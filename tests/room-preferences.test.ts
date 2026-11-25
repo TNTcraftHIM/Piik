@@ -146,6 +146,19 @@ it("keeps bounded custom sounds with their preferences and reports a failed pers
 });
 
 
+it("adds the microphone mode to stored preferences that predate it, as open microphone", () => {
+  const values = storage();
+  const key = "piik:room-preferences:v1";
+  const previous = { voiceInput: { deviceId: "saved", volume: .8, voiceProcessing: false }, voiceListeningVolume: 1.4, pictureFit: "cover" };
+  values.set(key, JSON.stringify(previous));
+  expect(readRoomPreferences()).toMatchObject({ ...previous, voiceTransmission: { mode: "open", activationThreshold: -40 } });
+  expect(saveRoomPreferences({ voiceTransmission: { mode: "activity", activationThreshold: -52 } })).toBe(true);
+  expect(readRoomPreferences()).toMatchObject({ ...previous, voiceTransmission: { mode: "activity", activationThreshold: -52 } });
+  // A value this version cannot use falls back on its own, keeping the other choices.
+  values.set(key, JSON.stringify({ ...previous, voiceTransmission: { mode: "whisper", activationThreshold: -52 } }));
+  expect(readRoomPreferences()).toMatchObject({ ...previous, voiceTransmission: { mode: "open", activationThreshold: -40 } });
+});
+
 it("persists the total screen buffer target independently, including zero and automatic", () => {
   storage();
   expect(readRoomPreferences().screenBufferTargetMs).toBeNull();

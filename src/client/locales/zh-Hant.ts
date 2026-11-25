@@ -1048,6 +1048,7 @@ export const zhHant = {
   "voice.error.transport": "語音未能連線，房間仍可使用。請換個網路或瀏覽器重試。",
   "voice.error.rejected": "語音操作未獲接受，請重新加入語音後重試。",
   "voice.error.closed": "房主尚未開啟房間語音。",
+  "voice.mode.failed": "此瀏覽器無法使用按鍵說話和語音啟動，請改用開放麥克風。",
   "interaction.settings": "聊天設定",
   "interaction.feedbackSounds": "提示與互動聲音",
   "interaction.feedbackSoundsHint": "背景新訊息提醒和投擲音效。",

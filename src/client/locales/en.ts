@@ -1214,6 +1214,7 @@ export const en: Record<CopyKey, string> = {
   "voice.noise.enhancedHint": "Processes speech as mono. Keeps browser echo cancellation; turn off to restore your original processing.",
   "voice.noise.unsupported": "Enhanced noise reduction is unavailable for this audio setup. Turn it off to use default processing, then rejoin voice if needed.",
   "voice.noise.failed": "Enhanced noise reduction stopped. Turn it off, then join voice again.",
+  "voice.mode.failed": "Push to talk and voice activation aren’t working in this browser. Choose open microphone to talk.",
   "voice.error.microphoneDenied": "Microphone access was not allowed. Allow access, then try again.",
   "voice.error.microphoneUnavailable": "The microphone is unavailable on this page. Use HTTPS or a localhost address.",
   "voice.error.microphoneMissing": "No available microphone was found.",

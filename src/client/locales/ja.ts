@@ -1048,6 +1048,7 @@ export const ja = {
   "voice.error.transport": "通話に接続できませんでした。ルームは開いたままです。別のネットワークやブラウザーをお試しください。",
   "voice.error.rejected": "通話の操作が受け入れられませんでした。通話に参加し直して再試行してください。",
   "voice.error.closed": "ホストがルームの通話を開いていません。",
+  "voice.mode.failed": "このブラウザーではプッシュトゥトークと音声検出を使えません。「常時オン」に切り替えてください。",
   "interaction.settings": "チャット設定",
   "interaction.feedbackSounds": "通知音と効果音",
   "interaction.feedbackSoundsHint": "バックグラウンドのメッセージ通知音と投げる効果音です。",

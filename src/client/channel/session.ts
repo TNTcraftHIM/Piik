@@ -177,6 +177,7 @@ export class ChannelSession {
     interactionsByRoom: new Map(),
     publicationReactions: new Map(),
     voiceInput: readRoomPreferences().voiceInput,
+    voiceTransmission: readRoomPreferences().voiceTransmission,
     voicePlaybackByUser: new Map(),
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     feedbackSound: readRoomPreferences().feedbackSound,
@@ -253,6 +254,7 @@ export class ChannelSession {
     refresh: () => this.refreshActivity(),
     levels: roomId => this.media.voiceActivity(roomId),
     saveInput: voiceInput => { this.patch({ voiceInput }); saveRoomPreferences({ voiceInput }); },
+    saveTransmission: voiceTransmission => { this.patch({ voiceTransmission }); saveRoomPreferences({ voiceTransmission }); },
     report: error => this.patch({ error }),
   });
   private conversation = new ChannelConversation({
@@ -3732,6 +3734,10 @@ export class ChannelSession {
   voiceActivity = this.voice.activity;
   setInputVolume = this.voice.setInputVolume;
   configureVoiceInput = this.voice.configureInput;
+  setMicrophoneMode = this.voice.setMicrophoneMode;
+  setActivationThreshold = this.voice.setActivationThreshold;
+  talk = this.voice.talk;
+  microphoneLevel = this.voice.inputLevel;
   microphones = () => browserCaptureDevices("audioinput");
 
   setListeningVolume = (volume: number): void => {

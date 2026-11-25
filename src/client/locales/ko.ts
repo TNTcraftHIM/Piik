@@ -1054,6 +1054,7 @@ export const ko = {
   "voice.error.transport": "음성을 연결하지 못했어요. 방은 계속 열려 있어요. 다른 네트워크나 브라우저를 사용해 보세요.",
   "voice.error.rejected": "음성 작업이 승인되지 않았어요. 음성에 다시 참여한 뒤 시도하세요.",
   "voice.error.closed": "호스트가 아직 방 음성을 열지 않았어요.",
+  "voice.mode.failed": "이 브라우저에서는 눌러서 말하기와 음성 감지를 사용할 수 없어요. 항상 켜짐으로 바꾸세요.",
   "interaction.settings": "채팅 설정",
   "interaction.feedbackSounds": "효과음",
   "interaction.feedbackSoundsHint": "백그라운드 메시지 알림과 던지기 효과음이에요.",

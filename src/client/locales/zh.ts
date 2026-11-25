@@ -1212,6 +1212,7 @@ export const zh = {
   "voice.noise.enhancedHint": "将人声合为单声道处理，并保留浏览器回声消除；关闭后恢复原处理。",
   "voice.noise.unsupported": "当前音频配置无法启用增强降噪。请关闭此选项使用默认处理；若加入失败，再重新加入语音。",
   "voice.noise.failed": "增强降噪已停止。关闭此选项后重新加入语音。",
+  "voice.mode.failed": "此浏览器无法使用按键说话和语音激活，请改用开放麦克风。",
   "voice.error.microphoneDenied": "未获得麦克风权限，请允许访问后重试。",
   "voice.error.microphoneUnavailable": "此页面无法使用麦克风，请通过 HTTPS 或本机地址访问。",
   "voice.error.microphoneMissing": "没有找到可用的麦克风。",
