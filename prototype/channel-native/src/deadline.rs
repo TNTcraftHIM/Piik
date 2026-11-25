@@ -1,15 +1,20 @@
-//! A wake-up at an instant that does not wait for the system timer tick.
+//! The platform's precise clock: a wake-up at an instant, to about a millisecond.
 //!
-//! A tokio timer on Windows fires on the system tick: 15.6 ms unless a process
-//! has raised it, and Windows 11 does not keep a raised period for a process
-//! that is neither visible nor audible. The SDK's pacer and bandwidth probes
-//! need their deadlines met to about a millisecond. With the default tick a
-//! Native sender's estimate stayed near 240 kbit/s on loopback; with deadlines
-//! met it reached 14 Mbit/s in seven seconds.
+//! Callers state the instant and assume nothing about how fine a timer is. This
+//! module is the one place that knows which platform can keep that promise with
+//! the runtime's own timer and which cannot.
 //!
-//! `std::thread::sleep` uses a high-resolution waitable timer on Windows 10
-//! 1803 and later, so one thread sleeps on the task's behalf. Other platforms
-//! keep the tokio timer, which is already that precise there.
+//! Linux, macOS and Android can. A tokio timer on Windows fires on the system
+//! tick: 15.6 ms unless a process has raised it, and Windows 11 does not keep a
+//! raised period for a process that is neither visible nor audible, which is an
+//! App sharing a game while minimized. There one thread sleeps on the caller's
+//! behalf with `std::thread::sleep`, which uses a high-resolution waitable
+//! timer on Windows 10 1803 and later.
+//!
+//! The first caller is the engine pump. The SDK's pacer and bandwidth probes
+//! need their deadlines met: with the default tick a Native sender's estimate
+//! stayed near 240 kbit/s on loopback, and with deadlines met it passed
+//! 11 Mbit/s in two seconds.
 
 use std::time::Instant;
 
@@ -42,7 +47,7 @@ struct Shared {
 }
 
 /// One owner per pump. Dropping it ends and joins its thread within a slice.
-pub(super) struct Deadline {
+pub(crate) struct Deadline {
     #[cfg(windows)]
     shared: Arc<Shared>,
     #[cfg(windows)]
@@ -50,7 +55,7 @@ pub(super) struct Deadline {
 }
 
 impl Deadline {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         #[cfg(windows)]
         {
             let shared = Arc::new(Shared::default());
@@ -68,9 +73,10 @@ impl Deadline {
         Self {}
     }
 
-    /// Returns once `at` has passed. Dropping the future and waiting for another
+    /// Returns once `at` has passed. One waiter at a time, which the exclusive borrow
+    /// enforces. Dropping the future and waiting for another
     /// instant, earlier or later, replaces the one in effect.
-    pub(super) async fn wait(&self, at: Instant) {
+    pub(crate) async fn wait(&mut self, at: Instant) {
         #[cfg(windows)]
         while Instant::now() < at {
             self.shared.state.lock().unwrap().at = Some(at);
@@ -126,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_near_instant_is_met_without_waiting_for_the_system_tick() {
-        let deadline = Deadline::new();
+        let mut deadline = Deadline::new();
         let wait = Duration::from_millis(2);
         let mut late = Vec::new();
         for _ in 0..100 {
@@ -145,7 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_earlier_instant_replaces_a_later_one() {
-        let deadline = Deadline::new();
+        let mut deadline = Deadline::new();
         let start = Instant::now();
         // Abandon a far wait, as a select does when another branch is ready.
         tokio::select! {
