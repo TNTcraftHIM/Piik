@@ -152,7 +152,7 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     )?;
     let operator = owner_link::Listener::bind(&directory)?;
     println!("Piik Server: http://{bound}");
-    println!("Web interface: {origin}/__channel-preview");
+    println!("Web interface: {origin}/");
     release::startup_notice();
     let operator_domain = state.clone();
     let (stop_server, operator_stopped) = tokio::sync::oneshot::channel();

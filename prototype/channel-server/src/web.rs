@@ -126,7 +126,6 @@ pub fn frontend(directory: &Path) -> anyhow::Result<Router> {
     Ok(Router::new()
         .merge(bundle_routes(directory)?)
         .route("/", document(index.clone()))
-        .route("/__channel-preview", document(index.clone()))
         .route("/index.html", document(index.clone()))
         .fallback_service(static_files(
             ServeDir::new(directory).append_index_html_on_directories(false),
@@ -520,12 +519,7 @@ mod tests {
         fs::remove_file(directory.join("assets/new.js")).unwrap();
         fs::write(directory.join("assets/old.js"), "old").unwrap();
         let mut responses = Vec::new();
-        for path in [
-            "/",
-            "/__channel-preview",
-            "/index.html",
-            "/spa/client/route",
-        ] {
+        for path in ["/", "/index.html", "/spa/client/route"] {
             for modified in [&cached_modified[..], "Thu, 01 Jan 2099 00:00:00 GMT"] {
                 responses.push(request(address, path, Some(modified)).await);
             }

@@ -27,7 +27,7 @@ pub async fn request(directory: &Path) -> Result<String> {
 pub use transport::Listener;
 
 pub async fn serve(mut listener: Listener, domain: &Domain) -> Result<()> {
-    let target = url::Url::parse(domain.origin())?.join("/__channel-preview")?;
+    let target = url::Url::parse(domain.origin())?.join("/")?;
     loop {
         let mut stream = listener.accept().await?;
         let Ok(ticket) = domain.launch_ticket() else {

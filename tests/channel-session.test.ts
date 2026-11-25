@@ -102,7 +102,7 @@ async function startFixtureApp(session: ChannelSession) {
 }
 
 async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"], storage: "saved" | "throws" | "ignores-write" = "saved", Session = ChannelSession) {
-  vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
+  vi.stubGlobal("location", new URL(`https://channel.test/${hash ? `#${hash}` : ""}`));
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
     if (storage === "throws") throw new Error("storage unavailable");
@@ -599,7 +599,7 @@ test.each(["new identity", "closed session retry"])("personal feedback reactivat
 
 test("a rejected initial join closes personal feedback until the session is retried", async () => {
   const { document, contexts } = stubFeedbackAudio();
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+  vi.stubGlobal("location", new URL("https://channel.test/"));
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   try {
@@ -685,7 +685,7 @@ test("restoring the viewed room does not turn its navigation state into an invit
     const entering = socket.sent.find(command => command.type === "enter_room")!;
     expect(entering).toMatchObject({ roomId: "first", inviteKey: "room-link" });
     socket.receive({ type: "ack", requestId: entering.requestId });
-    await vi.waitFor(() => expect(history.replaceState).toHaveBeenCalledWith({ piikChannelRoom: "second" }, "", "/__channel-preview#room=first"));
+    await vi.waitFor(() => expect(history.replaceState).toHaveBeenCalledWith({ piikChannelRoom: "second" }, "", "/#room=first"));
     expect(location.hash).toBe("#room=first");
   } finally { session.close(); }
 });
@@ -709,8 +709,8 @@ test("a saved owner credential retires only the consumed owner URL parameter and
     const socket = ChannelSocket.current; await socket.onopen?.();
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
     socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner-credential", sessionId: "endpoint", state });
-    expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
-    await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe("https://channel.test/__channel-preview"));
+    expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/?theme=dark#room=first&invite=friend-link&other=keep");
+    await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe("https://channel.test/"));
     expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
     vi.useFakeTimers();
     socket.close(); await vi.advanceTimersByTimeAsync(1000);
@@ -798,7 +798,7 @@ test("opening the site creates identity before independently applying a room inv
     socket.receive({ type: "ack", requestId: next.requestId });
     await expect(entering).resolves.toBe("second");
     expect(session.getSnapshot().connection).toBe("connected");
-    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/__channel-preview#room=second");
+    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/#room=second");
     expect(location.hash).toBe("#room=second");
     expect(socket.sent.filter(command => command.type === "join")).toHaveLength(1);
     const state = session.getSnapshot().state!;
@@ -918,7 +918,7 @@ test("room admission succeeds when History rejects invitation cleanup", async ()
 test("a browser without WebAssembly reports its capability failure before joining", async () => {
   vi.mocked(ChannelConversation.prototype.initialize).mockRestore();
   vi.stubGlobal("WebAssembly", undefined);
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+  vi.stubGlobal("location", new URL("https://channel.test/"));
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   try {
@@ -1436,7 +1436,7 @@ test("room invitation rotations stay pending until their own final reply and kee
 test("site addresses and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
+  vi.stubGlobal("location", new URL("https://channel.test/?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
   try {
     for (const invitationOrigin of ["https://friends.example", undefined]) {
       session.reconnect();
@@ -1445,14 +1445,14 @@ test("site addresses and room invitations use the current Welcome origin without
       socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state,
         ...(invitationOrigin ? { invitationOrigin } : {}) });
       const origin = invitationOrigin ?? "https://channel.test";
-      await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe(`${origin}/__channel-preview`));
+      await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe(`${origin}/`));
       const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
       socket.receive({ type: "ack", requestId: browse.requestId });
       peer.page(await peer.next(), [], false, null);
       const creating = session.createRoomInvite("first");
       const request = socket.sent.findLast(command => command.type === "room_invite")!;
       socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "invite", key: "room-invite" } });
-      await expect(creating).resolves.toBe(`${origin}/__channel-preview#room=first&invite=room-invite`);
+      await expect(creating).resolves.toBe(`${origin}/#room=first&invite=room-invite`);
     }
   } finally { session.close(); }
 });
@@ -11647,7 +11647,7 @@ test.each([{ state: "missing" }, { state: "available", key: "private-room-key" }
     expect(request).toMatchObject({ roomId: "first" });
     socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "invite_state", invitation } });
     await expect(reading).resolves.toEqual(invitation.state === "available"
-      ? { state: "available", url: "https://channel.test/__channel-preview#room=first&invite=private-room-key" } : invitation);
+      ? { state: "available", url: "https://channel.test/#room=first&invite=private-room-key" } : invitation);
     expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
   } finally { session.close(); }
 });
@@ -11662,8 +11662,8 @@ test("reopening the room invitation can read while the dismissed panel's read is
     for (const [index, key] of [[1, "current-key"], [0, "previous-read-key"]] as const) {
       socket.receive({ type: "room_reply", roomId: "first", requestId: reads[index].requestId, result: { type: "invite_state", invitation: { state: "available", key } } });
     }
-    await expect(reopened).resolves.toEqual({ state: "available", url: "https://channel.test/__channel-preview#room=first&invite=current-key" });
-    await expect(dismissed).resolves.toMatchObject({ url: "https://channel.test/__channel-preview#room=first&invite=previous-read-key" });
+    await expect(reopened).resolves.toEqual({ state: "available", url: "https://channel.test/#room=first&invite=current-key" });
+    await expect(dismissed).resolves.toMatchObject({ url: "https://channel.test/#room=first&invite=previous-read-key" });
     expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
   } finally { session.close(); }
 });

@@ -156,7 +156,7 @@ cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml -- owner-l
 With a packaged Server, run `./piik-server owner-link` (Windows: `.\piik-server.exe owner-link`).
 Open the printed link in your owner browser profile within 60 seconds. It can be used once.
 The browser saves the owner credential for later visits. Ordinary users open
-`http://127.0.0.1:8790/__channel-preview` directly and can create their own rooms.
+`http://127.0.0.1:8790/` directly and can create their own rooms.
 Beside a room title, copy its public-room link or, as its owner, a private-room
 invitation. Private-room admission is handled after joining the site.
 Separate browser profiles represent separate users; tabs in one profile share a saved user credential but
@@ -188,7 +188,7 @@ For a standalone source deployment, build the
 [same frontend as static assets](../channel-browser/README.md), then set
 `PIIK_CHANNEL_WEB_DIR` to `build/channel-web/` and `PIIK_CHANNEL_WEB_ORIGIN` to
 the service's own origin. Rust serves the frontend and existing WebSocket on
-that listener. `/` and `/__channel-preview` open the frontend; missing assets
+that listener. `/` opens the frontend. Missing assets
 and unknown API paths return 404. Vite is only the development server; the
 deployed frontend requires no Node runtime.
 

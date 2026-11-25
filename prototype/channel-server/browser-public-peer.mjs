@@ -20,7 +20,7 @@ export function readContract(text) {
   const fragment = new URLSearchParams(url.hash.slice(1));
   assert(url.protocol === "https:" && /^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname)
     && !url.username && !url.password && !url.port && !url.search
-    && ["/", "/__channel-preview"].includes(url.pathname), "invalid_lab_origin");
+    && url.pathname === "/", "invalid_lab_origin");
   assert([...fragment.keys()].every(key => ["invite", "room"].includes(key)), "invalid_room_link_fields");
   assert(fragment.get("room") === value.roomId, "invitation_room_mismatch");
   for (const field of ["roomId", "hostSessionId", "sourceSessionId", "publicationId"])
