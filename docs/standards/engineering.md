@@ -192,6 +192,43 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | Independent Android tunnel helper | [Cloudflared owner](../../mobile/cloudflared/README.md), [builder](../../scripts/build-android.mjs) |
 | Public website, film and guides | [site](../../site), [website builder](../../scripts/build-website.mjs), [documentation ownership](./documentation.md) |
 
+## Failure Boundaries
+
+Handle expected outcomes such as cancellation, malformed input and denial
+through the operation's existing contract. When an error prevents completion,
+stop the affected operation and report the failure to its waiting owner.
+Reuse existing recovery when restart, crash, timeout or network loss calls for
+the same action. See Armstrong's
+[error-handling philosophy](https://erlang.org/download/armstrong_thesis_2003.pdf)
+and [fail fast](https://martinfowler.com/ieeeSoftware/failFast.pdf).
+
+A check for a stale result, an ordering fix or routing a failure to its waiter
+can restore the contract at the existing owner. State the expected outcome
+and verify the affected path. Feature state and performance controls follow
+the requirements and lifetime of their own operation.
+
+For extra failure recovery, such as a retry, timeout, queue or fallback,
+consider what the existing path would leave unresolved.
+
+- invalid input crossing a trust boundary,
+- a failure to enforce authority or privacy,
+- a durable or irreversible effect, or work the requester cannot repeat,
+- a waiting party that receives no truthful outcome,
+- user or resource impact demonstrated by a report, measurement or trace
+  through real producers.
+
+First check whether correcting ownership or using the existing failure path
+settles the outcome. Put any necessary retry at the owner that can repeat the
+operation safely and bound the work. See the
+[end-to-end argument](https://web.mit.edu/Saltzer/www/publications/endtoend/endtoend.pdf).
+Share a rule in the core when its meaning and lifetime match across runtimes
+and sharing reduces total ownership cost.
+
+A single correction at the owner can resolve several symptoms with the same
+cause. Explain what the existing path misses and how the change was verified.
+Record a question in [TODO](../todo.md) when it matters to future work, with
+the observation or decision that would settle it.
+
 ## Implementation Rules
 
 - Reuse a current owner or standard API before adding a mechanism. Prefer
@@ -277,8 +314,6 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   through the operation's owner, which keeps its identity. Initialize
   callback-visible state before registering; constructors can start background
   work before returning.
-- When a transition fails again, trace its writers and retirement. Extract an
-  owner when multiple writers decide the same fact or resources retire independently.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared core retains that responsibility.

@@ -22,10 +22,10 @@ For a bug, trace where the incorrect fact or action first arises and check
 sibling callers of that owner. Correct that boundary instead of adding a guard
 to each symptom. A shared guard is useful only if it restores the real contract.
 
-When a transition needs another repair, trace its writers and retirement.
-Make the same trace when a flag only distinguishes callers.
-Extract an owner when the trace shows competing authority or a distinct lifetime
-with independent cleanup.
+When a transition needs another repair, or a flag only distinguishes callers,
+trace its writers and retirement before adding handling. The
+[failure boundary](../../../docs/standards/engineering.md#failure-boundaries)
+guides proposals for additional recovery.
 
 For UI, inspect the existing interaction and visual primitives before adding a
 control, panel, status or animation. A reused component must still have the

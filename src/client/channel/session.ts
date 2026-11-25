@@ -40,7 +40,7 @@ import { readPreferredQuality, savePreferredQuality, screenVideoSettings, suppor
 import { audioInputConstraints } from "../media/audio-capture";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
-import { RoomInteractionSession, type RoomInteraction } from "../lib/room-interactions";
+import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
 import { FeedbackAudio, type FeedbackCue } from "./feedback-audio";
 import { validateCustomFeedbackClip } from "./feedback-clip";
@@ -64,6 +64,7 @@ interface RoomReading {
   history?: Promise<void>;
   followLatest?: symbol;
   interaction?: RoomInteractionSession;
+  interactionReadyRequestId?: string;
 }
 
 type RoomBackupMetadata = Extract<BackupMetadata, { kind: "room" }>;
@@ -598,6 +599,7 @@ export class ChannelSession {
     } else if (event.type === "room_reply") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
+      if (!request && event.requestId && event.result.type === "error") this.settleInteraction(event.roomId, event.requestId);
       if (!request || request.roomId !== event.roomId || !event.requestId) return;
       this.retireRequest(event.requestId);
       if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
@@ -630,6 +632,13 @@ export class ChannelSession {
         this.retireRequest(event.requestId);
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
+      } else if (event.type === "error" && event.requestId) {
+        for (const reading of this.readings.values()) {
+          if (reading.interactionReadyRequestId === event.requestId || reading.interaction?.getSnapshot().pending?.requestId === event.requestId) {
+            this.settleInteraction(reading.roomId, event.requestId);
+            break;
+          }
+        }
       } else if (event.type === "error" && !event.requestId) {
         if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
           this.closeConnection();
@@ -965,9 +974,12 @@ export class ChannelSession {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
       return;
     }
-    const interaction = this.view.interactionsByRoom.get(reply.roomId);
-    if (interaction && this.readings.get(reply.roomId)?.bindingId === reply.bindingId) {
+    const reading = this.readings.get(reply.roomId);
+    const interaction = reading?.interaction;
+    if (interaction && reading.bindingId === reply.bindingId) {
       if (record.type === "interaction_ready") {
+        if (reading.interactionReadyRequestId !== reply.requestId) return;
+        delete reading.interactionReadyRequestId;
         interaction.setSupportedReactions(record.reactionIds);
         interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
         for (const snapshot of record.publicationReactions) this.applyPublicationReactionSnapshot(reply.roomId, snapshot);
@@ -988,9 +1000,8 @@ export class ChannelSession {
         return;
       }
       if (record.type === "error" && !this.requests.has(reply.requestId)) {
-        if (!interaction.getSnapshot().ready) this.closeInteraction(reply.roomId);
-        else interaction.receive({ type: "room-interaction-rejected", requestId: reply.requestId,
-          reason: record.code === "rate_limited" ? "rate-limited" : record.code === "target_unavailable" ? "target-unavailable" : "busy" });
+        this.settleInteraction(reply.roomId, reply.requestId,
+          record.code === "rate_limited" ? "rate-limited" : record.code === "target_unavailable" ? "target-unavailable" : "busy");
         return;
       }
     }
@@ -1440,9 +1451,21 @@ export class ChannelSession {
   private closeInteraction(roomId: string): void {
     this.view.interactionsByRoom.get(roomId)?.close();
     const reading = this.readings.get(roomId);
-    if (reading) delete reading.interaction;
+    if (reading) {
+      delete reading.interaction;
+      delete reading.interactionReadyRequestId;
+    }
     const interactionsByRoom = new Map(this.view.interactionsByRoom);
     if (interactionsByRoom.delete(roomId)) this.patch({ interactionsByRoom });
+  }
+  /** A writer's rejection ends an interaction request; an undelivered reply leaves its outcome unknown. */
+  private settleInteraction(roomId: string, requestId: string, rejected?: Rejection): void {
+    const interaction = this.view.interactionsByRoom.get(roomId);
+    if (!interaction) return;
+    // The next readings sync subscribes a replacement for a refused subscription.
+    if (this.readings.get(roomId)?.interactionReadyRequestId === requestId) this.closeInteraction(roomId);
+    else if (rejected) interaction.receive({ type: "room-interaction-rejected", requestId, reason: rejected });
+    else interaction.undelivered(requestId);
   }
   private closeInteractions(): void {
     for (const id of this.view.interactionsByRoom.keys()) this.closeInteraction(id);
@@ -1467,10 +1490,10 @@ export class ChannelSession {
               : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
         if (!command) return false;
         const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
+        if (command.type === "interaction_ready") current.interactionReadyRequestId = requestId;
         void this.conversation.send(command, requestId).catch(() => {
           if (this.readings.get(reading.roomId) !== current || current.interaction !== interaction) return;
-          if (command.type === "interaction_ready") this.closeInteraction(reading.roomId);
-          else interaction.receive({ type: "room-interaction-rejected", requestId, reason: "busy" });
+          this.settleInteraction(reading.roomId, requestId);
         });
         return nonce === undefined ? true : { nonce };
       }, Date.now, undefined, event => this.playFeedback(reading.roomId, event));

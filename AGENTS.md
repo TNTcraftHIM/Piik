@@ -1,56 +1,115 @@
 # Project Instructions
 
-## Aesthetic And Design Standard
+System and developer instructions take precedence. Within those bounds, the
+user's latest explicit decision governs the task. An explicit change to a
+project invariant takes effect when the user gives it.
 
-Apply these constraints and relevant skills throughout every conversation turn,
-feature and action. Piik requires a polished experience and clear engineering:
-high aesthetic standards cover UI, interaction, functional boundaries, lifecycle
-and code. Working behavior alone is insufficient. Preserve the product's intent,
-usability, coherence, maintainability and appropriate extensibility.
+1. Project invariants protect the boundaries below.
+2. Principles guide choices within those boundaries.
+3. Domain standards and [CONTRIBUTING](./CONTRIBUTING.md) own their requirements.
+4. Skills describe how to carry out authorized work.
 
-Before changing behavior or presentation, establish the intended user flow,
-state/resource owner, lifecycle and what would demonstrate a complete result.
-Inspect existing components and mature approaches, then choose the simplest
-coherent design that meets those needs. Simplicity must not discard requested
-functionality, visual quality or necessary safety. Design and verify at the
-scale of the change; routine design choices within an authorized task need no
-separate design document or approval.
-No design is protected by its age or its author. When a defect, a repeated
-repair or an awkward boundary traces to the shape of a design, question it and
-propose the one that would be chosen today, then supersede the record that
-accepted it. Path dependence and sunk cost are not reasons; evidence, published
-promises and the owner's decisions are.
-Detailed criteria stay in [visual language](./docs/standards/visual-language.md)
-and [engineering](./docs/standards/engineering.md).
+Research notes, examples, audit findings and review proposals supply evidence.
+Authority for acting on them comes from the task.
 
-## Authority And Scope
+## Invariants
 
-- Within higher-priority instructions, the latest explicit user decision defines
-  the task. Review, research, implementation, deployment, and cleanup grant only
-  the authority inherent in that task type.
-- This file owns project-wide constraints; linked standards own domain rules,
-  CONTRIBUTING owns delivery, and skills supply task methods. A skill, reference
-  example or audit suggestion cannot override those owners or authorize extra work.
-- Do not expand scope for speculative races or security edge cases. Before
-  adding such extra mechanisms, explain the concrete failure, evidence for its
-  likelihood, and added code and maintenance cost; obtain user agreement. Do not
-  invent probabilities. Reachable defects and required authority, lifecycle and
-  resource correctness within authorized work need no extra approval.
-- Model recovery from the smallest underlying authority and connection state.
-  Restart, crash, timeout, and network loss do not justify parallel states or
-  case-specific fallbacks when their required action is the same.
-- Ordinary scoped work uses the [lean workflow](./CONTRIBUTING.md#lean-workflow).
-  Use the full integration/release path only for an explicitly requested release
-  or a material contract, route/security, infrastructure, persistence, or
-  irreversible change.
+- **Secrets and user data stay out of the repository.** Never commit
+  credentials, TLS private keys, raw access tokens or real user data. Commit
+  placeholders and document local injection. A leaked secret cannot be recalled.
+- **Private media paths stay private.** Do not log, persist or upload private
+  media-path identifiers beyond their accepted owner, and keep media
+  credentials short-lived and narrowly authorized.
+- **A task carries only its own authority.** Review, research,
+  implementation, deployment and cleanup each permit what that kind of task
+  needs. A skill, an example or an audit cannot widen it.
+- **Publication is the owner's.** Follow the applicable merge and release
+  authorization in [CONTRIBUTING](./CONTRIBUTING.md).
+- **Shared history is not rewritten.** No force-push and no rewrite of pushed
+  history without the owner's approval, and no commit to a branch another
+  agent owns.
+- **Published promises hold.** Preserve the compatibility published for 2.x.
+  Private 3.0 experiments carry none: replace them without aliases, dual
+  readers or writers, or migrations for stale private clients.
+- **Durable state is not rolled back silently.** No automatic downgrade or
+  database rollback. Define recovery before touching persistent or
+  irreversible state. Recreating a resource never renews expired authority.
+- **Phase blockers.** Block the current phase on P0 security, privacy,
+  authorization, irreversible-data, generation, bounded-resource or rollback
+  failures, and on P1 failure of that phase's core path.
 
-## Required Skills
+## Product
 
-Read each applicable skill completely before using it. Reuse that understanding
-until the task or instructions change; adherence does not require reloading or
-reciting every rule each turn. Use the repo-linked versions below when a global
-skill has the same name. Other skills apply only to matching tasks or explicit
-invocation; follow their relevant guidance without importing unrelated workflows.
+Piik is free, P2P-first screen sharing for a host and their friends. This
+worktree develops isolated 3.0, whose architecture
+[ADR-0016](./docs/adr/0016-shared-rust-core.md) records. The
+[network model](./docs/research/channel-network-design.md) and
+[room-data model](./docs/research/channel-storage-and-identity.md) describe the
+current prototype. The [forwarding design](./docs/research/channel-forwarding-plan.md)
+and [hosting and moderation design](./docs/research/server-hosting-plan.md) own
+the target boundaries, and [status](./docs/status.md#isolated-30-prototype)
+indexes the implementation. Published 2.x promises remain with the maintenance
+line's [standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md)
+and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
+
+The standard is a polished experience and clear engineering, across interface,
+interaction, functional boundaries, lifecycle and code. Working behaviour alone
+does not meet it. Media stays automatic and P2P-first, and adaptation belongs
+to Browser WebRTC, the Native RTC SDK and accepted encoder policies. Changing
+that, for example with a custom quality score, a ladder, an all-pairs probe,
+periodic rebalancing or a hand-built SFU representation, takes a new accepted
+decision backed by primary evidence.
+
+## Principles
+
+- **One owner.** Every fact has one writer, and every lifetime has one owner
+  that retires it. A meaning repeated across code, interface, copy,
+  configuration and lifecycle follows one
+  [contextual contract](./docs/standards/engineering.md#contextual-consistency).
+- **Fail at the owner.** Report an operation's failure to its waiting owner
+  and reuse existing recovery where it gives the required outcome. Apply the
+  [failure boundary](./docs/standards/engineering.md#failure-boundaries)
+  when proposing additional recovery.
+- **Reuse before adding.** Find the existing owner, helper or mature approach
+  first, then choose the simplest coherent design that meets the need.
+  Simplicity does not remove requested function, visual quality or safety.
+- **Nothing is protected by its age or its author.** When a defect, a repeated
+  repair or an awkward boundary traces to the shape of a design, question it,
+  propose the one that would be chosen today, and supersede the record that
+  accepted it. Path dependence and sunk cost are not reasons.
+- **Evidence first.** Use primary sources for non-trivial design and bugs, and
+  verify in proportion to the change through the
+  [standard entry points](./CONTRIBUTING.md#verification-entrypoints).
+- **One place per rule.** Each durable fact has one owner in the
+  [documentation map](./docs/standards/documentation.md#owners).
+  [TODO](./docs/todo.md) is the only work ledger, and Git and pull requests own
+  completed history. A disputed meaning is recorded there as a hold on the work
+  that depends on it. It is not written down as settled.
+
+## Where Rules Live
+
+| Topic | Owner |
+| --- | --- |
+| Module boundaries, lifecycle, failure handling, review | [Engineering](./docs/standards/engineering.md) |
+| Interface, colour, motion and the shared cast | [Visual language](./docs/standards/visual-language.md) |
+| Build identity, wire, storage and compatibility | [Versioning](./docs/standards/versioning.md) |
+| Branches, checks, pull requests, releases, work between two agents | [CONTRIBUTING](./CONTRIBUTING.md) |
+| Everything else | [Standards index](./docs/standards/README.md) |
+
+Start substantial work by reading [project memory](./docs/project-memory.md),
+[status](./docs/status.md), [TODO](./docs/todo.md) and only the standard, ADR
+or research document the task needs. Then inspect the branch, HEAD, status and
+worktrees, and fetch the
+[review queue](./CONTRIBUTING.md#working-with-a-second-agent) when a second
+agent is working. Before finishing material work, inspect status, report
+untracked artifacts and stage the requested files.
+
+## Skills
+
+Read an applicable skill completely before using it, and reuse that
+understanding until the task or the instructions change. Use the repository's
+version when a global skill has the same name. A skill is a method. It adds no
+authority and overrides none of the layers above.
 
 | When | Skill and responsibility |
 | --- | --- |
@@ -61,87 +120,3 @@ invocation; follow their relevant guidance without importing unrelated workflows
 | Material UI visual design, redesign or polish | [Unslop](./.agents/skills/unslop/SKILL.md): product-specific hierarchy, semantic grouping, shared visual consistency and rendered review |
 | Browser APIs, accessibility, responsive interaction or Web performance | [Modern Web Guidance](./.agents/skills/modern-web-guidance/SKILL.md): current platform patterns, supported-browser behavior and focused verification; complements Unslop |
 | The review queue or a mailbox changed, or you want the other agent's review | [Cross review](./.agents/skills/cross-review/SKILL.md): sync, judge each item on the code, answer in your own mailbox |
-
-## Product Contract
-
-This worktree develops isolated 3.0. The [network model](./docs/research/channel-network-design.md)
-and [room-data model](./docs/research/channel-storage-and-identity.md) describe
-the current prototype. The [forwarding design](./docs/research/channel-forwarding-plan.md)
-and [hosting and moderation design](./docs/research/server-hosting-plan.md)
-own the target boundaries. [Status](./docs/status.md#isolated-30-prototype)
-indexes the implementation.
-Published 2.x promises remain with the maintenance line's
-[standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md)
-and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
-
-- Media remains automatic and P2P-first. Preserve the routing and resource
-  owners defined by the network model.
-- Use Browser WebRTC, the Native RTC SDK and accepted mature encoder policies
-  for adaptation. Do not add custom quality scores, ladders, all-pairs probes,
-  periodic rebalancing or hand-built SFU representations without a new accepted
-  decision backed by primary evidence.
-
-## Durable Truth
-
-- Start substantial work by reading [project memory](./docs/project-memory.md),
-  [status](./docs/status.md), [TODO](./docs/todo.md), and only the relevant
-  product module, ADR, research, or operations document. Then inspect branch,
-  HEAD, status, staged diff, and worktrees, and fetch the
-  [review queue](./CONTRIBUTING.md#working-with-a-second-agent) to see whether
-  it moved.
-- Use the [standards index](./docs/standards/README.md) and
-  [documentation owner map](./docs/standards/documentation.md#owners): product
-  behavior, engineering, visual language, versions, evidence and operations each
-  have one owner. TODO is the only work ledger; Git/PRs own completed history.
-- Give every durable fact one owner. Update memory or status only when its compact
-  snapshot materially changes. Ordinary UI detail, protocol field listings,
-  self-evident code, test inventories, routine validation, and agent process do
-  not belong in long-lived product truth.
-- If semantics remain disputed, record the hold in TODO and freeze only dependent
-  work. Never encode a guess as accepted truth.
-
-## Safety
-
-- Never commit credentials, TLS private keys, raw access tokens, or real user
-  data. Commit placeholders and document local secret injection.
-- Keep media credentials short-lived and narrowly authorized. Do not log or
-  persist private media-path identifiers beyond their accepted owner.
-- Block the current phase on P0 security, privacy, authorization, irreversible-
-  data, generation, bounded-resource, or rollback failure, and on P1 failure of
-  that phase's core path.
-
-## Repository And Delivery
-
-- Canonical root must be clean current `main` at audit/integration boundaries.
-  Create branches/worktrees from that exact commit; old branches and worktrees
-  are never truth sources.
-- `main` remains low-frequency: one complete, user-accepted phase per squash PR,
-  with no intermediate release-record or cleanup commits. Keep implementation
-  on worktrees; [CONTRIBUTING.md](./CONTRIBUTING.md#full-integration-and-release-workflow)
-  owns the full workflow, focused external contributions and emergency exceptions.
-- Preserve user work. Branch, truth-checkpoint, PR, release, recovery, and
-  cleanup rules are owned by [CONTRIBUTING.md](./CONTRIBUTING.md); do not mirror
-  that workflow here.
-
-## Engineering Defaults
-
-- Repeated meanings across code, UI, copy, configuration and lifecycle follow
-  one owned [contextual contract](./docs/standards/engineering.md#contextual-consistency).
-  Check related producers and consumers before adding another local rule;
-  preserve differences justified by authority, scope or user intent.
-- UI changes must follow the shared [visual language](./docs/standards/visual-language.md):
-  cast, semantic colours, result panels and motion have one owner. Extend the
-  existing preview when adding a new meaning; do not invent scene-local rules.
-- Follow [engineering and interface boundaries](./docs/standards/engineering.md):
-  simple cohesive modules, clear state/resource owners, mature reuse and narrow
-  contracts. After a material module, remove additions that the accepted result
-  does not need; total complexity matters more than marginal performance gains.
-- [Versioning](./docs/standards/versioning.md) separates build identity, wire,
-  storage and live generations, and owns the public compatibility design.
-  Preserve published compatibility promises; remove replaced private experiments
-  without aliases, dual readers/writers or migrations for stale private clients.
-- Use primary sources for non-trivial design and bugs. Add focused tests in
-  proportion to risk; batch full browser/network/endurance checks at acceptance.
-- Keep scripts deterministic, fast, cross-platform and CI-runnable.
-- Before finishing material work, inspect status, report untracked artifacts,
-  and stage requested files unless told otherwise.
