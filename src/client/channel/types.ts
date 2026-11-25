@@ -229,6 +229,8 @@ export interface ChannelActions {
   setMuted(roomId: string, muted: boolean): Promise<void>;
   canUnmute(roomId: string): boolean;
   voiceMicrophonePending(roomId: string): boolean;
+  /** A voice operation in any room or a microphone input change is pending. */
+  voiceBusy(): boolean;
   /** Post-gain linear levels keyed by the speaking endpoint/session, never its relay. */
   voiceActivity(roomId: string, localOnly?: boolean): Promise<ReadonlyMap<string, number>>;
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
