@@ -52,7 +52,11 @@ tempfile = "=3.27.0"
 fs4 = { version = "=1.1.0", default-features = false }
 zip = { version = "=9.2.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"
+
 [target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security_Authorization"] }
 wry = { version = "=0.57.2", default-features = false, features = ["os-webview"], optional = true }
 tao = { version = "=0.37.2", default-features = false, features = ["rwh_06"], optional = true }
 webview2-com = { version = "=0.39.1", optional = true }

@@ -3999,6 +3999,7 @@ dependencies = [
  "fs4",
  "futures-util",
  "if-addrs",
+ "libc",
  "log",
  "m3u8-rs",
  "netwatch",
@@ -4032,6 +4033,7 @@ dependencies = [
  "webview2-com",
  "windows",
  "windows-core",
+ "windows-sys 0.61.2",
  "wry",
  "zip",
 ]

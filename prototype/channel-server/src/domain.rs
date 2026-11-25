@@ -778,8 +778,8 @@ impl Domain {
             .map(str::to_owned)
     }
 
-    /// Only an explicit App launcher navigation issues a bearer for the first Join.
-    pub(crate) fn launch_ticket(&self) -> anyhow::Result<String> {
+    /// An explicit local operator action issues a bearer for the first Join.
+    pub fn launch_ticket(&self) -> anyhow::Result<String> {
         // Allow time for an external browser to start and load the site.
         const LAUNCH_TIMEOUT: Duration = Duration::from_secs(60);
         let mut hub = self.hub.lock().unwrap();

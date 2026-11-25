@@ -146,8 +146,16 @@ In another terminal, start the development interface:
 node node_modules/vite/bin/vite.js --config prototype/channel-server/vite.config.ts
 ```
 
-Open `http://127.0.0.1:8790/__channel-preview#owner=<owner-key>` with your own key.
-This bootstrap entry selects the site-maintenance identity. Ordinary users open
+To sign in as the site owner, run this command in another terminal on the Server host
+using the same OS account and data directory as the running Server.
+
+```powershell
+cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml -- owner-link
+```
+
+With a packaged Server, run `./piik-server owner-link` (Windows: `.\piik-server.exe owner-link`).
+Open the printed link in your owner browser profile within 60 seconds. It can be used once.
+The browser saves the owner credential for later visits. Ordinary users open
 `http://127.0.0.1:8790/__channel-preview` directly and can create their own rooms.
 Beside a room title, copy its public-room link or, as its owner, a private-room
 invitation. Private-room admission is handled after joining the site.
