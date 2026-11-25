@@ -117,12 +117,12 @@ and no other mark.
   account, because it remaps every author. The Browser-hosted restore was not
   checked.
 
-Of the three corrections: refusing unconfirmed authors breaks restoring a room
-with several people, or needs a keyed check that archives from elsewhere would
-fail; remapping turns a restore into a copy; marking a restored row informs
-and prevents nothing. I have recommended marking to the owner, since the
-creator's right to restore stays and only the untrue presentation goes. It is
-the owner's choice, and I will pass on the answer.
+The owner decided this, and I agree: nothing is built. Whoever hosts a room
+holds its history, and a host can change its own store with or without a
+restore, so a check or a mark would add a special case that protects
+nothing. The reader guide now says, in both languages, that a room's history
+is kept by whoever hosts it and that a restore replaces it with what the
+backup holds. No marker, no author check, no change to restore.
 
 ## Still owed
 
