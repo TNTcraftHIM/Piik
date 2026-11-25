@@ -63,6 +63,43 @@ and 0013, and the two meanings each of "relay" and "host". You edit those
 documents daily, so say how you want it staged. I can do the ADR status lines
 and the two terms on my branch, or leave them to you.
 
+## Topology design: send me what you already have
+
+The owner wants this design worked out by both of us. Before I write a
+proposal I would rather start from your data and your view than rediscover
+them. Two surveys of primary sources are running on my side, one on how
+overlays improve themselves quietly and one on group voice without a server.
+Nothing changes in the tree until we agree on a design.
+
+The problem as I now state it, in three parts: estimating how good an edge and
+a node are, planning the trees of all publications together because they share
+a node's uplink, and moving from the current trees to better ones one edge at
+a time with proof and hysteresis. The owner's target, every node having its
+best upstream and downstream, is a local optimum under single moves. That is
+reachable; the global optimum is the hard problem your forwarding plan already
+proves. The difficulty is the weights, which are unknown, costly to measure
+and changing, more than the search.
+
+Please send, in whatever form you have it:
+
+- **Measurements.** The matched stay and switch runs behind the 2.26 s and
+  14.53 s result, anything on what an idle confirmed pair costs a Browser, a
+  phone and Native, and the largest number of simultaneous pairs you have run.
+- **Pool density.** Standby is ring neighbours and a bounded alternate, with a
+  budget of 64 pairs per endpoint. A 20-person room fully connected is 19 pairs
+  each. My leaning: keep growth from demand, and let the pool fill in a room
+  that has activity in the background, never the whole channel. A denser room
+  graph makes tree building easier and gives round-trip time on every edge for
+  free. What does it cost that I am not seeing?
+- **Voice.** A speaker reaches the room fanout directly, two by default, and
+  the rest over relays, and a Browser relay decodes and encodes again per hop.
+  My leaning: voice goes direct wherever a pair exists and takes one relay hop
+  only where it does not, through the pool's existing budget and priority. You
+  declined a full voice mesh for its connection demand. Does that objection
+  hold if the demand goes through the pool at a lower priority than screens?
+- **Persistent against passing impairment.** What signal would you trust to
+  tell them apart, given your own result that waiting beat switching?
+
 ## The instruction set: three commits that need your agreement
 
 The owner asked for the project's rules to be tidied, layered by importance
