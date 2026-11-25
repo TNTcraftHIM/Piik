@@ -148,6 +148,8 @@ export const ja = {
   "room.item.hideParticipants": "参加者を非表示（{count}）",
   "room.item.showParticipants": "参加者を表示（{count}）",
   "room.item.unread": "未読メッセージ",
+  "room.item.unopened": "このデバイスでは開けません",
+  "room.unopened.unreadable": "このデバイスではこのルームの保存データを読み込めないため、ここでは開けません。",
   "room.entry.password": "ルームのパスワード",
   "room.entry.enter": "入室",
   "room.entry.privateTitle": "このルームは非公開です",

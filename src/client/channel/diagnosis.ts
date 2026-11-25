@@ -1,5 +1,6 @@
 import type { CopyKey } from "../locales";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
+import type { RoomOpenFailure } from "./types";
 
 const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
@@ -41,7 +42,8 @@ export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "appr
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
   | { area: "screen"; paused: boolean; deliveryFailed?: boolean; awaitingRoute?: boolean; playbackError?: ScreenPlaybackError }
-  | { area: "error"; code: string | null | undefined };
+  | { area: "error"; code: string | null | undefined }
+  | { area: "roomOpen"; failure: RoomOpenFailure };
 
 /** Read the current operation or selected subscription. A peer transport event alone never diagnoses it. */
 export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null {
@@ -53,6 +55,9 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
       default: return null;
     }
   }
+  if (fact.area === "roomOpen") return {
+    message: fact.failure === "unsupported_version" ? "channel.error.unsupportedStorageVersion" : "room.unopened.unreadable", topic: "storage",
+  };
   if (fact.area === "screen") {
     if (fact.paused) return null;
     const message = fact.playbackError === 3 ? "screen.decodeFailed" : fact.playbackError === 4 ? "screen.unplayable"

@@ -140,6 +140,7 @@
 .c3-notice-message { flex: 1; min-width: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
+.c3-notice > .c3-diagnosis-help { flex: none; width: auto; margin: 0; }
 .c3-app > .c3-notice { width: var(--c3-content-width); margin: 0 auto 12px; background: var(--paper); }
 .c3-people-panel { grid-column: 3; grid-row: 3 / 5; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: var(--paper); }
 .c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: 52px; }

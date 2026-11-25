@@ -8,8 +8,8 @@ import { ChannelRoomParticipants } from "./ChannelRoomParticipants";
 import { roomActivityPeople, roomHasUnread, roomSessionViewing } from "../presentation";
 
 /** Folding the participant roster changes presentation, never room activities. */
-export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onSelect, onManage, ordering }: {
-  channel: ChannelController; room: ChannelRoom; selected: boolean; settingsOpen: boolean;
+export function ChannelRoomListItem({ channel, room, selected, settingsOpen, unopened, onSelect, onManage, ordering }: {
+  channel: ChannelController; room: ChannelRoom; selected: boolean; settingsOpen: boolean; unopened?: boolean;
   onSelect(): void; onManage(): void;
   ordering?: { index: number; total: number; onMove(direction: -1 | 1): void; onDrag(): void; onDrop(): void; onEnd(): void; active: boolean };
 }) {
@@ -38,7 +38,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onS
           onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={14} /></button>
       </div>}
       <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
-        unread={roomHasUnread(room, channel.readByRoom[room.id])}
+        unread={roomHasUnread(room, channel.readByRoom[room.id])} unopened={unopened}
         participantDisclosure={people.length ? { open, count: people.length, controls: id, onToggle: () => setOpen(!open) } : undefined}
         voice={voices.some(voice => voice.sessionId === channel.sessionId)} sourceCount={screens.length + watches.length}
         sharing={screens.some(source => channel.ownedScreens.has(source.id)) || watches.some(source => source.sessionId === channel.sessionId)}

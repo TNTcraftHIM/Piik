@@ -73,7 +73,8 @@ function openDatabase(name: string): Promise<IDBDatabase> {
       backup.createIndex("send", "retryKey", { unique: true });
       backup.createIndex("id", "id", { unique: true });
     };
-    request.onerror = () => reject(unsupported ? new Error("unsupported_storage_version") : request.error);
+    // VersionError: a newer build already raised the stored version past this one.
+    request.onerror = () => reject(unsupported || request.error?.name === "VersionError" ? new Error("unsupported_storage_version") : request.error);
     request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
   });
 }

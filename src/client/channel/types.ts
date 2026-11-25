@@ -61,6 +61,14 @@ export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
 
+/** Why this device could not open a room whose saved data it holds. */
+export type RoomOpenFailure = "unsupported_version" | "unreadable";
+
+/** Name a Browser room store failure. A missing room is not a failure; the caller skips it. */
+export function roomOpenFailure(error: unknown): RoomOpenFailure {
+  return error instanceof Error && error.message === "unsupported_storage_version" ? "unsupported_version" : "unreadable";
+}
+
 export interface ChannelView {
   waitingWatchPages?: ReadonlySet<string>;
   watchPlayers: ReadonlyMap<string, WatchPlayer>;
@@ -101,6 +109,8 @@ export interface ChannelView {
   remoteControls: ReadonlyMap<string, ChannelRemoteControlState>;
   error: string | null;
   errorRoomId?: string;
+  /** Rooms this device should host but could not open, owned by its local hosting runtime. */
+  roomOpenFailures: ReadonlyMap<string, RoomOpenFailure>;
   siteURL: string | null;
   pending: ReadonlySet<string>;
 }

@@ -12,6 +12,7 @@ import { Glyph } from "../ui/icons";
 import { joinItems, useCopy } from "../ui/copy";
 import { useChannel } from "../channel/use-channel";
 import { channelErrorPresentation } from "../channel/error-presentation";
+import { diagnoseChannelFact } from "../channel/diagnosis";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { useRoomPane } from "../channel/use-room-pane";
 import { LayerHistory } from "../ui/layer-history";
@@ -42,6 +43,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
+import { ChannelDiagnosisHelp } from "../channel/components/ChannelDiagnosisHelp";
 import { roomHasUnread, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
@@ -330,6 +332,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const failure = channelErrorPresentation(channel.error, t);
   // Name the failed room only when it is not the one on screen; a removed room has no name left to show.
   const errorRoomName = channel.errorRoomId && channel.errorRoomId !== roomId ? rooms.find(value => value.id === channel.errorRoomId)?.name : undefined;
+  const openFailure = room && channel.roomOpenFailures.get(room.id);
+  const roomOpenFailure = openFailure ? diagnoseChannelFact({ area: "roomOpen", failure: openFailure }) : null;
   useEffect(() => {
     if (!state) return;
     channel.browse(roomId);
@@ -486,7 +490,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 {t(available ? "channel.people.online" : "channel.people.offline")}<span>{groupedRooms.length}</span>
               </h3>,
               ...groupedRooms.map((value, index) => <ChannelRoomListItem key={`room-${value.id}`} channel={channel} room={value}
-                selected={roomId === value.id} settingsOpen={managedRoomId === value.id}
+                selected={roomId === value.id} settingsOpen={managedRoomId === value.id} unopened={channel.roomOpenFailures.has(value.id)}
                 ordering={orderingRooms && groupedRooms.length > 1 ? { index, total: groupedRooms.length,
                   active: activeDrag?.available === available && activeDrag.id !== value.id,
                   onDrag: () => setDraggedRoom({ id: value.id, available }), onEnd: () => setDraggedRoom(null),
@@ -536,7 +540,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {state && !connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span className="c3-notice-message">{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" hint="hint-reconnect" size="compact" onClick={channel.reconnect} />}
         </div>}
-        {room?.authorized && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
+        {room && !room.available && roomOpenFailure ? <div className="c3-notice is-error" role="status"><Glyph name="couch" size={20} />
+          <span className="c3-notice-message">{t(roomOpenFailure.message)}</span><ChannelDiagnosisHelp diagnosis={roomOpenFailure} /></div>
+          : room?.authorized && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
           <span className="c3-notice-message">{t(channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty")}</span></div>}
         {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={t("channel.previewPage.ongoingScreens")}>
           {otherScreens.map(source => {
@@ -565,7 +571,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 <ChannelSettingsError error={quickStart.error} /></div>
             </div></StageTv> : rooms.length ? <><h2><BrandMark size={30} motion="once" />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
-              unread={roomHasUnread(value, channel.readByRoom[value.id])}
+              unread={roomHasUnread(value, channel.readByRoom[value.id])} unopened={channel.roomOpenFailures.has(value.id)}
               onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div></>
               : <div className="c3-first-room"><span className="c3-room-start-mark"><ChannelIdentityMark icon="couch" size={46} /></span>
                 <h2>{t(canCreateRoom ? "channel.previewPage.startWithARoom" : "channel.previewPage.noRoomsAvailableYet")}</h2>
