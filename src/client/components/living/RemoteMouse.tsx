@@ -158,7 +158,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
       if (current.kind === "widget") {
         widget.current?.removeAttribute("data-dragging");
         suppressClick.current ||= current.moved || cancelled;
-        if (current.moved && !cancelled) park();
+        if (current.moved || (cancelled && mode === "mini")) park();
       }
     }
     if (wheel.current?.id === id) finishWheel(cancelled);

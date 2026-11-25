@@ -222,6 +222,19 @@ it("tucks only an idle edge mini and cancels the timer on interaction, expansion
   } finally { view.dispose(); vi.useRealTimers(); }
 });
 
+it.each(["onPointerCancel", "onLostPointerCapture"])("tucks the idle mini after %s", end => {
+  vi.useFakeTimers();
+  const view = mouse(0);
+  try {
+    view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
+    view.find("lr-remote-mouse").props[end](view.event());
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS);
+    view.render();
+    expect(view.docked()).toBe("left");
+    expect(view.pointer.button).not.toHaveBeenCalled();
+  } finally { view.dispose(); vi.useRealTimers(); }
+});
+
 it("distinguishes wheel taps, scrolling and held middle dragging and retires its timer and button", () => {
   vi.useFakeTimers();
   const view = mouse();
