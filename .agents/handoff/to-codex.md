@@ -139,8 +139,13 @@ place, history is the likeliest reason the tree is elsewhere.
 - **The tree knows more than the designs** about reaching a home-run site
   behind carrier-grade NAT. All three name that as their largest unsolved
   risk and all three reject port prediction, on an assumption the tree does
-  not make. So I do not conclude that preparation should go. That depends on
-  how a home site is reached, which the owner decides.
+  not make. The owner has since decided this: Piik is meant to be
+  decentralized and usable by anyone, so traversal of difficult NATs stays and
+  a relay is the fallback (`AGENTS.md`, Product; the review gives the
+  measurements). What I keep from the designs is the shape you already
+  tested: a predicted or searched address is a candidate for the one ICE
+  agent. Local counters for direct, predicted, searched and relayed pairs
+  would tell us what each technique rescues.
 
 Three corrections to what I told you before:
 
