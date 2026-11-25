@@ -452,7 +452,7 @@ the feedback period; they do not delay that delivery.
   physical game recognition. macOS virtual HID needs an entitled App and SDK/runtime
   checks. [Co-play assessment](./research/room-interactions.md#remote-co-play)
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
-  the [platform-output gate](./research/platform-output.md) passes.
+  the [platform-output gate](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
   the [translation guide](./guide/translating.md).
 - **Windows code signing.** Revisit when a trusted signing service is available;

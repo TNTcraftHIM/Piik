@@ -22,7 +22,7 @@
   source tracks are added, removed, or replaced. It does not need a Web Audio
   mix/resample graph or second clock.
 - Viewer play, mute, volume, and autoplay recovery remain local under the
-  [playback owner](../standards/presentation-lifecycle.md#playback-ownership)
+  [playback owner](../standards/media-status.md#playback-ownership)
   and do not change sender or room state.
 
 ## RED Tradeoff

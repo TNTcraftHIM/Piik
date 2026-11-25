@@ -11,7 +11,7 @@ Baseline: `3da8ecd22a3499e660f498e527ad4ffbaef08c82`.
 The owner requests source/library-level STUN and SFU inside the Piik Go
 process. Bundled coturn/LiveKit executables, automatic installers, subprocess
 supervision and embedding the full LiveKit service do not meet this goal.
-The owner has also agreed to [node-local adaptive reuse](./node-local-adaptation.md):
+The owner has also agreed to [node-local adaptive reuse](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/node-local-adaptation.md):
 each parent derives missing lower outputs for its direct children and reuses
 them locally. That file owns the agreed model and unresolved encoding policy.
 nginx/TLS replacement and capture-picker changes are outside this experiment.

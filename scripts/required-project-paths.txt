@@ -29,14 +29,10 @@ docs/status.md
 docs/todo.md
 docs/verification-status.md
 docs/standards/documentation.md
-docs/standards/rooms-access.md
-docs/standards/routing-transport.md
 docs/standards/media-quality.md
-docs/standards/presentation-lifecycle.md
+docs/standards/remote-control.md
 docs/deployment.md
-docs/operations/self-hosting.md
 docs/operations/github.md
-docs/standards/configuration.md
 docs/standards/naming.md
 docs/standards/engineering.md
 docs/standards/versioning.md
@@ -54,11 +50,8 @@ scripts/app-icons.mjs
 scripts/package-app-candidate.mjs
 cmd/piik-app/piik.ico
 deploy/release-server.sh
-docs/adr/0001-p2p-first-media-topology.md
-docs/adr/0010-cross-platform-client-runtime.md
 docs/research/agent-context-governance.md
 docs/research/cross-platform-client-runtime.md
-docs/research/webrtc-p2p-screen-sharing.md
 native/third_party/webrtc-frame-dropper/README.md
 native/third_party/webrtc-frame-dropper/LICENSE
 native/third_party/webrtc-frame-dropper/PATENTS

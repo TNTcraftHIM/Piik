@@ -10,9 +10,10 @@ When supplementary guidance is needed, controls, names and details share `Toolti
 [visual language](./visual-language.md). Its native Popover top layer escapes scrolling
 containers, with viewport-relative placement. Hover, keyboard focus and touch
 hold share one visibility owner; Escape dismisses even a mouse-only hint.
-`/__tooltip-preview` shows the catalogue. Playback actions and their local audio
-ownership are defined in [presentation lifecycle](./presentation-lifecycle.md#playback-ownership);
-`/__playback-preview` exercises the actual control bar with generated local media.
+`/__tooltip-preview` shows the catalogue. [Playback ownership](#playback-ownership)
+assigns playback actions, and [screen audio](./media-quality.md#screen-audio)
+owns local listening gain; `/__playback-preview` exercises the actual control bar
+with generated local media.
 
 ## Status Meaning
 
@@ -150,9 +151,52 @@ non-null value. Non-window fields retain the existing details-display cache.
 Participant status reads the current evidence directly; it adds no stored
 status, timer, threshold or score. Detailed sender/receiver metrics
 remain available in connection details and Debug with their original scope.
+Selected-candidate addresses may be shown only on the Browser that owns that
+connection; they are never uploaded, persisted or used for identity or route
+selection. An explicit debug report follows the
+[diagnostics owner](../../prototype/channel-server/README.md#app-diagnostics).
+
+Playback facts are typed and belong to their current media binding: a retired
+binding's result cannot overwrite the current one, and raw server errors are
+never rendered directly. Decoded-frame silence is not a route-failure signal. A
+live source can stop repainting; media-framework failures, not an application
+silence timer, own recovery. First-frame admission and candidate proof still
+require decoded progress.
 
 Previews render the production projection and metric components with explicit
 sample inputs. They do not add quality facts absent from the real workflow.
+
+## Playback Ownership
+
+Each received picture input renders in its own `<video>` element, which owns
+that input's playback and frame proof. The displayed element owns the playback
+bar, sound output, picture-in-picture and fullscreen. A candidate input is
+displayed only after it has composited a frame, and it keeps the current local
+pause and volume. Adding, replacing or removing audio on the same binding
+updates only its sound output and preserves frame proof and local playback.
+
+A connection, track object or `playing` event alone does not prove that a
+picture is visible. The page removes its waiting presentation only after the
+current binding composites a frame, using `requestVideoFrameCallback()` where
+available and decoded progress otherwise. Autoplay rejection exposes the play
+action. A pending `play()` canceled by pause or rebinding is not a media
+failure: cancellation alone does not invalidate frame proof or disable local
+playback.
+
+Picture-in-picture uses the browser's native video window, including Safari's
+presentation-mode API. Native enter and leave events own its displayed state;
+closing the window does not create another playback owner. Successful entry
+leaves this video's page fullscreen. Unmounting a player closes only its own
+window, unless the stage keeps it for a
+[confirmed successor](../research/channel-network-design.md#synchronized-video-sources).
+An unavailable capability stays disabled with an explanation. See the
+[PiP specification](https://w3c.github.io/picture-in-picture/).
+
+By default, a hidden or unfocused sharer page suspends its local preview,
+except while that video is in picture-in-picture. Playback settings can turn
+this off, for example to keep watching on another monitor; the choice is
+remembered for the Browser origin. Returning to the page or changing the
+preference preserves an explicit local pause.
 
 ## References
 

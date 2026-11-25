@@ -156,6 +156,25 @@ and display lifecycle follow the [shared policy](./visual-language.md#playful-co
 operational messages retain corresponding meanings and placeholders.
 The [visual language](./visual-language.md) owns where these lines appear.
 
+## Interface Languages
+
+The App and Server UI register Simplified Chinese (`zh`), English (`en`),
+Traditional Chinese (`zh-Hant`), Japanese (`ja`) and Korean (`ko`). Every
+registered language expresses the same typed state and command catalog.
+
+On first use the UI matches the Browser's primary system language against the
+registered languages and uses English when none matches. `zh-CN` and `zh-Hans`
+select `zh`; `zh-TW`, `zh-HK` and `zh-Hant` select `zh-Hant`. An explicit choice
+is persisted and takes precedence over that default. App launch handoff keeps
+the selected language: an explicit launcher choice replaces the destination's
+saved preference, while a launch default only fills an unset one and is not saved.
+
+The App console supports Chinese and English: both Chinese catalogs use Chinese,
+and other UI languages fall back to English. Windows window controls and
+permission prompts use the shared UI's five languages. The public website, film
+and documentation keep independent Chinese and English content. Every UI
+language uses concise copy.
+
 ## Product And Tool Names
 
 | Surface | Convention | Example |

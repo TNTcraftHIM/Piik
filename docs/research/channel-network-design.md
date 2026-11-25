@@ -5,7 +5,7 @@ This document describes the 3.0 runtime and its routing evidence.
 [forwarding model](./channel-forwarding-plan.md) owns forwarding behaviour and
 the [hosting plan](./server-hosting-plan.md) owns channel modes and directory authority. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
-The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
+The [2.x routing contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md) remains unchanged.
 
 ## Current Prototype Design
 
@@ -699,8 +699,10 @@ App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to
 the local domain's lifetime; Browser and Native participants receive the same
 discovery configuration. Public invitations and approved external sites retain
-their domain's configured ICE servers. An individual rejected ICE candidate
-does not retire the connection or its other candidate paths.
+their domain's configured ICE servers. An individual rejected ICE candidate is
+disposable input: it does not retire the connection or its other candidate paths,
+and transport state and the operation's deadline own failure. A Browser
+lifecycle error, such as a missing description, still fails that operation.
 Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
 an unavailable address family does not disable the other. Wildcard listeners
 exclude loopback interfaces from ICE/STUN discovery. Explicit loopback listeners
@@ -1098,6 +1100,8 @@ and process exclusion are alternative scopes. An unavailable selected endpoint
 ends only source sound; it does not capture another device or stop the picture
 and microphone. Local playback-device selection does not change capture scope.
 
+The [remote-control standard](../standards/remote-control.md) owns input grants,
+targets and release; the platform input below implements that contract.
 Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside capture. Commit requires the selected monitor, EIS devices and first image;
 cancellation closes the candidate and preserves the share. Close a pending

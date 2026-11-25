@@ -5,9 +5,9 @@
 
 ## Context
 
-Published 2.x runs a Go backend ([ADR-0012](./0012-shared-go-backend-core.md))
+Published 2.x runs a Go backend ([ADR-0012](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0012-shared-go-backend-core.md))
 with one Host per room, memory-resident rooms
-([ADR-0002](./0002-memory-resident-protected-rooms.md)) and an embedded SFU as
+([ADR-0002](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0002-memory-resident-protected-rooms.md)) and an embedded SFU as
 the fallback route. Its room, signaling and routing rules live in that server.
 
 3.0 changes what a room is. Several people share at once, and a room carries

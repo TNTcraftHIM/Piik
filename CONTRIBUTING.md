@@ -56,9 +56,8 @@ do not maintain a separate thanks list or manufacture empty credit commits.
 This is the default for an ordinary scoped implementation or bug fix.
 
 1. Start a new phase from clean, current canonical `main`; continue scoped work in that phase's existing worktree. Until cutover, the authorized isolated 3.0 prototype starts its phases from the current `feat/channel-prototype` commit. Preserve unrelated user work.
-   Temporary source preparation must stop on failure. Before checkout or edits,
-   verify the intended directory and Git root, then use that explicit working
-   directory; a failed directory change must not redirect work into the caller's checkout.
+   Temporary source preparation stops on failure: verify the intended directory
+   and Git root before checkout or edits, and work only in that explicit directory.
 2. Inspect the affected code, current owner, and reachable evidence. Use the
    repository's existing tools, commands and workflow; introduce another only
    when the requested result needs it. Research primary sources when the issue
@@ -108,10 +107,8 @@ require a wire bump.
 
 Clean up worktrees and branches only after semantic review and integration are complete and the normal merged-head, open-reference, clean-tree, and non-following link checks pass. Never merge an old branch wholesale after a newer truth checkpoint.
 
-For owner-managed manual deletion, collect permitted retired artifacts in
-`Desktop/Piik-cleanup` with their original paths. Keep worktrees under Git's cleanup
-workflow. Targets of a policy-rejected cleanup stay in place and go in that path
-index; do not substitute a move for the rejected deletion.
+Keep worktrees under Git's cleanup workflow. Targets of a policy-rejected
+cleanup stay in place; do not substitute a move for the rejected deletion.
 
 ## Working With A Second Agent
 
@@ -226,9 +223,9 @@ it does not publish changes or approve a dependency update.
 
 ## Verification Entrypoints
 
-For user activation, focus and history checks, operate the visible control with
-browser pointer, touch or keyboard input. Exercise Back through the tested
-browser or device's control, following its
+For user activation, focus and history checks, including Back, operate the
+visible control of the tested browser or device with real pointer, touch or
+keyboard input, following its
 [history navigation behavior](https://chromium.googlesource.com/chromium/src/+/main/docs/history_manipulation_intervention.md).
 
 Every retained test must be collected by a documented verification entry point.

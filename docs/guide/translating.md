@@ -46,7 +46,7 @@ personal content. You can send a suggestion without setting up development tools
 | Welcome lines, waiting captions and changing browser-tab titles | Playful pools and title-frame catalogs in each locale file; website welcome lines reuse the English and Simplified Chinese pools |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
-| README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
+| README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md) and [troubleshooting](./troubleshooting.md), each with a `.zh-CN.md` counterpart |
 
 Edit the source, then rebuild the surface that serves it:
 
@@ -119,7 +119,7 @@ layout questions, so contributors can coordinate work and review.
    Extra languages appear in the third, shared dropdown after the Chinese and
    English shortcuts. Check language
    selection, saved preferences and App handoff against the
-   [system-language policy](../standards/presentation-lifecycle.md#visual-language).
+   [system-language policy](../standards/naming.md#interface-languages).
 3. Check complete screens and the launch flow, including launcher, room and error
    states. The 3.0 site and room use the shared catalog, with complete
    English/Simplified Chinese coverage and matching placeholders in supplied

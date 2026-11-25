@@ -1,5 +1,5 @@
 # Run beside Piik; inject the same nonempty FRP_TOKEN into frpc and frps.
-# See docs/operations/self-hosting.md for the public HTTPS proxy and frps setup.
+# See docs/guide/frp.md for the public HTTPS proxy and frps setup.
 # This forwards HTTP/WebSocket only; media uses the runtime's ICE paths.
 serverAddr = "relay.example.com"
 serverPort = 7000

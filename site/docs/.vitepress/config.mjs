@@ -12,11 +12,14 @@ const sidebar = chinese => {
     if (!groups.has(page.group)) groups.set(page.group, []);
     groups.get(page.group).push({ text: page.text, link: `/${page.path.replace(/\.md$/, '.html')}` });
   }
-  groups.get(chinese ? hostingGroups.zh : hostingGroups.en).push({
-    text: chinese ? '完整配置参考（英文）' : 'Configuration reference',
-    link: `${repository}/blob/main/docs/standards/configuration.md`,
+  const sections = Array.from(groups, ([text, items]) => ({ text, items }));
+  // The deployment guide is English-only; Chinese readers find it in the same
+  // place, before the last group, marked as English.
+  if (chinese) sections.splice(-1, 0, {
+    text: hostingGroups.zh,
+    items: [{ text: '服务端发布与恢复（英文）', link: '/deployment.html' }],
   });
-  return Array.from(groups, ([text, items]) => ({ text, items }));
+  return sections;
 };
 
 export default defineConfig({
