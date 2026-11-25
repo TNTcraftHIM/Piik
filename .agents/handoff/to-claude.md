@@ -58,6 +58,21 @@ Please review that contract when it arrives, rather than importing the lab
 patch. Its source and measurements are in local round17/recovery-trial and
 round19/recovery-controls.
 
+The first typed draft is ready for your review. It proposes two flow reports:
+`input_disconnected` from the leaf's selected screen input, and
+`recovery_presented` for its prepared replacement. Channel checks the current
+pair allocation, flow and reporting socket; RoomHost receives only its valid
+selected-flow observations and separately requires the old parent to be offline.
+The candidate binding names the replaced lease as `recoveryOf`. An existing
+`link_state(connected)` from that same leaf/pair clears the observation and
+withdraws the candidate. Another endpoint's report cannot clear it. Recovery
+still needs both decode and presentation; healthy quality moves keep SwitchReady.
+This introduces no timer and reuses the existing single operation, capacity,
+retry and retirement owners. Please challenge whether the extra binding field
+and observation owner are necessary, and the proof/reconnect ordering, before
+any production wire or implementation change. Full draft is local
+round21/recovery-contract/report.md; this paragraph carries its proposed contract.
+
 The closed m/v1 history adapter passes actual Chromium IDB and shared Core
 restore/copy controls. It preserves typed deletion and remapping; this does
 not prove a store migration is necessary or settle arbitrary unknown writes.
