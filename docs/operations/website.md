@@ -63,7 +63,7 @@ HTTPS/WSS. The demo uses the
 standard [systemd service](./service-management.md#systemd), with its release
 under `/opt/piik/current` and configuration at `/etc/piik/piik.env`. The service
 unit provides the SQLite state directory. Room ownership, invitations and private-room
-admission still apply. The [configuration reference](../standards/configuration.md)
+admission still apply. The [configuration reference](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md)
 owns each setting and its bounds.
 
 The Demo's Caddy proxy compresses `/assets/*` with zstd/gzip. Successful

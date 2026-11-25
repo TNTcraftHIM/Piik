@@ -23,14 +23,14 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | 3.0 media | [Media quality](./media-quality.md) | Browser and App capture, encoders, adaptation and audio |
 | 3.0 remote input | [Remote control](./remote-control.md) | Grants, targets and release; usage stays in the reader guide |
 | Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
-| Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
+| Published 2.x behavior | [2.x standards on main](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md) | Maintained on `main`; this tree links them instead of keeping copies |
 | 3.0 architecture | [ADR-0016](../adr/0016-shared-rust-core.md) | Shared core, runtime adapters and version scope |
 | Current 3.0 domain models | [Site/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Detailed authority, runtime, routing and persistence boundaries |
 | 3.0 forwarding design | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) | Target forwarding model and candidate delivery details |
 | 3.0 hosting design | [Server hosting design](../research/server-hosting-plan.md) | Target channel modes, authority and moderation |
 | Architecture decisions | `docs/adr/` | Decision status, rationale and consequences; explicitly supersede changed clauses |
 | Measurements and external evidence | `docs/research/` | Date, sources, observations, inference, limits and license scope |
-| Deployment and configuration | `docs/deployment.md`, `docs/operations/`, `docs/standards/configuration.md` | Runnable operator reference; no per-release diary |
+| Deployment and configuration | `docs/deployment.md`, [Server and App runtime](../../prototype/channel-server/README.md#run), `docs/operations/` | Runnable operator reference; no per-release diary |
 | Compact product map | `docs/project-memory.md` | Stable summaries and domain navigation, not implementation inventories |
 | Current execution/deployment index | `docs/status.md` | Current boundaries and pointers; exact artifact identity stays in release metadata |
 | Remaining work and decisions | `docs/todo.md` | One task ledger, with executable work separated from parked ideas |

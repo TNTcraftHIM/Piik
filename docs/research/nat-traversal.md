@@ -519,7 +519,7 @@ Three distinct 2.x failures retained separate owners:
   bridge. Reading current PC state at consumption restored readiness; prior loss
   still revoked permission and required a fresh handshake.
 - Backend replacement renewed the Viewer's recovery count. The existing
-  [parent opportunity](../standards/routing-transport.md#reconciliation) now owns
+  [parent opportunity](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md#reconciliation) now owns
   that budget. Trickle controls recovered after 2/9/11-second interruptions;
   failed full-gathering while offline did not justify longer product deadlines.
 - A throttled encoded queue retained stale pictures after short UDP loss.

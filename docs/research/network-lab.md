@@ -6,7 +6,7 @@ evidence. The [current Rust source map](../standards/engineering.md#module-map)
 owns the private 3.x implementation; retired runners are not current entrypoints.
 
 This document owns the laboratory's method and evidence limits. Product routing
-remains in [routing and transport](../standards/routing-transport.md); pending
+remains in the [network model](./channel-network-design.md); pending
 work remains in [TODO](../todo.md). The laboratory does not authorize NAT or
 adaptation changes.
 

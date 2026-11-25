@@ -1045,7 +1045,7 @@ adjusting volume or offering P2P stays neutral. Actual copy feedback can change
 that same hint to green or red, using the existing operation result.
 
 Review meaning at the call site. A current admission badge shows the credential
-accepted by [room access](./rooms-access.md). The private-mode control instead
+accepted by [room access](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md). The private-mode control instead
 shows restricted code-only entry with a closed door; its meaning must not change
 to an invitation action merely because no room password is set. This room-entry
 rule is separate from media-route privacy. Password input is not proof of

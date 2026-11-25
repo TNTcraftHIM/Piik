@@ -104,7 +104,7 @@ avoid a major justifies mislabeling an incompatible release.
 ## Extending Interfaces
 
 Published 2.x command/event contracts reject unknown keys, with an explicit
-[receive-side exception](./rooms-access.md#room-interactions) for the bounded
+[receive-side exception](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md#room-interactions) for the bounded
 display-only reaction identifier. Current 3.0 Domain and App senders use the
 fields defined for each command. Most command variants reject unknown keys.
 A few parameterless commands, including Domain `leave` and App `targets`,

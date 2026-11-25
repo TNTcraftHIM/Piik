@@ -5,9 +5,10 @@ the [ownership map](./documentation.md#owners) explains where each fact belongs.
 [AGENTS.md](../../AGENTS.md) owns task authority and
 [Contributing](../../CONTRIBUTING.md) owns delivery.
 
-The room, routing and lifecycle contracts below describe published 2.x. The
-3.0 entries distinguish today's prototype from the target designs for hosting
-and routing. Engineering, visual language and delivery rules apply to both lines.
+The 3.0 entries distinguish today's prototype from the target designs for
+hosting and routing. Published 2.x rules are maintained in the
+[2.x standards on main](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md). Engineering, visual language and
+delivery rules apply to both lines.
 
 | Subject | Standard |
 | --- | --- |
@@ -18,15 +19,12 @@ and routing. Engineering, visual language and delivery rules apply to both lines
 | 3.0 target channel modes, authority and moderation | [Server hosting design](../research/server-hosting-plan.md) |
 | 3.0 target forwarding model and candidate delivery details | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) |
 | 3.0 remote input authorization, simultaneous control and release | [Remote control](./remote-control.md) |
-| Published 2.x room authority, invitation/password access and persistence | [Rooms and access](./rooms-access.md) |
-| Published 2.x routes, capacity, P2P/SFU transitions and route operations | [Routing and transport](./routing-transport.md) |
 | 3.0 capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |
-| Published 2.x workflow, playback and Browser/App lifecycle | [Presentation and lifecycle](./presentation-lifecycle.md) |
 | 3.0 App and Server UI language selection and launcher handoff | [Naming and copy · Interface languages](./naming.md#interface-languages) |
 | Evidence behind each status, indicator, overlay and notice | [Media status](./media-status.md) |
 | Action ownership, grouping, layout, controls, cast, colour and motion | [Interface design and visual language](./visual-language.md#action-ownership-and-grouping) |
 | Website, README and introduction-film composition | [Public introduction](./public-introduction.md) |
-| Runtime settings, defaults, bounds and diagnostics | [Configuration](./configuration.md) |
+| 3.0 Server and App settings, startup and diagnostics | [Server and App runtime](../../prototype/channel-server/README.md#run) |
 | Compatibility, build identity, publication and release notes | [Versioning](./versioning.md) |
 | Documentation responsibilities and updating a rule | [Documentation ownership](./documentation.md) |
 

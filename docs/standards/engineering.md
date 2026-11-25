@@ -345,7 +345,8 @@ the observation or decision that would settle it.
 - Deployment configuration describes available services; room preferences
   request allowed behavior. The server enforces the policy even when a client
   requests more. The UI retains the same controls and explains locked choices.
-  See [configuration](./configuration.md); avoid a second flag with the same job.
+  See [site forwarding](../../prototype/channel-server/README.md#site-forwarding);
+  avoid a second flag with the same job.
 - Browser/App/Server share [visual language](./visual-language.md) and
   [status projection](./media-status.md). A new page, locale or deployment
   does not invent a new palette, status model or user-role metaphor.

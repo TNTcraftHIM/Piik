@@ -3,8 +3,8 @@
 This document retains published 2.x interaction research and the separate
 [3.0 assessment](#piik-30-channels-rooms-and-sharing). Sections before that
 assessment describe 2.x unless explicitly marked otherwise. Its authority and
-retention belong to [rooms and access](../standards/rooms-access.md#room-interactions),
-with [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)
+retention belong to [rooms and access](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md#room-interactions),
+with [presentation and lifecycle](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/presentation-lifecycle.md#product-surface)
 owning room/publication lifetime. The 3.0 section links to its current owners.
 [Status](../status.md#accepted-interaction-phase) owns delivery readiness;
 [TODO](../todo.md#now) owns remaining work.
@@ -228,8 +228,8 @@ NAT success rates or 21-person all-speaking audio capacity.
 `PIIK_ROOM_VOICE_LEGACY_WEB` optionally points the same normal-page gate at an
 older checkout and records its revision, checking that an older Viewer retains
 picture playback without subscribing to voice events.
-Product owners are [room voice](../standards/rooms-access.md#room-voice) and
-[room media](../standards/routing-transport.md#room-media). This integration shipped
+Product owners are [room voice](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md#room-voice) and
+[room media](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md#room-media). This integration shipped
 in v2.4.0; the dated experiments below describe its earlier design evidence.
 
 #### Historical Prototype Assessment

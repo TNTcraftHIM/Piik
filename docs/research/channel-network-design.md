@@ -5,7 +5,7 @@ This document describes the 3.0 runtime and its routing evidence.
 [forwarding model](./channel-forwarding-plan.md) owns forwarding behaviour and
 the [hosting plan](./server-hosting-plan.md) owns channel modes and directory authority. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
-The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
+The [2.x routing contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md) remains unchanged.
 
 ## Current Prototype Design
 
