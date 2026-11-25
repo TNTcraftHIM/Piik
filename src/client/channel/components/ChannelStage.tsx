@@ -478,7 +478,8 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
 function tileStyle(centeredStart: number | undefined, size: StageTile | undefined): CSSProperties | undefined {
   if (!centeredStart && !size) return undefined;
   return { ...(centeredStart ? { gridColumn: `${centeredStart} / span 2` } : {}),
-    ...(size ? { "--stage-picture-width": `${size.width}px`, "--stage-picture-height": `${size.height}px` } : {}) } as CSSProperties;
+    // Whole pixels: a fractional box lets the tile's surface show beside the video layer, which is drawn on whole pixels.
+    ...(size ? { "--stage-picture-width": `${Math.floor(size.width)}px`, "--stage-picture-height": `${Math.floor(size.height)}px` } : {}) } as CSSProperties;
 }
 
 function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, size, onFocus, theaterMode, onToggleTheater, automaticPlayback }: {

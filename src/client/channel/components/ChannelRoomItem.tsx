@@ -11,10 +11,12 @@ import "./channel-room-item.css";
 /** Room navigation and room management are separate actions on the same item.
  * An unavailable room this device should host but could not open is not described as offline. */
 export function ChannelRoomItem({ room, selected, voice = false, sharing = false, viewing,
-  sourceCount = 0, settingsOpen = false, unread = false, unopened = false, participantDisclosure, onSelect, onManage }: {
+  sourceCount = 0, settingsOpen = false, unread = false, unopened = false, participantDisclosure, nameHint = false, onSelect, onManage }: {
   room: ChannelRoom; selected: boolean; voice?: boolean; sharing?: boolean; viewing?: ParticipantViewing; unopened?: boolean;
   sourceCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
+  /** The name is not drawn (a folded rail), so hovering or focusing the room shows it. */
+  nameHint?: boolean;
 }) {
   const { t, lang } = useCopy();
   const unreadId = useId(), offlineId = useId(), activityId = useId();
@@ -33,7 +35,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         title={{ text: t(participantDisclosure.open ? "room.item.hideParticipants" : "room.item.showParticipants", { count: String(participantDisclosure.count) }) }}
         expanded={participantDisclosure.open} controls={participantDisclosure.controls} onClick={participantDisclosure.onToggle} />
     </span>}
-    <Tooltip className="c3-room-label" overflow={{ text: room.name, selector: "strong" }}>
+    <Tooltip className="c3-room-label" {...nameHint ? { text: room.name } : { overflow: { text: room.name, selector: "strong" } }}>
       <button type="button" className="lr-btn is-quiet c3-room-link" aria-label={room.name}
         aria-describedby={[unread && unreadId, !room.available && offlineId, activityLabel && activityId].filter(Boolean).join(" ") || undefined}
         aria-current={selected ? "page" : undefined} onClick={onSelect}>

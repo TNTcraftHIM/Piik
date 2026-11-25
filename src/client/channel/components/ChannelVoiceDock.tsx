@@ -24,9 +24,11 @@ import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding
 import { SPEAKING_LEVEL } from "../../media/voice-gate";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
-export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSelect, onBrowse }: {
+export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSelect, onBrowse, labelled = false }: {
   channel: ChannelController; selected: string; renderingBySpeaker: ReadonlyMap<string, VoiceRendering>;
   onSelect: (id: string) => void; onBrowse: (id: string) => void;
+  /** Show short visible captions; each accessible name stays the control's full name. */
+  labelled?: boolean;
 }) {
   const { t } = useCopy();
   const state = channel.state;
@@ -102,11 +104,11 @@ export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSele
     <div ref={controls} className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
-          cancelPending={microphonePending} quiet keyShortcuts={microphoneDisabled ? undefined : voiceShortcutAria(microphone)}
+          cancelPending={microphonePending} quiet cap={labelled ? "host.device.microphone.short" : undefined} keyShortcuts={microphoneDisabled ? undefined : voiceShortcutAria(microphone)}
           shortcutLabel={!microphoneDisabled && microphone ? voiceShortcutLabel(microphone, shortcuts.mac) : undefined} onClick={() => toggle("microphone")} />
       </AudioVolumeMenu>
       <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume">
-        <VoiceListeningButton deafened={deafened} quiet
+        <VoiceListeningButton deafened={deafened} quiet cap={labelled ? "voice.listening.short" : undefined}
           keyShortcuts={voiceShortcutAria(listening)} shortcutLabel={listening ? voiceShortcutLabel(listening, shortcuts.mac) : undefined} onClick={() => toggle("listening")} />
       </AudioVolumeMenu>
       {overlay && <>
@@ -115,7 +117,7 @@ export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSele
           onClick={overlay.mode === "panel" ? overlay.show : overlay.edit} />
         {overlay.target && <Btn icon="x" size="compact" quiet textTooltip title="common.close" onClick={overlay.close} />}
       </>}
-      <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
+      <Btn icon="door" title="voice.leave" cap={labelled ? "voice.leave.short" : undefined} hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         onClick={() => run(channel.leaveVoice(roomId))} />
     </div>
   </section>;

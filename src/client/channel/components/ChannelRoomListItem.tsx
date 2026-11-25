@@ -10,10 +10,12 @@ import { ChannelRoomParticipants } from "./ChannelRoomParticipants";
 import { roomActivityPeople, roomHasUnread, roomPeople, roomSessionViewing } from "../presentation";
 
 /** Folding the participant roster changes presentation, never room activities. */
-export function ChannelRoomListItem({ channel, room, selected, settingsOpen, unopened, onSelect, onManage, ordering, pile = false }: {
+export function ChannelRoomListItem({ channel, room, selected, settingsOpen, unopened, onSelect, onManage, ordering, pile = false, nameHint = false }: {
   channel: ChannelController; room: ChannelRoom; selected: boolean; settingsOpen: boolean; unopened?: boolean;
   /** Show the people present as a small pile of figures and a count; their rows live on the couch. */
   pile?: boolean;
+  /** The list is folded to a rail: the room name appears on hover and focus. */
+  nameHint?: boolean;
   onSelect(): void; onManage(): void;
   ordering?: { index: number; total: number; onMove(direction: -1 | 1): void; onDrag(): void; onDrop(): void; onEnd(): void; active: boolean };
 }) {
@@ -42,7 +44,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         <button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === ordering.total - 1} aria-label={t("room.order.down", { name: room.name })}
           onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={14} /></button>
       </div>}
-      <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
+      <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen} nameHint={nameHint}
         unread={roomHasUnread(room, channel.readByRoom[room.id])} unopened={unopened}
         participantDisclosure={people.length ? { open, count: people.length, controls: id, onToggle: () => setOpen(!open) } : undefined}
         voice={voices.some(voice => voice.sessionId === channel.sessionId)} sourceCount={screens.length + watches.length}
