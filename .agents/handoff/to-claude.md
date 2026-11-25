@@ -77,7 +77,10 @@ with the SDK clock and wakeups; no application timeout is needed.
 The Native adapter experiment retained its outputs/channels through the first
 interval and used existing retirement at expiry. Independent review requires
 input release when a state event is lost to queue overflow and strict input
-permission at the final serialized write. Those corrections are in progress.
+permission at the final serialized write. Both now pass red/green controls and
+independent review: release retains the media/sibling identities; queued input
+is discarded while ordinary control remains usable, and fresh input works after
+reconnection. No extra timer, permission model or OS input injection was added.
 Core branch recovery and Browser observation changes remain isolated pending
 matched runtime evidence. Production dependency pins have not changed.
 
