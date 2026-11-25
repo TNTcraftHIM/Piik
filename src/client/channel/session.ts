@@ -1628,16 +1628,15 @@ export class ChannelSession {
     const preparationSignal = preparation && signal ? AbortSignal.any([preparation.signal, signal]) : preparation?.signal ?? signal;
     let prepared = retry?.files ?? [];
     if (!retry && files.length) {
-      const lifetime = new AbortController();
-      const unsubscribe = this.subscribe(() => {
-        if (this.closed || this.view.sessionId !== sessionId) lifetime.abort(new Error("disconnected"));
-        else if (this.conversationBinding(roomId) !== bindingId) lifetime.abort(new Error("room_unavailable"));
+      const lifetime = this.abortWhenStale(() => {
+        if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
+        if (this.conversationBinding(roomId) !== bindingId) throw new Error("room_unavailable");
       });
       const fileSignal = preparationSignal ? AbortSignal.any([preparationSignal, lifetime.signal]) : lifetime.signal;
       try {
         prepared = await this.attachments.describe(files, fileSignal, preparation?.progress);
         fileSignal.throwIfAborted();
-      } finally { unsubscribe(); }
+      } finally { lifetime.dispose(); }
     }
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
     preparationSignal?.throwIfAborted();
@@ -1826,6 +1825,13 @@ export class ChannelSession {
     };
   }
 
+  /** A signal that aborts with the check's error once a view change makes the check throw. */
+  private abortWhenStale(check: () => void): { signal: AbortSignal; dispose: () => void } {
+    const controller = new AbortController();
+    const dispose = this.subscribe(() => { try { check(); } catch (error) { controller.abort(error); } });
+    return { signal: controller.signal, dispose };
+  }
+
   private connectionContext(roomId: string, publicationId?: string) {
     const selection = this.roomId;
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
@@ -1961,10 +1967,9 @@ export class ChannelSession {
 
   private async exportRoomArchive(roomId: string, includeFiles: boolean, surface?: AbortSignal, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
     const owner = await this.backupOwner(roomId);
-    const lifetime = new AbortController();
+    const lifetime = this.abortWhenStale(owner.current);
     const signal = surface ? AbortSignal.any([surface, lifetime.signal]) : lifetime.signal;
     const current = () => { signal.throwIfAborted(); owner.current(); };
-    const unsubscribe = this.subscribe(() => { try { owner.current(); } catch (error) { lifetime.abort(error); } });
     let snapshot: BrowserRoomSnapshot | undefined;
     try {
       current();
@@ -1999,7 +2004,7 @@ export class ChannelSession {
       }
       if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };
       return await this.writeRoomSnapshot(snapshot!, metadata, retained, current, signal);
-    } finally { unsubscribe(); await snapshot?.close(); }
+    } finally { lifetime.dispose(); await snapshot?.close(); }
   }
 
   private waitForState(ready: () => boolean): Promise<void> {
@@ -2254,15 +2259,14 @@ export class ChannelSession {
         const hosted = this.hostedRooms.get(target);
         // The transaction retires the durable writer. Keep the old host alive
         // until commit so a storage rollback needs no competing registration.
-        const cancel = new AbortController();
-        const unsubscribe = this.subscribe(() => { try { check(); } catch { cancel.abort(); } });
+        const cancel = this.abortWhenStale(check);
         try {
           if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
           else await stage.replace(cancel.signal);
           committed = true;
           if (!owner) requestBrowserRoomPersistence();
         }
-        finally { unsubscribe(); }
+        finally { cancel.dispose(); }
         if (hosted && this.hostedRooms.get(target) === hosted) {
           this.hostedRooms.delete(target);
           if (hosted.bindingId) this.write({ type: "host_stop", roomId: target, bindingId: hosted.bindingId });
