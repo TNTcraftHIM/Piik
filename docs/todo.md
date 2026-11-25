@@ -230,13 +230,13 @@ the feedback period; they do not delay that delivery.
 ## Next
 
 - [ ] **Quiet topology improvement.** Decide
-  [ADR-0018](./adr/0018-quiet-topology-improvement.md): direct voice,
-  capacity learned from what a node carried, placement by proved facts, and
-  one proved move at a time for repair and promotion. Stage 0 comes first: a
-  report a second from each endpoint, a decision log and the planner in
-  shadow. Its records decide every later stage. The
-  [evidence](./research/topology-improvement-design.md) lists the
-  measurements still missing.
+  [ADR-0018](./adr/0018-quiet-topology-improvement.md). Stage 0 is offline:
+  replay the planner on exported diagnostics and look for an opportunity that
+  recurs. The first production step is one leaf moved to a strictly better
+  place with the present proof, then one more child tried on unmet demand.
+  The [evidence](./research/topology-improvement-design.md) lists the
+  measurements still missing, first of them the wait after a silent parent
+  death.
 - [ ] **Separate the canon from derived design in the documents.** Where a
   record states a founding idea beside defaults, numbers or mechanisms, link
   the [canon](./canon.md) and keep the derived design. Start with

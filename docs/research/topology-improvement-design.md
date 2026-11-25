@@ -62,8 +62,11 @@ history over many sessions.
 - What 7 or 19 idle audio connections cost a phone.
 - Whether a Browser can forward encoded frames unchanged. Chrome shipped
   constructors for encoded frames and named forwarding to another peer
-  connection as a use, while the specification still says a processor cannot
-  move frames between streams.
+  connection as a use, while the specification says a processor cannot move
+  frames between streams. A test in Chrome 156 settled it for now: a
+  constructed copy of an encoded audio frame delivered no frames, on the same
+  sender and across connections, so a Browser relay still decodes and encodes
+  again.
   [Intent to ship](https://www.mail-archive.com/blink-dev@chromium.org/msg10120.html) ·
   [Encoded Transform](https://w3c.github.io/webrtc-encoded-transform/)
 
@@ -73,7 +76,12 @@ Each designer received the requirements, the canon's principles, the facts of
 the platform and the evidence above, and read nothing in the repository. Two
 received the same brief. The third was asked to test whether the conventional
 answer is wrong for a group of 2 to 20. They are instances of one model
-family, so their agreement marks a design worth testing, not a proof.
+family, so their agreement marks a design worth testing, not a proof. They
+also assumed one encoding per stream and counters that the Native runtime
+does not have. Frame counts are not comparable across layers or re-encoding,
+and in the present tree a report to the room authority sends a full snapshot
+to every session. [ADR-0018](../adr/0018-quiet-topology-improvement.md)
+therefore starts offline and decides a move by comparison.
 
 All three agree on the following. The third designer concluded that the three
 earlier rules were right in substance.
@@ -139,5 +147,7 @@ earlier rules were right in substance.
 4. The cost of one re-encoding hop: delay, resolution, frame rate.
 5. Whether a node's proved capacity repeats from day to day.
 6. A hop chain for voice, with a Native forwarder and with a Browser.
-7. Idle audio connections on a phone, at 3, 7 and 19.
-8. Whether a Chromium Browser can forward encoded frames unchanged.
+7. Idle audio connections on a phone, at 3, 7 and 19. On a desktop Browser,
+   twenty idle pairs cost about 2.4 KiB/s per endpoint
+   ([network lab](./network-lab.md#idle-physical-connection-cost)).
+8. How long a viewer waits after a parent dies silently.
