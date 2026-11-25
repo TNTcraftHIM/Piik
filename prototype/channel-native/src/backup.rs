@@ -382,7 +382,7 @@ mod tests {
             })
             .collect();
         let metadata = RoomMetadata {
-            version: 3,
+            version: RoomMetadata::VERSION,
             domain_id: Uuid::new_v4(),
             policy: RoomState::new(
                 "living".into(),

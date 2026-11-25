@@ -85,7 +85,6 @@ pub struct RoomSnapshot {
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
     pub subscriptions: Vec<Uuid>,
-    pub failed_subscriptions: Vec<Uuid>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -108,7 +107,6 @@ pub struct RoomRecipient {
     pub members: Option<Vec<Uuid>>,
     pub files: Vec<crate::file_room::FilePlan>,
     pub subscriptions: Vec<Uuid>,
-    pub failed_subscriptions: Vec<Uuid>,
 }
 
 impl RoomRuntime {
@@ -319,15 +317,6 @@ impl RoomRuntime {
             } else {
                 vec![]
             },
-            failed_subscriptions: self
-                .publications
-                .values()
-                .filter(|publication| {
-                    publication.delivery_failed(session)
-                        && subscriptions.contains(&publication.info.id)
-                })
-                .map(|publication| publication.info.id)
-                .collect(),
             subscriptions,
         })
     }
@@ -373,8 +362,6 @@ impl RoomRuntime {
             },
             capabilities: crate::wire::RoomCapabilities {
                 attachments: self.attachments_available(),
-                history_seek: true,
-                file_availability_limit: Some(crate::wire::FILE_AVAILABILITY_LIMIT),
             },
             participant_session_ids: self
                 .media_sessions()
@@ -3665,13 +3652,21 @@ mod tests {
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
         let failed = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
         let sibling = room.flows().find(|flow| flow.receiver == id(1)).unwrap();
+        // Screens whose delivery failed, as the receiver's own audience entry in its own snapshot.
         let failures = |room: &RoomRuntime, receiver| {
-            serde_json::to_value(
-                room.snapshot(endpoints[&receiver].member, receiver)
-                    .unwrap(),
-            )
-            .unwrap()["failedSubscriptions"]
-                .clone()
+            let own = PublicationAudience {
+                session_id: receiver,
+                state: AudienceState::Failed,
+            };
+            let ids: Vec<_> = room
+                .snapshot(endpoints[&receiver].member, receiver)
+                .unwrap()
+                .publications
+                .into_iter()
+                .filter(|publication| publication.audience.contains(&own))
+                .map(|publication| publication.id)
+                .collect();
+            serde_json::json!(ids)
         };
         room.flow_state(
             failed.id,
@@ -4908,6 +4903,11 @@ mod tests {
         room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Failed, 3)
             .unwrap();
         assert_eq!(audience(&room, id(3))[0].state, AudienceState::Failed);
+        // The viewer reads its own delivery failure from its own entry, by session.
+        assert!(audience(&room, id(4)).contains(&PublicationAudience {
+            session_id: id(4),
+            state: AudienceState::Failed,
+        }));
 
         let (mut room, mut endpoints, pairs, _, _) = branch_candidate(false);
         let viewer = endpoints[&id(4)].member;
@@ -5045,13 +5045,14 @@ mod tests {
                 .iter()
                 .all(|old| !room.flows().any(|f| f.id == old.id)));
             for receiver in [id(1), id(2), id(4)] {
-                assert_eq!(
-                    serde_json::to_value(
-                        room.snapshot(endpoints[&receiver].member, receiver)
-                            .unwrap()
-                    )
-                    .unwrap()["failedSubscriptions"],
-                    serde_json::json!([]),
+                assert!(
+                    room.snapshot(endpoints[&receiver].member, receiver)
+                        .unwrap()
+                        .publications
+                        .iter()
+                        .flat_map(|publication| &publication.audience)
+                        .all(|viewer| viewer.session_id != receiver
+                            || viewer.state != AudienceState::Failed),
                     "an optional candidate does not fail its healthy incumbent"
                 );
             }
@@ -5264,18 +5265,18 @@ mod tests {
 
         let admitted = room.snapshot(viewer, viewer_session).unwrap();
         assert!(admitted.room.authorized);
-        assert!(admitted.room.capabilities.history_seek);
+        assert!(admitted.room.history_lineage.is_some());
         let projection = room.project(BTreeMap::from([(
             viewer_session,
             room.recipient(viewer, viewer_session, true, |_| false).unwrap(),
         )]));
         assert!(
-            !projection
+            projection
                 .snapshot(viewer_session, false)
                 .unwrap()
                 .room
-                .capabilities
-                .history_seek
+                .history_lineage
+                .is_none()
         );
         assert_eq!(
             admitted
@@ -5329,7 +5330,7 @@ mod tests {
         );
         let locked = room.snapshot(viewer, viewer_session).unwrap();
         assert!(!locked.room.authorized);
-        assert!(!locked.room.capabilities.history_seek);
+        assert!(locked.room.history_lineage.is_none());
         assert!(!locked.room.can_manage);
         assert!(locked.room.participant_session_ids.is_empty());
         assert!(locked.room.file_activity.is_empty());

@@ -86,7 +86,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();

@@ -777,33 +777,10 @@ impl Authority {
         {
             return;
         }
-        let mut completion = RoomResult::Done;
-        match reply.result {
-            RoomResult::Invite { key } => effects.events.push((
-                context.connection,
-                Event::RoomInvite {
-                    room_id: room_id.into(),
-                    key,
-                    request_id: context.request_id.clone(),
-                },
-            )),
-            RoomResult::InviteState { invitation } => effects.events.push((
-                context.connection,
-                Event::RoomInviteState {
-                    room_id: room_id.into(),
-                    invitation,
-                    request_id: context.request_id.clone(),
-                },
-            )),
-            RoomResult::WatchReady { server_time } => {
-                completion = RoomResult::WatchReady { server_time }
-            }
-            RoomResult::Error { code } => completion = RoomResult::Error { code },
-            RoomResult::Deleted { data_removed } => {
-                completion = RoomResult::Deleted { data_removed }
-            }
-            RoomResult::Done | RoomResult::Topology { .. } => {}
-        }
+        let completion = match reply.result {
+            RoomResult::Topology { .. } => RoomResult::Done,
+            result => result,
+        };
         effects.events.push((
             context.connection,
             Event::RoomReply {

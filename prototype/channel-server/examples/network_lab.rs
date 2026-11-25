@@ -177,7 +177,7 @@ async fn participant() -> Result<()> {
                     snapshots.send_replace(Some(state.clone()));
                     peers.as_ref().unwrap().update(state.pairs, state.publications, state.files, state.watch_bytes).await?;
                     if !browsing && room.is_some() {
-                        send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true, relay_capacity: None }).await?;
+                        send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true }).await?;
                         send(&mut socket, Command::Voice { room_id: ROOM.into(), joined: true, muted: true, deafened: false }).await?;
                         browsing = true;
                     }

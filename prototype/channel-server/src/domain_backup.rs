@@ -192,7 +192,7 @@ pub(super) async fn create_copy(
             .new_policy(password, picture, allow_service_relay)
             .map_err(creation_error)?;
         let metadata = RoomMetadata {
-            version: 3,
+            version: RoomMetadata::VERSION,
             domain_id,
             policy,
             own_credential: None,

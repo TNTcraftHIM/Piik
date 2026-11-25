@@ -45,7 +45,7 @@ import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { ChannelDiagnosisHelp } from "../channel/components/ChannelDiagnosisHelp";
-import { roomHasUnread, roomPeople, roomSessionViewing, viewingAppearance, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
+import { roomHasUnread, roomPeople, roomSessionViewing, viewingAppearance, screenAudience, screenDeliveryFailed, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
 import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
@@ -610,7 +610,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
-            deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            deliveryFailed: screenDeliveryFailed(publication, sessionId),
             pictureFailure: pictureAction.errors.get(publication.id), clearPictureFailure: () => pictureAction.clearError(publication.id),
             playbackError: channel.screenPlaybackError(publication.id),
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
@@ -674,7 +674,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
-            findUnreadMessage={room?.capabilities.historySeek === true ? channel.findUnreadMessage : undefined}
+            findUnreadMessage={room?.historyLineage ? channel.findUnreadMessage : undefined}
             onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} lastMessageSeq={room?.lastMessageSeq} selfUserId={self?.id}
             onDeleteMessage={room?.authorized ? channel.deleteMessage : undefined}
             canModerate={room?.canManage || (!!self && self.id === state?.channel.ownerId)} pending={channel.pending}

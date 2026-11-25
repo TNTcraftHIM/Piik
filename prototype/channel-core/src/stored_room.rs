@@ -23,7 +23,7 @@ impl RoomBackup {
         own_credential: Option<OwnCredential>,
     ) -> StoreResult<Self> {
         let metadata = RoomMetadata {
-            version: 3,
+            version: RoomMetadata::VERSION,
             domain_id,
             policy: serde_json::from_value(store.load()?.ok_or("room_not_found")?)?,
             own_credential,

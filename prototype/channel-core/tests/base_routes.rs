@@ -129,7 +129,7 @@ fn warm_pair(network: &mut RoomNetwork, source: Uuid, viewer: Uuid, source_sessi
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -247,15 +247,9 @@ fn picture_failure_is_projected_only_to_the_authorized_receiving_watch() {
         host,
         json!({"type":"flow_state", "pairId":receiving.id, "flowId":flow, "state":"failed"}),
     );
-    assert_eq!(
-        serde_json::to_value(network.state(viewer)).unwrap()["failedSubscriptions"],
-        json!([screen])
-    );
+    assert_eq!(network.failed_screens(viewer), [screen]);
     for unrelated in [host, observer] {
-        assert_eq!(
-            serde_json::to_value(network.state(unrelated)).unwrap()["failedSubscriptions"],
-            json!([])
-        );
+        assert!(network.failed_screens(unrelated).is_empty());
     }
     assert!(network
         .state(viewer)
@@ -270,10 +264,7 @@ fn picture_failure_is_projected_only_to_the_authorized_receiving_watch() {
         late.events.is_empty(),
         "retired reports never reach the room host"
     );
-    assert_eq!(
-        serde_json::to_value(network.state(viewer)).unwrap()["failedSubscriptions"],
-        json!([screen])
-    );
+    assert_eq!(network.failed_screens(viewer), [screen]);
 }
 
 #[test]
@@ -1022,7 +1013,7 @@ fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -1715,7 +1706,7 @@ fn file_copy_selection_uses_the_last_link_confirmation_without_an_extra_sync() {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -2951,15 +2942,12 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         if outcome == "pending" {
             use piik_channel_core::wire::{FileAvailability, FILE_AVAILABILITY_LIMIT};
 
-            for (limit, count, authorized, reading) in [
-                (Some(FILE_AVAILABILITY_LIMIT + 1), 1, true, true),
-                (Some(1), 2, true, true),
-                (Some(1), 1, true, false),
-                (Some(1), 1, false, true),
-                (None, 1, true, true),
+            for (count, authorized, reading) in [
+                (FILE_AVAILABILITY_LIMIT + 1, true, true),
+                (1, true, false),
+                (1, false, true),
             ] {
                 let mut invalid = output.clone();
-                invalid.projection.capabilities.file_availability_limit = limit;
                 let view = invalid
                     .projection
                     .views
@@ -2979,7 +2967,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                     rejected.events.iter().any(|(_, event)| matches!(
                         event, Event::Error { code, .. } if code == "invalid_room_projection"
                     )),
-                    "accepted invalid observation ({limit:?}, {count}, {authorized}, {reading})"
+                    "accepted invalid observation ({count}, {authorized}, {reading})"
                 );
             }
         }
@@ -3711,10 +3699,7 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
     assert!(expired.events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::RouteWake))));
     network.deliver(expired);
     assert!(screen_input(&network, healthy, host_session, picture).is_none());
-    assert!(network
-        .state(healthy)
-        .failed_subscriptions
-        .contains(&picture));
+    assert!(network.failed_screens(healthy).contains(&picture));
 }
 
 #[test]
@@ -5227,7 +5212,7 @@ fn reader_relay_follows_room_scope_and_releases_proved_flows_at_zero() {
         viewer,
         json!({"type":"flow_state","pairId":downstream_pair,"flowId":downstream.id,"state":"decoded"}),
     );
-    assert!(network.state(viewer).failed_subscriptions.is_empty());
+    assert!(network.failed_screens(viewer).is_empty());
 
     voice(&mut network, reader, &room, true);
     assert_eq!(
@@ -5239,7 +5224,7 @@ fn reader_relay_follows_room_scope_and_releases_proved_flows_at_zero() {
         screen_input(&network, viewer, relay, screen),
         Some((downstream_pair, downstream))
     );
-    assert!(network.state(viewer).failed_subscriptions.is_empty());
+    assert!(network.failed_screens(viewer).is_empty());
 
     let personal = screen_input(&network, reader, source, screen).unwrap();
     command(
@@ -5483,7 +5468,7 @@ fn screen_reaches_its_only_viewer_through_two_room_readers() {
         for reader in [first, second] {
             assert!(!network.state(reader).subscriptions.contains(&screen));
         }
-        assert!(network.state(viewer).failed_subscriptions.is_empty());
+        assert!(network.failed_screens(viewer).is_empty());
         network.command_at(
             viewer,
             json!({"type":"subscribe","publicationId":screen,"enabled":false}),

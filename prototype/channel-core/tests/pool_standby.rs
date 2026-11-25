@@ -94,7 +94,7 @@ fn invite(net: &mut RoomNetwork, owner: Uuid, reader: Uuid, room: &str) {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .expect("owner invited a room reader");
@@ -388,9 +388,8 @@ fn at_the_physical_limit_a_private_screen_waits_until_a_slot_is_released() {
     invite(&mut net, owner, viewer, &room);
     subscribe(&mut net, viewer, picture, true);
     let assert_waiting = |net: &RoomNetwork| {
-        let state = net.state(viewer);
-        assert!(state.subscriptions.contains(&picture));
-        assert!(!state.failed_subscriptions.contains(&picture));
+        assert!(net.state(viewer).subscriptions.contains(&picture));
+        assert!(!net.failed_screens(viewer).contains(&picture));
         assert!(pair(net, viewer, source).is_none());
         assert_eq!(net.state(owner).pairs.len(), DEGREE_LIMIT);
     };

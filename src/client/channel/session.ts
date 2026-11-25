@@ -21,7 +21,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { id as channelId, roomInvitationSchema, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
@@ -316,7 +316,7 @@ export class ChannelSession {
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed, request) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed, request),
     key => messageRemoved(this.view.historyChangesByRoom[key.roomId], key.messageSeq),
-    (peer, request) => this.media.cancelChunks(peer, request));
+    (peer, request) => this.media.cancelChunks(peer, request), () => this.conversation.fileAvailabilityLimit());
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -628,16 +628,12 @@ export class ChannelSession {
       this.mergeProfiles(event.profiles);
       request.result?.(event); request.resolve();
     }
-    else if (event.type === "room_invite" || event.type === "room_invite_state") {
-      if (event.requestId) {
-        const request = this.requests.get(event.requestId);
-        if (request?.roomId === event.roomId) request.result?.(event);
-      }
-    } else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
+    else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
     else if (event.type === "ack" || event.type === "error") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : null;
       if (request && event.requestId) {
+        if (event.type === "ack" && (request.kind === "room_invite" || request.kind === "get_room_invite")) return;
         this.retireRequest(event.requestId);
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
@@ -952,6 +948,8 @@ export class ChannelSession {
               if (needsClock) {
                 const time = event.result.serverTime;
                 if (kind !== "watch_ready" || typeof time !== "number" || !Number.isSafeInteger(time) || time < 0) throw new Error("invalid_response");
+              } else if (command.type === "room_invite" || command.type === "get_room_invite") {
+                if (kind !== (command.type === "room_invite" ? "invite" : "invite_state")) throw new Error("invalid_response");
               } else if (command.type !== "delete_room" && command.type !== "room_topology" && (conversation || kind !== "done")) {
                 throw new Error("invalid_response");
               }
@@ -1576,7 +1574,7 @@ export class ChannelSession {
       if (this.view.connection !== "connected" || this.view.sessionId !== sessionId) throw new Error("disconnected");
       if (this.readings.get(roomId) !== reading || !this.wantedReadings().has(roomId)) throw new DOMException("Read cancelled", "AbortError");
       if (!bindingId || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized
-        && room.available && room.delivery?.bindingId === bindingId && room.capabilities.historySeek)) throw new Error("room_unavailable");
+        && room.available && room.delivery?.bindingId === bindingId && room.historyLineage)) throw new Error("room_unavailable");
     };
     for (let attempt = 0; attempt < 2; attempt++) {
       guard();
@@ -1875,7 +1873,7 @@ export class ChannelSession {
         } catch (error) { await stage?.close(); throw error; }
       } else {
         snapshot = await owner.snapshot!(signal); current();
-        metadata = { kind: "room", version: 3, domainId: this.view.state!.channel.id,
+        metadata = { kind: "room", version: 4, domainId: this.view.state!.channel.id,
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
       if (copy) {
@@ -2031,7 +2029,7 @@ export class ChannelSession {
       const { room, cancel } = await this.allocateRoom(settings);
       cancelReservation = cancel;
       current();
-      return await this.installRoomHistory({ kind: "room", version: 3, domainId: state.channel.id,
+      return await this.installRoomHistory({ kind: "room", version: 4, domainId: state.channel.id,
         policy: { ...JSON.parse(policy), id: room.id }, retainedFiles: metadata.retainedFiles }, contents, { kind: "copy", stage });
     } catch (error) {
       if (!roomRestoreRecovery(error)) cancelReservation?.();
@@ -2246,8 +2244,11 @@ export class ChannelSession {
   getRoomInvite = async (roomId: string): Promise<RoomInvitationState> => {
     let invitation: RoomInvitationState | undefined;
     await this.request({ type: "get_room_invite", roomId }, event => {
-      if (event.type === "room_invite_state") invitation = event.invitation.state === "available"
-        ? { state: "available", url: this.roomInvitationURL(roomId, event.invitation.key) } : event.invitation;
+      if (event.type !== "room_reply") throw new Error("invalid_response");
+      const state = roomInvitationSchema.safeParse(event.result.invitation);
+      if (!state.success) throw new Error("invalid_response");
+      invitation = state.data.state === "available"
+        ? { state: "available", url: this.roomInvitationURL(roomId, state.data.key) } : state.data;
     });
     if (!invitation) throw new Error("invalid_response");
     return invitation;
@@ -2259,7 +2260,12 @@ export class ChannelSession {
   createRoomInvite = async (roomId: string): Promise<string> => {
     if (this.invitationPending(roomId)) throw new Error("operation_pending");
     let key: string | undefined;
-    await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
+    await this.request({ type: "room_invite", roomId }, event => {
+      if (event.type !== "room_reply") throw new Error("invalid_response");
+      const parsed = channelId.safeParse(event.result.key);
+      if (!parsed.success) throw new Error("invalid_response");
+      key = parsed.data;
+    });
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
   };
@@ -3777,7 +3783,6 @@ export class ChannelSession {
       voice: this.voice.project(state.voice),
       ...this.projectWatches(state),
       subscriptions,
-      failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),
     };
   }
 

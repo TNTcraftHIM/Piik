@@ -1,5 +1,5 @@
 use piik_channel_core::{
-    wire::{Event, Request, RoomAccess, Snapshot},
+    wire::{AudienceState, Event, PublicationAudience, Request, RoomAccess, Snapshot},
     Authority, Effects, RoomState, StoredRoomHost,
 };
 use serde_json::{json, Value};
@@ -240,5 +240,21 @@ impl RoomNetwork {
 
     pub fn state(&self, connection: Uuid) -> &Snapshot {
         &self.states[&connection]
+    }
+
+    /// Screens whose delivery failed to this endpoint: its own audience entries,
+    /// matched by session because one user can watch from several endpoints.
+    #[allow(dead_code)]
+    pub fn failed_screens(&self, connection: Uuid) -> Vec<Uuid> {
+        let failed = PublicationAudience {
+            session_id: self.sessions[&connection],
+            state: AudienceState::Failed,
+        };
+        self.state(connection)
+            .publications
+            .iter()
+            .filter(|publication| publication.audience.contains(&failed))
+            .map(|publication| publication.id)
+            .collect()
     }
 }

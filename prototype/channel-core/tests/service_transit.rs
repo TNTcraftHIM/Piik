@@ -77,7 +77,7 @@ fn private_room(net: &mut RoomNetwork, host: Uuid, viewer: Uuid) -> String {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();

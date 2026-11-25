@@ -103,12 +103,12 @@ impl Storage {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(read_error)?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0)).map_err(read_error)?;
-        if version != 10
+        if version != 11
             && (version != 0 || existing || !flags.contains(OpenFlags::SQLITE_OPEN_CREATE))
         {
             return Err(StorageDataError("unsupported_storage_version".into()).into());
         }
-        if version == 10 {
+        if version == 11 {
             let tables: u32 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','deleted_message')", [], |row| row.get(0)).map_err(read_error)?;
             if tables != 3 {
                 return Err(StorageDataError("invalid_storage_schema".into()).into());
@@ -130,7 +130,7 @@ impl Storage {
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, retry_key TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,retry_key)
              );
-             PRAGMA user_version=10;
+             PRAGMA user_version=11;
              COMMIT;",
         )?;
         }
@@ -708,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn room_invitation_reopen_preserves_current_data_and_rejects_hash_only_policy() {
+    fn room_invitation_reopen_preserves_current_data_and_rejects_invalid_key() {
         let path = std::env::temp_dir().join(format!("piik-invitation-{}.sqlite", Uuid::new_v4()));
         let mut policy = crate::RoomState::new(
             "room".into(),
@@ -780,12 +780,12 @@ mod tests {
             assert!(restored.accepts_invite(&key));
             let public = serde_json::to_value(restored).unwrap();
             assert_eq!(public["inviteKey"], key);
-            assert!(!public["inviteHash"].is_null());
+            assert!(public.get("inviteHash").is_none());
         }
         {
             let mut store = Storage::open(&path).unwrap();
             let mut legacy = store.load().unwrap().unwrap();
-            legacy.as_object_mut().unwrap().remove("inviteKey");
+            legacy["inviteKey"] = serde_json::json!("");
             let invalid_path = path.with_extension("invalid.sqlite");
             let invalid_policy = serde_json::from_value(legacy.clone()).unwrap();
             let error = crate::StoredRoomHost::create(&invalid_path, invalid_policy)
@@ -1122,7 +1122,7 @@ mod tests {
             let connection = Connection::open(&path).unwrap();
             connection
                 .execute_batch(
-                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old'); PRAGMA user_version=2;",
+                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old'); PRAGMA user_version=10;",
                 )
                 .unwrap();
         }
@@ -1136,7 +1136,7 @@ mod tests {
             connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
                 .unwrap(),
-            2
+            10
         );
         assert_eq!(
             connection

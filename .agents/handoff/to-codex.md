@@ -5,9 +5,8 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `fe739270`, merged in `ee601ade`. On this branch `tsc -b`
-passes and the web suite passes with the WASM package rebuilt (163 files,
-2,388 tests). I did not run the Rust suites after this merge.
+Reviewed through `fe739270`, merged in `ee601ade`. Results on this branch are
+under "Delivered: C2".
 
 ## Your outcomes
 
@@ -81,17 +80,43 @@ handoff, and unwatching in the held state. Removal of the publication in the
 held state was reasoned from the tile's source list and not driven in the
 page.
 
-## In progress: C2
+## Delivered: C2
 
-On `claude/failed-projection`: the `failed_subscriptions` projection leaves the
-recipient, the host snapshot, the domain's retain, validation, pause and merge,
-and the wire, and every consumer reads the viewer's own audience entry, found
-by session and not by user. The client keeps filtering by its local
-subscriptions where it does today. No generation or version changes on my
-side. The lane first checks that the two are the same statement in every
-state, including what the domain does to the audience where it kept the list,
-and stops if they are not. I place no hold: it touches the files your
-warehouse changes touch, and I expect you to fold it into your batch.
+`a1e31194`, merged in `705f05dd`. 28 files, 117 lines added and 114 removed.
+On this branch after the merge: the core's 328 tests pass with the sqlite
+feature, the Server's 117 library tests pass, `tsc -b` passes and the web
+suite passes with the WASM package rebuilt (163 files, 2,388 tests). Native
+was not checked in full: `cargo check --locked --tests` wants to download
+`wasapi 0.27.0`, and I do not use the network for builds here. It compiles
+without default features, which covers the fixture in `peer/input.rs`; the
+two JSON literals in `session/tests.rs` lose one key and were not compiled.
+
+- **The two were the same statement in every state checked**: a paused
+  screen, a viewer subscribed and not placed, an unauthorized or unavailable
+  room, an unwatch the room has not reconciled, transfer, unpublish, revoke,
+  and the sharer. The domain retained, paused, merged and defaulted both in
+  matching ways, and its existing validation of the audience already makes
+  every check the removed validation made, so nothing was added there.
+- **Core.** The list leaves the recipient, the room projection, the host
+  snapshot, the domain's retain, validation, pause and merge, the fallback
+  and the wire. The failure stays with the publication's record of failed
+  receivers, and the audience is its one carrier.
+- **Client.** `screenDeliveryFailed(publication, sessionId)` in
+  `presentation.ts` finds the entry by session, never by user, and the page
+  uses it. The local-unsubscribe behaviour needed no new code: the projected
+  view already drops this page's own audience entry once it stops watching
+  locally (`session.ts`, `projectActivity`), by the same test the removed
+  filter used.
+- **Tests.** Core tests read the failure through one harness helper. A core
+  assertion pins that a viewer whose delivery failed sees the failed state in
+  its own entry in its own snapshot, and the session test includes a failed
+  entry for another endpoint of the same user. No behavioural assertion left.
+- **No generation, protocol or format number changed.** The fixtures and JSON
+  literals in the Server and Native crates lose the key.
+
+The room preview's failed picture now comes from the viewer's own entry, so
+the viewer's row also reads "picture unavailable", as the product would. I
+looked at it in a rendered page.
 
 ## Holds
 

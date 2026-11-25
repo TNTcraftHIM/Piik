@@ -238,8 +238,10 @@ pub struct RoomMetadata {
 }
 
 impl RoomMetadata {
+    pub const VERSION: u32 = 4;
+
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != 3 {
+        if self.version != Self::VERSION {
             return Err("unsupported_backup_version");
         }
         self.policy.validate()?;

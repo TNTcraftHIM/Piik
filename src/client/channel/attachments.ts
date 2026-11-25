@@ -64,7 +64,7 @@ export class ChannelAttachments {
   private expiry: ReturnType<typeof setTimeout> | undefined;
   private rooms: ChannelRoom[] = [];
   private availability = new VisibleFileAvailability(() => this.rooms, command => this.command(command),
-    () => this.changed(), key => this.messageRemoved(key));
+    () => this.changed(), key => this.messageRemoved(key), () => this.observationLimit());
   private sources = new Map<string, Source>();
   private scope: FileScope | null = null;
   private store: FileStore | null = null;
@@ -79,7 +79,8 @@ export class ChannelAttachments {
   constructor(private command: (command: ChannelCommand) => Promise<void>,
     private sendData: (peer: string, kind: "control" | "chunk", data: string | Uint8Array, allowed: () => boolean, request?: string) => Promise<void>,
     private messageRemoved: (key: Pick<ChannelFileKey, "roomId" | "messageSeq">) => boolean = () => false,
-    private cancelChunks?: (peer: string, request: string) => void) {}
+    private cancelChunks?: (peer: string, request: string) => void,
+    private observationLimit: () => number = () => 0) {}
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   status = (key: ChannelFileKey, attachment?: ChannelAttachment) => {

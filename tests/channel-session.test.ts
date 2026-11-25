@@ -9,7 +9,7 @@ import { FeedbackAudio } from "../src/client/channel/feedback-audio";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
-import { listeningVoicePublications } from "../src/client/channel/presentation";
+import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";
 import { resolveVoiceDockControls } from "../src/client/channel/voice-dock-controls";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
@@ -167,7 +167,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding" } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
-    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
@@ -1040,15 +1040,17 @@ test("message reaction clicks count independently while nonce retries settle wit
 function enableUnreadLookup({ session, socket }: Awaited<ReturnType<typeof setup>>) {
   const state = structuredClone(session.getSnapshot().state!);
   const room = state.channel.rooms[0];
-  room.capabilities.historySeek = true;
   room.lastMessageSeq = 8;
   socket.receive({ type: "state", state });
   return state;
 }
 
-test("unread lookup skips seek when an older host omits the capability", async () => {
-  const { session, peer } = await setup();
+test("unread lookup skips seek when the room has no history lineage", async () => {
+  const { session, peer, socket } = await setup();
   try {
+    const state = structuredClone(session.getSnapshot().state!);
+    delete state.channel.rooms[0].historyLineage;
+    socket.receive({ type: "state", state });
     await expect(session.findUnreadMessage("first", 0, new AbortController().signal)).rejects.toThrow("room_unavailable");
     expect(peer.sent).toEqual([]);
   } finally { session.close(); }
@@ -1417,7 +1419,7 @@ test("room invitation rotations stay pending until their own final reply and kee
     expect(pending.at(-1)).toBe(true);
     const second = session.createRoomInvite("second");
     const [old, sibling] = rotations();
-    socket.receive({ type: "room_invite", roomId: "first", key: "old-key", requestId: old.requestId });
+    socket.receive({ type: "ack", requestId: old.requestId });
     await expect(session.createRoomInvite("first")).rejects.toThrow("operation_pending");
     expect(rotations()).toHaveLength(2);
     expect(session.getSnapshot().error).toBe("room_host_failed");
@@ -1431,12 +1433,10 @@ test("room invitation rotations stay pending until their own final reply and kee
     const retry = session.createRoomInvite("first");
     const replacement = rotations().at(-1)!;
     socket.receive({ type: "room_reply", roomId: "first", requestId: old.requestId, result: { type: "done" } });
-    socket.receive({ type: "room_invite", roomId: "second", key: "sibling", requestId: sibling.requestId });
-    socket.receive({ type: "ack", requestId: sibling.requestId });
+    socket.receive({ type: "room_reply", roomId: "second", requestId: sibling.requestId, result: { type: "invite", key: "sibling" } });
     await expect(second).resolves.toContain("invite=sibling");
     expect(session.invitationPending("first")).toBe(true);
-    socket.receive({ type: "room_invite", roomId: "first", key: "replacement", requestId: replacement.requestId });
-    socket.receive({ type: "room_reply", roomId: "first", requestId: replacement.requestId, result: { type: "done" } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: replacement.requestId, result: { type: "invite", key: "replacement" } });
     await expect(retry).resolves.toContain("invite=replacement");
     expect(pending.at(-1)).toBe(false);
   } finally { unsubscribe(); session.close(); }
@@ -1460,8 +1460,7 @@ test("site addresses and room invitations use the current Welcome origin without
       peer.page(await peer.next(), [], false, null);
       const creating = session.createRoomInvite("first");
       const request = socket.sent.findLast(command => command.type === "room_invite")!;
-      socket.receive({ type: "room_invite", roomId: "first", key: "room-invite", requestId: request.requestId });
-      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "invite", key: "room-invite" } });
       await expect(creating).resolves.toBe(`${origin}/__channel-preview#room=first&invite=room-invite`);
     }
   } finally { session.close(); }
@@ -1573,21 +1572,29 @@ test("App hosting uses its own participant while Browser rooms retain their page
 
 test("authority delivery results follow this page's watch intent and clear on current recovery", async () => {
   const { session, socket } = await setup();
-  const state = { ...session.getSnapshot().state!, publications: [
-    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
-  ], subscriptions: ["screen"], failedSubscriptions: ["screen"] };
+  const initial = session.getSnapshot().state!;
+  // This person's other endpoint also watches and has failed: only this page's own entry counts.
+  const delivery = (own: "active" | "failed") => ({ ...initial,
+    sessions: [...initial.sessions, { ...initial.sessions[0], id: "other-endpoint" }], publications: [
+      { audience: [{ sessionId: "endpoint", state: own }, { sessionId: "other-endpoint", state: "failed" }], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
+    ], subscriptions: ["screen"] });
+  const failed = () => screenDeliveryFailed(session.getSnapshot().state!.publications[0], session.getSnapshot().sessionId);
   try {
-    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state: delivery("failed") });
+    expect(failed()).toBe(false);
     const watching = session.watch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await watching;
-    socket.receive({ type: "state", state });
-    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"], failedSubscriptions: ["screen"] });
-    socket.receive({ type: "state", state: { ...state, failedSubscriptions: [] } });
-    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"], failedSubscriptions: [] });
-    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state: delivery("failed") });
+    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"] });
+    expect(failed()).toBe(true);
+    socket.receive({ type: "state", state: delivery("active") });
+    expect(session.getSnapshot().state).toMatchObject({ subscriptions: ["screen"] });
+    expect(failed()).toBe(false);
+    socket.receive({ type: "state", state: delivery("failed") });
     const stopping = session.unwatch("screen");
-    expect(session.getSnapshot().state).toMatchObject({ subscriptions: [], failedSubscriptions: [] });
+    expect(session.getSnapshot().state).toMatchObject({ subscriptions: [] });
+    expect(failed()).toBe(false);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await stopping;
   } finally { session.close(); }
@@ -10543,7 +10550,7 @@ async function setupRoomBackup() {
   context.socket.receive({ type: "state", state });
   context.socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
   context.socket.receive({ type: "ack", requestId: register.requestId });
-  const metadata = { kind: "room" as const, version: 3 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
+  const metadata = { kind: "room" as const, version: 4 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
   const send = context.socket.send.bind(context.socket);
   context.socket.send = data => {
     send(data);
@@ -10605,7 +10612,7 @@ test("domain backup uses its actual service owner and validates kind before reti
   const archive = new Blob(["domain-checkpoint"]), fetch = vi.fn().mockResolvedValue(new Response(archive));
   vi.stubGlobal("fetch", fetch);
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
-    const metadata = { kind: "room" as const, version: 3 as const, domainId: "domain", policy: { id: "first", creatorId: "self", name: "First", icon: "couch", voiceBitrate: 64000, relayCapacity: 2 }, retainedFiles: [] };
+    const metadata = { kind: "room" as const, version: 4 as const, domainId: "domain", policy: { id: "first", creatorId: "self", name: "First", icon: "couch", voiceBitrate: 64000, relayCapacity: 2 }, retainedFiles: [] };
     await visitor?.metadata(metadata); return metadata;
   });
   try {
@@ -10785,7 +10792,7 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
   let exported: unknown[] = [];
   const write = vi.spyOn(backupArchive, "writeBackup").mockImplementation(async (metadata, history, open) => {
     for await (const value of history!) exported.push(value);
-    expect(metadata).toMatchObject({ kind: "room", version: 3, ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
+    expect(metadata).toMatchObject({ kind: "room", version: 4, ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
     expect(await open!({ messageSeq: 1, attachment })).toBe(file);
     return new Blob(["archive"]);
   });
@@ -10881,12 +10888,12 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     expect(copied.id).not.toBe(messageId); expect(copied.userId).not.toBe(author); expect(copied.nonce).not.toBe(row.nonce);
     const policy = JSON.parse(core.create_room_policy(JSON.stringify({ id: crypto.randomUUID(), creatorId: creator,
       name: "New copy", icon: "couch", access: "private", hidden: false })));
-    const converted = await backupArchive.writeBackup({ kind: "room", version: 3, domainId: crypto.randomUUID(), policy,
+    const converted = await backupArchive.writeBackup({ kind: "room", version: 4, domainId: crypto.randomUUID(), policy,
       retainedFiles: metadata.kind === "room_copy" ? metadata.retainedFiles : [] },
       (async function* () { yield copied; })(), async entry => content.get(entry.attachment.sha256)!);
     const restored: BackupHistoryRow[] = [];
     const result = await backupArchive.readBackup(converted, { metadata: () => {}, row: value => { restored.push(value); }, content: () => {} });
-    expect(result).toMatchObject({ kind: "room", policy: { creatorId: creator, access: "private", grants: [], inviteHash: null, passwordHash: null } });
+    expect(result).toMatchObject({ kind: "room", policy: { creatorId: creator, access: "private", grants: [], passwordHash: null } });
     expect(result).not.toHaveProperty("ownCredential"); expect(policy).not.toHaveProperty("inviteKey");
     const target = { kind: "room" as const, domainId: result.kind === "room" ? result.domainId : "", roomId: policy.id };
     await expect(backupArchive.prepareHostedRoomArchive(archive, target, () => {})).rejects.toThrow("backup_room_mismatch");
@@ -11630,8 +11637,7 @@ test.each([{ state: "missing" }, { state: "available", key: "private-room-key" }
     const reading = session.getRoomInvite("first");
     const request = socket.sent.findLast(command => command.type === "get_room_invite")!;
     expect(request).toMatchObject({ roomId: "first" });
-    socket.receive({ type: "room_invite_state", roomId: "first", invitation, requestId: request.requestId });
-    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "invite_state", invitation } });
     await expect(reading).resolves.toEqual(invitation.state === "available"
       ? { state: "available", url: "https://channel.test/__channel-preview#room=first&invite=private-room-key" } : invitation);
     expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
@@ -11646,8 +11652,7 @@ test("reopening the room invitation can read while the dismissed panel's read is
     const reads = socket.sent.filter(command => command.type === "get_room_invite");
     expect(reads).toHaveLength(2);
     for (const [index, key] of [[1, "current-key"], [0, "previous-read-key"]] as const) {
-      socket.receive({ type: "room_invite_state", roomId: "first", invitation: { state: "available", key }, requestId: reads[index].requestId });
-      socket.receive({ type: "room_reply", roomId: "first", requestId: reads[index].requestId, result: { type: "done" } });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: reads[index].requestId, result: { type: "invite_state", invitation: { state: "available", key } } });
     }
     await expect(reopened).resolves.toEqual({ state: "available", url: "https://channel.test/__channel-preview#room=first&invite=current-key" });
     await expect(dismissed).resolves.toMatchObject({ url: "https://channel.test/__channel-preview#room=first&invite=previous-read-key" });
@@ -16185,16 +16190,16 @@ test('a watch that ends during source selection does not block the new share', a
   } finally { releaseReady(); session.close(); }
 });
 
-test("terminal candidate preserves invitation payload before done", async () => {
+test("transport ack leaves invitation pending until its correlated result", async () => {
   const { session, socket } = await setup();
   try {
     const finished = vi.fn();
     const reading = session.getRoomInvite("first").then(finished);
     const requestId = socket.sent.at(-1)!.requestId;
-    socket.receive({ type: "room_invite_state", roomId: "first", requestId, invitation: { state: "missing" } });
+    socket.receive({ type: "ack", requestId });
     await Promise.resolve();
     expect(finished).not.toHaveBeenCalled();
-    socket.receive({ type: "room_reply", roomId: "first", requestId, result: { type: "done" } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId, result: { type: "invite_state", invitation: { state: "missing" } } });
     await reading;
     expect(finished).toHaveBeenCalledExactlyOnceWith({ state: "missing" });
   } finally { session.close(); }
