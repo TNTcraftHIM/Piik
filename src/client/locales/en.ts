@@ -167,7 +167,7 @@ export const en: Record<CopyKey, string> = {
   "room.settings.recordsTitle": "Records and backups",
   "room.settings.clearLocalCache": "Clear local room cache",
   "room.settings.localCacheScope": "Remove cached attachments for this room and identity on this device.",
-  "room.settings.confirmClearLocalCache": "Clear your cached attachments for {name} on this device? Room records and saved downloads are kept.",
+  "room.settings.confirmClearLocalCache": "Clear your cached attachments for {name} on this device? Room records and saved downloads are kept. If this device has the only copy of a file, save it first.",
   "room.backup.title": "Room backup",
   "invite.room.title": "Invite to {name}",
   "invite.room.confirmReset": "Confirm invitation reset",

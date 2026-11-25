@@ -38,7 +38,8 @@ if (-not $Yes) {
   Write-Host "This beta-only action will rename the old data directory and keep it as a backup:"
   Write-Host "  $resolvedDataDirectory"
   Write-Host "-> $backupDirectory"
-  Write-Host "It does not migrate or delete the old database."
+  Write-Host "The next launch starts without this directory's saved sites, App settings, local identities and rooms."
+  Write-Host "To clear one room's attachments, use Room settings > Records > Clear local room cache."
   $answer = Read-Host "Type RESET to continue"
   if ($answer -cne "RESET") { Write-Host "Cancelled."; exit 1 }
 }

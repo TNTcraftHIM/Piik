@@ -165,7 +165,7 @@ export const zh = {
   "room.settings.recordsTitle": "记录与备份",
   "room.settings.clearLocalCache": "清除本机房间缓存",
   "room.settings.localCacheScope": "清除当前身份在本机为此房间缓存的附件。",
-  "room.settings.confirmClearLocalCache": "清除此身份在本机为「{name}」缓存的附件？房间记录和已保存的下载会保留。",
+  "room.settings.confirmClearLocalCache": "清除此身份在本机为「{name}」缓存的附件？房间记录和已保存的下载会保留。仅在本机有副本的文件，请先保存。",
   "room.backup.title": "房间备份",
   "invite.room.title": "邀请进入 {name}",
   "invite.room.confirmReset": "确认重置邀请",
