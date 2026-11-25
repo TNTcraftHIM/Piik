@@ -329,10 +329,9 @@ the feedback period; they do not delay that delivery.
   screen-centred view with the owner and repeat the first share on the release
   candidate. At integration, resolve main CI against the Rust release jobs and
   coordinate the Pages guides, latest downloads and Demo with the published
-  version. Pin historical 2.x references at the final 2.x revision.
-  With the owner, decide what the container `latest` tag means afterwards:
-  published 2.x deployments follow it, and 3.0 cannot read their
-  configuration or data ([evidence](./research/container-tags.md)).
+  version. Decide container tag semantics and publish the 2.x pinning guidance
+  before changing the default major ([evidence](./research/container-tags.md)).
+  Pin historical 2.x references at the final 2.x revision.
   End separate 2.x maintenance at the accepted 3.0 cutover. Decide
   separately whether to offer a short room-code locator.
 - [ ] **3.0 playable-route improvement.** Define when a sustained limit warrants
