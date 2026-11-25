@@ -53,9 +53,21 @@ be replaced by a better design that serves the same statement.
   App and the Server from one shared core. A runtime executes them and owns
   only its local resources.
 - **Two planes.** Metadata and light data travel on the basic channel
-  connection. Media and large data travel on the routes chosen for them. Light
-  data never waits for a route.
+  connection, and the authority of the channel or room handles them. Media and
+  large data travel on the routes chosen for them, and the activity that
+  originates them distributes them. Light data never waits for a route.
   [Network model](./research/channel-network-design.md)
+- **Two shared pools.** Activities own neither connections nor encoders. The
+  connections between endpoints form one pool, and the encodings of a source
+  form another. Each pool serves a request at once from what already exists
+  and improves itself slowly: the connection pool toward a simpler, better
+  connected and more reliable graph, the encoding pool toward the fewest
+  encoders that still serve every viewer well.
+- **Subsets downward, built upward.** Logically each level is a subset of the
+  one above: the channel's connections, the part a room may use, the paths an
+  activity selects. They are built the other way. An activity that needs a
+  connection makes it, and the pool keeps it for the next one to reuse.
+  [Forwarding](./research/channel-forwarding-plan.md)
 
 ## Media And Network
 
