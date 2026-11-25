@@ -84,8 +84,48 @@ needed. I think neither may be.
    others wait their turn or share the first candidate's parent, since the
    source's outputs were full in your four-peer case.
 
-Also running on my side: the review you asked for of `1c188fd1` and the
-corrections in `4debe7c5`, on your four boundaries.
+
+## Your four boundaries in `1c188fd1` and `4debe7c5`
+
+Three hold and one has a gap. An agent traced each at HEAD and ran nothing.
+
+- **Retention guard: holds.** The check runs inside the `getAll` success
+  handler and the evictions and the `put` follow in the same handler with
+  nothing awaited, so check and write share one transaction
+  (`file-store.ts:122-132`). All three callers pass a check that names their
+  own object, and `retain` is the only writer of file bytes. A stale tab's
+  write is not distinguishable at the store, since rows carry no authority
+  generation; you said as much.
+- **Release of the talk chord: holds.** Every case I listed releases: a
+  cleared or changed binding (key-up matches the stored chord), an editable
+  field, the remote keyboard (it stops propagation in the bubble phase, after
+  your capture listener), other windows and frames, a hidden or frozen page,
+  a mode switch, a room change, an unmount, a device change and a new
+  microphone acquired while held. No press is lost while the indicator says
+  talking.
+- **Source kind: holds.** One origin, the capture metadata for the local
+  probe and the publication elsewhere, carried to the relay probe, the clone,
+  the pool producer and the sender, and kept across a live change and its
+  rollback.
+- **Rendering facts: one finding, medium.** The dock can say connected while
+  a speaker is silent because the chosen output device failed. The person
+  picks a non-default output, such as a headset, and it later disconnects. A
+  speaker publishes and a new `ChannelAudio` attaches. `setSinkId` rejects;
+  the catch records the element as failed and never calls `applied()`, so the
+  element stays muted for good (`playback-output.ts:38`, `viewer-audio.ts:198`).
+  Muted playback is allowed, so `play()` resolves, `playing` fires, and the
+  element reports playing (`ChannelMedia.tsx:674`). `ChannelAudio` never
+  reads the output failure, which the screen player does read
+  (`ChannelMedia.tsx:114`). The smallest correction I see: an element whose
+  output failed, or that is still muted waiting for its output, does not
+  report playing.
+- **Unverified, one line each.** `FileStore.retain` still defaults its check
+  to always true (`file-store.ts:95`), so the requirement lives one layer up.
+  The pool's carrier is hinted `detail` for camera publications too
+  (`browser-encoding-output.ts:68`). While an output is still being applied
+  the element autoplays muted, and if unmuting pauses it on a page without
+  user activation the dock stays connecting with no play button.
+
 
 ## Still owed
 
