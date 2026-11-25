@@ -1,4 +1,4 @@
-.c3-share-control { display: inline-flex; gap: 8px; }
+.c3-share-control { display: inline-flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
 .c3-share-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .c3-share-feedback { display: inline-flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
 .c3-share-wait { max-width: 34ch; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; line-height: 1.5; }

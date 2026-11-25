@@ -72,7 +72,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => firstUse || new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
-  const [hostOffline, setHostOffline] = useState(() => new URLSearchParams(location.search).has("host-offline"));
+  const unopened = (["unreadable", "unsupported_version"] as const).find(value => value === new URLSearchParams(location.search).get("unopened"));
+  const [hostOffline, setHostOffline] = useState(() => new URLSearchParams(location.search).has("host-offline") || !!unopened);
   const [fileSample, setFileSample] = useState(() => new URLSearchParams(location.search).has("file"));
   const [audienceSample, setAudienceSample] = useState(() => new URLSearchParams(location.search).has("audience"));
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
@@ -90,6 +91,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
   const [forwarding, setForwarding] = useState(new URLSearchParams(location.search).has("forward"));
   const [pageSample, setPageSample] = useState<ReturnType<ChannelController["watchPage"]>>();
+  const [capturePendingSample, setCapturePendingSample] = useState(() => new URLSearchParams(location.search).has("share-pending"));
   const [browserSourcePending, setBrowserSourcePending] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -103,7 +105,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   });
   const picture = new URLSearchParams(location.search).get("picture");
   const samplePictureId = "sample-screen-0";
-  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "paused");
+  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "no-route" || picture === "paused");
+  const actionFails = (name: string) => { if (new URLSearchParams(location.search).get("fails") === name) throw new Error("request_timeout"); };
   const [streams, setStreams] = useState(new Map<string, MediaStream>());
   const [unwatched, setUnwatched] = useState(new Set<string>());
   const [stopped, setStopped] = useState(new Set<string>());
@@ -212,7 +215,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     ownerId: guestPreview ? "sample-bo" : sample.channel.state!.channel.ownerId, roomCreationPolicy,
     hostingMode: new URLSearchParams(location.search).has("hosted") ? "hosted" as const : "lightweight" as const,
     managedRoomIds: guestPreview ? [] : [...roomIds, ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
-    rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined, serviceRelay: undefined,
+    rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined, serviceRelay: undefined, picture: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
       fileActivity: fileSample && room.id === "friday" && !hostOffline ? [
@@ -229,6 +232,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     users,
     subscriptions,
     failedSubscriptions: omitSamplePicture && picture === "failed" && subscriptions.includes(samplePictureId) ? [samplePictureId] : [],
+    // A selected flow with no stream is connecting. Without one the viewer has no route yet.
+    pairs: omitSamplePicture && picture === "connecting" ? [{ id: "sample-pair", peerId: `${screenUsers[0].id}-session`, canReceiveVideoLayers: false, rooms: ["friday"],
+      outgoing: [], incoming: [{ id: "sample-flow", publicationId: samplePictureId, selected: true, inputFlowId: null }] }] : sample.channel.state!.pairs,
     watchActivities: watchActivity ? [{ ...watchActivity, viewerSessionIds: watchViewerSessionIds, ...(forwarding ? { byteSource: { sessionId: "sample-ada-session", resourceId: "sample-resource", format: "file" as const } } : {}) }] : [],
     watchSubscriptions: watchActivity && watchMode !== "available" ? [{ id: watchActivity.id, mode: receiveMode }] : [],
     watchBytes: [],
@@ -273,9 +279,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
+  const pendingScreenRoom = capturePendingSample ? "friday" : browserSourcePending;
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...streams].filter(([id]) => id !== samplePictureId)) : streams, error: null, siteURL: "https://friends.example/",
-    pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
-    watchPlayers,
+    pending: pendingScreenRoom ? new Set([...sample.channel.pending, `screen:${pendingScreenRoom}`]) : sample.channel.pending,
+    watchPlayers, roomOpenFailures: unopened && hostOffline ? new Map([["friday", unopened]]) : sample.channel.roomOpenFailures,
     watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
       : new URLSearchParams(location.search).has("indexed-tracks") ? { choices: [], indexed: indexedTracks, mpd: [] }
       : { choices: [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
@@ -286,7 +293,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
-    cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },
+    cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
       if (!activityId && (query.has("browser-source") || query.has("indexed-tracks") || query.has("mpd-tracks"))) {
@@ -365,11 +372,11 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       sample.received();
     },
     setScreenQuality: async (_id, profile) => sample.channel.setQuality(profile),
-    retryPicture: async () => sample.received(),
-    watch: async id => setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }),
+    retryPicture: async () => { sample.received(); actionFails("picture"); },
+    watch: async id => { actionFails("picture"); setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }); },
     unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); setTitles(previous => { const next = { ...previous }; delete next[id]; return next; }); sample.received(); },
-    startScreen: async roomId => { setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
-    startNativeScreen: async roomId => { setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
+    startScreen: async roomId => { actionFails("share"); setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
+    startNativeScreen: async roomId => { actionFails("share"); setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
     setScreenPaused: async () => sample.received(),
     setScreenDirectLimit: async (id, limit) => {
       if (ownedScreens.has(id)) setDirectLimits(previous => ({ ...previous, [id]: limit }));
@@ -408,7 +415,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
-    browserCapturePreparation: () => undefined,
+    browserCapturePreparation: roomId => capturePendingSample && roomId === "friday" ? "preparing" : undefined,
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   const optionsLabel = { text: zh ? "预览选项" : "Preview options" };
   const previewOptions = <>

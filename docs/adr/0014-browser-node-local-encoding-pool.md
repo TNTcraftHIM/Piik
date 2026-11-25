@@ -1,6 +1,7 @@
 # ADR-0014: Browser Node-Local Encoding Pool
 
 - Status: Accepted; bounded implementation evidence complete, broader limits in verification status
+- Scope: in force for 3.0. A Browser that relays a picture reuses these encoding groups for its eligible outputs, as the [network implementation](../research/channel-network-design.md) describes.
 - Date: 2026-09-09
 
 ## Context

@@ -5836,12 +5836,18 @@ test("room voice settings use the managed room update without changing local inp
     await saving;
     expect(session.getSnapshot().voiceInput).toEqual(previous.voiceInput);
     expect(session.getSnapshot().listeningVolume).toBe(previous.listeningVolume);
-    await expect(session.setRoomVoiceBitrate("first", 320_001)).rejects.toThrow("invalid_audio_bitrate");
-    const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].canManage = false;
-    socket.receive({ type: "state", state });
-    await expect(session.setRoomVoiceBitrate("first", 32_000)).rejects.toThrow("forbidden");
-    expect(socket.sent.filter(command => command.type === "update_room")).toHaveLength(1);
+    const sentBeforeInvalid = socket.sent.length;
+    for (const value of [NaN, Infinity, 1.5]) {
+      const result = session.setRoomVoiceBitrate("first", value);
+      expect(socket.sent).toHaveLength(sentBeforeInvalid);
+      await expect(result).rejects.toThrow("invalid_audio_bitrate");
+    }
+    // The room authority validates the bitrate; its rejection reaches the caller.
+    const rejected = session.setRoomVoiceBitrate("first", 320_001);
+    const invalid = socket.sent.at(-1)!;
+    expect(invalid).toEqual({ type: "update_room", roomId: "first", voiceBitrate: 320_001, requestId: expect.any(String) });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: invalid.requestId, result: { type: "error", code: "invalid_audio_bitrate" } });
+    await expect(rejected).rejects.toThrow("invalid_audio_bitrate");
   } finally { session.close(); }
 });
 
@@ -11646,10 +11652,25 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     let state = { ...session.getSnapshot().state!, publications: [{ ...publication, audience: [], paused: false, title: null as string | null, sessionId: "endpoint", userId: "self" }] };
     socket.receive({ type: "state", state });
     const bindings = bind.mock.calls.length;
-    await expect(session.setScreenTitle(publication.id, "x".repeat(65))).rejects.toThrow("invalid_title");
+    // The room authority validates the title and the limit; their rejections reach the caller.
+    const overlong = session.setScreenTitle(publication.id, "x".repeat(65));
+    const overlongTitle = socket.sent.at(-1)!;
+    expect(overlongTitle).toMatchObject({ type: "set_title", publicationId: publication.id, title: "x".repeat(65) });
+    socket.receive({ type: "error", requestId: overlongTitle.requestId, code: "invalid_title" });
+    await expect(overlong).rejects.toThrow("invalid_title");
     expect(channelErrorPresentation("invalid_title", key => en[key]).message).toBe("The title cannot exceed 64 characters.");
     expect(channelErrorPresentation("invalid_title", key => zh[key]).message).toBe("标题不能超过 64 个字符。");
-    await expect(session.setScreenDirectLimit(publication.id, 0)).rejects.toThrow("invalid_relay_capacity");
+    const sentBeforeInvalid = socket.sent.length;
+    for (const value of [NaN, Infinity, 1.5]) {
+      const result = session.setScreenDirectLimit(publication.id, value);
+      expect(socket.sent).toHaveLength(sentBeforeInvalid);
+      await expect(result).rejects.toThrow("invalid_relay_capacity");
+    }
+    const outOfRange = session.setScreenDirectLimit(publication.id, 0);
+    const outOfRangeLimit = socket.sent.at(-1)!;
+    expect(outOfRangeLimit).toMatchObject({ type: "set_screen_direct_limit", publicationId: publication.id, limit: 0 });
+    socket.receive({ type: "error", requestId: outOfRangeLimit.requestId, code: "invalid_relay_capacity" });
+    await expect(outOfRange).rejects.toThrow("invalid_relay_capacity");
     for (const limit of [2, null]) {
       const limiting = session.setScreenDirectLimit(publication.id, limit);
       const command = socket.sent.at(-1)!;
@@ -12259,7 +12280,7 @@ test.each([
         expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
         return;
       }
-      expect(session.getSnapshot().state?.publications.find(publication => publication.kind === "screen")?.predecessor).toEqual({ kind: "watch", id: middle.id });
+      expect(session.getSnapshot().state?.publications.find(publication => publication.kind === "screen")?.predecessor).toEqual({ kind: "watch", id: original.id });
       await vi.waitFor(() => expect(subscriptions()).toHaveLength(1));
       current.receive({ type: "room_reply", roomId: screen.roomId, requestId: subscriptions()[0].requestId, result: { type: "done" } });
       current.receive({ type: "state", state: { ...final, subscriptions: [latest.id] } });
@@ -12273,11 +12294,49 @@ test.each([
       return;
     }
     expect(joins).toHaveLength(1);
-    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: middle.id });
+    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: original.id });
     expect(session.getSnapshot().waitingWatchPages?.has(latest.id)).toBe(true);
     confirmWatchJoinOrLeave(current);
     current.receive({ type: "state", state: { ...base, watchActivities: [latest], watchSubscriptions: [{ id: latest.id, mode: "direct" }] } });
     expect(session.getSnapshot().watchPlayers.get(latest.id)?.mode).toBe("direct");
+    expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
+  } finally { session.close(); }
+});
+test.each(["watch_unavailable", "room_busy"] as const)("a successor the room names after the pending join failed with %s is still followed", async code => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const original = { id: "old", roomId: "first", sessionId: "publisher", userId: "other", viewerSessionIds: [],
+    source: { kind: "media" as const, url: "https://fixture.test/old.mp4" },
+    playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const middle = { ...original, id: "middle", predecessor: { kind: "watch", id: original.id } };
+  // The room moved the pending handoff from middle to latest and kept the original predecessor.
+  const latest = { ...middle, id: "latest" };
+  const joins = (id: string, mode: "direct" | null) => socket.sent.filter(c => c.type === "join_watch" && c.id === id && c.mode === mode);
+  try {
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original] } });
+    const initial = session.joinWatch(original.id);
+    confirmWatchJoinOrLeave(socket);
+    await initial;
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original], watchSubscriptions: [{ id: original.id, mode: "direct" }] } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
+    const join = joins(middle.id, "direct");
+    expect(join).toHaveLength(1);
+    // A raised projection floor withholds the snapshot naming latest while the error is released at once.
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join[0].requestId, result: { type: "error", code } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
+    expect(joins(middle.id, "direct")).toHaveLength(1);
+    // An activity that is gone needs no decline. Any other failure tells the room this page will not follow it.
+    expect(joins(middle.id, null)).toHaveLength(code === "watch_unavailable" ? 0 : 1);
+    socket.receive({ type: "state", state: { ...base, watchActivities: [latest] } });
+    await vi.waitFor(() => expect(joins(latest.id, "direct")).toHaveLength(1));
+    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: original.id });
+    expect(session.getSnapshot().waitingWatchPages?.has(latest.id)).toBe(true);
+    const next = joins(latest.id, "direct")[0];
+    socket.receive({ type: "room_reply", roomId: "first", requestId: next.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [{ ...latest, predecessor: undefined }], watchSubscriptions: [{ id: latest.id, mode: "direct" }] } });
+    await vi.waitFor(() => expect(session.getSnapshot().watchPlayers.get(latest.id)?.mode).toBe("direct"));
     expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
   } finally { session.close(); }
 });

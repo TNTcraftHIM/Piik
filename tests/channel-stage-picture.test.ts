@@ -6,7 +6,7 @@ import { useStagePicture } from "../src/client/channel/components/use-stage-pict
 
 afterEach(() => vi.unstubAllGlobals());
 
-test.each(["handoff", "user close", "revocation"])("retained screen PiP after a watch ends: %s", async outcome => {
+test.each(["handoff", "collapsed handoff", "user close", "revocation"])("retained screen PiP after a watch ends: %s", async outcome => {
   const view = Object.assign(new EventTarget(), { HTMLIFrameElement: class {} });
   const ownerDocument = Object.assign(new EventTarget(), {
     nodeType: 9, defaultView: view, pictureInPictureElement: null as EventTarget | null,
@@ -51,6 +51,8 @@ test.each(["handoff", "user close", "revocation"])("retained screen PiP after a 
 
     await render({ kind: "waiting", id: first.id, roomId: first.roomId });
     expect(ownerDocument.exitPictureInPicture).not.toHaveBeenCalled();
+    // Replacing a successor the viewer has not joined yet keeps the room naming the original.
+    if (outcome === "collapsed handoff") await render({ kind: "watch", id: "pending", roomId: first.roomId, subscribed: false, pictureAdmitted: true, predecessor: { kind: first.kind, id: first.id } });
     await render({ ...next, subscribed: false, predecessor: { kind: first.kind, id: first.id } });
     await render(next);
     expect(replacement.requestPictureInPicture).not.toHaveBeenCalled();
@@ -61,7 +63,7 @@ test.each(["handoff", "user close", "revocation"])("retained screen PiP after a 
     }
     replacement.readyState = 2;
     stage.dispatchEvent(new Event("loadeddata"));
-    expect(replacement.requestPictureInPicture).toHaveBeenCalledTimes(outcome === "handoff" ? 1 : 0);
+    expect(replacement.requestPictureInPicture).toHaveBeenCalledTimes(outcome.endsWith("handoff") ? 1 : 0);
   } finally {
     await act(() => root.unmount());
   }

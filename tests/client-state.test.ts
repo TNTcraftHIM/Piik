@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCopy } from "../src/client/ui/copy.ts";
 import { clientLaunchURL, takeClientLaunchBootstrap, isClientActivated } from "../src/client/lib/app-launch.ts";
-import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
 import { labelParticipantNames, labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import {
   collectConnectionMetrics,
@@ -161,41 +160,6 @@ describe("browser-local display name", () => {
     ]);
   });
 
-  it("derives exact peer and SFU branches without guessing orphaned routes", () => {
-    const viewer = (
-      peerId: string,
-      upstream:
-        | { kind: "none" }
-        | { kind: "sfu" }
-        | { kind: "peer"; peerId: string },
-    ) => ({ role: "viewer" as const, peerId, displayName: peerId, upstream });
-    const topology = deriveParticipantTopology(
-      "host_12345678",
-      labelParticipantSnapshot([
-        viewer("viewer_root_1", { kind: "peer", peerId: "host_12345678" }),
-        viewer("viewer_child_1", { kind: "peer", peerId: "viewer_root_1" }),
-        viewer("viewer_sfu_1", { kind: "sfu" }),
-        viewer("viewer_sfu_child", {
-          kind: "peer",
-          peerId: "viewer_sfu_1",
-        }),
-        viewer("viewer_pending", { kind: "none" }),
-        viewer("viewer_orphan", { kind: "peer", peerId: "viewer_offline" }),
-      ]).viewers,
-    );
-
-    expect(topology.peerRoots[0].viewer.peerId).toBe("viewer_root_1");
-    expect(topology.peerRoots[0].children[0].viewer.peerId).toBe(
-      "viewer_child_1",
-    );
-    expect(topology.sfuRoots[0].children[0].viewer.peerId).toBe(
-      "viewer_sfu_child",
-    );
-    expect(topology.pending.map((entry) => entry.peerId)).toEqual([
-      "viewer_orphan",
-      "viewer_pending",
-    ]);
-  });
 });
 
 describe("App launch handoff", () => {

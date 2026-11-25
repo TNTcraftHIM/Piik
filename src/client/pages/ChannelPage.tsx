@@ -16,6 +16,7 @@ import { diagnoseChannelFact } from "../channel/diagnosis";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { useRoomPane } from "../channel/use-room-pane";
 import { LayerHistory } from "../ui/layer-history";
+import { composeDocumentTitle, usePageTitle } from "../ui/document-title";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
@@ -151,6 +152,14 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }
   if (sourceView.snapshot !== state || sourceView.sessionId !== sessionId || sourceView.waitingWatches !== channel.waitingWatchPages) {
     const old = sourceView.snapshot;
+    // Until this viewer joins a successor, the room names the source it last joined, so the
+    // replacement of a pending successor names the same predecessor as that successor did.
+    const successorOf = (roomId: string, id: string) => {
+      const prior = [...old?.watchActivities ?? [], ...old?.publications.filter(p => p.kind === "screen") ?? []].find(s => s.id === id)?.predecessor?.id;
+      const names = (live: { id: string; roomId: string; predecessor?: { id: string } }) => live.id !== id && live.roomId === roomId
+        && !!live.predecessor && (live.predecessor.id === id || live.predecessor.id === prior);
+      return state?.watchActivities.find(names) ?? state?.publications.find(p => p.kind === "screen" && names(p));
+    };
     const sameSession = old && state && old.channel.id === state.channel.id && sourceView.sessionId === sessionId;
     const waiting = sameSession ? sourceView.waiting.filter(source =>
       state.channel.rooms.some(room => room.id === source.roomId && room.authorized)
@@ -162,9 +171,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       for (const source of viewed) {
         const room = state.channel.rooms.find(r => r.id === source.roomId && r.authorized);
         if (!room || source.sessionId === sessionId || [...state.publications, ...state.watchActivities].some(live => live.id === source.id)) continue;
-        const kind = "playback" in source ? "watch" : "screen";
-        const next = state.watchActivities.find(a => a.roomId === room.id && a.predecessor?.kind === kind && a.predecessor.id === source.id)
-          ?? state.publications.find(p => p.kind === "screen" && p.roomId === room.id && p.predecessor?.kind === kind && p.predecessor.id === source.id);
+        const next = successorOf(room.id, source.id);
         if (next && (channel.waitingWatchPages?.has(next.id) || state.watchSubscriptions.some(sub => sub.id === next.id) || state.subscriptions.includes(next.id))) continue;
         waiting.push({ kind: "waiting", id: next?.id ?? source.id, userId: source.userId, roomId: room.id, roomName: room.name,
           name: old.users.find(u => u.id === source.userId)?.name ?? t("channel.previewPage.user"),
@@ -173,8 +180,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       }
     }
     const focus = sourceView.focus;
-    const successor = focus?.focusedId && (state?.watchActivities.find(a => a.roomId === focus.roomId && a.predecessor?.id === focus.focusedId)
-      ?? state?.publications.find(p => p.kind === "screen" && p.roomId === focus.roomId && p.predecessor?.id === focus.focusedId));
+    const successor = focus?.focusedId && successorOf(focus.roomId, focus.focusedId);
     setView({ ...sourceView, focus: successor ? { roomId: successor.roomId, focusedId: successor.id } : sourceView.focus, snapshot: state, sessionId, waitingWatches: channel.waitingWatchPages, waiting });
   }
   const previousOwnedScreens = useRef<ReadonlySet<string>>(new Set(channel.ownedScreens));
@@ -196,6 +202,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (moved && name) setOrderAnnouncement(t("room.order.moved", { name, position: String(moved.position), total: String(moved.total) }));
   };
   const room = rooms.find(value => value.id === selected);
+  const siteName = state?.channel.name;
+  usePageTitle(composeDocumentTitle(room?.name, siteName === "Piik" ? null : siteName));
   const roomId = room?.id ?? "";
   const overview = !room;
   const unlistedRoom = Boolean(state && selected && !room);
@@ -514,7 +522,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <header className="c3-room-heading" data-tooltip-controls>
           <div className="c3-room-name">{layout !== "quick" && <span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
             title={{ text: t("channel.previewPage.roomList") }} hint="hint-room-list" controls="c3-room-list" expanded={mobilePane === "rooms"}
-            onClick={showRooms} /></span>}<ChannelIdentityMark icon={room?.icon ?? "couch"} picture={room?.authorized && room.available && room.reading ? room.picture : undefined} size={25} />
+            onClick={showRooms} /></span>}<ChannelIdentityMark icon={room?.icon ?? "couch"} picture={room?.picture} size={25} />
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview")), selector: "h2" }}>
               <h2>{room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview"))}</h2>
             </Tooltip>
@@ -658,7 +666,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId, channel.profiles, channel) : []}
             floating={roomToolOpen && (layout !== "quick" || toolSurface.document !== document)} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
           conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
-            <ChannelConversation domainId={state?.channel.id} roomId={roomId} bindingId={room?.delivery?.bindingId} roomName={room?.name ?? ""} roomIcon={room?.icon} roomPicture={room?.authorized && room.available && room.reading ? room.picture : undefined} messages={channel.messagesByRoom[roomId] ?? []}
+            <ChannelConversation domainId={state?.channel.id} roomId={roomId} bindingId={room?.delivery?.bindingId} roomName={room?.name ?? ""} roomIcon={room?.icon} roomPicture={room?.picture} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} profiles={channel.profiles} queryProfiles={channel.queryProfiles} entry={self ? { kind: "site" } : { kind: "entry" }}
             authorized={room?.authorized} canSend={connected && !!room?.authorized && room.available} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}

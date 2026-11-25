@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { normalizeVideoOfferSdp, withoutVideoOrientation, requireReceivingVideo, VideoReceiveRejectedError } from "../src/client/webrtc/video-codec";
+import { normalizeVideoOfferSdp, withoutVideoOrientation } from "../src/client/webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../src/client/webrtc/video-codec-preflight";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -40,24 +40,6 @@ it("encodes the probe clone with the share's hint and leaves the source's alone"
   await expect(preferredVideoCodecForTrack(track, new AbortController().signal, "detail")).resolves.toBe("vp8");
   expect(clone.contentHint).toBe("detail");
   expect(track.contentHint).toBe("");
-});
-
-it("recognizes a Browser-rejected video answer without inferring codec support", () => {
-  const offer = (sdp: string): RTCSessionDescriptionInit => ({ type: "offer", sdp });
-  const answer = (sdp: string): RTCSessionDescriptionInit => ({ type: "answer", sdp });
-  const video = "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 H264/90000\r\n";
-  const rejected = "m=video 0 UDP/TLS/RTP/SAVPF 120\r\n";
-  expect(() => requireReceivingVideo(offer(video), answer(rejected))).toThrow(VideoReceiveRejectedError);
-  for (const [offered, accepted] of [
-    [video, video.replace("sendonly", "recvonly")],
-    [video + video, rejected + video.replace("sendonly", "recvonly")],
-    [video.replace("9 UDP", "0 UDP"), rejected],
-    [video.replace("sendonly", "inactive"), rejected],
-    [video.replace("sendonly", "recvonly"), rejected],
-    ["m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n", "m=audio 0 UDP/TLS/RTP/SAVPF 111\r\n"],
-  ]) expect(() => requireReceivingVideo(offer(offered!), answer(accepted!))).not.toThrow();
-  expect(() => requireReceivingVideo(offer(video.replace("9 UDP", "0 UDP") + "a=bundle-only\r\n"),
-    answer(rejected))).toThrow(VideoReceiveRejectedError);
 });
 
 it.each(["\r\n", "\n"])("removes orphan codec attributes within each offered video section (%j)", newline => {

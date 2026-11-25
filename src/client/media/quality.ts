@@ -156,11 +156,6 @@ export function qualityResolutionEqual(left: QualityResolution, right: QualityRe
   return left.width === right.width && left.height === right.height;
 }
 
-export function qualityResolutionLabel(resolution: QualityResolution): string {
-  return Object.entries(QUALITY_RESOLUTIONS).find(([, size]) => qualityResolutionEqual(size, resolution))?.[0]
-    ?? `${resolution.width}×${resolution.height}`;
-}
-
 export const DEGRADATION_PREFERENCE_KEYS = {
   "maintain-resolution": "host.advanced.preference.resolution",
   balanced: "host.advanced.preference.balanced",
@@ -217,16 +212,6 @@ export function screenAudioBitrate(
   return bitrate ?? DEFAULT_QUALITY_SETTINGS.maxAudioBitrate;
 }
 
-export function qualitySettingsEqual(
-  left: QualitySettings,
-  right: QualitySettings,
-): boolean {
-  return (
-    videoQualitySettingsEqual(left, right) &&
-    audioQualitySettingsEqual(left, right)
-  );
-}
-
 export function videoQualitySettingsEqual(
   left: VideoSenderProfile,
   right: VideoSenderProfile,
@@ -237,16 +222,6 @@ export function videoQualitySettingsEqual(
     left.maxBitrate === right.maxBitrate &&
     left.degradationPreference === right.degradationPreference &&
     left.displaySource === right.displaySource
-  );
-}
-
-export function audioQualitySettingsEqual(
-  left: QualitySettings,
-  right: QualitySettings,
-): boolean {
-  return (
-    screenAudioBitrate(left.maxAudioBitrate) ===
-      screenAudioBitrate(right.maxAudioBitrate)
   );
 }
 

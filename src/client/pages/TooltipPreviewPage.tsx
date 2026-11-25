@@ -120,7 +120,6 @@ function TooltipCatalogue() {
             <li><a href="#sharing-preview">{en ? "Numeric settings and inline tabs" : "数值设置与页内选项卡"}</a> · <code>QualityPresets / SharingSettings</code></li>
             <li><a href="#playback-preview">{en ? "Brief attached settings" : "短时附着设置"}</a> · <code>useAnchoredPopover</code></li>
             <li><a href="#interaction-preview">{en ? "Persistent and detachable tools" : "常驻与可独立的工具窗"}</a> · <code>FloatingPanel / usePanelWindow</code></li>
-            <li><a href="/__status-preview#sharing-troubleshooting">{en ? "Modal troubleshooting" : "模态故障排查"}</a> · <code>ShareFailureHelp / dialog</code></li>
           </ul>
           <p>{en ? "Source selection stays inside the television. Browser capture permissions, native select menus and operating-system window frames are platform UI, verified in their actual environment. Website and documentation navigation retain their page-specific layouts."
             : "选源界面留在电视内。浏览器采集授权、原生下拉菜单和操作系统窗框属于平台界面，在实际环境验收；官网与文档导航保留各自的页面布局。"}</p>

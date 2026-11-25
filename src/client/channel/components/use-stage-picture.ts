@@ -51,7 +51,9 @@ export function useStagePicture(stage: RefObject<HTMLElement | null>, sources: C
       const prior = pending ?? owner.source;
       const admitted = current.current.filter((s): s is Source => s.kind !== "waiting" && !!s.pictureAdmitted && s.roomId === owner?.source.roomId);
       const same = admitted.find(s => s.kind === prior.kind && s.id === prior.id);
-      const successor = admitted.find(s => s.predecessor?.kind === prior.kind && s.predecessor.id === prior.id);
+      // Until this viewer joins the pending successor, the room names the source still in the picture.
+      const named = [prior, owner.source];
+      const successor = admitted.find(s => named.some(source => s.predecessor?.kind === source.kind && s.predecessor.id === source.id));
       if (successor) pending = { kind: successor.kind, id: successor.id };
       const next = successor ?? (pending ? same : undefined);
       if (!next && !(same?.owned || same?.subscribed)) {
