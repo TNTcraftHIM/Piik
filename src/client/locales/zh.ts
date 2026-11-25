@@ -280,6 +280,7 @@ export const zh = {
   "screen.decodeFailed": "浏览器无法解码分享画面。",
   "screen.unplayable": "浏览器无法播放分享画面。",
   "screen.deliveryRetry": "画面传输失败，正在重试。",
+  "screen.forwardingOff": "本房间未开启站点转发。",
   "screen.pictureHelp": "画面帮助",
   "screen.pictureHelpViewer": "点击“重新连接画面”。如果仍然失败，试试其他网络。",
   "screen.pictureHelpPublisher": "请分享者检查本地预览，必要时重新选择分享来源。",

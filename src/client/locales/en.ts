@@ -282,6 +282,7 @@ export const en: Record<CopyKey, string> = {
   "screen.decodeFailed": "This browser could not decode the shared picture.",
   "screen.unplayable": "This browser could not play the shared picture.",
   "screen.deliveryRetry": "Picture delivery failed. Retrying.",
+  "screen.forwardingOff": "Site forwarding is off for this room.",
   "screen.pictureHelp": "Picture help",
   "screen.pictureHelpViewer": "Select Retry picture. If it still fails, try another network.",
   "screen.pictureHelpPublisher": "Ask the person sharing to check their preview and reselect the source if needed.",

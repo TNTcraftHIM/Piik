@@ -206,6 +206,7 @@ export const ja = {
   "screen.decodeFailed": "このブラウザーでは共有画面をデコードできませんでした。",
   "screen.unplayable": "このブラウザーでは共有画面を再生できませんでした。",
   "screen.deliveryRetry": "映像の配信に失敗しました。再試行しています。",
+  "screen.forwardingOff": "このルームではサイト転送がオフです。",
   "screen.pictureHelp": "映像のヘルプ",
   "screen.pictureHelpViewer": "映像を再接続してください。解決しない場合は、別のネットワークをお試しください。",
   "screen.pictureHelpPublisher": "共有者にプレビューの確認を依頼し、必要に応じて共有元を選び直してもらってください。",
