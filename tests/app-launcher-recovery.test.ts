@@ -17,7 +17,7 @@ import { Btn } from "../src/client/components/living/primitives";
 import { publicSiteOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
 import { appUpdateSchema } from "../src/client/lib/use-app-update";
-import { currentLang, t } from "../src/client/ui/copy";
+import { say } from "../src/client/ui/copy";
 
 it("reloads the installed UI once after observed installation hands over, while failures and outages preserve the page", async () => {
   const updateSource = ts.createSourceFile("use-app-update.ts", readFileSync(
@@ -214,7 +214,7 @@ describe("App launcher state recovery", () => {
       expect(postMessage).not.toHaveBeenCalled();
       const controls = page.startupRecovery(site).props.children;
       expect(controls).toHaveLength(2);
-      expect(renderToStaticMarkup(page.startupRecovery(site))).toContain(t(currentLang(), "common.retry"));
+      expect(renderToStaticMarkup(page.startupRecovery(site))).toContain(say("common.retry"));
       controls[decision === "retry" ? 0 : 1]!.props.onClick();
       await vi.waitFor(() => expect(page.state.SiteBusy).toBe(false));
       expect(page.state.SiteError).toBeUndefined();
@@ -727,10 +727,10 @@ it("lists automatic local access independently from persistent approvals and pub
     async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
   }));
   expect(html).toContain(localSite);
-  expect(html).toContain(t(currentLang(), "client.sites.automatic"));
+  expect(html).toContain(say("client.sites.automatic"));
   const publicRow = html.slice(html.indexOf('<strong>Public</strong>'), html.indexOf('</li>'));
-  expect(publicRow).not.toContain(t(currentLang(), "client.sites.automatic"));
-  expect(publicRow).not.toContain(t(currentLang(), "client.sites.allowed"));
+  expect(publicRow).not.toContain(say("client.sites.automatic"));
+  expect(publicRow).not.toContain(say("client.sites.allowed"));
 });
 
 
@@ -860,6 +860,6 @@ it("keeps the owned startup control available from a bookmarked invitation with 
     ownedStartup: "link", ownedSites: ["http://127.0.0.1:8787", origin], busy: false,
     async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
   }));
-  expect(html).toContain(t(currentLang(), "client.sites.notAllowed"));
+  expect(html).toContain(say("client.sites.notAllowed"));
   expect(html).toMatch(/type="checkbox"[^>]*checked/);
 });

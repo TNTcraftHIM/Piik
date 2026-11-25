@@ -134,11 +134,6 @@ export function say(key: CopyKey, vars?: Record<string, string>): string {
   return t(state.lang, key, vars);
 }
 
-// The selected language for composers that run outside React render (say()).
-export function currentLang(): Lang {
-  return state.lang;
-}
-
 // Locale-aware joins for composed notices.
 export function joinSentences(lang: Lang, parts: string[]): string {
   return parts.join(lang === "zh" || lang === "zh-Hant" ? "；" : "; ");

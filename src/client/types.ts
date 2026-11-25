@@ -1,5 +1,4 @@
 import type { NatTraversalPath } from "../shared/nat-candidate";
-import type { MediaFailure } from "./ui/media-failure";
 
 export type SignalConnectionState =
   "connecting" | "connected" | "reconnecting" | "offline";
@@ -76,20 +75,6 @@ export interface ConnectionMetrics {
   intervalDecodeMs: number | null;
   qualityLimitationReason: string | null;
   nativeEdgeQualityState: NativeEdgeQualityState;
-}
-
-export interface PeerSnapshot {
-  peerId: string;
-  connectionId: string;
-  connectionState: RTCPeerConnectionState;
-  iceConnectionState: RTCIceConnectionState;
-  metrics: ConnectionMetrics;
-  /** Keyed failure fact; the UI resolves the copy so it follows the language. */
-  error: MediaFailure | null;
-  senderParameters?:
-    import("./media/quality").VideoSenderParameterReadback | null;
-  audioSenderParameters?:
-    import("./media/quality").AudioSenderParameterReadback | null;
 }
 
 export const EMPTY_METRICS: ConnectionMetrics = {

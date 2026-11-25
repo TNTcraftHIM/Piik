@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test, vi } from "vitest";
 import { ChannelSettingsError, settingsActionFailure } from "../src/client/channel/components/ChannelSettingsDialog";
 import { installDeferredModuleFailureTracking, isDeferredModuleFailure } from "../src/client/lib/deferred-module-failure";
-import { currentLang, t } from "../src/client/ui/copy";
+import { say } from "../src/client/ui/copy";
 
 test("deferred module failures show a user-triggered refresh in the shared result", () => {
   const target = new EventTarget();
@@ -20,10 +20,10 @@ test("deferred module failures show a user-triggered refresh in the shared resul
   expect(isDeferredModuleFailure(new TypeError(error.message))).toBe(false);
 
   const html = renderToStaticMarkup(createElement(ChannelSettingsError, { error: "deferred_module_load_failed" }));
-  expect(html).toContain(t(currentLang(), "channel.error.deferredModuleLoad"));
-  expect(html).toContain(`aria-label="${t(currentLang(), "common.refresh")}"`);
+  expect(html).toContain(say("channel.error.deferredModuleLoad"));
+  expect(html).toContain(`aria-label="${say("common.refresh")}"`);
   const ordinaryResult = renderToStaticMarkup(createElement(ChannelSettingsError, { error: "operation_failed" }));
-  expect(ordinaryResult).toContain(t(currentLang(), "channel.error.actionFailed"));
+  expect(ordinaryResult).toContain(say("channel.error.actionFailed"));
   expect(ordinaryResult).not.toContain("<button");
 });
 

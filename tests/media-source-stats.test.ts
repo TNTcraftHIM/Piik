@@ -3,7 +3,6 @@ import {
   collectConnectionMetricsFromReport,
   collectTrackConnectionMetrics,
   createStatsAccumulator,
-  maxEncodedVideoFrames,
   mediaSourceRecord,
   type StatsAccumulator,
 } from "../src/client/webrtc/stats.ts";
@@ -69,8 +68,6 @@ describe("sender source statistics", () => {
     expect(sample(3_000, "replacement")).toMatchObject({
       trackIdentifier: "replacement", intervalFramesEncoded: null, bitrateKbps: null,
     });
-    expect(maxEncodedVideoFrames(report(3_000, "replacement"), "video-track")).toBeNull();
-    expect(maxEncodedVideoFrames(report(3_000, "replacement"), "replacement")).toBe(90);
   });
 
   it("restarts only the codec's observation window on an existing RTP stream", () => {
@@ -96,9 +93,6 @@ describe("sender source statistics", () => {
       id: "old", type, kind: "video", timestamp: 1_000, trackIdentifier: "old-track",
     });
     expect(mediaSourceRecord(stats, stats.get("video"))).toBeNull();
-    expect(maxEncodedVideoFrames(stats, "video-track")).toBeNull();
-    stats.get("video").mediaSourceId = "video-source";
-    expect(maxEncodedVideoFrames(stats, "video-track")).toBe(30);
   });
 
   it.each(["missing", "received", null, ""])("does not replace an invalid explicit reference (%s)", (mediaSourceId) => {
