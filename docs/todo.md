@@ -289,7 +289,10 @@ the feedback period; they do not delay that delivery.
   a full Server from a Vercel-hosted frontend that still needs an external Server.
 - [ ] **Accept the unified 3.0 sharing experience.** Review the optional
   screen-centred view with the owner and repeat the first share on the release
-  candidate. End separate 2.x maintenance at the accepted 3.0 cutover. Decide
+  candidate. At integration, resolve main CI against the Rust release jobs and
+  coordinate the Pages guides, latest downloads and Demo with the published
+  version. Pin historical 2.x references at the final 2.x revision.
+  End separate 2.x maintenance at the accepted 3.0 cutover. Decide
   separately whether to offer a short room-code locator.
 - [ ] **3.0 playable-route improvement.** Define when a sustained limit warrants
   replacing a playable upstream. Set bounded candidate attempts, a resource budget

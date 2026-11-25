@@ -29,6 +29,7 @@ const nonProductPaths = [
   "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/publish-container.mjs", "scripts/mirror-release.mjs",
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",
   "scripts/network-lab.ts", "scripts/network-lab/**", "scripts/media-gate-geometry.ts",
+  "deploy/release-server.sh",
 ].map((path) => `:(top,glob,exclude)${path}`);
 
 export function hasProductChanges(root, base, head) {
