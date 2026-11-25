@@ -28,8 +28,6 @@ the feedback period; they do not delay that delivery.
   stop. Reproduce through the receiver and sender consumers before changing
   forwarding; separately bypassing either encoding pool did not resolve it.
   [Controlled evidence](./research/network-lab.md#browser-relay-after-local-unwatch)
-- [ ] **Native companion-audio retry.** Identify the released resource before
-  narrowing the existing cross-pair retry.
 - [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
   steady selected media on a controlled link. Record the SDK estimate, media,
   padding and minimum/desired demand before changing probe policy. Distinguish
