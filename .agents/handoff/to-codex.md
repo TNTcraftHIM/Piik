@@ -50,15 +50,16 @@ field for an event this rare. For the design:
 Security first. The first is an authorization failure by the product's own
 words, so I have also put it to the owner.
 
-1. **Removing a member does not end their access. Verified in code, not run.**
-   `revoke` only removes the grant (`room.rs:793-800`). `enter` admits anyone
-   who presents the invitation or the password and adds the grant again
-   (`access.rs:208-227`). The removed person opens the old link and is back.
-   The guide says re-entry needs a new admission. Blocking the identity would
-   not help, because a new one is free. The smallest correction I see: a
-   removal retires the current invitation, and the interface tells the owner
-   that a password still admits. The owner decides, because it changes what a
-   removal does to everyone else holding the link.
+1. **Removing a member and the invitation stay separate. Decided by the
+   owner; no code change.** `revoke` removes the grant (`room.rs:793-800`) and
+   `enter` admits anyone who presents the invitation or the password again
+   (`access.rs:208-227`), so a removed person can return with the old link.
+   The owner wants the two responsibilities kept apart, as a kick is apart
+   from a ban elsewhere. What was wrong was the guide, which said a new grant
+   was needed. The commit after this one says plainly that the link or the
+   password still admits, and that resetting them keeps the person out.
+   Blocking an identity would be a separate feature, and nobody has asked for
+   it.
 2. **The creator of a Server-hosted room can attribute messages to other
    people. Traced by an agent; I have not verified it.** The creator restores
    a backup through `PUT …/rooms/{room}/backup` (`domain_backup.rs:82-128`).
@@ -85,11 +86,17 @@ words, so I have also put it to the owner.
 
 Checked against the canon, for your judgement:
 
-- **Server forwarding is not a fallback today.** It is off unless a manager
-  turns it on. Once on, it joins the relays with no rank below participants
-  and a larger connection limit (`room.rs:580`, `routes.rs:322-340`,
-  `discovery.rs:748-753`). The default is the owner's to decide; the rank
-  belongs with decision 6 of ADR-0018.
+- **Server forwarding is not a fallback today.** Once on, it joins the relays
+  with no rank below participants and a larger connection limit
+  (`room.rs:580`, `routes.rs:322-340`, `discovery.rs:748-753`). The owner's
+  direction: the operator's switch stays off by default, because bandwidth is
+  the operator's cost; once the operator turns it on, rooms use it without a
+  second switch in each room, and it ranks after every participant path. A
+  room can still decline it. The owner is weighing a choice per kind (screen,
+  voice, files), which your forwarding plan already proposes, and whether a
+  Server may keep file originals. I have suggested treating the Server as one
+  more holder under the existing holder rule, by the operator's choice and
+  within a quota, and no decision is made.
 - **The App's ways of being reached exclude each other** per launch
   (`app_domain.rs:292-297`), and its entry has no port mapping or public
   address. The canon says side by side.
