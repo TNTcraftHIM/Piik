@@ -7009,6 +7009,41 @@ test("room metrics ignore a late rejected read from a retired peer", async () =>
   } finally { fixture.media.reset(); fixture.session.close(); }
 });
 
+test.each(["ended", "removetrack"])("voice retires only the current audio input on %s", async event => {
+  const { media, session, pc, sent, state, changed } = await setupRoomMedia();
+  const tracks = [Object.assign(remoteTrack("audio"), { muted: true }) as MediaStreamTrack];
+  const primary = remoteStream("primary", tracks), sibling = remoteStream("sibling", [remoteTrack("audio")]);
+  const streams = [primary, sibling];
+  state.publications = streams.map(stream => ({ id: stream.id, kind: "voice", roomId: "first", userId: "other", sessionId: "z", audience: [], paused: false }));
+  state.pairs[0].incoming = streams.map(stream => ({ id: stream.id, publicationId: stream.id, selected: true, inputFlowId: null }));
+  state.subscriptions = streams.map(stream => stream.id);
+  media.update("a", state); pc.connected();
+  const states = () => sent.filter(command => command.type === "flow_state");
+  try {
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "voices" },
+      tracks: streams.map(stream => ({ flowId: stream.id, streamId: stream.id })) });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("voices"));
+    for (const stream of streams) pc.ontrack?.({ streams: [stream] });
+    expect(states()).toContainEqual({ type: "flow_state", flowId: primary.id, pairId: "pair", state: "forwardable" });
+    const old = tracks[0], replacement = Object.assign(remoteTrack("audio"), { muted: true });
+    tracks[0] = replacement; pc.ontrack?.({ streams: [primary] });
+    sent.length = 0;
+    Object.assign(old, { readyState: "ended" }); old.dispatchEvent(new Event("ended"));
+    expect(states()).toEqual([]);
+    if (event === "ended") {
+      Object.assign(replacement, { readyState: "ended" }); replacement.dispatchEvent(new Event("ended"));
+    } else {
+      tracks.length = 0; primary.dispatchEvent(new Event("removetrack"));
+    }
+    expect(states()).toEqual([{ type: "flow_state", flowId: primary.id, pairId: "pair", state: "failed" }]);
+    expect(changed.mock.lastCall?.[0].has(primary.id)).toBe(false);
+    expect(changed.mock.lastCall?.[0].get(sibling.id)).toBe(sibling);
+    sent.length = 0; pc.connected();
+    expect(states()).not.toContainEqual({ type: "flow_state", flowId: primary.id, pairId: "pair", state: "forwardable" });
+    expect(states()).toContainEqual({ type: "flow_state", flowId: sibling.id, pairId: "pair", state: "forwardable" });
+  } finally { media.reset(); session.close(); }
+});
+
 test("voice activity follows subscribed speaking endpoints and discards retired input stats", async () => {
   const fixture = await setupRoomMedia();
   try {
@@ -10065,10 +10100,8 @@ test("a resumed room owner retires reading left behind by an offline room switch
 
 test("voice forwards without local listening and the same pair carries the reverse source", async () => {
   const { session, media, state, pc } = await setupRoomMedia();
-  const aTrack = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
-  const bTrack = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
-  const voice = (id: string, track: MediaStreamTrack) => ({ id, getTracks: () => [track], getAudioTracks: () => [track], getVideoTracks: () => [] }) as unknown as MediaStream;
-  const incoming = voice("a-stream", aTrack), local = voice("b-stream", bTrack);
+  const aTrack = remoteTrack("audio"), bTrack = remoteTrack("audio");
+  const incoming = remoteStream("a-stream", [aTrack]), local = remoteStream("b-stream", [bTrack]);
   try {
     pc.connected(); pc.channels[0].open();
     state.publications = [

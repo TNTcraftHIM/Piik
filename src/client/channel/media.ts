@@ -21,6 +21,7 @@ interface Peer {
 interface MediaInput {
   stream: MediaStream;
   video: MediaStreamTrack | undefined;
+  audio: MediaStreamTrack | undefined;
   receiver: RTCRtpReceiver | undefined;
   ready: boolean;
   presentationReady?: boolean;
@@ -327,10 +328,12 @@ export class ChannelMedia {
     const kind = publication?.kind;
     if (!kind) return;
     const video = kind === "screen" ? stream.getVideoTracks().find(track => track.readyState !== "ended") : undefined;
+    const audio = kind === "voice" ? stream.getAudioTracks().find(track => track.readyState === "live") : undefined;
+    const track = video ?? audio;
     const receiver = video ? peer.transport.pc.getReceivers().find(candidate => candidate.track === video) : undefined;
     const previous = peer.inputs.get(id);
-    const input: MediaInput = previous && previous.stream === stream && previous.video === video && previous.receiver === receiver
-      ? previous : { stream, video, receiver, ready: false };
+    const input: MediaInput = previous && previous.stream === stream && previous.video === video && previous.audio === audio && previous.receiver === receiver
+      ? previous : { stream, video, audio, receiver, ready: false };
     if (input !== previous) {
       previous?.release?.();
       peer.inputs.set(id, input);
@@ -339,20 +342,16 @@ export class ChannelMedia {
         this.prove(peer, id, stream);
         this.refresh();
       };
-      if (kind === "screen") {
-        stream.addEventListener("removetrack", changed);
-        video?.addEventListener("ended", changed);
-      }
+      stream.addEventListener("removetrack", changed);
+      track?.addEventListener("ended", changed);
       input.release = () => {
         input.codecProbe?.abort();
         input.stopProof?.();
         input.stopQuality?.();
-        if (kind === "screen") {
-          stream.removeEventListener("removetrack", changed);
-          video?.removeEventListener("ended", changed);
-        }
+        stream.removeEventListener("removetrack", changed);
+        track?.removeEventListener("ended", changed);
       };
-      if (!video && previous?.stream === stream && previous.video) {
+      if (!track && previous?.stream === stream && (previous.video || previous.audio)) {
         input.failed = true;
         this.reportInput(peer, id, input);
       }
@@ -369,7 +368,7 @@ export class ChannelMedia {
       return true;
     };
     if (kind === "voice") {
-      ready();
+      if (audio) ready();
       return;
     }
     if (!video || !receiver) return;
@@ -386,6 +385,7 @@ export class ChannelMedia {
   private ownsInput(peer: Peer, flowId: string, input: MediaInput): boolean {
     return this.peers.get(peer.plan.id) === peer && peer.plan.incoming.some(flow => flow.id === flowId)
       && peer.inputs.get(flowId) === input && peer.transport.hasRemoteStream(flowId, input.stream)
+      && (!input.audio || (input.audio.readyState === "live" && input.stream.getAudioTracks().includes(input.audio)))
       && (!input.video || (input.receiver !== undefined && input.receiver.track === input.video
         && input.stream.getVideoTracks().find(track => track.readyState === "live") === input.video
         && peer.transport.pc.getReceivers().includes(input.receiver)));
@@ -622,7 +622,7 @@ export class ChannelMedia {
     const incoming = (peer: Peer) => peer.plan.incoming.flatMap(flow => {
       const publication = this.publications.find(value => value.id === flow.publicationId && value.roomId === roomId
         && value.kind === "voice" && !value.paused && this.subscriptions.includes(value.id));
-      const input = peer.inputs.get(flow.id), track = input?.stream.getAudioTracks().find(track => track.readyState === "live");
+      const input = peer.inputs.get(flow.id), track = input?.audio;
       return flow.selected && publication && input?.ready && track && this.ownsInput(peer, flow.id, input)
         ? [{ flowId: flow.id, publication, input, track }] : [];
     });
