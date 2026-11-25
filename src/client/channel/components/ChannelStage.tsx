@@ -136,6 +136,8 @@ export interface WaitingStageSource {
   hidden?: boolean; onClose(): void;
 }
 export type ChannelStageSource = ScreenStageSource | WatchStageSource | WaitingStageSource;
+/** A picture's surface lives while it has any live input, so a moment without a selection keeps its candidate. */
+const hasPicture = (source: ScreenStageSource) => !!source.stream || !!source.inputs?.length;
 const stageTitle = (source: ChannelStageSource, t: Copy["t"]) => source.kind === "screen" ? screenTitle(source, t) : source.title;
 
 function SourceOfferAction({ source, disabled, onWatch }: {
@@ -298,7 +300,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
       tiles.querySelector<HTMLElement>(".c3-monitor-tile.is-focused")?.focus({ preventScroll: true });
     }
   }, [focused?.id]);
-  const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : focused?.kind === "screen" && !!focused.stream;
+  const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : focused?.kind === "screen" && hasPicture(focused);
   useEffect(() => { if (!hasFocusedMedia) setTheater(false); }, [focused?.id, hasFocusedMedia, setTheater]);
   if (!sources.length) return null;
 
@@ -358,7 +360,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
             }}>
-            {waiting ? <div className="c3-monitor-wait"><Glyph name="tv" size={24} /><span role="status">{t("screen.shareEnded", { name: source.name })}</span></div> : source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource} sourcePaused={source.paused}
+            {waiting ? <div className="c3-monitor-wait"><Glyph name="tv" size={24} /><span role="status">{t("screen.shareEnded", { name: source.name })}</span></div> : hasPicture(source) ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource} sourcePaused={source.paused}
               onRetryPicture={onRetryPicture ? () => onRetryPicture(source.id) : undefined} retryAvailable={canSubscribe && !source.pending}
               failure={source.pictureFailure} clearFailure={source.clearPictureFailure}
               presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}

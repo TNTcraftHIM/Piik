@@ -2700,7 +2700,7 @@ dependencies = [
 [[package]]
 name = "is"
 version = "0.12.1"
-source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=5f1f63468bb9b58b8efea6ef00e5805bb51404dd#5f1f63468bb9b58b8efea6ef00e5805bb51404dd"
 dependencies = [
  "crc",
  "serde",
@@ -4013,6 +4013,7 @@ dependencies = [
  "fs4",
  "futures-util",
  "if-addrs",
+ "libc",
  "log",
  "m3u8-rs",
  "objc2",
@@ -4042,6 +4043,7 @@ dependencies = [
  "webview2-com",
  "windows",
  "windows-core",
+ "windows-sys 0.61.2",
  "wry",
  "zip",
 ]
@@ -5363,7 +5365,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.26.0"
-source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=5f1f63468bb9b58b8efea6ef00e5805bb51404dd#5f1f63468bb9b58b8efea6ef00e5805bb51404dd"
 dependencies = [
  "arrayvec",
  "base64ct",
@@ -5383,7 +5385,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.8.0"
-source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=5f1f63468bb9b58b8efea6ef00e5805bb51404dd#5f1f63468bb9b58b8efea6ef00e5805bb51404dd"
 dependencies = [
  "base64ct",
  "dimpl",
@@ -5396,7 +5398,7 @@ dependencies = [
 [[package]]
 name = "str0m-rust-crypto"
 version = "0.7.0"
-source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=5f1f63468bb9b58b8efea6ef00e5805bb51404dd#5f1f63468bb9b58b8efea6ef00e5805bb51404dd"
 dependencies = [
  "aes 0.9.4",
  "aes-gcm 0.11.1",

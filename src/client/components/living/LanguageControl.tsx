@@ -10,6 +10,7 @@ export function LanguageControl() {
   const { lang, pinnedLanguage, t, setLang } = useCopy();
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLSpanElement>(null);
   const pinned = pinnedLanguage ? locales[pinnedLanguage] : null;
   const selected = lang === pinnedLanguage;
@@ -31,12 +32,17 @@ export function LanguageControl() {
     };
   }, [extraLanguages.length]);
 
+  function dismiss() {
+    // Nested native popovers do not restore focus to their own invoker.
+    openerRef.current?.focus();
+    menuRef.current?.hidePopover();
+  }
+
   function navigate(event: KeyboardEvent<HTMLSpanElement>) {
     const menu = event.currentTarget;
-    if (event.key === "Tab") {
-      // Resume the page's normal Tab order from the menu's trigger.
-      triggerRef.current?.focus();
-      menu.hidePopover();
+    if (event.key === "Tab" || event.key === "Escape") {
+      if (event.key === "Escape") event.preventDefault();
+      dismiss();
       return;
     }
     if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
@@ -72,15 +78,21 @@ export function LanguageControl() {
           aria-label={pinned?.name ?? t("mode.more")} aria-pressed={pinned ? selected : undefined}
           aria-haspopup={opensMenu ? "menu" : undefined} popoverTarget={opensMenu ? menuId : undefined}
           onClick={event => {
-            if (pinnedLanguage && !selected) { event.preventDefault(); setLang(pinnedLanguage); }
+            if (opensMenu) openerRef.current = event.currentTarget;
+            else if (pinnedLanguage) { event.preventDefault(); setLang(pinnedLanguage); }
           }}
           onKeyDown={event => {
-            if (event.key === "ArrowDown") { event.preventDefault(); triggerRef.current?.click(); }
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              triggerRef.current?.click();
+              openerRef.current = event.currentTarget;
+            }
           }}>
           {pinned ? pinned.short : <Glyph name="globe" size={14} />}
         </button>
         <button ref={triggerRef} type="button" className="lr-lang-more" popoverTarget={menuId}
           aria-haspopup="menu" aria-label={t("mode.more")}
+          onClick={event => { openerRef.current = event.currentTarget; }}
           onKeyDown={event => {
             if (event.key === "ArrowDown") { event.preventDefault(); event.currentTarget.click(); }
           }}>
@@ -106,9 +118,8 @@ export function LanguageControl() {
           key={key} type="button" role="menuitemradio" tabIndex={-1}
           lang={locale.tag} aria-label={locale.name} aria-checked={selected}
           onClick={() => {
+            dismiss();
             setLang(key);
-            menuRef.current?.hidePopover();
-            triggerRef.current?.focus();
           }}
         >
           <span className="lr-language-mark" aria-hidden="true">{locale.short}</span>

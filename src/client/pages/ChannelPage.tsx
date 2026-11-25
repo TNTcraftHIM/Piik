@@ -16,6 +16,7 @@ import { diagnoseChannelFact } from "../channel/diagnosis";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { useRoomPane } from "../channel/use-room-pane";
 import { LayerHistory } from "../ui/layer-history";
+import { composeDocumentTitle, usePageTitle } from "../ui/document-title";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
@@ -44,7 +45,7 @@ import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { ChannelDiagnosisHelp } from "../channel/components/ChannelDiagnosisHelp";
-import { roomHasUnread, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
+import { roomHasUnread, roomPeople, roomSessionViewing, viewingAppearance, screenAudience, screenDeliveryFailed, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
 import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
@@ -201,6 +202,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (moved && name) setOrderAnnouncement(t("room.order.moved", { name, position: String(moved.position), total: String(moved.total) }));
   };
   const room = rooms.find(value => value.id === selected);
+  const siteName = state?.channel.name;
+  usePageTitle(composeDocumentTitle(room?.name, siteName === "Piik" ? null : siteName));
   const roomId = room?.id ?? "";
   const overview = !room;
   const unlistedRoom = Boolean(state && selected && !room);
@@ -554,8 +557,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             const watch = "playback" in source;
             const ended = !("source" in source);
             const owned = watch ? ownsWatch(source.id) : channel.ownedScreens.has(source.id), title = ended ? source.title : watch ? watchTitle(source.source.url) : screenTitle(source, t);
-            return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : "eye"} size={17} />
-              <span><small>{ended ? t("screen.shareEnded", { name: source.name }) : owned ? t("channel.previewPage.stillSharing") : t("channel.previewPage.stillWatching")}</small>
+            const viewing = !ended && !owned ? roomSessionViewing(watch ? [] : [source], watch ? [source] : [], state?.subscriptions ?? [], channel) : undefined;
+            const appearance = viewing && viewingAppearance[viewing];
+            return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : appearance?.icon ?? "eye"} size={17} />
+              <span><small>{ended ? t("screen.shareEnded", { name: source.name }) : owned ? t("channel.previewPage.stillSharing") : t(appearance?.label ?? "watch.joined")}</small>
                 <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span></span>
               <Btn icon="arrowLeft" quiet size="dense" title={{ text: t("channel.previewPage.returnToRoom", { value: nameOfRoom(source.roomId) }) }}
                 cap={{ text: t("channel.previewPage.return") }} onClick={() => showSource(source.roomId, source.id)} />
@@ -605,7 +610,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
-            deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            deliveryFailed: screenDeliveryFailed(publication, sessionId),
             pictureFailure: pictureAction.errors.get(publication.id), clearPictureFailure: () => pictureAction.clearError(publication.id),
             playbackError: channel.screenPlaybackError(publication.id),
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
@@ -669,7 +674,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
-            findUnreadMessage={room?.capabilities.historySeek === true ? channel.findUnreadMessage : undefined}
+            findUnreadMessage={room?.historyLineage ? channel.findUnreadMessage : undefined}
             onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} lastMessageSeq={room?.lastMessageSeq} selfUserId={self?.id}
             onDeleteMessage={room?.authorized ? channel.deleteMessage : undefined}
             canModerate={room?.canManage || (!!self && self.id === state?.channel.ownerId)} pending={channel.pending}

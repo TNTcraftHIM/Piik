@@ -3,6 +3,99 @@ use super::*;
 use crate::peer::tests::support::{endpoint, h264, send, vp8, Fixture};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn companion_rejection_waits_for_its_source_or_flow_to_change() -> Result<()> {
+    use crate::peer::{Description, InitialMedia, Signal, SourceReady};
+    use piik_channel_core::wire::{Command as WireCommand, FlowState};
+
+    let mut f = Fixture::new(vp8()).await?;
+    let result = async {
+        let sink = f.sink;
+        let flow = f.plans.last().unwrap().outgoing[0];
+        let sibling = f.plans.last().unwrap().outgoing[1];
+        let other = f.add_remote(Uuid::new_v4()).await?;
+        let mut other_plan = f.plans.last().unwrap().clone();
+        other_plan.id = other;
+        other_plan.peer_id = Uuid::new_v4();
+        other_plan.outgoing = vec![piik_channel_core::wire::FlowBinding {
+            id: Uuid::new_v4(),
+            ..flow
+        }];
+        f.plans.push(other_plan);
+        f.driver.update(f.plans.clone(), vec![f.publication.clone()], vec![]).await;
+        f.until(|f| {
+            let pair = &f.driver.pairs[&sink];
+            [(flow.id, MediaKind::Audio), (flow.id, MediaKind::Video), (sibling.id, MediaKind::Audio)]
+                .iter().all(|key| pair.outputs.get(key).is_some_and(|out| !out.codecs().is_empty()))
+                && f.driver.pairs[&other].outputs.len() == 2
+        }).await?;
+        let video = f.output(flow.id, MediaKind::Video);
+        let healthy_audio = f.output(sibling.id, MediaKind::Audio).0;
+        let failed_audio = f.driver.pairs[&sink].outputs[&(flow.id, MediaKind::Audio)].source;
+        let stream = video.1.clone();
+        f.until(|f| f.observed(&stream, MediaKind::Video).is_some()).await?;
+
+        // A real SDP change removes only this receiver's screen-audio direction.
+        let remote = f.remote[&sink].clone();
+        let (sdp, exchange) = remote.call(move |engine| {
+            let mid = engine.tracks.values()
+                .find(|input| input.track.stream == stream && input.track.kind == MediaKind::Audio)
+                .context("screen audio receiver")?.track.mid;
+            let mut changes = engine.rtc.sdp_api();
+            changes.set_direction(mid, Direction::Inactive);
+            let (offer, pending) = changes.apply().context("audio direction changed")?;
+            let sdp = offer.to_sdp_string();
+            engine.pending = Some(pending);
+            engine.local = Some(("offer".into(), sdp.clone()));
+            Ok((sdp, Uuid::new_v4()))
+        }).await?;
+        f.driver.signal(sink, Signal {
+            description: Some(Description { kind: "offer".into(), sdp: Some(sdp) }),
+            exchange_id: Some(exchange), tracks: Some(vec![]),
+            udp: None, candidate: None, resync: None,
+        }).await?;
+        f.until(|f| {
+            let pair = &f.driver.pairs[&sink];
+            pair.rejected_outputs.get(&(flow.id, MediaKind::Audio)) == Some(&failed_audio)
+                && !pair.outputs.contains_key(&(flow.id, MediaKind::Audio))
+        }).await?;
+        ensure!(f.output(flow.id, MediaKind::Video).0 == video.0);
+        ensure!(f.output(sibling.id, MediaKind::Audio).0 == healthy_audio);
+        ensure!(!f.reported.iter().any(|command| matches!(command,
+            WireCommand::FlowState { flow_id, state: FlowState::Failed, .. } if *flow_id == flow.id)));
+
+        f.plans.retain(|plan| plan.id != other);
+        f.driver.update(f.plans.clone(), vec![f.publication.clone()], vec![]).await;
+        ensure!(!f.driver.pairs[&sink].outputs.contains_key(&(flow.id, MediaKind::Audio)),
+            "retiring an unrelated pair retried rejected companion audio");
+        ensure!(f.driver.pairs[&sink].rejected_outputs.get(&(flow.id, MediaKind::Audio)) == Some(&failed_audio));
+
+        // A new encoded source generation is a real input to the existing owner.
+        let mut replacement = f.driver.sources[&failed_audio].clone();
+        replacement.id = Uuid::new_v4();
+        let replacement_id = replacement.id;
+        f.driver.source_ready(SourceReady { source: replacement, media: InitialMedia::Rtp(vec![]) }).await;
+        ensure!(f.driver.pairs[&sink].outputs[&(flow.id, MediaKind::Audio)].source == replacement_id);
+        ensure!(!f.driver.pairs[&sink].rejected_outputs.contains_key(&(flow.id, MediaKind::Audio)));
+        ensure!(f.output(flow.id, MediaKind::Video).0 == video.0);
+        ensure!(f.output(sibling.id, MediaKind::Audio).0 == healthy_audio);
+        f.until(|f| !f.driver.pairs[&sink].outputs[&(flow.id, MediaKind::Audio)].codecs().is_empty()).await?;
+        let before = f.observed(&video.1, MediaKind::Audio);
+        let packet = rtp::Packet {
+            header: rtp::header::Header { version: 2, marker: true,
+                sequence_number: f.frame as u16,
+                timestamp: f.parents[0].base.wrapping_add(f.frame * 960),
+                ..Default::default() },
+            payload: vec![0xf8, 0xff, 0xfe].into(),
+        };
+        f.driver.relay.write(replacement_id, packet);
+        f.until(|f| f.observed(&video.1, MediaKind::Audio).is_some_and(|received| Some(received) != before)).await?;
+        Ok(())
+    }.await;
+    f.close().await;
+    result
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_connection() -> Result<()>
 {
     use crate::media::{Output, Source, SourceFeed, SourceOrigin};

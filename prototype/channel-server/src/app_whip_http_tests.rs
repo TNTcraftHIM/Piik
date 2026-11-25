@@ -28,6 +28,7 @@ fn fixture() -> (
         },
         port: 39721,
         token: "fixture".into(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites: sites::Sites::open(directory.path()).unwrap(),
             approvals: BTreeMap::from([(ORIGIN.into(), Arc::new(Permission::new(Uuid::new_v4())))]),
@@ -51,7 +52,7 @@ fn fixture() -> (
                 "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
                 "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},
                 "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding}}]},
-        "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
+        "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[],
         "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
     })).unwrap();
     let (snapshot, observed) = watch::channel(Some(state));

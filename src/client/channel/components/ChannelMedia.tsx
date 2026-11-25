@@ -22,7 +22,7 @@ import { observeDebugPlayback } from "../../lib/debug-webrtc";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
 import { elementPlaybackError, playbackFailure, type ScreenPlaybackError } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
-import type { VideoFit, VideoRotation } from "../../media/video-geometry";
+import type { VideoFit, VideoRotation, VideoSize } from "../../media/video-geometry";
 import type { ChannelActions, ChannelScreenInput } from "../types";
 import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
@@ -332,8 +332,10 @@ export function observeChannelInputFrame(element: HTMLVideoElement, stream: Medi
   });
 }
 
-function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
-  input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
+function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive, label, fit, rotation, register, frame, issue, playing, fullscreen }: {
+  input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit; rotation: VideoRotation;
+  /** This layer left the live inputs and holds its last frame. */
+  held: boolean;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
   issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown, playbackError?: ScreenPlaybackError): void;
@@ -342,6 +344,11 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [composited, setComposited] = useState(false);
+  // A removed track's last frame loses its natural size, and object-fit then stretches it to the box.
+  // The element reports no event for that loss, so the held layer takes the picture's last shape as its own box.
+  const [naturalSize, setNaturalSize] = useState<VideoSize>();
+  const heldSize = held && fit !== "fill" ? naturalSize : undefined;
+  useVideoRotation(ref, fit, rotation, heldSize);
   const attach = useCallback((element: HTMLVideoElement | null) => {
     ref.current = element; register(input, element);
   }, [input.flowId, input.stream, register]);
@@ -349,7 +356,7 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
     const element = ref.current!;
     element.muted = true;
     element.srcObject = input.stream;
-    setComposited(false);
+    setComposited(false); setNaturalSize(undefined);
     const stop = observeChannelInputFrame(element, input.stream, negotiatedFlowId, () => {
       setComposited(true); frame(input, element);
     });
@@ -361,9 +368,12 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
     void element.play().catch(error => { if (active) issue(input, element, error); });
     return () => { active = false; stop(); stopDebug(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, negotiatedFlowId, frame, issue]);
-  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
-    data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
-    tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
+  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit, aspectRatio: heldSize && `${heldSize.width} / ${heldSize.height}` }} aria-label={visible ? label : undefined} aria-hidden={!visible}
+    data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady} data-held-fit={heldSize && fit}
+    tabIndex={visible ? 0 : -1} onResize={event => {
+      const { videoWidth: width, videoHeight: height } = event.currentTarget;
+      if (width && height) setNaturalSize({ width, height });
+    }} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
     onEnded={() => playing(input, true)} onError={event => {
       const element = event.currentTarget;
       issue(input, element, element.error, elementPlaybackError(element.error));
@@ -391,7 +401,8 @@ export function PictureFailure({ error, onDismiss }: { error: string; onDismiss?
 }
 
 export function ChannelVideo({ stream, owned, localSource, sourcePaused = false, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, onRetryPicture, retryAvailable = true, failure, clearFailure, theaterMode, onToggleTheater }: {
-  stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
+  /** The selected stream; a remote picture may have only an unselected candidate for a moment. */
+  stream?: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   presentation?: "full" | "thumbnail" | "background"; sourcePaused?: boolean;
   input?: InputTransport;
   buffering?: PlaybackSettingsProps["buffering"];
@@ -403,10 +414,14 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   onPresentation?: ChannelActions["screenPresentation"];
 }) {
   const thumbnail = presentation === "thumbnail", interactive = presentation === "full";
-  const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false, localDisplayKey: true };
-  const [displayed, setDisplayed] = useState(target);
-  const next = target.flowId !== displayed.flowId || target.stream !== displayed.stream ? target : inputs?.find(input => !input.selected);
-  const rendered = next ? [displayed, next] : [displayed];
+  const selected = inputs?.find(input => input.selected) ?? (stream && { flowId: stream.id, stream, selected: true, switchReady: false, localDisplayKey: true });
+  const [displayed, setDisplayed] = useState(selected);
+  const shown = (input: ChannelScreenInput) => input.flowId === displayed?.flowId && input.stream === displayed.stream;
+  // Without a selection the displayed layer stays, and the candidate keeps preparing beside it.
+  const next = selected && !shown(selected) ? selected : inputs?.find(input => !input.selected && !shown(input));
+  const rendered = [displayed, next].filter(input => input !== undefined);
+  // A layer that has left the live inputs holds its last frame, which must not look live.
+  const held = !!displayed && !!inputs && !inputs.some(shown);
   const consumers = useRef(new Map<MediaStream, { element: HTMLVideoElement; composited: boolean }>());
   const [consumerVersion, changeConsumer] = useState(0);
   const [activeVideo, setActiveVideo] = useState<HTMLVideoElement | null>(null);
@@ -437,8 +452,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const volumeTitle = !hasAudio ? "playback.noAudio" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
   const picture = usePictureInPicture(playbackRef);
-  const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed.stream : null, previewAutoPause, localSource);
-  useVideoRotation(playbackRef, pictureFit, pictureRotation);
+  const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed?.stream ?? null : null, previewAutoPause, localSource);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   useLayoutEffect(() => { if (presentation === "background") picturePanel.current?.hidePopover(); }, [presentation]);
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, blocked || !ready);
@@ -456,20 +470,19 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
     const failure = playbackFailure(error);
     if (!failure || consumers.current.get(input.stream)?.element !== element) return;
     const state = current.current;
-    const displayed = state.displayed.flowId === input.flowId && state.displayed.stream === input.stream;
+    const displayed = state.displayed?.flowId === input.flowId && state.displayed.stream === input.stream;
     if (displayed) setBlocked(true);
     if (failure === "playback-failed" && state.inputs?.some(value => value.flowId === input.flowId && value.stream === input.stream)) {
       state.onPresentation?.(input.flowId, input.stream, "failed", displayed ? playbackError : undefined);
     }
   }, []);
   const playing = useCallback((input: ChannelScreenInput, value: boolean) => {
-    if (current.current.displayed.flowId !== input.flowId || current.current.displayed.stream !== input.stream) return;
+    if (current.current.displayed?.flowId !== input.flowId || current.current.displayed.stream !== input.stream) return;
     setPaused(value); if (!value) setBlocked(false);
   }, []);
   const play = () => {
-    const element = ref.current;
-    if (!element) return;
-    const displayed = current.current.displayed;
+    const element = ref.current, displayed = current.current.displayed;
+    if (!element || !displayed) return;
     output.current?.resume();
     void element.play().then(() => {
       if (ref.current === element && consumers.current.get(displayed.stream)?.element === element) setBlocked(false);
@@ -504,9 +517,10 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
     finally { nativeRequested.current = false; changeConsumer(value => value + 1); }
   };
   useLayoutEffect(() => {
-    const binding = consumers.current.get(target.stream);
+    if (!selected) return;
+    const binding = consumers.current.get(selected.stream);
     if (!binding) return;
-    const swapping = target.flowId !== displayed.flowId || target.stream !== displayed.stream;
+    const swapping = !shown(selected);
     if (swapping && !binding.composited) return;
     // Only remote playback owns a listening output, even when the video stays.
     if (ref.current !== binding.element || Boolean(output.current) !== !localSource) {
@@ -521,17 +535,17 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       if (keepPaused && !owned) element.pause();
       element.volume = Math.min(saved.level, 1); element.muted = true;
       const nextAudio = localSource ? null : new ViewerAudio(element, setAudio);
-      nextAudio?.bind(target.stream); nextAudio?.setLevel(saved.level); nextAudio?.setMuted(saved.muted);
+      nextAudio?.bind(selected.stream); nextAudio?.setLevel(saved.level); nextAudio?.setMuted(saved.muted);
       if (localSource) setAudio(saved);
       output.current = nextAudio; ref.current = element;
       setActiveVideo(element); setPaused(owned ? element.paused : keepPaused); setBlocked(false);
       if (previous !== element) previous?.pause();
     }
     setReady(binding.composited);
-    if (swapping) setDisplayed(target);
-  }, [target.flowId, target.stream, displayed.flowId, displayed.stream, consumerVersion, owned, localSource]);
+    if (swapping) setDisplayed(selected);
+  }, [selected?.flowId, selected?.stream, displayed?.flowId, displayed?.stream, consumerVersion, owned, localSource]);
   useEffect(() => {
-    if (!activeVideo) return;
+    if (!activeVideo || !displayed) return;
     const selectedStream = displayed.stream;
     const syncAudio = () => {
       if (ref.current !== activeVideo) return;
@@ -545,7 +559,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       selectedStream.removeEventListener("addtrack", syncAudio);
       selectedStream.removeEventListener("removetrack", syncAudio);
     };
-  }, [activeVideo, displayed.stream]);
+  }, [activeVideo, displayed?.stream]);
   useEffect(() => () => { output.current?.dispose(); output.current = null; ref.current = null; }, []);
   useEffect(() => {
     const element = activeVideo;
@@ -578,12 +592,12 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
-    {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
+    {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={shown(input)} held={held && shown(input)}
       negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
-      interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
+      interactive={interactive} label={label} fit={pictureFit} rotation={pictureRotation} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused && !sourcePaused} />
-    {(sourcePaused || !blocked && (!ready || failure)) && <div className="c3-mini-message" data-source-paused={sourcePaused || undefined}>
-      {(sourcePaused || !ready) && <span className="c3-frame-wait" role="status">{sourcePaused ? <Glyph name="pause" size={24} /> : <BrandMark size={32} motion="loop" />}
+    {(sourcePaused || !blocked && (!ready || held || failure)) && <div className="c3-mini-message" data-source-paused={sourcePaused || undefined}>
+      {(sourcePaused || !ready || held) && <span className="c3-frame-wait" role="status">{sourcePaused ? <Glyph name="pause" size={24} /> : <BrandMark size={32} motion="loop" />}
         {t(sourcePaused ? "host.pauseNotice" : "screen.waitingPicture")}</span>}
       {failure && <PictureFailure error={failure} onDismiss={clearFailure} />}
     </div>}
@@ -611,7 +625,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
       {!owned && <PlaybackControlsAttention.Provider value={visibility.setAttention}>
-        <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && !sourcePaused && displayed.flowId === target.flowId}
+        <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && !sourcePaused && !!selected && displayed?.flowId === selected.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
         readStickPositions={readStickPositions} onStickPositionChange={(side, position) => {
           saveRoomPreferences({ stickPositions: { ...readStickPositions(), [side]: position } });

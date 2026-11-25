@@ -519,7 +519,7 @@ Three distinct 2.x failures retained separate owners:
   bridge. Reading current PC state at consumption restored readiness; prior loss
   still revoked permission and required a fresh handshake.
 - Backend replacement renewed the Viewer's recovery count. The existing
-  [parent opportunity](../standards/routing-transport.md#reconciliation) now owns
+  [parent opportunity](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md#reconciliation) now owns
   that budget. Trickle controls recovered after 2/9/11-second interruptions;
   failed full-gathering while offline did not justify longer product deadlines.
 - A throttled encoded queue retained stale pictures after short UDP loss.
@@ -528,7 +528,7 @@ Three distinct 2.x failures retained separate owners:
   the correction and constrained-bandwidth comparison; six local controls then
   retained fresh decoding. This does not explain every blur/stall report.
 
-The [Viewer control-retirement repair](./native-client-lifecycle.md#viewer-control-retirement)
+The [Viewer control-retirement repair](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/native-client-lifecycle.md#viewer-control-retirement)
 separately fixed a denied Viewer retaining its App slot across invitations.
 
 ### Gateway And Address-Family Controls
@@ -606,6 +606,37 @@ MSS to 1240 delivered the script in about 8 ms. This reproduces
 [path-MTU black holes](https://www.rfc-editor.org/rfc/rfc2923), not the cause of an
 unmatched field loading report. Compression and endpoint MTU below 1500 alone
 do not exclude that failure.
+
+## Native ICE Disconnection And Send Consent
+
+An in-process control at pinned SDK revision
+[`2d0d6eaa`](https://github.com/TNTcraftHIM/str0m/tree/2d0d6eaaf4d19d7530588f695cd631eedf42acf5)
+used two RTCs, real DTLS/SRTP and SCTP, and the SDK's virtual-time deadlines.
+Suppressing both STUN directions produced `Disconnected` about 21.5 seconds
+after the last successful response while the selected path still had permission
+to send. Restoring STUN recovered the same RTC and credentials; the following
+observation delivered 200 authenticated RTP packets and 200 SCTP messages.
+
+Send permission expired at 30 seconds. Late authenticated STUN and re-adding the
+old candidates produced no application output or STUN reply on the retired path.
+Fresh ICE credentials or another tuple restored delivery, retaining the
+[RFC 7675 consent boundary](https://www.rfc-editor.org/rfc/rfc7675.html#section-5.1).
+The control used a read-only SDK query of its existing output authorization gate.
+Native now preserves that recovery window and retires an established path when
+the SDK no longer permits sending, including while ICE is checking an alternate.
+A real Native regression preserved valid consent through ICE restart, and
+expired consent released the connection and held remote input. The existing
+SDK wakeups own expiry; no application timer was added.
+
+A matching G50 Browser → Native → Native → Browser control retained the middle
+pair and input identities through short STUN loss while the final viewer kept
+decoding. After prolonged loss, the middle pair retired 30.023 seconds after its
+last observed valid response and a fresh path resumed video. Separate mixed
+controls adopted an actually decoded candidate on an already confirmed spare,
+ignored its late proof after the original recovered, and respected a spare's
+zero forwarding limit. These local controls used synthetic capture and owned UDP
+bridges; cold three-hop discovery, Native GUI and independent-network acceptance
+remain separate. They do not identify a field incident's cause or a NAT success rate.
 
 ## Primary Sources
 

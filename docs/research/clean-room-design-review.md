@@ -55,10 +55,11 @@ These follow from the requirements and should stay.
 
 ## Where All Three Designs Differ From The Tree
 
-Each row is something all three designers chose and the tree does not do. The
+Each row compares the designs with the reviewed `35034f34` tree. Current behavior
+belongs to its standard and implementation owners. The
 audits reached the same point from the code in every row marked †.
 
-| Topic | The three designs | The tree |
+| Topic | The three designs | Reviewed tree (`35034f34`) |
 | --- | --- | --- |
 | Client logic † | The client engine is a state machine in the shared core, in a Worker in the browser. The interface holds no domain state: intents go in, view slices come out. | A 4,060-line TypeScript hub; the participant's rules exist again in Rust. |
 | Schema † | One schema language is the source for wire and stored blobs. Only the core encodes and decodes; TypeScript types are generated. | Five hand-kept copies. |
@@ -152,6 +153,10 @@ could have seen:
   commit yields at most one broadcastable record, the Native writer is never a
   reader while the Browser writer tab usually is, and storage failures return
   through `abort` in both.
+  Core already owns broadcast eligibility. Browser recipient selection occurs
+  after queued access changes and signing; moving it into the earlier shared
+  dispatch would snapshot readers before a queued revocation. Keep that timing
+  at the adapter unless a shared result preserves the same order.
 - The five cursors on a writer binding reduce to one applied position and
   named barriers.
 

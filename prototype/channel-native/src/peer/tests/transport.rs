@@ -140,7 +140,6 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
             polite: true,
             pending_offer: None,
             stable_outputs: None,
-            failed_offer: None,
             answer: None,
             negotiate: false,
             ignore_offer: false,
@@ -300,6 +299,12 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
         ensure!(matches!(previous_reports.as_slice(), [NativeEvent::Command(WireCommand::FlowState {
             pair_id, flow_id, state: FlowState::Failed,
         })] if *pair_id == pair && *flow_id == key.0), "ended current video must report one scoped failure before Ready");
+        audio_packets.send(TrackEvent::End).await?;
+        driver.event(events.recv().await.context("voice audio end")?).await?;
+        ensure!(matches!(reports.try_recv(), Ok(NativeEvent::Command(WireCommand::FlowState {
+            pair_id, flow_id, state: FlowState::Failed,
+        })) if pair_id == pair && flow_id == flows[1].id));
+        ensure!(reports.try_recv().is_err());
         Ok(())
     }).await.unwrap_or_else(|error| Err(error.into()));
     for (_, pair) in std::mem::take(&mut driver.pairs) {
@@ -376,7 +381,6 @@ async fn install_retirement_pair(
             polite: false,
             pending_offer: None,
             stable_outputs: None,
-            failed_offer: None,
             answer: None,
             negotiate: false,
             ignore_offer: false,
@@ -424,7 +428,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     let mut retirement =
         Box::pin(driver.retire_pair(id, crate::diagnostics::RetirementReason::ProjectionRemoved));
     let done = tokio::select! {
-        result = &mut retirement => panic!("retirement completed before transport removal: {result}"),
+        _ = &mut retirement => panic!("retirement completed before transport removal"),
         request = requests.recv() => match request {
             Some(Command::Remove(pair, generation, done)) => {
                 assert_eq!((pair, generation), (id, instance));
@@ -695,6 +699,8 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
 
 #[path = "admission.rs"]
 mod admission;
+#[path = "disconnect.rs"]
+mod disconnect;
 #[path = "bulk.rs"]
 mod bulk;
 #[path = "codec_change.rs"]
@@ -1233,6 +1239,10 @@ async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
     );
     let accepted = runtime.accept_local_input(&orientation_offer).await?;
     ensure!(!accepted.answer.contains("urn:3gpp:video-orientation"));
+    ensure!(accepted.transport.stable().await);
+    let error = accepted.transport.offer().await.unwrap_err();
+    ensure!(error.to_string() == "local input is receive-only", "{error}");
+    ensure!(accepted.transport.stable().await);
     sender.accept("answer".into(), accepted.answer).await?;
     accepted.transport.close().await?;
     sender.create_channel("not-local-media").await?;
@@ -1554,6 +1564,47 @@ async fn receive_buffer_request_raises_small_and_retains_larger_supplied_values(
         );
     }
     Ok(())
+}
+
+#[tokio::test]
+async fn room_transport_offer_distinguishes_no_change_pending_and_retired() -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+
+    let runtime = Runtime::new(None);
+    let id = Uuid::new_v4();
+    let (left, _left_events) = endpoint(&runtime, id, None).await?;
+    let (right, _right_events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let result = async {
+        ensure!(!left.offer().await?);
+        let _channel = left.create_channel("first").await?;
+        ensure!(left.offer().await?);
+        ensure!(!left.stable().await);
+        let (kind, offer) = left.local_description().await?;
+        let error = left.offer().await.unwrap_err();
+        ensure!(error.to_string() == "pending transport offer", "{error}");
+        ensure!(!left.stable().await);
+        ensure!(left.local_description().await? == (kind.clone(), offer.clone()));
+
+        right.accept(kind, offer).await?;
+        let (kind, answer) = right.local_description().await?;
+        left.accept(kind.clone(), answer.clone()).await?;
+        ensure!(left.stable().await);
+        ensure!(!left.offer().await?);
+        ensure!(left.stable().await);
+
+        left.close().await?;
+        let (replacement, _replacement_events) = endpoint(&runtime, id, None).await?;
+        let error = left.offer().await.unwrap_err();
+        ensure!(error.to_string() == "transport retired", "{error}");
+        ensure!(!left.stable().await);
+        ensure!(!replacement.offer().await?);
+        let error = left.accept(kind, answer).await.unwrap_err();
+        ensure!(error.to_string() == "transport retired", "{error}");
+        Ok(())
+    }
+    .await;
+    runtime.close().await;
+    result
 }
 
 #[tokio::test]

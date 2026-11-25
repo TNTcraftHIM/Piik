@@ -14,7 +14,6 @@ pub fn retry_key(user_id: Uuid, nonce: &str) -> String {
 }
 
 pub const HISTORY_WINDOW: usize = 1000;
-// Each retained message has a body and a reaction snapshot on the peer wire.
 pub const HISTORY_PAGE: usize = 50;
 pub const HISTORY_PAGE_BYTES: usize = 256 * 1024;
 pub const MESSAGE_MENTION_LIMIT: usize = 64;

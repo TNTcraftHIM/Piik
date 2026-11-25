@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChannelRoomPage } from "./ChannelPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { Btn, Chip } from "../components/living/primitives";
@@ -91,6 +91,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
   const [forwarding, setForwarding] = useState(new URLSearchParams(location.search).has("forward"));
   const [pageSample, setPageSample] = useState<ReturnType<ChannelController["watchPage"]>>();
+  const [capturePendingSample, setCapturePendingSample] = useState(() => new URLSearchParams(location.search).has("share-pending"));
   const [browserSourcePending, setBrowserSourcePending] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -104,7 +105,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   });
   const picture = new URLSearchParams(location.search).get("picture");
   const samplePictureId = "sample-screen-0";
-  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "no-route" || picture === "paused");
+  const sampleFlowsShown = picture === "candidate" || picture === "handoff";
+  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "no-route" || picture === "paused" || sampleFlowsShown);
   const actionFails = (name: string) => { if (new URLSearchParams(location.search).get("fails") === name) throw new Error("request_timeout"); };
   const [streams, setStreams] = useState(new Map<string, MediaStream>());
   const [unwatched, setUnwatched] = useState(new Set<string>());
@@ -127,8 +129,14 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
     kind: "screen" as const, source: { kind: index === 1 ? "camera" as const : "screen" as const, name: longNames ? "A shared evening with friends and a very long source name" : ["A little place to stay", "Studio camera", "Drawing together"][index % 3] }, title: null, paused: index === 0 && picture === "paused", videoSettings: screenVideoSettings(sample.channel.quality) })))
     .filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id))
-    .map(publication => ({ ...publication, title: titles[publication.id] ?? null, directLimit: directLimits[publication.id] ?? undefined, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
-      .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
+    .map(publication => {
+      const audience = audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
+        .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [];
+      // The room reports a failed picture in this endpoint's own audience entry.
+      const failed = publication.id === samplePictureId && omitSamplePicture && picture === "failed" && !unwatched.has(samplePictureId);
+      return { ...publication, title: titles[publication.id] ?? null, directLimit: directLimits[publication.id] ?? undefined, audience: failed
+        ? [...audience.filter(viewer => viewer.sessionId !== sample.channel.sessionId), { sessionId: sample.channel.sessionId!, state: "failed" as const }] : audience };
+    });
   const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
   const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
   const needsSamples = ownedScreens.size > 0 || subscriptions.length > 0 || !!watchActivity;
@@ -158,6 +166,28 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       canvases.current = [];
     };
   }, [needsSamples]);
+  // The sample picture over two flows. picture=candidate holds a live candidate while nothing is selected;
+  // picture=handoff walks from the selected flow through that moment to the candidate being selected.
+  const [handoffStep, setHandoffStep] = useState(picture === "candidate" ? 1 : 0);
+  const sampleStream = streams.get(samplePictureId);
+  const sampleFlows = useMemo(() => sampleFlowsShown && sampleStream
+    ? [new MediaStream(sampleStream.getVideoTracks()), new MediaStream(sampleStream.getVideoTracks())] : undefined, [sampleStream]);
+  useEffect(() => {
+    if (picture !== "handoff" || !sampleFlows) return;
+    const [incumbent] = sampleFlows;
+    const timers = [1, 2].map(step => window.setTimeout(() => {
+      // A withdrawn or closed flow leaves its stream empty, as the transport does.
+      if (step === 1) for (const track of incumbent.getTracks()) incumbent.removeTrack(track);
+      setHandoffStep(step);
+    }, step * 4000));
+    return () => timers.forEach(window.clearTimeout);
+  }, [sampleFlows]);
+  const sampleInputs = sampleFlows && [
+    [{ flowId: "sample-flow", stream: sampleFlows[0], selected: true, switchReady: false }, { flowId: "sample-candidate", stream: sampleFlows[1], selected: false, switchReady: false }],
+    [{ flowId: "sample-candidate", stream: sampleFlows[1], selected: false, switchReady: false }],
+    [{ flowId: "sample-candidate", stream: sampleFlows[1], selected: true, switchReady: false }],
+  ][handoffStep];
+  const selectedSample = sampleInputs?.find(input => input.selected);
   useEffect(() => {
     if (!watchActivity || watchMode === "available") { setWatchPlayers(new Map()); return; }
     const recorded = watchMode === "owner" || watchMode === "viewer" || watchMode === "blocked";
@@ -230,7 +260,6 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId) && !(hostOffline && voice.roomId === "friday")),
     users,
     subscriptions,
-    failedSubscriptions: omitSamplePicture && picture === "failed" && subscriptions.includes(samplePictureId) ? [samplePictureId] : [],
     // A selected flow with no stream is connecting. Without one the viewer has no route yet.
     pairs: omitSamplePicture && picture === "connecting" ? [{ id: "sample-pair", peerId: `${screenUsers[0].id}-session`, canReceiveVideoLayers: false, rooms: ["friday"],
       outgoing: [], incoming: [{ id: "sample-flow", publicationId: samplePictureId, selected: true, inputFlowId: null }] }] : sample.channel.state!.pairs,
@@ -278,8 +307,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
-  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...streams].filter(([id]) => id !== samplePictureId)) : streams, error: null, siteURL: "https://friends.example/",
-    pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
+  const pendingScreenRoom = capturePendingSample ? "friday" : browserSourcePending;
+  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...[...streams].filter(([id]) => id !== samplePictureId),
+      ...selectedSample ? [[samplePictureId, selectedSample.stream] as const] : []]) : streams, error: null, siteURL: "https://friends.example/",
+    pending: pendingScreenRoom ? new Set([...sample.channel.pending, `screen:${pendingScreenRoom}`]) : sample.channel.pending,
     watchPlayers, roomOpenFailures: unopened && hostOffline ? new Map([["friday", unopened]]) : sample.channel.roomOpenFailures,
     watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
       : new URLSearchParams(location.search).has("indexed-tracks") ? { choices: [], indexed: indexedTracks, mpd: [] }
@@ -291,7 +322,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
-    cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },
+    cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
       if (!activityId && (query.has("browser-source") || query.has("indexed-tracks") || query.has("mpd-tracks"))) {
@@ -356,7 +387,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     messagesByRoom,
     interactionsByRoom: sample.channel.interactionsByRoom,
     ownedScreens, localScreens: ownedScreens,
-    screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
+    screenInputs: new Map(sampleInputs ? [[samplePictureId, sampleInputs]] : []), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
     browse: () => {}, sendMessage: sample.onSend,
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
     historyByRoom: Object.fromEntries(state.channel.rooms.map(room => [room.id, { hasMore: false, atLatest: true }])),
@@ -413,7 +444,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
-    browserCapturePreparation: () => undefined,
+    browserCapturePreparation: roomId => capturePendingSample && roomId === "friday" ? "preparing" : undefined,
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   const optionsLabel = { text: zh ? "预览选项" : "Preview options" };
   const previewOptions = <>

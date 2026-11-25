@@ -1,5 +1,7 @@
 # Server Release And Recovery
 
+English · [简体中文](./deployment.zh-CN.md)
+
 This file owns routine immutable Server releases. The Rust runtime's environment
 is described in [Server startup](../prototype/channel-server/README.md#run);
 [systemd](../deploy/systemd/piik.service.example) and
@@ -16,6 +18,22 @@ bootstrap/updater; do not call this wrapper generic.
 Its firewall check compares the nftables ruleset without traffic counters; it
 does not depend on a particular table name. Coordinate other firewall writers
 outside the cutover window. See [nft output options](https://netfilter.org/projects/nftables/manpage.html).
+
+## Open the site as its owner
+
+On the Server host, use the command for your deployment. The example systemd service runs as `piik`.
+
+```sh
+sudo -u piik env PIIK_CHANNEL_DATA_DIR=/var/lib/piik /opt/piik/current/piik-server owner-link
+```
+
+For the example Compose deployment, run this from the repository root.
+
+```sh
+docker compose --env-file deploy/container/.env -f deploy/container/compose.yaml exec piik /app/piik-server owner-link
+```
+
+Open the printed link in your owner browser profile within 60 seconds. The link uses the running Server’s Web origin and can be redeemed once.
 
 ## Release Boundary
 

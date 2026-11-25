@@ -106,7 +106,11 @@ pub(super) async fn restore(
     body: Body,
 ) -> ApiResult {
     let commands = room_commands(&owner(&domain, &headers)?.1)?;
-    backup::restore(commands, None, &headers, body).await
+    let scratch = domain
+        .room_restore
+        .try_acquire_owned()
+        .map_err(|_| backup::error(StatusCode::CONFLICT, "room_busy"))?;
+    backup::restore(commands, None, Some(scratch), &headers, body).await
 }
 
 pub(super) async fn restore_existing(
@@ -123,9 +127,8 @@ pub(super) async fn restore_existing(
     let target = ExistingRoomRestore {
         room_id: room,
         creator: credential.user_id,
-        scratch,
     };
-    backup::restore(commands, Some(target), &headers, body).await
+    backup::restore(commands, Some(target), Some(scratch), &headers, body).await
 }
 
 fn creation_error(code: &str) -> ApiError {
@@ -184,15 +187,12 @@ pub(super) async fn create_copy(
                 .map_err(creation_error)?;
             (hub.authority.identity().0, creation)
         };
-        let policy = super::hosted_room_policy(
-            creation.summary().clone(),
-            password,
-            picture,
-            allow_service_relay,
-        )
-        .map_err(creation_error)?;
+        let policy = creation
+            .summary()
+            .new_policy(password, picture, allow_service_relay)
+            .map_err(creation_error)?;
         let metadata = RoomMetadata {
-            version: 3,
+            version: RoomMetadata::VERSION,
             domain_id,
             policy,
             own_credential: None,

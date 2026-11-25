@@ -467,9 +467,7 @@ fn run(
             }
             if !repeated {
                 if let Some(fps) = admission_rate.observe(source_time) {
-                    dropper.set_rates(bitrate as f32 / 1000.0, fps);
-                    dropper.leak(fps.round() as u32);
-                    if dropper.drop_frame() && !force {
+                    if dropper.should_drop_at_rate(bitrate as f32 / 1000.0, fps) && !force {
                         policy.report_drop();
                         continue;
                     }

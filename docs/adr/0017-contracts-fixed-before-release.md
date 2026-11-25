@@ -11,15 +11,16 @@ and room stores hold the released shapes, and later versions have to work with
 them. Some contracts are costly to change after that; others can wait for a
 consumer. [Versioning](../standards/versioning.md) promises that an older App
 keeps working with a newer site within a major version, and that forward
-upgrades preserve durable authority. The code does not yet say how:
+upgrades preserve durable authority. The private implementation currently has
+these boundaries:
 
 - `Join` requires the protocol number to match the current wire version
   (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
   reader accepts additions; no rule says which additions a reader may ignore.
-- The review at `35034f34` found that Browser accepts any `room_reply.result.type`
-  (`src/client/channel/protocol.ts`) and rejects only `"error"`
-  (`src/client/channel/session.ts`), so with a version mismatch or a bug an
-  unknown type resolves most room requests as success.
+- The Browser's pending request validates its terminal result
+  (`src/client/channel/session.ts`). Unknown or mismatched outcomes reject that
+  operation. The first published reader must retain this boundary when an
+  extension is selected.
 - A room store opens only at one exact `user_version`
   (`prototype/channel-core/src/storage.rs`), and the Browser store aborts any
   upgrade (`prototype/channel-browser/src/room-host.ts`). This protects data;
@@ -42,9 +43,8 @@ upgrades preserve durable authority. The code does not yet say how:
    rejected from unknown, and a copy sent to an observer is separate from the
    requester's reply. Idempotency is scoped by operation: chat already has
    durable nonces, and an invitation rotation is recovered by reading current
-   state. A history page as one bounded batch is measured against the present
-   101 signed replies per page: 50 messages, 50 reaction snapshots and one
-   terminator. A released client that reads an unknown outcome as success
+   state. History uses one signed, bounded page containing messages and their
+   reaction snapshots. A released client that reads an unknown outcome as success
    cannot be corrected from the domain.
 3. **Storage.** The first public format of each store is recorded as release
    fixtures. A concrete transactional upgrade is added when a format actually
@@ -63,9 +63,9 @@ upgrades preserve durable authority. The code does not yet say how:
 
 ### Deferred until a consumer needs it
 
-- **Schema source.** First a bounded proof: generate the types for
-  `UserInfo.avatar` and `SetProfile.avatar`, keep required, omitted and null
-  semantics and runtime validation, and remove the old owner if it works.
+- **Schema source.** Defer a generation chain until a concrete consumer reduces
+  overall ownership. Generated types must preserve required, omitted and null
+  semantics and runtime validation, and replace their old owner.
 - **State revision.** Reopens when a delta or resume consumer needs it.
   Readers already accept an added top-level field.
 - **Activity envelope.** Dispatch over the owned kinds is exhaustive now. A

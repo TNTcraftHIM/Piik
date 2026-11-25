@@ -24,6 +24,7 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
         host_session_id: owner,
         revision: 1,
         confirmed_pairs: Default::default(),
+        disconnected_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: [owner, actor]
             .into_iter()
@@ -696,7 +697,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         let staged_copy = RoomBackup::stage(
             &folder.join("copy-staging.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: Uuid::new_v4(),
                 policy: copy_policy,
                 own_credential: None,
@@ -766,6 +767,14 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         },
     ));
     let mut during_import = None;
+    let old_archive_path = folder.join("old-version-staging.sqlite");
+    let mut old_metadata = backup.metadata().clone();
+    old_metadata.version = 3;
+    let error = RoomBackup::stage(&old_archive_path, old_metadata, std::iter::empty())
+        .err()
+        .unwrap();
+    assert_eq!(error.to_string(), "unsupported_backup_version");
+    assert!(!old_archive_path.exists());
     let staged = RoomBackup::stage(
         &folder.join("import.sqlite"),
         backup.metadata().clone(),

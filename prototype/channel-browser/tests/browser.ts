@@ -56,12 +56,12 @@ window.runBrowserRoomCheck = async () => {
   let host = await BrowserRoomHost.open(database, policy);
   check((await host.summary()).icon === "future-room_7", "unknown valid decorative key survives the shared policy and summary");
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
-    now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+    now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
   }, signal) as Promise<Output>;
   const bindHost = async () => {
     await host.bind(bindingId);
-    await host.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
+    await host.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
   };
   const peerPacket = (command: object, binding = bindingId): SignedConversationPacket => JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
     roomId: host.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command,
@@ -79,11 +79,9 @@ window.runBrowserRoomCheck = async () => {
   const history = async (before?: number) => {
     const replies = await host.dispatchPeer(peerPacket({ type: "history", before: before ?? null }), Date.now());
     const end = replies.at(-1)?.record;
-    check(end?.type === "history_end", "signed peer history completes its page");
-    const messages = replies.flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
-    check(messages.length === end.count, "signed peer page count matches its records");
-    const snapshots = JSON.parse(JSON.stringify(replies)).filter((reply: { record: { type: string } }) => reply.record.type === "message_reactions");
-    check(snapshots.length === messages.length, "every retained body has its reaction snapshot");
+    check(end?.type === "history_page", "signed peer history completes its page");
+    const messages = replies.flatMap(({ record }) => record.type === "history_page" ? record.messages : []);
+    check(replies.length === 1 && messages.every(message => message.reactions), "one signed page contains each body and its reaction snapshot");
     return { messages, hasMore: end.hasMore, oldestSeq: end.oldestSeq, before: end.before };
   };
   async function checkReplyStorage() {
@@ -95,7 +93,7 @@ window.runBrowserRoomCheck = async () => {
     const binding = crypto.randomUUID(); let turn = 0;
     const sync = async (target = current) => {
       await target.bind(binding);
-      return await target.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
+      return await target.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
     };
     const chat = (target: BrowserRoomHost, body: object, signal?: AbortSignal) => target.dispatchPeer(JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
       roomId: target.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(),
@@ -160,9 +158,9 @@ window.runBrowserRoomCheck = async () => {
         return current.dispatchPeer(JSON.parse(signature), Date.now(), undefined, output => published.push(output));
       };
       const records = await run({ type: "history", before: null });
-      check(records.some(({ record }) => record.type === "history_message" && record.message.seq === 2
-        && JSON.stringify(record.message.reply) === JSON.stringify(replied.message.reply)), "reopened history preserves the confirmed reply");
-      const offered = await current.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId,
+      check(records.some(({ record }) => record.type === "history_page" && record.messages.some(message => message.seq === 2
+        && JSON.stringify(message.reply) === JSON.stringify(replied.message.reply))), "reopened history preserves the confirmed reply");
+      const offered = await current.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId,
         hostSessionId: session, revision: ++turn, endpoints, action: { type: "command", context: { connection,
           sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command: { type: "file_offer",
           roomId: current.roomId, messageSeq: 1, attachmentId: attachment.id, sha256: attachment.sha256, available: true } } }) as Output;
@@ -178,8 +176,8 @@ window.runBrowserRoomCheck = async () => {
       const late = await run({ type: "delete_message", messageSeq: 1, messageId: first.message.id }, true);
       check(late[0].record.type === "error" && late[0].record.code === "message_unavailable", "late owner confirmation cannot delete a tombstone");
       const redacted = await run({ type: "history", before: null });
-      check(redacted.length === 3 && redacted[0].record.type === "history_message" && !redacted[0].record.message.reply
-        && redacted[0].record.message.seq === 2, "deletion removes the body, reactions and embedded quote");
+      check(redacted.length === 1 && redacted[0].record.type === "history_page" && redacted[0].record.messages.length === 1 && !redacted[0].record.messages[0].reply
+        && redacted[0].record.messages[0].seq === 2, "deletion removes the body, reactions and embedded quote");
       const cleared = await run({ type: "clear_history", throughSeq: 2 }, true);
       check(cleared[0]?.record.type === "history_cleared", "room owner clears remaining history");
       const snapshot = await current.snapshot(), deleted: BackupHistoryRow[] = [];
@@ -191,7 +189,7 @@ window.runBrowserRoomCheck = async () => {
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       check((await sync()).projection.lastMessageSeq === 2, "empty restored archive preserves sequence floor");
       const empty = await run({ type: "history", before: null });
-      check(empty.length === 1 && empty[0].record.type === "history_end" && empty[0].record.count === 0, "reopened purged history is empty");
+      check(empty.length === 1 && empty[0].record.type === "history_page" && empty[0].record.messages.length === 0, "reopened purged history is empty");
       const replay = (await chat(current, { text: "Original author text", nonce: "original" }))[0].record;
       check(replay.type === "error" && replay.code === "message_unavailable", "restored deletion rejects a stale send");
 
@@ -234,7 +232,7 @@ window.runBrowserRoomCheck = async () => {
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       check((await sync()).projection.lastMessageSeq === lateWrite.message.seq, "partial clear and restore retain the latest committed sequence");
       const available = (await run({ type: "history", before: null }))
-        .flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
+        .flatMap(({ record }) => record.type === "history_page" ? record.messages : []);
       check(available.length === 2 && available.some(message => message.id === backlog.message.id)
         && available.some(message => message.id === lateWrite.message.id && !message.reply && message.attachments[0]?.id === attachment.id),
       "post-boundary rows and attachment metadata survive restart and restore with the purged quote removed");
@@ -266,11 +264,11 @@ window.runBrowserRoomCheck = async () => {
       IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
       try {
         const page = (await run({ type: "history", before: 2051 })).at(-1)?.record;
-        check(page?.type === "history_end" && page.oldestSeq === 2001 && page.count === 50 && !page.hasMore,
+        check(page?.type === "history_page" && page.oldestSeq === 2001 && page.messages.length === 50 && !page.hasMore,
           "older page reaches the first live message after reopen");
         check(advances === 49, "older page cursor advances: " + advances);
         const emptyPage = (await run({ type: "history", before: 2001 })).at(-1)?.record;
-        check(emptyPage?.type === "history_end" && emptyPage.oldestSeq === 2001 && emptyPage.count === 0 && !emptyPage.hasMore
+        check(emptyPage?.type === "history_page" && emptyPage.oldestSeq === 2001 && emptyPage.messages.length === 0 && !emptyPage.hasMore
           && advances === 49, "exclusive paging at oldest returns empty without visiting the purged prefix");
         await seek(0, 2001);
         check(advances === 49, "seek from before the purge finds another author without advancing the cursor");
@@ -290,26 +288,26 @@ window.runBrowserRoomCheck = async () => {
       IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
       try {
         const page = (await run({ type: "history", before: 2051 })).at(-1)?.record;
-        check(page?.type === "history_end" && page.oldestSeq === 2001 && page.count === 50 && !page.hasMore,
+        check(page?.type === "history_page" && page.oldestSeq === 2001 && page.messages.length === 50 && !page.hasMore,
           "restored history retains the first live sequence");
         await seek(0, 2001);
         check(advances === 49, "restored paging and seek both skip the imported 2,000-row tombstone prefix");
       } finally { IDBCursor.prototype.continue = advance; }
 
       const firstLive = (await run({ type: "history", before: 2002 }))
-        .find(({ record }) => record.type === "history_message")?.record;
-      check(firstLive?.type === "history_message" && firstLive.message.seq === 2001, "first live row is available after clear");
-      const deleteFirstLive = await run({ type: "delete_message", messageSeq: 2001, messageId: firstLive.message.id }, true);
+        .flatMap(({ record }) => record.type === "history_page" ? record.messages : [])[0];
+      check(firstLive?.seq === 2001, "first live row is available after clear");
+      const deleteFirstLive = await run({ type: "delete_message", messageSeq: 2001, messageId: firstLive.id }, true);
       check(deleteFirstLive[0]?.record.type === "message_deleted", "owner can delete the first remaining row");
       const afterDelete = (await run({ type: "history", before: 2003 })).at(-1)?.record;
-      check(afterDelete?.type === "history_end" && afterDelete.oldestSeq === 2002 && afterDelete.count === 1 && !afterDelete.hasMore,
+      check(afterDelete?.type === "history_page" && afterDelete.oldestSeq === 2002 && afterDelete.messages.length === 1 && !afterDelete.hasMore,
         "paging skips an isolated deletion above the clear boundary");
       const olderBackup = await BrowserRoomHost.stage(name, replyPolicy);
       try { for (const row of retained) await olderBackup.append(row); await olderBackup.replace(); } finally { await olderBackup.close(); }
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       await sync();
       const afterRestore = (await run({ type: "history", before: null })).at(-1)?.record;
-      check(afterRestore?.type === "history_end" && afterRestore.oldestSeq === backlog.message.seq && afterRestore.count === 2,
+      check(afterRestore?.type === "history_page" && afterRestore.oldestSeq === backlog.message.seq && afterRestore.messages.length === 2,
         "restoring an earlier backup resets the clear boundary before the restored rows");
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
@@ -322,7 +320,7 @@ window.runBrowserRoomCheck = async () => {
       bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command })));
     try {
       await imageHost.bind(binding);
-      await imageHost.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
+      await imageHost.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
       const bytes = new Uint8Array(65536); bytes.set(new TextEncoder().encode("GIF89a"));
       const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
       const image = { id: crypto.randomUUID(), name: "image.gif", size: bytes.length, mediaType: "image/gif",
@@ -338,11 +336,10 @@ window.runBrowserRoomCheck = async () => {
       for (;;) {
         const replies = await imageHost.dispatchPeer(packet({ type: "history", before }), Date.now());
         const end = replies.at(-1)!.record;
-        check(end.type === "history_end", "image page has its ordinary history end marker");
-        const bodies = replies.flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
-        const snapshots = replies.filter(({ record }) => record.type === "message_reactions");
-        check(bodies.length === end.count && snapshots.length === end.count && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
-          "byte-bounded pages preserve count, reaction and cursor contracts");
+        check(end.type === "history_page", "image page uses the ordinary bounded history reply");
+        const bodies = replies.flatMap(({ record }) => record.type === "history_page" ? record.messages : []);
+        check(replies.length === 1 && bodies.every(body => body.reactions) && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
+          "byte-bounded pages preserve rows, reactions and cursors");
         check(bodies.every(body => JSON.stringify(body.inlineImages?.[image.id]) === JSON.stringify(inline)), "pagination retains every thumbnail");
         check(bodies.reduce((total, body) => total + new TextEncoder().encode(JSON.stringify(body)).byteLength, 0) <= 256 * 1024,
           "message bodies remain within the 256 KiB history page budget");
@@ -370,8 +367,8 @@ window.runBrowserRoomCheck = async () => {
       const sent = await imageHost.dispatchPeer(packet({ ...chat, inlineImages: { [attachment.id]: thumbnail } }), Date.now());
       check(sent[0].record.type === "confirmed" && sent[0].record.message.seq === 8, "the thumbnail is confirmed");
       const records = await imageHost.dispatchPeer(packet({ type: "history", before: null }), Date.now());
-      check(records.some(({ record }) => record.type === "history_message"
-        && record.message.inlineImages?.[attachment.id]?.data === thumbnail.data),
+      check(records.some(({ record }) => record.type === "history_page"
+        && record.messages.some(message => message.inlineImages?.[attachment.id]?.data === thumbnail.data)),
         "the writer returns the thumbnail from history without requesting the original");
 
     } finally { await imageHost.close(); await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(name);
@@ -380,7 +377,7 @@ window.runBrowserRoomCheck = async () => {
   try {
     const previousDatabase = `${database}-schema-6`;
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(previousDatabase, 6);
+      const request = indexedDB.open(previousDatabase, 8);
       request.onupgradeneeded = () => { request.result.createObjectStore("retained").put("original", "marker"); };
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
@@ -389,7 +386,7 @@ window.runBrowserRoomCheck = async () => {
       try { await BrowserRoomHost.storedRoomIds(previousDatabase); throw new Error("old schema accepted"); }
       catch (error) { check(String(error).includes("unsupported_storage_version"), "previous private schema is explicitly rejected"); }
       const saved = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(previousDatabase, 6);
+        const request = indexedDB.open(previousDatabase, 8);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
       try {
@@ -407,7 +404,7 @@ window.runBrowserRoomCheck = async () => {
     }
     const newerDatabase = `${database}-schema-newer`;
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open(newerDatabase, 9);
+      const request = indexedDB.open(newerDatabase, 10);
       request.onsuccess = () => { request.result.close(); resolve(); }; request.onerror = () => reject(request.error);
     });
     try {
@@ -444,7 +441,7 @@ window.runBrowserRoomCheck = async () => {
     check(imageSaved.reply?.result.type === "done" && imageSaved.projection.summary.icon === "future-room_7" && !("picture" in imageSaved.projection.summary),
       "the room directory keeps only the preset after the picture is saved");
     const imageAbort = new AbortController(), originalRoomPut = IDBObjectStore.prototype.put;
-    await host.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+    await host.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
       action: { type: "command", context: { connection, sessionId: peerSession, requestId: "guest-browse", now: Date.now() },
         command: { type: "browse", roomId: host.roomId, active: true } } });
     let pendingSummary: ReturnType<BrowserRoomHost["summary"]> | undefined;
@@ -498,7 +495,7 @@ window.runBrowserRoomCheck = async () => {
     await privateHost.bind(bindingId);
     try {
       const guestSession = crypto.randomUUID();
-      const output = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision,
+      const output = await privateHost.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision,
         endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "browse", roomId: privateHost.roomId, active: true } },
@@ -514,7 +511,7 @@ window.runBrowserRoomCheck = async () => {
       }
       const guest = { ...owner, userId: crypto.randomUUID() };
       const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } };
-      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
+      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() },
           command: { type: "enter_room", roomId: privateHost.roomId, inviteKey: invitation.reply!.result.key } },
       }) as Output;
@@ -523,7 +520,7 @@ window.runBrowserRoomCheck = async () => {
       const reopened = await BrowserRoomHost.open(database, privatePolicy);
       await reopened.bind(bindingId);
       try {
-        const restored = await reopened.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const restored = await reopened.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
         const read = await dispatch({ type: "get_room_invite", roomId: reopened.roomId }, undefined, reopened);
         check(read.reply?.result.invitation?.key === invitation.reply!.result.key, "IndexedDB reopen preserves the readable invitation");
@@ -535,9 +532,9 @@ window.runBrowserRoomCheck = async () => {
         const reset = await dispatch({ type: "room_invite", roomId: reopened.roomId }, undefined, reopened);
         check(reset.reply?.result.key && reset.reply.result.key !== invitation.reply!.result.key, "only an explicit reset changes the invitation");
         const afterReset = await reopened.dispatchPeer(privatePacket({ type: "history", before: null }), Date.now());
-        check(afterReset.some(reply => reply.record.type === "history_message" && reply.record.message.text === "Before invitation reset"),
+        check(afterReset.some(reply => reply.record.type === "history_page" && reply.record.messages.some(message => message.text === "Before invitation reset")),
           "resetting an invitation preserves committed IndexedDB history");
-        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(grantedAgain.projection.views[guestSession], "resetting an invitation preserves an existing user's grant");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
@@ -588,10 +585,10 @@ window.runBrowserRoomCheck = async () => {
     finally { IDBObjectStore.prototype.put = originalPut; }
     check(reactionWriteSucceeded, "reaction rollback occurs after a real IndexedDB put success");
     await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
-    const recovered = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now())));
-    const recoveredReaction = recovered.find((reply: { record: { type: string; snapshot?: { messageSeq: number } } }) =>
-      reply.record.type === "message_reactions" && reply.record.snapshot?.messageSeq === 1).record.snapshot;
-    const { type: _type, ...savedReaction } = finalReaction.snapshot;
+    const recovered = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
+    const recoveredReaction = recovered.flatMap(({ record }) => record.type === "history_page" ? record.messages : [])
+      .find(message => message.seq === 1)?.reactions;
+    const savedReaction = { revision: finalReaction.snapshot.revision, counts: finalReaction.snapshot.counts };
     check(JSON.stringify(recoveredReaction) === JSON.stringify(savedReaction), "reopen restores committed counts and excludes the aborted reaction");
 
     const controller = new AbortController();
@@ -666,7 +663,7 @@ window.runBrowserRoomCheck = async () => {
       catch (error) { check(error instanceof Error && error.message === "room_host_conflict", "late claim cannot replace new owner"); }
       try { await lateClaim.dispatch({ bindingId: previousBinding }); throw new Error("failed claim dispatched"); }
       catch (error) { check(error instanceof Error && error.message === "stale_room_host", "failed claim disables dispatch"); }
-      const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+      const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
         action: { type: "command", context: { connection, sessionId: session, requestId: null, now: Date.now() },
           command: { type: "update_room", roomId: previousHost.roomId, name: "Stale policy", icon: "future-room_7", access: "public", hidden: false } },
       }) as Output;
@@ -701,8 +698,8 @@ window.runBrowserRoomCheck = async () => {
     check(repeated[0].record.type === "confirmed" && !repeated[0].record.inserted && confirmation.record.type === "confirmed"
       && JSON.stringify(repeated[0].record.message) === JSON.stringify(confirmation.record.message), "peer retry reuses original confirmation");
     const page = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
-    check(page.length === 101 && page.slice(0, 100).every((reply, index) => String(reply.record.type) === (index % 2 ? "message_reactions" : "history_message"))
-      && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
+    check(page.length === 1 && page[0].record.type === "history_page" && page[0].record.messages.length === 50
+      && page[0].record.messages.every(message => message.reactions) && page[0].record.hasMore, "history returns one bounded page with message reactions");
     const ready = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "interaction_ready" }), 1000)));
     check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "admitted participant initializes interaction time and reactions");
     const interactionPacket = peerPacket({ type: "react", nonce: ++reactionNonce, reaction: "wave", target: { type: "person", userId: owner.userId } });
@@ -891,7 +888,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 8);
+      const request = indexedDB.open(database, 9);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -923,7 +920,7 @@ window.runBrowserRoomCheck = async () => {
 
       for (const [field, value, expected] of [["icon", undefined, "invalid_request"], ["icon", png, "invalid_request"], ["voiceBitrate", 0, "invalid_room_policy"],
         ["relayCapacity", 0, "invalid_room_policy"], ["passwordHash", "invalid", "invalid_room_policy"],
-        ["inviteHash", Array(32).fill(7), "invalid_room_policy"]] as const) {
+        ["inviteKey", "", "invalid_room_policy"]] as const) {
         const invalid = { ...JSON.parse(legacyPolicy), id: crypto.randomUUID(), [field]: value };
         const before = await storedPolicies(database);
         let opened: BrowserRoomHost | undefined, error: string | undefined;

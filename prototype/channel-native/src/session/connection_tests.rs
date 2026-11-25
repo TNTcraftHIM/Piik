@@ -242,6 +242,7 @@ async fn stalled_handshake_releases_expired_session_before_late_join() {
     let previous = Uuid::new_v4();
     let (commands, mut events) = mpsc::channel(8);
     session.live = Some(Live {
+        room_open_failures: Default::default(),
         forwarding_budget: Default::default(),
         session: previous,
         room: RoomTurns {
@@ -326,6 +327,7 @@ async fn unsupported_software_execution_rejects_before_room_or_capture_effects()
     let previous = Uuid::new_v4();
     let (commands, mut events) = mpsc::channel(8);
     session.live = Some(Live {
+        room_open_failures: Default::default(),
         forwarding_budget: Default::default(),
         session: previous,
         room: RoomTurns {

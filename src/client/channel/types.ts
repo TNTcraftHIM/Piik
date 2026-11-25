@@ -211,6 +211,7 @@ export interface ChannelActions {
   setForwardingLimit(capacity: number): void;
   appRelayCapacity(signal?: AbortSignal): Promise<NativeRelayCapacity>;
   setAppRelayOverride(current: NativeRelayCapacity, capacity: number | null, reportError?: boolean): Promise<NativeRelayCapacity>;
+  nativeRoomOpenFailure(roomId: string, operator: "app" | "domain", signal: AbortSignal): Promise<import("./hosting-api").NativeRoomOpenReason | undefined>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string, includeFiles?: boolean, signal?: AbortSignal): Promise<Blob>;
   exportRoomCopy(roomId: string, includeRoomInfo: boolean, includeFiles?: boolean, signal?: AbortSignal): Promise<Blob>;

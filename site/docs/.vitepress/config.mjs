@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitepress';
-import { pages, documentLink, documentImage, repository, hostingGroups } from '../pages.mjs';
+import { pages, documentLink, documentImage, repository, documentationBranch } from '../pages.mjs';
 import { githubSlug } from '../../../scripts/markdown-slug.mjs';
 import { THEME_STORAGE_KEY } from '../../../src/client/ui/theme.ts';
 
-const editPattern = ({ frontmatter }) => `https://github.com/TNTcraftHIM/Piik/edit/main/${frontmatter.source}`;
+const editPattern = ({ frontmatter }) => frontmatter.editUrl;
 const base = process.env.PIIK_DOCS_BASE || '/docs/';
 
 const sidebar = chinese => {
@@ -12,10 +12,6 @@ const sidebar = chinese => {
     if (!groups.has(page.group)) groups.set(page.group, []);
     groups.get(page.group).push({ text: page.text, link: `/${page.path.replace(/\.md$/, '.html')}` });
   }
-  groups.get(chinese ? hostingGroups.zh : hostingGroups.en).push({
-    text: chinese ? '完整配置参考（英文）' : 'Configuration reference',
-    link: `${repository}/blob/main/docs/standards/configuration.md`,
-  });
   return Array.from(groups, ([text, items]) => ({ text, items }));
 };
 
@@ -117,6 +113,6 @@ export default defineConfig({
   },
   transformPageData(data) {
     const page = pages.find(page => page.path === data.relativePath);
-    if (page) data.frontmatter.source = page.source;
+    if (page) data.frontmatter.editUrl = `${repository}/edit/${documentationBranch}/${page.source}`;
   },
 });

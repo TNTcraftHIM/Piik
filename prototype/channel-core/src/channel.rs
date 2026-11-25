@@ -230,6 +230,7 @@ impl Channel {
         let mut events = Vec::new();
         let mut broadcast = false;
         let mut confirmed_peer = None;
+        let mut observed_peer = None;
         let mut leave = false;
         let mut replies = Vec::new();
         match command {
@@ -331,10 +332,27 @@ impl Channel {
             }
             Command::LinkState { pair_id, state } => {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
-                if matches!(state, LinkState::Connected) {
+                if matches!(state, LinkState::Disconnected) {
+                    let socket = self.identity.sessions[&session_id]
+                        .connection
+                        .ok_or("disconnected")?;
+                    broadcast = self
+                        .transports
+                        .observe_disconnected(session_id, socket, pair_id, true);
+                    if broadcast {
+                        observed_peer = Some(peer);
+                    }
+                } else if matches!(state, LinkState::Connected) {
                     let connection = self.identity.sessions[&session_id]
                         .connection
                         .ok_or("disconnected")?;
+                    if self
+                        .transports
+                        .observe_disconnected(session_id, connection, pair_id, false)
+                    {
+                        broadcast = true;
+                        observed_peer = Some(peer);
+                    }
                     let peer_connection =
                         self.identity.sessions.get(&peer).and_then(|s| s.connection);
                     if self
@@ -381,13 +399,23 @@ impl Channel {
         if broadcast {
             self.reconcile();
         }
-        if let Some(peer) = confirmed_peer {
+        if let Some(peer) = confirmed_peer.or(observed_peer) {
             let rooms: Vec<_> = self
                 .remote
                 .iter()
                 .filter(|(_, room)| {
                     let scope = room.planning_sessions(self.service_endpoint, None);
-                    scope.contains(&session_id) && scope.contains(&peer)
+                    scope.contains(&session_id)
+                        && scope.contains(&peer)
+                        && (confirmed_peer.is_some()
+                            || room.projection.as_ref().is_some_and(|p| {
+                                p.flows.iter().any(|f| {
+                                    (f.receiver == session_id && f.sender == peer)
+                                        || (!f.selected
+                                            && f.sender == session_id
+                                            && f.receiver == peer)
+                                })
+                            }))
                 })
                 .map(|(id, _)| id.clone())
                 .collect();
@@ -591,8 +619,6 @@ impl Channel {
                             && readable_sessions.contains(&helper)
                             && screen_helper_pair(*session, helper, &endpoints)
                     });
-                    view.failed_subscriptions
-                        .retain(|id| view.subscriptions.contains(id));
                 }
                 projection.flows.retain_mut(|flow| {
                     flow.presentation = projection.views.get(&flow.receiver)
@@ -1186,6 +1212,7 @@ impl Channel {
                 kinds: self.service_kinds,
             }),
             self.transports.confirmed_pairs(&self.identity),
+            self.transports.disconnected_pairs(&self.identity),
             action,
             self.now,
         )?;
@@ -1450,12 +1477,9 @@ impl Channel {
         }
         let projection = &output.projection;
         self.check_room_policy(&projection.summary)?;
-        let file_availability_limit = projection.capabilities.file_availability_limit;
         if projection.summary.validate().is_err()
             || projection.history_lineage.is_nil()
             || projection.last_message_seq > i64::MAX as u64
-            || file_availability_limit
-                .is_some_and(|limit| !(1..=crate::wire::FILE_AVAILABILITY_LIMIT).contains(&limit))
             || projection.summary.id != id
             || projection.summary.creator_id != room.summary.creator_id
         {
@@ -1568,8 +1592,7 @@ impl Channel {
             if view.file_availability.as_ref().is_some_and(|observation| {
                 !ordinary
                     || !view.reading
-                    || !file_availability_limit
-                        .is_some_and(|limit| observation.available.len() <= limit)
+                    || observation.available.len() > crate::wire::FILE_AVAILABILITY_LIMIT
             }) || view.transit_endpoint.is_some_and(|endpoint| {
                 !projection.allow_service_relay
                     || Some(endpoint) != self.service_endpoint
@@ -1622,20 +1645,12 @@ impl Channel {
                             p.id == *id && p.kind == Kind::Screen && p.session_id != *recipient
                         })
                 })
-                || view.failed_subscriptions.len() > MAX_PUBLICATIONS
-                || view.failed_subscriptions.iter().any(|id| {
-                    !view.subscriptions.contains(id)
-                        || !projection.publications.iter().any(|publication| {
-                            publication.id == *id && publication.kind == Kind::Screen
-                        })
-                })
                 || view.files.len() > FILE_REGISTRATION_LIMIT
                 || (!ordinary
                     && (view.reading
                         || !view.watch_subscriptions.is_empty()
                         || view.transit_endpoint.is_none() && !view.watch_bytes.is_empty()
                         || !view.subscriptions.is_empty()
-                        || !view.failed_subscriptions.is_empty()
                         || view.transit_endpoint.is_none() && !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
@@ -1910,6 +1925,13 @@ impl Channel {
             // attaches to the same unchanged input (or the publication source).
             if !flow.selected
                 && ((!inputs.contains(&(flow.publication_id, flow.receiver, true))
+                    && !previous.get(&flow.id).is_some_and(|old| {
+                        !old.selected
+                            && old.sender == flow.sender
+                            && old.receiver == flow.receiver
+                            && old.publication_id == flow.publication_id
+                            && old.input_flow_id == flow.input_flow_id
+                    })
                     && !projection
                         .flows
                         .iter()
@@ -2203,7 +2225,6 @@ impl Channel {
         let mut voice = Vec::new();
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
-        let mut failed_subscriptions = BTreeSet::new();
         if let Some(member) = member {
             for room in self.remote.values() {
                 if member.user_id != room.summary.creator_id
@@ -2274,7 +2295,6 @@ impl Channel {
                     voice.extend(snapshot.voice);
                     files.extend(snapshot.files);
                     subscriptions.extend(snapshot.subscriptions);
-                    failed_subscriptions.extend(snapshot.failed_subscriptions);
                 }
             }
         }
@@ -2333,7 +2353,6 @@ impl Channel {
             publications,
             voice,
             subscriptions: subscriptions.into_iter().collect(),
-            failed_subscriptions: failed_subscriptions.into_iter().collect(),
             pairs: self.transports.snapshot(
                 session_id,
                 |peer| self.can_prepare_udp(session_id, peer),

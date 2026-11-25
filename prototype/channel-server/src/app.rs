@@ -174,6 +174,7 @@ struct App {
     config: Config,
     port: u16,
     token: String,
+    host_creation: tokio::sync::RwLock<()>,
     registry: Mutex<Registry>,
     closing: watch::Sender<bool>,
     launch: Mutex<Option<hosted::Launch>>,
@@ -246,10 +247,7 @@ async fn catalog_reply(pending: &mut Option<(String, CaptureTargets)>) -> Value 
         Err(_) => Err("capture_targets_failed".into()),
     };
     let (id, _) = pending.take().expect("capture catalog pending");
-    match result {
-        Ok(value) => json!({"id":id,"result":value}),
-        Err(error) => json!({"id":id,"error":error}),
-    }
+    control_reply(id, result.map_err(anyhow::Error::msg))
 }
 
 impl App {
@@ -290,7 +288,8 @@ impl App {
         watch::Receiver<Option<Result<(), String>>>,
     )> {
         let key = (site.to_owned(), channel, user);
-        let mut registry = loop {
+        let (_creation, mut registry) = loop {
+            let creation = self.host_creation.read().await;
             let registry = self.registry.lock().await;
             if *self.closing.borrow() {
                 bail!("hosting_unavailable");
@@ -299,10 +298,11 @@ impl App {
                 bail!("site_not_approved");
             }
             let Some(host) = registry.hosts.get(&key).filter(|host| host.finished() || *host.stop.borrow()) else {
-                break registry;
+                break (creation, registry);
             };
             let task = host.task.clone();
             drop(registry);
+            drop(creation);
             self.join_host(&key, task).await;
         };
         if let Some(host) = registry.hosts.get(&key) {
@@ -484,6 +484,7 @@ pub async fn serve(
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites,
             approvals,
@@ -1204,6 +1205,26 @@ async fn upgrade(
             connection(socket, &app, &site, &permission, &mut closing, &mut revoked).await;
         })
 }
+fn control_request(text: &str) -> Result<std::result::Result<Request, Value>> {
+    let value: Value = serde_json::from_str(text)?;
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty() && id.len() <= 256);
+    Ok(match (id, serde_json::from_str(text)) {
+        (Some(_), Ok(request)) => Ok(request),
+        _ => Err(json!({"id":id,"error":"invalid_request"})),
+    })
+}
+
+async fn send_control(
+    writer: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    response: Value,
+) -> Result<()> {
+    timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct Request {
     id: String,
@@ -1656,8 +1677,34 @@ async fn connection(
             site.to_owned(),
         ));
         let processing = async {
+            let host = loop {
+                let text = match timeout(IO_TIMEOUT, queue.recv()).await {
+                    Ok(Some(text)) => text,
+                    Ok(None) => return Ok("request_queue_closed"),
+                    Err(_) => return Ok("hello_timeout"),
+                };
+                let request = match control_request(&text)? {
+                    Ok(request) => request,
+                    Err(response) => {
+                        send_control(&mut writer, response).await?;
+                        continue;
+                    }
+                };
+                let result = match request.operation {
+                    Operation::Hello { channel_id, user_id, credential, name } => {
+                        app.hello(site, permission, channel_id, user_id, credential, name).await
+                    }
+                    _ => Err(anyhow!("hello_required")),
+                };
+                match result {
+                    Ok(host) => {
+                        send_control(&mut writer, control_reply(request.id, Ok(Value::Null))).await?;
+                        break host;
+                    }
+                    Err(error) => send_control(&mut writer, control_reply(request.id, Err(error))).await?,
+                }
+            };
             let mut voice_shortcuts = app.voice_shortcuts.connect();
-            let mut host: Option<mpsc::Sender<HostCommand>> = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
             let mut capture_starts: FuturesUnordered<
                 BoxFuture<'static, (String, Uuid, AbortHandle, Result<CaptureResult>)>,
@@ -1776,7 +1823,7 @@ async fn connection(
                                 if permit.stopped() || !external_page.permits.get(&permit.publication).is_some_and(|p| Arc::ptr_eq(p, &permit)) {
                                     let _ = response.send(Err(StatusCode::GONE)); continue;
                                 }
-                                let Some(commands) = host.clone() else { let _ = response.send(Err(StatusCode::GONE)); continue; };
+                                let commands = host.clone();
                                 let capture = captures.entry(permit.publication).or_default();
                                 let Ok((cancel, registration)) = capture.prepare(SourceKind::External, capture.audio_settings) else { let _ = response.send(Err(StatusCode::CONFLICT)); continue; };
                                 let replaces = capture.source().map(SourceLease::producer_id);
@@ -1881,19 +1928,8 @@ async fn connection(
                         }
                         continue;
                     }
-                    _ = async {
-                        match &host {
-                            Some(commands) => commands.closed().await,
-                            None => std::future::pending().await,
-                        }
-                    } => return Ok("host_queue_closed"),
-                    message = async {
-                        if host.is_some() { Ok(queue.recv().await) }
-                        else { timeout(IO_TIMEOUT, queue.recv()).await }
-                    } => match message {
-                        Ok(message) => message,
-                        Err(_) => return Ok("hello_timeout"),
-                    },
+                    _ = host.closed() => return Ok("host_queue_closed"),
+                    message = queue.recv() => message,
                     Some((publication_id, capture_id, error)) = audio_errors.next(), if !audio_errors.is_empty() => {
                         let error: Option<String> = error;
                         if error.is_some() && captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.id == capture_id) {
@@ -1961,10 +1997,7 @@ async fn connection(
                             }
                             Ok(())
                         });
-                        let response = match result {
-                            Ok(()) => json!({"id":id,"result":null}),
-                            Err(error) => json!({"id":id,"error":error.to_string()}),
-                        };
+                        let response = control_reply(id, result.map(|()| Value::Null));
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -1976,10 +2009,7 @@ async fn connection(
                     Some((id, result)) = previews.next(), if !previews.is_empty() => {
                         let result: Result<Option<String>> = result;
                         preview = None; // The capture has stopped and its worker has joined.
-                        let response = match result {
-                            Ok(image) => json!({"id":id,"result":image}),
-                            Err(error) => json!({"id":id,"error":error.to_string()}),
-                        };
+                        let response = control_reply(id, result.map(|image| json!(image)));
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2049,22 +2079,17 @@ async fn connection(
                                 Err(error) => Err(error),
                             }
                         };
-                        let response = match result {
-                            Ok(value) => json!({"id":id,"result":value}),
-                            Err(error) => {
-                                if !request.is_aborted() {
-                                    if let Some(capture) = captures.get_mut(&publication_id) {
-                                        let external = capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External);
-                                        if ended.is_none() { capture.pending = None; }
-                                        if external && ended.is_none() && external_page.permits.contains_key(&publication_id) {
-                                            let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
-                                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                                        }
-                                    }
+                        if result.is_err() && !request.is_aborted() {
+                            if let Some(capture) = captures.get_mut(&publication_id) {
+                                let external = capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External);
+                                if ended.is_none() { capture.pending = None; }
+                                if external && ended.is_none() && external_page.permits.contains_key(&publication_id) {
+                                    let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
+                                    timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                                 }
-                                json!({"id":id,"error":error.to_string()})
                             }
-                        };
+                        }
+                        let response = control_reply(id, result);
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         if let Some((generation, ended)) = ended {
                             if let Some(event) = retire_external(&mut captures, &mut external_page, publication_id, generation, ended) {
@@ -2083,830 +2108,711 @@ async fn connection(
                     }
                 };
                 let Some(text) = message else { return Ok("request_queue_closed") };
-                let value: Value = serde_json::from_str(&text)?;
-                let id = value
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .filter(|id| !id.is_empty() && id.len() <= 256);
-                let response = match (id, serde_json::from_str::<Request>(&text)) {
-                    (Some(_), Ok(request)) => {
-                        let result: Result<Value> = match request.operation {
-                            Operation::PrepareExternalInput {
-                                publication_id,
-                                room_id,
-                            } => {
-                                if !piik_channel_native::peer::supports_external_input() {
-                                    Err(anyhow!("external_input_unavailable"))
-                                } else if host.is_none() {
-                                    Err(anyhow!("hello_required"))
-                                } else if let Some(permit) =
-                                    external_page.permits.get(&publication_id)
-                                {
-                                    if permit.room != room_id || permit.stopped() {
-                                        Err(anyhow!("capture_room_mismatch"))
-                                    } else {
-                                        Ok(permit.descriptor(app.port))
-                                    }
-                                } else if external_page
-                                    .permits
-                                    .values()
-                                    .any(|permit| permit.room == room_id)
-                                {
-                                    Err(anyhow!("capture_pending"))
-                                } else {
-                                    let commands = host.clone().unwrap();
-                                    let capture = captures.entry(publication_id).or_default();
-                                    match capture.prepare(SourceKind::External, capture.audio_settings) {
-                                        Err(error) => Err(error),
-                                        Ok((cancel, registration)) => {
-                                            external_authorizations.push(
-                                                async move {
-                                                    let (result, authorized) = oneshot::channel();
-                                                    let authority = Abortable::new(
-                                                        async {
-                                                            commands
-                                                                .send(HostCommand::AuthorizeInput {
-                                                                    publication_id,
-                                                                    room_id: room_id.clone(),
-                                                                    result,
-                                                                })
-                                                                .await
-                                                                .map_err(|_| {
-                                                                    anyhow!("hosting_unavailable")
-                                                                })?;
-                                                            authorized
-                                                                .await
-                                                                .map_err(|_| {
-                                                                    anyhow!("hosting_unavailable")
-                                                                })?
-                                                                .map_err(anyhow::Error::msg)
-                                                        },
-                                                        registration,
-                                                    )
-                                                    .await
-                                                    .unwrap_or_else(|_| {
-                                                        Err(anyhow!("capture_cancelled"))
-                                                    });
-                                                    (
-                                                        request.id,
-                                                        publication_id,
-                                                        room_id,
-                                                        cancel,
-                                                        authority,
-                                                    )
-                                                }
-                                                .boxed(),
-                                            );
-                                            continue;
-                                        }
-                                    }
-                                }
+                let request = match control_request(&text)? {
+                    Ok(request) => request,
+                    Err(response) => {
+                        send_control(&mut writer, response).await?;
+                        continue;
+                    }
+                };
+                let result: Result<Value> = match request.operation {
+                    Operation::PrepareExternalInput {
+                        publication_id,
+                        room_id,
+                    } => {
+                        if !piik_channel_native::peer::supports_external_input() {
+                            Err(anyhow!("external_input_unavailable"))
+                        } else if let Some(permit) =
+                            external_page.permits.get(&publication_id)
+                        {
+                            if permit.room != room_id || permit.stopped() {
+                                Err(anyhow!("capture_room_mismatch"))
+                            } else {
+                                Ok(permit.descriptor(app.port))
                             }
-                            Operation::Page(page::Operation::PageMediaPrepare {
-                                page_id, candidate_id,
-                                choice_id,
-                            }) => {
-                                if let Some(host) = &host {
-                                    match pages.prepare_media(page_id, candidate_id, choice_id, host.clone()) {
-                                        Ok(work) => {
-                                            operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
-                                            continue;
-                                        }
-                                        Err(error) => Err(error),
-                                    }
-                                } else {
-                                    Err(anyhow!("hello_required"))
-                                }
-                            }
-                            Operation::Page(page::Operation::PageMediaPrepareIndexed { page_id, candidate_id, video, audio }) => {
-                                if let Some(host) = &host {
-                                    match pages.prepare_indexed_media(page_id, candidate_id, video, audio, host.clone()) {
-                                        Ok(work) => {
-                                            operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
-                                            continue;
-                                        }
-                                        Err(error) => Err(error),
-                                    }
-                                } else { Err(anyhow!("hello_required")) }
-                            }
-                            Operation::Page(page::Operation::PageMediaPrepareMpd {
-                                page_id, candidate_id,
-                                source_id,
-                                video_id,
-                                audio_id,
-                            }) => {
-                                if let Some(host) = &host {
-                                    match pages.prepare_mpd_media(
-                                        page_id, candidate_id,
-                                        source_id,
-                                        video_id,
-                                        audio_id,
-                                        host.clone(),
-                                    ) {
-                                        Ok(work) => {
-                                            operations.push(
-                                                async move {
-                                                    match work.await {
-                                                        Ok(value) => json!({"id":request.id,"result":value}),
-                                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                                    }
-                                                }.boxed(),
-                                            );
-                                            continue;
-                                        }
-                                        Err(error) => Err(error),
-                                    }
-                                } else {
-                                    Err(anyhow!("hello_required"))
-                                }
-                            }
-                            Operation::Page(page::Operation::PageMediaResource(resource)) => {
-                                if host.is_none() {
-                                    Err(anyhow!("hello_required"))
-                                } else {
-                                    match resource {
-                                        page::ResourceRequest::InspectMpd {
-                                            page_id, candidate_id,
-                                            choice_id,
-                                            read_id,
-                                        } => match pages.inspect_mpd(page_id, candidate_id, choice_id, read_id) {
-                                            Ok(work) => {
-                                                operations.push(
-                                                    async move {
-                                                        match work.await {
-                                                            Ok(value) => json!({"id":request.id,"result":value}),
-                                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                                        }
-                                                    }.boxed(),
-                                                );
-                                                continue;
-                                            }
-                                            Err(error) => Err(error),
-                                        },
-                                        page::ResourceRequest::ReadMetadata { page_id, candidate_id, choice_id, read_id, offset, length } => {
-                                            match pages.read_metadata(page_id, candidate_id, choice_id, read_id, offset, length) {
-                                                Ok(work) => {
-                                                    operations.push(async move { match work.await {
-                                                        Ok(result) => json!({"id":request.id,"result":result}),
-                                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                                    }}.boxed());
-                                                    continue;
-                                                }
-                                                Err(error) => Err(error),
-                                            }
-                                        }
-                                        page::ResourceRequest::Read {
-                                            page_id,
-                                            source_id,
-                                            resource_id,
-                                            read_id,
-                                            offset,
-                                            length,
-                                        } => {
-                                            match pages.read_resource(
-                                                page_id,
-                                                source_id,
-                                                resource_id,
-                                                read_id,
-                                                offset,
-                                                length,
-                                            ) {
-                                                Ok(work) => {
-                                                    operations.push(async move { match work.await {
-                                                    Ok(result) => json!({"id":request.id,"result":result}),
-                                                    Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                                }}.boxed());
-                                                    continue;
-                                                }
-                                                Err(error) => Err(error),
-                                            }
-                                        }
-                                        page::ResourceRequest::Cancel {
-                                            page_id,
-                                            read_id,
-                                        } => {
-                                            pages.cancel_resource(page_id, read_id);
-                                            Ok(Value::Null)
-                                        }
-                                    }
-                                }
-                            }
-                            Operation::Page(page::Operation::PageMediaStop { page_id, candidate_id }) => {
-                                if let Some(candidate) = candidate_id { pages.cancel_candidate(page_id, candidate); pages.request(page::Operation::PageMediaStop { page_id, candidate_id }).await?; } else { pages.stop_media(page_id); }
-                                Ok(Value::Null)
-                            }
-                            Operation::Page(operation) => {
-                                if host.is_none() {
-                                    Err(anyhow!("hello_required"))
-                                } else {
-                                    let source_page =
-                                        if let page::Operation::PageMediaSources { page_id, candidate_id } =
-                                            &operation
-                                        {
-                                            Some((*page_id, *candidate_id))
-                                        } else {
-                                            None
-                                        };
-                                    let mut result = pages.request(operation).await;
-                                    if let (Some(page), Ok(value)) = (source_page, &mut result) {
-                                        value["byteSource"] =
-                                            serde_json::to_value(pages.scoped_source(page.0, page.1))?;
-                                    }
-                                    // Selection facts (including the current top-level URL) precede confirmation.
-                                    for _ in 0..event_queue.len() {
-                                        let Ok(event) = event_queue.try_recv() else {
-                                            break;
-                                        };
-                                        timeout(
-                                            IO_TIMEOUT,
-                                            writer.send(control_event_message(&pages, event)),
-                                        )
-                                        .await??;
-                                    }
-                                    result
-                                }
-                            }
-                            Operation::Hello {
-                                channel_id,
-                                user_id,
-                                credential,
-                                name,
-                            } => {
-                                if host.is_some() {
-                                    Err(anyhow!("already_initialized"))
-                                } else {
-                                    match app
-                                        .hello(
-                                            site, permission, channel_id, user_id, credential, name,
-                                        )
-                                        .await
-                                    {
-                                        Ok(commands) => {
-                                            host = Some(commands);
-                                            Ok(Value::Null)
-                                        }
-                                        Err(error) => Err(error),
-                                    }
-                                }
-                            }
-                            Operation::Open { policy } => match &host {
-                                Some(commands) if opening.is_none() => {
-                                    let commands = commands.clone();
-                                    opening = Some(async move {
-                                        control_reply(request.id, open(&commands, &policy).await)
-                                    }.boxed());
-                                    continue;
-                                }
-                                Some(_) => Err(anyhow!("request_pending")),
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            Operation::LocalEndpoint => match &host {
-                                Some(commands) => {
-                                    let commands = commands.clone();
-                                    operations.push(async move {
-                                        let endpoint = async {
-                                            let (result, response) = oneshot::channel();
-                                            commands.send(HostCommand::LocalEndpoint(result)).await
-                                                .map_err(|_| anyhow!("hosting_unavailable"))?;
-                                            let session_id = response.await.map_err(|_| anyhow!("hosting_unavailable"))?;
-                                            Ok::<_, anyhow::Error>(json!({"sessionId": session_id}))
-                                        }.await;
-                                        control_reply(request.id, endpoint)
-                                    }.boxed());
-                                    continue;
-                                }
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            Operation::RelayCapacity(relay) => match &host {
-                                Some(commands) => {
-                                    let (result, response) = oneshot::channel();
-                                    let commands = commands.clone();
-                                    let request_id = request.id.clone();
-                                    operations.push(async move {
-                                        let work = async {
-                                            commands
-                                                .send(HostCommand::RelayCapacity { request: relay, result })
-                                                .await
-                                                .map_err(|_| anyhow!("hosting_unavailable"))?;
-                                            let result = timeout(IO_TIMEOUT, response)
-                                                .await
-                                                .map_err(|_| anyhow!("request_timeout"))??
-                                                .map_err(anyhow::Error::msg)?;
-                                            serde_json::to_value(result).map_err(anyhow::Error::from)
-                                        }.await;
-                                        match work {
-                                            Ok(result) => json!({"id": request_id, "result": result}),
-                                            Err(error) => json!({"id": request_id, "error": error.to_string()}),
-                                        }
-                                    }.boxed());
-                                    continue;
-                                }
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            Operation::ConnectionMetrics {
-                                room_id,
-                                publication_id,
-                            } => match &host {
-                                Some(commands) if metrics.is_none() => {
-                                    let commands = commands.clone();
-                                    metrics = Some(async move {
-                                        let measured = timeout(IO_TIMEOUT, async {
-                                            let (result, response) = oneshot::channel();
-                                            commands.send(HostCommand::ConnectionMetrics { room_id, publication_id, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
-                                            let measured = response.await?.map_err(anyhow::Error::msg)?;
-                                            Ok::<_, anyhow::Error>(serde_json::to_value(measured)?)
-                                        }).await;
-                                        match measured {
-                                            Ok(Ok(value)) => json!({"id":request.id,"result":value}),
-                                            Ok(Err(error)) => json!({"id":request.id,"error":error.to_string()}),
-                                            Err(_) => json!({"id":request.id,"error":"request_timeout"}),
-                                        }
-                                    }.boxed());
-                                    continue;
-                                }
-                                Some(_) => Err(anyhow!("request_pending")),
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            operation @ (Operation::Targets | Operation::Microphones) => match &host {
-                                Some(_) => {
-                                    let (kind, reader, pending) = match operation {
-                                        Operation::Targets => (CaptureCatalogKind::Targets, &app.capture_targets, &mut targets),
-                                        _ => (CaptureCatalogKind::Microphones, &app.capture_microphones, &mut microphones),
-                                    };
-                                    if let Some((id, _)) = pending.replace((request.id, reader.read(kind).await)) {
-                                        let response = json!({"id":id,"error":"request_cancelled"});
-                                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
-                                    }
-                                    continue;
-                                }
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            Operation::Preview { target } => {
-                                if host.is_none() {
-                                    Err(anyhow!("hello_required"))
-                                } else if preview.is_some() {
-                                    Err(anyhow!("preview_busy"))
-                                } else {
-                                    let (cancel, cancelled) = oneshot::channel();
-                                    preview = Some((request.id.clone(), Some(cancel)));
-                                    previews.push(async move {
-                                        (
-                                            request.id,
-                                            piik_channel_native::capture::preview(
-                                                target, cancelled,
-                                            )
-                                            .await,
-                                        )
-                                    });
-                                    continue;
-                                }
-                            }
-                            Operation::CancelPreview { request_id } => {
-                                if let Some((id, cancel)) = &mut preview {
-                                    if *id == request_id {
-                                        if let Some(cancel) = cancel.take() {
-                                            let _ = cancel.send(());
-                                        }
-                                    }
-                                }
-                                Ok(Value::Null)
-                            }
-                            Operation::PrepareCapture {
-                                publication_id,
-                                room_id,
-                                target,
-                                settings,
-                                codec_mode,
-                                encoding_execution,
-                                audio_settings,
-                                audio,
-                                exclude_audio,
-                                render_endpoint_id,
-                                show_capture_border,
-                            } => match &host {
-                                Some(commands) => {
-                                    let capture = captures.entry(publication_id).or_default();
-                                    match capture.prepare(SourceKind::Capture, audio_settings) {
-                                        Err(error) => Err(error),
-                                        Ok((cancel, registration)) => {
-                                            let replaces =
-                                                capture.source().map(SourceLease::producer_id);
-                                            let picker_events = cfg!(target_os = "android").then(|| control_events.clone());
-                                            let commands = commands.clone();
-                                            capture_starts.push(
-                                                async move {
-                                                    let result = Abortable::new(
-                                                        prepare_capture(
-                                                            &commands,
+                        } else if external_page
+                            .permits
+                            .values()
+                            .any(|permit| permit.room == room_id)
+                        {
+                            Err(anyhow!("capture_pending"))
+                        } else {
+                            let commands = host.clone();
+                            let capture = captures.entry(publication_id).or_default();
+                            match capture.prepare(SourceKind::External, capture.audio_settings) {
+                                Err(error) => Err(error),
+                                Ok((cancel, registration)) => {
+                                    external_authorizations.push(
+                                        async move {
+                                            let (result, authorized) = oneshot::channel();
+                                            let authority = Abortable::new(
+                                                async {
+                                                    commands
+                                                        .send(HostCommand::AuthorizeInput {
                                                             publication_id,
-                                                            room_id,
-                                                            target,
-                                                            settings,
-                                                            codec_mode,
-                                                            encoding_execution,
-                                                            audio,
-                                                            exclude_audio,
-                                                            render_endpoint_id,
-                                                            show_capture_border,
-                                                            replaces,
-                                                            picker_events.as_ref().map(|events| (events, request.id.as_str())),
-                                                        ),
-                                                        registration,
-                                                    )
-                                                    .await
-                                                    .unwrap_or_else(|_| {
-                                                        Err(anyhow!("capture_cancelled"))
-                                                    });
-                                                    (request.id, publication_id, cancel, result)
-                                                }
-                                                .boxed(),
-                                            );
-                                            continue;
-                                        }
-                                    }
-                                }
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            Operation::CommitCapture {
-                                publication_id,
-                                capture_id,
-                            } => {
-                                let candidate = captures.get_mut(&publication_id).and_then(|capture| {
-                                    let pending = capture.pending.as_mut()?;
-                                    let lease = pending.phase.prepared()?;
-                                    (lease.id() == capture_id && !lease.is_stopped())
-                                        .then_some((pending, capture.active.is_some()))
-                                });
-                                match (candidate, &host) {
-                                    (None, _) => Err(anyhow!("capture_unavailable")),
-                                    (Some(_), None) => Err(anyhow!("hello_required")),
-                                    (Some((pending, replacing)), Some(commands)) => {
-                                        let (cancel, registration) = AbortHandle::new_pair();
-                                        let previous = std::mem::replace(
-                                            &mut pending.phase, CapturePhase::Committing(capture_id),
-                                        );
-                                        let CapturePhase::Prepared(lease) = previous else { unreachable!("candidate was prepared") };
-                                        pending.request.abort();
-                                        pending.request = cancel.clone();
-                                        let commands = commands.clone();
-                                        capture_starts.push(
-                                            async move {
-                                                let result = Abortable::new(
-                                                    commit_capture(&commands, lease, replacing),
-                                                    registration,
-                                                )
-                                                .await
-                                                .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")))
-                                                .map(CaptureResult::Committed);
-                                                (request.id, publication_id, cancel, result)
-                                            }
-                                            .boxed(),
-                                        );
-                                        continue;
-                                    }
-                                }
-                            }
-                            Operation::CancelCapture { publication_id } | Operation::CancelExternalInput { publication_id }
-                                if captures.get(&publication_id).and_then(|capture| capture.pending.as_ref())
-                                    .is_some_and(|pending| matches!(pending.phase, CapturePhase::Committing(_))) =>
-                            {
-                                Err(anyhow!("capture_pending"))
-                            }
-                            Operation::CancelExternalInput { publication_id } => {
-                                if let Some(event) = cancel_external_input(
-                                    publication_id,
-                                    captures.get_mut(&publication_id),
-                                    &mut external_page,
-                                ) {
-                                    timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                                }
-                                Ok(Value::Null)
-                            }
-                            Operation::CancelCapture { publication_id } => {
-                                let cancel =
-                                    captures.get_mut(&publication_id).and_then(|capture| {
-                                        capture.pending.take_if(|pending| pending.kind == SourceKind::Capture);
-                                        capture.lease().map(CaptureLease::cancel_microphone)
-                                    });
-                                match cancel {
-                                    Some(Ok(cancel)) => {
-                                        operations.push(async move {
-                                            match cancel.await {
-                                                Ok(()) => json!({"id":request.id,"result":null}),
-                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                            }
-                                        }.boxed());
-                                        continue;
-                                    }
-                                    Some(Err(error)) => Err(error),
-                                    None => Ok(Value::Null),
-                                }
-                            }
-                            Operation::TransferSource {
-                                publication_id,
-                                capture_id,
-                                to_session_id,
-                            } => {
-                                let lease = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::source)
-                                    .filter(|lease| lease.id() == capture_id);
-                                if let (Some(commands), Some(lease)) = (&host, lease) {
-                                    let commands = commands.clone();
-                                    let scope = lease.scope().clone();
-                                    let capture_id = lease.producer_id();
-                                    operations.push(async move {
-                                        let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
-                                        match result {
-                                            Ok(()) => json!({"id":request.id,"result":null}),
-                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                        }
-                                    }.boxed());
-                                    continue;
-                                } else {
-                                    Err(anyhow!("capture_unavailable"))
-                                }
-                            }
-                            Operation::StopCapture { publication_id, capture_id: Some(capture_id), successor_watch_id: Some(successor_watch_id) } => {
-                                if let Some((commands, lease)) = host.as_ref().zip(captures.get(&publication_id).and_then(Capture::source))
-                                    .filter(|(_, lease)| lease.id() == capture_id) {
-                                    let commands = commands.clone();
-                                    let scope = lease.scope().clone();
-                                    let producer = lease.producer_id();
-                                    capture_stops.push(async move {
-                                        let result = edit_capture(&commands, scope, producer, CaptureEdit::Stop { successor_watch_id }).await;
-                                        (request.id, publication_id, capture_id, result)
-                                    }.boxed());
-                                    continue;
-                                }
-                                Err(anyhow!("capture_unavailable"))
-                            }
-                            Operation::StopCapture { publication_id, capture_id: None, successor_watch_id: None } => {
-                                if external_page.remove(publication_id) {
-                                    let event = external_input_event(
-                                        publication_id,
-                                        None,
-                                        None,
-                                        true,
-                                        None,
-                                    );
-                                    timeout(
-                                        IO_TIMEOUT,
-                                        writer.send(Message::Text(event.to_string().into())),
-                                    )
-                                    .await??;
-                                }
-                                if let Some(capture) = captures.remove(&publication_id) {
-                                    if let Some(CapturePhase::Committing(generation)) = capture.pending.as_ref().map(|p| &p.phase) {
-                                        if external_page.resources.get(generation).is_some_and(|resource| resource.ended.peek().is_some()) {
-                                            external_page.resources.remove(generation);
-                                        }
-                                    }
-                                }
-                                Ok(Value::Null)
-                            }
-                            Operation::StopCapture { .. } => Err(anyhow!("invalid_request")),
-                            Operation::CaptureAudioSettings {
-                                publication_id,
-                                settings,
-                            } => captures
-                                .get_mut(&publication_id)
-                                .ok_or_else(|| anyhow!("capture_unavailable"))
-                                .and_then(|capture| capture.configure_audio(settings))
-                                .map(|_| Value::Null),
-                            Operation::CaptureVideoSettings {
-                                publication_id,
-                                capture_id,
-                                settings,
-                            } => {
-                                let update = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .filter(|lease| lease.id == capture_id)
-                                    .ok_or_else(|| anyhow!("capture_unavailable"))
-                                    .and_then(|lease| {
-                                        let commands = host
-                                            .as_ref()
-                                            .ok_or_else(|| anyhow!("hello_required"))?
-                                            .clone();
-                                        let scope = lease.scope.clone();
-                                        let producer = lease.producer_id();
-                                        lease.configure_video(settings, async move {
-                                            publish_capture_settings(
-                                                &commands,
-                                                scope,
-                                                producer,
-                                                settings.into(),
+                                                            room_id: room_id.clone(),
+                                                            result,
+                                                        })
+                                                        .await
+                                                        .map_err(|_| {
+                                                            anyhow!("hosting_unavailable")
+                                                        })?;
+                                                    authorized
+                                                        .await
+                                                        .map_err(|_| {
+                                                            anyhow!("hosting_unavailable")
+                                                        })?
+                                                        .map_err(anyhow::Error::msg)
+                                                },
+                                                registration,
                                             )
                                             .await
-                                        })
-                                    });
-                                match update {
-                                    Ok(update) => {
-                                        operations.push(async move {
-                                            match update.await {
-                                                Ok(()) => json!({"id":request.id,"result":null}),
-                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                            }
-                                        }.boxed());
-                                        continue;
-                                    }
-                                    Err(error) => Err(error),
-                                }
-                            }
-                            Operation::CaptureMicrophone {
-                                publication_id,
-                                capture_id,
-                                room_id,
-                                settings,
-                            } => {
-                                let update = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .filter(|lease| {
-                                        lease.id == capture_id && lease.scope.room_id == room_id
-                                    })
-                                    .ok_or_else(|| anyhow!("capture_unavailable"))
-                                    .and_then(|lease| {
-                                        Ok((
-                                            lease.configure_microphone(settings)?,
-                                            lease
-                                                .audio_state()
-                                                .ok_or_else(|| anyhow!("capture_unavailable"))?,
-                                        ))
-                                    });
-                                match update {
-                                    Ok((update, state)) => {
-                                        operations.push(async move {
-                                            match update.await {
-                                                Ok(()) => json!({"id":request.id,"result":state.borrow().microphone.clone()}),
-                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                            }
-                                        }.boxed());
-                                        continue;
-                                    }
-                                    Err(error) => Err(error),
-                                }
-                            }
-                            Operation::CapturePaused {
-                                publication_id,
-                                capture_id,
-                                paused,
-                            } => {
-                                let lease = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::source)
-                                    .filter(|lease| lease.id() == capture_id);
-                                if let (Some(commands), Some(lease)) = (&host, lease) {
-                                    let commands = commands.clone();
-                                    let scope = lease.scope().clone();
-                                    let capture_id = lease.producer_id();
-                                    operations.push(async move {
-                                        let result = pause_capture(&commands, scope, capture_id, paused).await;
-                                        match result {
-                                            Ok(()) => json!({"id":request.id,"result":null}),
-                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                            .unwrap_or_else(|_| {
+                                                Err(anyhow!("capture_cancelled"))
+                                            });
+                                            (
+                                                request.id,
+                                                publication_id,
+                                                room_id,
+                                                cancel,
+                                                authority,
+                                            )
                                         }
-                                    }.boxed());
+                                        .boxed(),
+                                    );
                                     continue;
-                                } else {
-                                    Err(anyhow!("capture_unavailable"))
                                 }
                             }
-                            operation @ (Operation::CaptureTitle { .. }
-                            | Operation::CaptureDirectLimit { .. }) => {
-                                let (publication_id, expected_capture, edit) = match operation {
-                                    Operation::CaptureTitle {
-                                        publication_id,
-                                        capture_id,
-                                        title,
-                                    } => (
-                                        publication_id,
-                                        Some(capture_id),
-                                        CaptureEdit::Title(title),
-                                    ),
-                                    Operation::CaptureDirectLimit {
-                                        publication_id,
-                                        limit,
-                                    } => (publication_id, None, CaptureEdit::DirectLimit(limit)),
-                                    _ => unreachable!(),
-                                };
-                                let lease = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::source)
-                                    .filter(|lease| {
-                                        expected_capture.is_none_or(|id| lease.id() == id)
-                                    });
-                                if let (Some(commands), Some(lease)) = (&host, lease) {
-                                    let commands = commands.clone();
-                                    let scope = lease.scope().clone();
-                                    let capture_id = lease.producer_id();
-                                    operations.push(async move {
-                                        let result = edit_capture(&commands, scope, capture_id, edit).await;
-                                        match result {
-                                            Ok(()) => json!({"id":request.id,"result":null}),
-                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                        }
-                                    }.boxed());
-                                    continue;
-                                } else {
-                                    Err(anyhow!("capture_unavailable"))
-                                }
-                            }
-                            Operation::InputPolicy {
-                                publication_id,
-                                capture_id,
-                                mode,
-                                password,
-                                simultaneous,
-                            } => {
-                                let policy = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .filter(|lease| lease.id == capture_id)
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))
-                                    .and_then(|lease| {
-                                        lease.set_input_policy(mode, password, simultaneous)
-                                    });
-                                match policy {
-                                    Ok(policy) => {
-                                        operations.push(async move {
-                                            match policy.await {
-                                                Ok(()) => json!({"id":request.id,"result":null}),
-                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                            }
-                                        }.boxed());
-                                        continue;
-                                    }
-                                    Err(error) => Err(error),
-                                }
-                            }
-                            Operation::InputDecide {
-                                publication_id,
-                                controller_session_id,
-                                intent,
-                                allow,
-                            } => (|| -> Result<Value> {
-                                let lease = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
-                                let source = lease
-                                    .remote
-                                    .as_ref()
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
-                                source.decide(controller_session_id, intent, allow)?;
-                                Ok(Value::Null)
-                            })(),
-                            Operation::InputShortcut {
-                                publication_id,
-                                key,
-                            } => {
-                                let shortcut = captures
-                                    .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .and_then(|lease| lease.remote.as_ref())
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))
-                                    .and_then(|source| source.set_shortcut(key));
-                                match shortcut {
-                                    Ok(shortcut) => {
-                                        let desktop = app.desktop.clone();
-                                        operations.push(async move {
-                                            match shortcut.await {
-                                                Ok(()) => {
-                                                    let label = desktop.shortcut_label();
-                                                    let available = label.as_ref().is_none_or(Option::is_some);
-                                                    let mut value = json!({"key":key,"available":available});
-                                                    if let Some(label) = label { value["stopShortcutLabel"] = json!(label); }
-                                                    json!({"id":request.id,"result":value})
-                                                }
-                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                            }
-                                        }.boxed());
-                                        continue;
-                                    }
-                                    Err(error) => Err(error),
-                                }
-                            }
-                            Operation::VoiceShortcuts(settings) => {
-                                if host.is_none() {
-                                    Err(anyhow!("hello_required"))
-                                } else {
-                                    // This loop writes the report before polling the new registration's events.
-                                    voice_shortcuts.configure(settings)
-                                        .and_then(|report| Ok(serde_json::to_value(report)?))
-                                }
-                            }
-                        };
-                        control_reply(request.id, result)
+                        }
                     }
-                    _ => json!({"id":id,"error":"invalid_request"}),
-                };
-                timeout(
-                    IO_TIMEOUT,
-                    writer.send(Message::Text(response.to_string().into())),
-                )
-                .await??;
+                    Operation::Page(page::Operation::PageMediaPrepare {
+                        page_id, candidate_id,
+                        choice_id,
+                    }) => {
+                        match pages.prepare_media(page_id, candidate_id, choice_id, host.clone()) {
+                            Ok(work) => {
+                                operations.push(async move { control_reply(request.id, work.await) }.boxed());
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::Page(page::Operation::PageMediaPrepareIndexed { page_id, candidate_id, video, audio }) => {
+                        match pages.prepare_indexed_media(page_id, candidate_id, video, audio, host.clone()) {
+                            Ok(work) => {
+                                operations.push(async move { control_reply(request.id, work.await) }.boxed());
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::Page(page::Operation::PageMediaPrepareMpd {
+                        page_id, candidate_id,
+                        source_id,
+                        video_id,
+                        audio_id,
+                    }) => {
+                        match pages.prepare_mpd_media(
+                            page_id, candidate_id,
+                            source_id,
+                            video_id,
+                            audio_id,
+                            host.clone(),
+                        ) {
+                            Ok(work) => {
+                                operations.push(
+                                    async move { control_reply(request.id, work.await) }.boxed(),
+                                );
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::Page(page::Operation::PageMediaResource(resource)) => {
+                        match resource {
+                            page::ResourceRequest::InspectMpd {
+                                page_id, candidate_id,
+                                choice_id,
+                                read_id,
+                            } => match pages.inspect_mpd(page_id, candidate_id, choice_id, read_id) {
+                                Ok(work) => {
+                                    operations.push(
+                                        async move { control_reply(request.id, work.await) }.boxed(),
+                                    );
+                                    continue;
+                                }
+                                Err(error) => Err(error),
+                            },
+                            page::ResourceRequest::ReadMetadata { page_id, candidate_id, choice_id, read_id, offset, length } => {
+                                match pages.read_metadata(page_id, candidate_id, choice_id, read_id, offset, length) {
+                                    Ok(work) => {
+                                        operations.push(async move { control_reply(request.id, work.await) }.boxed());
+                                        continue;
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            }
+                            page::ResourceRequest::Read {
+                                page_id,
+                                source_id,
+                                resource_id,
+                                read_id,
+                                offset,
+                                length,
+                            } => {
+                                match pages.read_resource(
+                                    page_id,
+                                    source_id,
+                                    resource_id,
+                                    read_id,
+                                    offset,
+                                    length,
+                                ) {
+                                    Ok(work) => {
+                                        operations.push(async move { control_reply(request.id, work.await) }.boxed());
+                                        continue;
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            }
+                            page::ResourceRequest::Cancel {
+                                page_id,
+                                read_id,
+                            } => {
+                                pages.cancel_resource(page_id, read_id);
+                                Ok(Value::Null)
+                            }
+                        }
+                    }
+                    Operation::Page(page::Operation::PageMediaStop { page_id, candidate_id }) => {
+                        if let Some(candidate) = candidate_id { pages.cancel_candidate(page_id, candidate); pages.request(page::Operation::PageMediaStop { page_id, candidate_id }).await?; } else { pages.stop_media(page_id); }
+                        Ok(Value::Null)
+                    }
+                    Operation::Page(operation) => {
+                        let source_page =
+                            if let page::Operation::PageMediaSources { page_id, candidate_id } =
+                                &operation
+                            {
+                                Some((*page_id, *candidate_id))
+                            } else {
+                                None
+                            };
+                        let mut result = pages.request(operation).await;
+                        if let (Some(page), Ok(value)) = (source_page, &mut result) {
+                            value["byteSource"] =
+                                serde_json::to_value(pages.scoped_source(page.0, page.1))?;
+                        }
+                        // Selection facts (including the current top-level URL) precede confirmation.
+                        for _ in 0..event_queue.len() {
+                            let Ok(event) = event_queue.try_recv() else {
+                                break;
+                            };
+                            timeout(
+                                IO_TIMEOUT,
+                                writer.send(control_event_message(&pages, event)),
+                            )
+                            .await??;
+                        }
+                        result
+                    }
+                    Operation::Hello { .. } => Err(anyhow!("already_initialized")),
+                    Operation::Open { policy } => {
+                        if opening.is_some() {
+                            Err(anyhow!("request_pending"))
+                        } else {
+                            let commands = host.clone();
+                            opening = Some(async move {
+                                control_reply(request.id, open(&commands, &policy).await)
+                            }.boxed());
+                            continue;
+                        }
+                    }
+                    Operation::LocalEndpoint => {
+                        let commands = host.clone();
+                        operations.push(async move {
+                            let endpoint = async {
+                                let (result, response) = oneshot::channel();
+                                commands.send(HostCommand::LocalEndpoint(result)).await
+                                    .map_err(|_| anyhow!("hosting_unavailable"))?;
+                                let session_id = response.await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                                Ok::<_, anyhow::Error>(json!({"sessionId": session_id}))
+                            }.await;
+                            control_reply(request.id, endpoint)
+                        }.boxed());
+                        continue;
+                    }
+                    Operation::RelayCapacity(relay) => {
+                        let (result, response) = oneshot::channel();
+                        let commands = host.clone();
+                        let request_id = request.id.clone();
+                        operations.push(async move {
+                            let work = async {
+                                commands
+                                    .send(HostCommand::RelayCapacity { request: relay, result })
+                                    .await
+                                    .map_err(|_| anyhow!("hosting_unavailable"))?;
+                                let result = timeout(IO_TIMEOUT, response)
+                                    .await
+                                    .map_err(|_| anyhow!("request_timeout"))??
+                                    .map_err(anyhow::Error::msg)?;
+                                serde_json::to_value(result).map_err(anyhow::Error::from)
+                            }.await;
+                            control_reply(request_id, work)
+                        }.boxed());
+                        continue;
+                    }
+                    Operation::ConnectionMetrics {
+                        room_id,
+                        publication_id,
+                    } => {
+                        if metrics.is_some() {
+                            Err(anyhow!("request_pending"))
+                        } else {
+                            let commands = host.clone();
+                            metrics = Some(async move {
+                                let measured = timeout(IO_TIMEOUT, async {
+                                    let (result, response) = oneshot::channel();
+                                    commands.send(HostCommand::ConnectionMetrics { room_id, publication_id, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                                    let measured = response.await?.map_err(anyhow::Error::msg)?;
+                                    Ok::<_, anyhow::Error>(serde_json::to_value(measured)?)
+                                }).await;
+                                control_reply(request.id, measured.unwrap_or_else(|_| Err(anyhow!("request_timeout"))))
+                            }.boxed());
+                            continue;
+                        }
+                    }
+                    operation @ (Operation::Targets | Operation::Microphones) => {
+                        let (kind, reader, pending) = match operation {
+                            Operation::Targets => (CaptureCatalogKind::Targets, &app.capture_targets, &mut targets),
+                            _ => (CaptureCatalogKind::Microphones, &app.capture_microphones, &mut microphones),
+                        };
+                        if let Some((id, _)) = pending.replace((request.id, reader.read(kind).await)) {
+                            let response = control_reply(id, Err(anyhow!("request_cancelled")));
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        }
+                        continue;
+                    }
+                    Operation::Preview { target } => {
+                        if preview.is_some() {
+                            Err(anyhow!("preview_busy"))
+                        } else {
+                            let (cancel, cancelled) = oneshot::channel();
+                            preview = Some((request.id.clone(), Some(cancel)));
+                            previews.push(async move {
+                                (
+                                    request.id,
+                                    piik_channel_native::capture::preview(
+                                        target, cancelled,
+                                    )
+                                    .await,
+                                )
+                            });
+                            continue;
+                        }
+                    }
+                    Operation::CancelPreview { request_id } => {
+                        if let Some((id, cancel)) = &mut preview {
+                            if *id == request_id {
+                                if let Some(cancel) = cancel.take() {
+                                    let _ = cancel.send(());
+                                }
+                            }
+                        }
+                        Ok(Value::Null)
+                    }
+                    Operation::PrepareCapture {
+                        publication_id,
+                        room_id,
+                        target,
+                        settings,
+                        codec_mode,
+                        encoding_execution,
+                        audio_settings,
+                        audio,
+                        exclude_audio,
+                        render_endpoint_id,
+                        show_capture_border,
+                    } => {
+                        let capture = captures.entry(publication_id).or_default();
+                        match capture.prepare(SourceKind::Capture, audio_settings) {
+                            Err(error) => Err(error),
+                            Ok((cancel, registration)) => {
+                                let replaces =
+                                    capture.source().map(SourceLease::producer_id);
+                                let picker_events = cfg!(target_os = "android").then(|| control_events.clone());
+                                let commands = host.clone();
+                                capture_starts.push(
+                                    async move {
+                                        let result = Abortable::new(
+                                            prepare_capture(
+                                                &commands,
+                                                publication_id,
+                                                room_id,
+                                                target,
+                                                settings,
+                                                codec_mode,
+                                                encoding_execution,
+                                                audio,
+                                                exclude_audio,
+                                                render_endpoint_id,
+                                                show_capture_border,
+                                                replaces,
+                                                picker_events.as_ref().map(|events| (events, request.id.as_str())),
+                                            ),
+                                            registration,
+                                        )
+                                        .await
+                                        .unwrap_or_else(|_| {
+                                            Err(anyhow!("capture_cancelled"))
+                                        });
+                                        (request.id, publication_id, cancel, result)
+                                    }
+                                    .boxed(),
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                    Operation::CommitCapture {
+                        publication_id,
+                        capture_id,
+                    } => {
+                        let candidate = captures.get_mut(&publication_id).and_then(|capture| {
+                            let pending = capture.pending.as_mut()?;
+                            let lease = pending.phase.prepared()?;
+                            (lease.id() == capture_id && !lease.is_stopped())
+                                .then_some((pending, capture.active.is_some()))
+                        });
+                        match candidate {
+                            None => Err(anyhow!("capture_unavailable")),
+                            Some((pending, replacing)) => {
+                                let (cancel, registration) = AbortHandle::new_pair();
+                                let previous = std::mem::replace(
+                                    &mut pending.phase, CapturePhase::Committing(capture_id),
+                                );
+                                let CapturePhase::Prepared(lease) = previous else { unreachable!("candidate was prepared") };
+                                pending.request.abort();
+                                pending.request = cancel.clone();
+                                let commands = host.clone();
+                                capture_starts.push(
+                                    async move {
+                                        let result = Abortable::new(
+                                            commit_capture(&commands, lease, replacing),
+                                            registration,
+                                        )
+                                        .await
+                                        .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")))
+                                        .map(CaptureResult::Committed);
+                                        (request.id, publication_id, cancel, result)
+                                    }
+                                    .boxed(),
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                    Operation::CancelCapture { publication_id } | Operation::CancelExternalInput { publication_id }
+                        if captures.get(&publication_id).and_then(|capture| capture.pending.as_ref())
+                            .is_some_and(|pending| matches!(pending.phase, CapturePhase::Committing(_))) =>
+                    {
+                        Err(anyhow!("capture_pending"))
+                    }
+                    Operation::CancelExternalInput { publication_id } => {
+                        if let Some(event) = cancel_external_input(
+                            publication_id,
+                            captures.get_mut(&publication_id),
+                            &mut external_page,
+                        ) {
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
+                        Ok(Value::Null)
+                    }
+                    Operation::CancelCapture { publication_id } => {
+                        let cancel =
+                            captures.get_mut(&publication_id).and_then(|capture| {
+                                capture.pending.take_if(|pending| pending.kind == SourceKind::Capture);
+                                capture.lease().map(CaptureLease::cancel_microphone)
+                            });
+                        match cancel {
+                            Some(Ok(cancel)) => {
+                                operations.push(async move {
+                                    control_reply(request.id, cancel.await.map(|()| Value::Null))
+                                }.boxed());
+                                continue;
+                            }
+                            Some(Err(error)) => Err(error),
+                            None => Ok(Value::Null),
+                        }
+                    }
+                    Operation::TransferSource {
+                        publication_id,
+                        capture_id,
+                        to_session_id,
+                    } => {
+                        let lease = captures
+                            .get(&publication_id)
+                            .and_then(Capture::source)
+                            .filter(|lease| lease.id() == capture_id);
+                        if let Some(lease) = lease {
+                            let commands = host.clone();
+                            let scope = lease.scope().clone();
+                            let capture_id = lease.producer_id();
+                            operations.push(async move {
+                                let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
+                                control_reply(request.id, result.map(|()| Value::Null))
+                            }.boxed());
+                            continue;
+                        } else {
+                            Err(anyhow!("capture_unavailable"))
+                        }
+                    }
+                    Operation::StopCapture { publication_id, capture_id: Some(capture_id), successor_watch_id: Some(successor_watch_id) } => {
+                        if let Some(lease) = captures.get(&publication_id).and_then(Capture::source)
+                            .filter(|lease| lease.id() == capture_id) {
+                            let commands = host.clone();
+                            let scope = lease.scope().clone();
+                            let producer = lease.producer_id();
+                            capture_stops.push(async move {
+                                let result = edit_capture(&commands, scope, producer, CaptureEdit::Stop { successor_watch_id }).await;
+                                (request.id, publication_id, capture_id, result)
+                            }.boxed());
+                            continue;
+                        }
+                        Err(anyhow!("capture_unavailable"))
+                    }
+                    Operation::StopCapture { publication_id, capture_id: None, successor_watch_id: None } => {
+                        if external_page.remove(publication_id) {
+                            let event = external_input_event(
+                                publication_id,
+                                None,
+                                None,
+                                true,
+                                None,
+                            );
+                            timeout(
+                                IO_TIMEOUT,
+                                writer.send(Message::Text(event.to_string().into())),
+                            )
+                            .await??;
+                        }
+                        if let Some(capture) = captures.remove(&publication_id) {
+                            if let Some(CapturePhase::Committing(generation)) = capture.pending.as_ref().map(|p| &p.phase) {
+                                if external_page.resources.get(generation).is_some_and(|resource| resource.ended.peek().is_some()) {
+                                    external_page.resources.remove(generation);
+                                }
+                            }
+                        }
+                        Ok(Value::Null)
+                    }
+                    Operation::StopCapture { .. } => Err(anyhow!("invalid_request")),
+                    Operation::CaptureAudioSettings {
+                        publication_id,
+                        settings,
+                    } => captures
+                        .get_mut(&publication_id)
+                        .ok_or_else(|| anyhow!("capture_unavailable"))
+                        .and_then(|capture| capture.configure_audio(settings))
+                        .map(|_| Value::Null),
+                    Operation::CaptureVideoSettings {
+                        publication_id,
+                        capture_id,
+                        settings,
+                    } => {
+                        let update = captures
+                            .get(&publication_id)
+                            .and_then(Capture::lease)
+                            .filter(|lease| lease.id == capture_id)
+                            .ok_or_else(|| anyhow!("capture_unavailable"))
+                            .and_then(|lease| {
+                                let commands = host.clone();
+                                let scope = lease.scope.clone();
+                                let producer = lease.producer_id();
+                                lease.configure_video(settings, async move {
+                                    publish_capture_settings(
+                                        &commands,
+                                        scope,
+                                        producer,
+                                        settings.into(),
+                                    )
+                                    .await
+                                })
+                            });
+                        match update {
+                            Ok(update) => {
+                                operations.push(async move {
+                                    control_reply(request.id, update.await.map(|()| Value::Null))
+                                }.boxed());
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::CaptureMicrophone {
+                        publication_id,
+                        capture_id,
+                        room_id,
+                        settings,
+                    } => {
+                        let update = captures
+                            .get(&publication_id)
+                            .and_then(Capture::lease)
+                            .filter(|lease| {
+                                lease.id == capture_id && lease.scope.room_id == room_id
+                            })
+                            .ok_or_else(|| anyhow!("capture_unavailable"))
+                            .and_then(|lease| {
+                                Ok((
+                                    lease.configure_microphone(settings)?,
+                                    lease
+                                        .audio_state()
+                                        .ok_or_else(|| anyhow!("capture_unavailable"))?,
+                                ))
+                            });
+                        match update {
+                            Ok((update, state)) => {
+                                operations.push(async move {
+                                    control_reply(request.id, update.await.map(|()| json!(state.borrow().microphone.clone())))
+                                }.boxed());
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::CapturePaused {
+                        publication_id,
+                        capture_id,
+                        paused,
+                    } => {
+                        let lease = captures
+                            .get(&publication_id)
+                            .and_then(Capture::source)
+                            .filter(|lease| lease.id() == capture_id);
+                        if let Some(lease) = lease {
+                            let commands = host.clone();
+                            let scope = lease.scope().clone();
+                            let capture_id = lease.producer_id();
+                            operations.push(async move {
+                                let result = pause_capture(&commands, scope, capture_id, paused).await;
+                                control_reply(request.id, result.map(|()| Value::Null))
+                            }.boxed());
+                            continue;
+                        } else {
+                            Err(anyhow!("capture_unavailable"))
+                        }
+                    }
+                    operation @ (Operation::CaptureTitle { .. }
+                    | Operation::CaptureDirectLimit { .. }) => {
+                        let (publication_id, expected_capture, edit) = match operation {
+                            Operation::CaptureTitle {
+                                publication_id,
+                                capture_id,
+                                title,
+                            } => (
+                                publication_id,
+                                Some(capture_id),
+                                CaptureEdit::Title(title),
+                            ),
+                            Operation::CaptureDirectLimit {
+                                publication_id,
+                                limit,
+                            } => (publication_id, None, CaptureEdit::DirectLimit(limit)),
+                            _ => unreachable!(),
+                        };
+                        let lease = captures
+                            .get(&publication_id)
+                            .and_then(Capture::source)
+                            .filter(|lease| {
+                                expected_capture.is_none_or(|id| lease.id() == id)
+                            });
+                        if let Some(lease) = lease {
+                            let commands = host.clone();
+                            let scope = lease.scope().clone();
+                            let capture_id = lease.producer_id();
+                            operations.push(async move {
+                                let result = edit_capture(&commands, scope, capture_id, edit).await;
+                                control_reply(request.id, result.map(|()| Value::Null))
+                            }.boxed());
+                            continue;
+                        } else {
+                            Err(anyhow!("capture_unavailable"))
+                        }
+                    }
+                    Operation::InputPolicy {
+                        publication_id,
+                        capture_id,
+                        mode,
+                        password,
+                        simultaneous,
+                    } => {
+                        let policy = captures
+                            .get(&publication_id)
+                            .and_then(Capture::lease)
+                            .filter(|lease| lease.id == capture_id)
+                            .ok_or_else(|| anyhow!("input_source_unavailable"))
+                            .and_then(|lease| {
+                                lease.set_input_policy(mode, password, simultaneous)
+                            });
+                        match policy {
+                            Ok(policy) => {
+                                operations.push(async move {
+                                    control_reply(request.id, policy.await.map(|()| Value::Null))
+                                }.boxed());
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::InputDecide {
+                        publication_id,
+                        controller_session_id,
+                        intent,
+                        allow,
+                    } => (|| -> Result<Value> {
+                        let lease = captures
+                            .get(&publication_id)
+                            .and_then(Capture::lease)
+                            .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                        let source = lease
+                            .remote
+                            .as_ref()
+                            .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                        source.decide(controller_session_id, intent, allow)?;
+                        Ok(Value::Null)
+                    })(),
+                    Operation::InputShortcut {
+                        publication_id,
+                        key,
+                    } => {
+                        let shortcut = captures
+                            .get(&publication_id)
+                            .and_then(Capture::lease)
+                            .and_then(|lease| lease.remote.as_ref())
+                            .ok_or_else(|| anyhow!("input_source_unavailable"))
+                            .and_then(|source| source.set_shortcut(key));
+                        match shortcut {
+                            Ok(shortcut) => {
+                                let desktop = app.desktop.clone();
+                                operations.push(async move {
+                                    control_reply(request.id, shortcut.await.map(|()| {
+                                        let label = desktop.shortcut_label();
+                                        let available = label.as_ref().is_none_or(Option::is_some);
+                                        let mut value = json!({"key":key,"available":available});
+                                        if let Some(label) = label { value["stopShortcutLabel"] = json!(label); }
+                                        value
+                                    }))
+                                }.boxed());
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Operation::VoiceShortcuts(settings) => {
+                        // This loop writes the report before polling the new registration's events.
+                        voice_shortcuts.configure(settings)
+                            .and_then(|report| Ok(serde_json::to_value(report)?))
+                    }
+                    };
+                send_control(&mut writer, control_reply(request.id, result)).await?;
             }
         };
         tokio::pin!(reading, processing);
@@ -3254,6 +3160,7 @@ mod lifecycle_tests {
             },
             port: 0,
             token: "owned".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::from([
@@ -3333,18 +3240,25 @@ mod lifecycle_tests {
             "piik-channel-rooms.owned".parse().unwrap(),
         );
         let (mut socket, _) = connect_async(request.clone()).await.unwrap();
-        socket
-            .send(WsMessage::Text(
-                json!({"id":"before-hello","type":"local_endpoint"})
-                    .to_string()
-                    .into(),
-            ))
-            .await
-            .unwrap();
-        let reply = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+        let exchange =
+            async |socket: &mut tokio_tungstenite::WebSocketStream<_>, request: Value| {
+                socket.send(WsMessage::Text(request.to_string().into())).await.unwrap();
+                let reply = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap()
+            };
+        for operation in [
+            json!({"id":"before-hello","type":"local_endpoint"}),
+            json!({"id":"before-hello","type":"cancel_preview","requestId":"preview"}),
+            json!({"id":"before-hello","type":"stop_capture","publicationId":Uuid::new_v4()}),
+        ] {
+            assert_eq!(
+                exchange(&mut socket, operation).await,
+                json!({"id":"before-hello","error":"hello_required"})
+            );
+        }
         assert_eq!(
-            serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap(),
-            json!({"id":"before-hello","error":"hello_required"})
+            exchange(&mut socket, json!({"id":"bad-request","type":"unknown"})).await,
+            json!({"id":"bad-request","error":"invalid_request"})
         );
         assert!(receiver.try_recv().is_err());
         socket
@@ -3395,30 +3309,23 @@ mod lifecycle_tests {
         for revoke in [false, true] {
             ready.send_replace(Some(Ok(())));
             let (mut socket, _) = connect_async(request.clone()).await.unwrap();
-            socket
-                .send(WsMessage::Text(
-                    json!({"id":"hello","type":"hello","channelId":key.1,
-                        "userId":key.2,"credential":"owned","name":"Test"})
-                    .to_string()
-                    .into(),
-                ))
-                .await
-                .unwrap();
-            let hello = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+            let hello = json!({"id":"hello","type":"hello","channelId":key.1,
+                "userId":key.2,"credential":"owned","name":"Test"});
+            let mut wrong_credential = hello.clone();
+            wrong_credential["credential"] = json!("wrong");
             assert_eq!(
-                serde_json::from_str::<Value>(hello.to_text().unwrap()).unwrap(),
+                exchange(&mut socket, wrong_credential).await,
+                json!({"id":"hello","error":"owner_mismatch"})
+            );
+            assert_eq!(
+                exchange(&mut socket, hello.clone()).await,
                 json!({"id":"hello","result":null})
             );
+            assert_eq!(
+                exchange(&mut socket, hello).await,
+                json!({"id":"hello","error":"already_initialized"})
+            );
             if voice_shortcuts::AVAILABLE {
-                let exchange =
-                    async |socket: &mut tokio_tungstenite::WebSocketStream<_>, request: Value| {
-                        socket
-                            .send(WsMessage::Text(request.to_string().into()))
-                            .await
-                            .unwrap();
-                        let reply = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
-                        serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap()
-                    };
                 let enable = json!({
                     "id":"voice","type":"voice_shortcuts","enabled":true,"microphone":null,"listening":null
                 });
@@ -3671,6 +3578,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "owned".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(site.clone(), permission)]),
@@ -3967,6 +3875,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(remote.into(), permission.clone())]),
@@ -4271,6 +4180,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
                 approvals: BTreeMap::new(),
@@ -4455,6 +4365,7 @@ mod lifecycle_tests {
                 },
                 port: 39731,
                 token: "test".into(),
+                host_creation: Default::default(),
                 registry: Mutex::new(Registry {
                     sites,
                     approvals,
@@ -4684,6 +4595,7 @@ mod lifecycle_tests {
             },
             port: address.port(),
             token: "test".into(),
+            host_creation: Default::default(),
             registry: Mutex::new(Registry {
                 sites,
                 approvals: BTreeMap::from([(site.clone(), permission.clone())]),

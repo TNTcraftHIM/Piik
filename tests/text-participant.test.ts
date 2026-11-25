@@ -36,7 +36,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
           sessions: [{ id: local, userId: user, online: true, signingKey: command.signingKey },
             { id: host, userId: owner, online: true, signingKey: [...signer.signing_key()] }],
           publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [],
-          failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+          files: [], pairs: [], iceServers: [],
         });
         const textState = { ...state, watchActivities: [{ id: randomUUID(), roomId: 'room', userId: user,
           sessionId: host, source: { kind: 'media', url: 'https://example.invalid/owned.mp4' },
@@ -54,8 +54,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
             const reply = (record: object) => socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host,
               JSON.stringify({ ...address, sender: host, recipient: local, record }))) }));
             if (request.command.type === 'history') {
-              reply({ type: 'history_message', message });
-              reply({ type: 'history_end', count: 1, hasMore: false, oldestSeq: 1, before: null });
+              reply({ type: 'history_page', messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
             } else if (request.command.type === 'delete_message') {
               expect(request.command).toEqual({ type: 'delete_message', messageSeq: message.seq, messageId: message.id });
               socket.send(JSON.stringify({ type: 'ack', requestId: address.requestId }));
@@ -73,7 +72,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
   try {
     await client.connect();
     expect(client.summary()).toMatchObject({ userId: user, roomId: 'room', available: true, reading: true, bindingId: binding });
-    expect(await client.history()).toEqual({ messages: [message], hasMore: false, oldestSeq: 1, before: null });
+    expect(await client.history()).toEqual({ messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
     expect(live).toEqual([]);
     const delivered = once(client, 'live');
     const confirmed = await client.chat('notice');
@@ -151,7 +150,7 @@ test('narrow conversation verification keeps authority required and signed recor
   const address = { roomId: 'room', bindingId: binding, sender: host, recipient: local, requestId: 'reply' };
   const state = { channel: { rooms: [{ id: 'room', authorized: true, available: true,
     delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] };
-  const record = { type: 'history_end', count: 0, hasMore: false, oldestSeq: null, before: null };
+  const record = { type: 'history_page', messages: [], hasMore: false, oldestSeq: null, before: null };
   const packet = (change = {}) => signer.sign(host, JSON.stringify({ ...address, ...change, record }));
   const verify = (value: string, view: unknown = state) => rust.verify_conversation(value, local, JSON.stringify(view));
   try {
@@ -187,8 +186,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
     const seq = index + 1;
     return { id: randomUUID(), seq, userId: owner, text: `message ${seq}`, time: seq, attachments: [] };
   });
-  const overflowBefore = messages.length + 1;
-  let malformedPage: 'count' | 'empty-more' | undefined;
+  let malformedPage: 'empty-more' | undefined;
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   const address = server.address();
@@ -200,7 +198,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
     try {
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -228,12 +226,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
         }
         const { replies } = JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
         for (const reply of replies) {
-          if (reply.record.type === 'history_end') {
-            if (request.command.before === overflowBefore)
-              reply.record = { type: 'history_message', message: messages[0] };
-            else if (malformedPage === 'count') reply.record.count++;
-            else if (malformedPage === 'empty-more') reply.record.hasMore = true;
-          }
+          if (reply.record.type === 'history_page' && malformedPage === 'empty-more') reply.record.hasMore = true;
           socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
         }
       } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
@@ -268,11 +261,6 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(received[3].nonce).toBe(options.nonce);
     await expect(client.chat('plain', { mentions: [{ userId: owner, start: 0, end: 5 }] })).rejects.toThrow('invalid_mentions');
     await expect(client.chat('reply', { reply: { seq: 99, messageId: randomUUID(), notify: false } })).rejects.toThrow('message_unavailable');
-    const oversized = client.history(overflowBefore).catch(error => error as Error);
-    expect(await client.history()).toEqual(latestPage);
-    expect(await Promise.race([oversized, Promise.resolve('still pending')])).toMatchObject({ message: 'incomplete_history' });
-    malformedPage = 'count';
-    await expect(client.history(2)).rejects.toThrow('incomplete_history');
     malformedPage = 'empty-more';
     await expect(client.history(1)).rejects.toThrow('incomplete_history');
     expect(live).toEqual([]);
@@ -307,7 +295,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
         room?.free(); room = new rust.RoomHost(policy); binding = randomUUID();
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -380,7 +368,7 @@ test('text message reactions use advertised support and Core counted-history non
   let transition: 'binding' | 'revoked' | undefined;
   const state = () => ({ channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
     delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] });
-  const historySnapshots: unknown[] = [], received: Record<string, unknown>[] = [], errors: unknown[] = [];
+  const received: Record<string, unknown>[] = [], errors: unknown[] = [];
   const reactPackets: unknown[] = [];
   const process = (packet: unknown) => {
     const prepared = JSON.parse(room.prepare_peer(JSON.stringify(packet), BigInt(now)));
@@ -408,7 +396,7 @@ test('text message reactions use advertised support and Core counted-history non
     try {
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: ++revision,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: ++revision,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -420,7 +408,6 @@ test('text message reactions use advertised support and Core counted-history non
         const replies = process(command.packet);
         for (const reply of replies) {
           if (reply.record.type === 'interaction_ready' && !advertise) reply.record.reactionIds = [];
-          if (reply.record.type === 'message_reactions') historySnapshots.push(reply.record.snapshot);
           socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
           if (reply.record.type === 'interaction_ready' && transition) {
             if (transition === 'binding') binding = randomUUID();
@@ -456,8 +443,7 @@ test('text message reactions use advertised support and Core counted-history non
     local = randomUUID();
     await client.reconnect(); now += 1000;
     expect(await client.react(1, message.id, 'heart')).toMatchObject({ nonce: 1, snapshot: { counts: { heart: 4 } } });
-    expect((await client.history()).messages).toEqual([message]);
-    expect(historySnapshots).toContainEqual({ messageId: message.id, messageSeq: 1, revision: 4, counts: { heart: 4 } });
+    expect((await client.history()).messages).toEqual([{ ...message, reactions: { revision: 4, counts: { heart: 4 } } }]);
     transition = 'revoked';
     await expect(client.react(1, message.id, 'heart')).rejects.toThrow('room_access_required');
     await client.reconnect();

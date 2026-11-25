@@ -233,7 +233,6 @@ impl RemoteRoom {
                 view.subscriptions.clear();
                 view.watch_subscriptions.clear();
                 view.watch_bytes.clear();
-                view.failed_subscriptions.clear();
                 view.files.clear();
                 view.reading = false;
                 view.transit_endpoint = None;
@@ -308,6 +307,7 @@ impl RemoteRoom {
         endpoints: BTreeMap<Uuid, Endpoint>,
         service_endpoint: Option<ServiceTransit>,
         pairs: impl Iterator<Item = (Uuid, Uuid)>,
+        observations: impl Iterator<Item = (Uuid, Uuid)>,
         action: HostAction,
         now: u64,
     ) -> Result<(Uuid, HostInput), &'static str> {
@@ -323,6 +323,9 @@ impl RemoteRoom {
             _ => BTreeSet::new(),
         };
         let confirmed_pairs = pairs
+            .filter(|(a, b)| sessions.contains(a) && sessions.contains(b))
+            .collect();
+        let disconnected_pairs = observations
             .filter(|(a, b)| sessions.contains(a) && sessions.contains(b))
             .collect();
         let binding = self.binding.as_mut().ok_or("room_host_offline")?;
@@ -383,6 +386,7 @@ impl RemoteRoom {
                 host_session_id: binding.session,
                 revision: binding.revision,
                 confirmed_pairs,
+                disconnected_pairs,
                 failed_pairs: binding
                     .failed_pairs
                     .iter()
@@ -449,8 +453,6 @@ impl RemoteRoom {
                 file_availability: None,
                 capabilities: RoomCapabilities {
                     attachments: false,
-                    history_seek: false,
-                    file_availability_limit: None,
                 },
                 members: None,
             },
@@ -458,7 +460,6 @@ impl RemoteRoom {
             publications: vec![],
             voice: vec![],
             subscriptions: vec![],
-            failed_subscriptions: vec![],
         })
     }
 }

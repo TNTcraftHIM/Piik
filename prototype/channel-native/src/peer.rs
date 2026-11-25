@@ -15,8 +15,8 @@ use piik_channel_core::conversation::ControlFrame;
 use piik_channel_core::file_room::FilePlan;
 use piik_channel_core::wire::Snapshot;
 use piik_channel_core::wire::{
-    Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
-    Track as WireTrack, UdpPreparation,
+    Candidate, Command, Description, FlowBinding, FlowState, Kind, LinkState, PairInfo,
+    PublicationInfo, Signal, Track as WireTrack, UdpPreparation,
 };
 use rtc_rtp as rtp;
 use std::{
@@ -203,8 +203,15 @@ pub struct IceServer {
 pub(crate) enum PeerState {
     New,
     Connected,
+    Disconnected,
     Failed,
     Closed,
+}
+
+impl PeerState {
+    fn established(state: u8) -> bool {
+        state == Self::Connected as u8 || state == Self::Disconnected as u8
+    }
 }
 
 pub struct NativePeers {
@@ -676,7 +683,6 @@ struct Pair {
     polite: bool,
     pending_offer: Option<PendingOffer>,
     stable_outputs: Option<HashSet<Uuid>>,
-    failed_offer: Option<OfferWork>,
     answer: Option<Signal>,
     negotiate: bool,
     ignore_offer: bool,
@@ -726,45 +732,19 @@ struct PendingOffer {
     outputs: HashSet<Uuid>,
 }
 
-#[derive(PartialEq, Eq)]
-struct OfferWork {
-    outputs: HashSet<Uuid>,
-    flows: HashSet<Uuid>,
-    rooms: Vec<String>,
-    control: Option<Uuid>,
-    bulk: Option<Uuid>,
-    input: Option<Uuid>,
-}
-
 impl Pair {
     fn connected(&self) -> bool {
         self.state.load(Ordering::Acquire) == PeerState::Connected as u8
+    }
+
+    fn established(&self) -> bool {
+        PeerState::established(self.state.load(Ordering::Acquire))
     }
 
     fn output_ids(&self) -> HashSet<Uuid> {
         self.outputs.values().map(|output| output.id).collect()
     }
 
-    fn offer_work(&self) -> OfferWork {
-        OfferWork {
-            outputs: self.output_ids(),
-            flows: self
-                .plan
-                .outgoing
-                .iter()
-                .chain(&self.plan.incoming)
-                .map(|flow| flow.id)
-                .collect(),
-            rooms: self.plan.rooms.clone(),
-            control: self.dc.as_ref().map(|(token, _, _)| *token),
-            bulk: self.bulk.as_ref().map(|(token, _, _)| *token),
-            input: self.input.as_ref().map(|(token, _, _)| *token),
-        }
-    }
-
-    async fn stable(&self) -> bool {
-        self.pc.stable().await
-    }
     async fn confirm_outputs(&mut self, offered: HashSet<Uuid>) -> Result<()> {
         let mut stable = HashSet::new();
         for output in self
@@ -1079,7 +1059,7 @@ impl NativePeers {
                         }
                         Turn::Tick | Turn::Bandwidth => {
                             d.deadlines().await;
-                            d.refresh_media(false).await;
+                            d.refresh_outputs().await;
                         }
                     }
                     d.reconcile_encodings().await;
@@ -1470,6 +1450,18 @@ impl Driver {
         messages
     }
 
+    fn fails_flow(
+        publications: &HashMap<Uuid, PublicationInfo>,
+        flow: &FlowBinding,
+        media: MediaKind,
+    ) -> bool {
+        !flow.selected
+            || media == MediaKind::Video
+            || publications
+                .get(&flow.publication_id)
+                .is_some_and(|publication| publication.kind == Kind::Voice)
+    }
+
     async fn output_failed(&mut self, pair: Uuid, key: TrackKey, source: Uuid, output: Uuid) {
         let Some(p) = self.pairs.get_mut(&pair) else {
             return;
@@ -1489,14 +1481,7 @@ impl Driver {
             .copied();
         p.rejected_outputs.insert(key, source);
         p.outputs.remove(&key).unwrap().close(&p.pc).await;
-        if binding.is_some_and(|flow| {
-            !flow.selected
-                || key.1 == MediaKind::Video
-                || self
-                    .publications
-                    .get(&flow.publication_id)
-                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
-        }) {
+        if binding.is_some_and(|flow| Self::fails_flow(&self.publications, &flow, key.1)) {
             self.fail_flow(pair, key.0).await;
         }
     }
@@ -1859,7 +1844,7 @@ impl Driver {
         self.sources
             .retain(|id, source| !capture.producer.owns(*id, source.kind));
         self.relay.retain(&self.sources.keys().copied().collect());
-        self.refresh_media(false).await;
+        self.refresh_outputs().await;
         // Android can stop the incumbent when a new projection is authorized.
         // Its prepared replacement still owns the publication until commit/cancel.
         if self
@@ -1891,7 +1876,7 @@ impl Driver {
         }
         self.sources.remove(&source);
         self.relay.remove(source);
-        self.refresh_media(false).await
+        self.refresh_outputs().await
     }
 
     #[cfg(feature = "capture")]
@@ -1933,7 +1918,7 @@ impl Driver {
             self.sources.remove(&source);
             self.relay.remove(source);
         }
-        self.refresh_media(false).await
+        self.refresh_outputs().await
     }
 
     #[cfg(feature = "capture")]
@@ -2032,11 +2017,8 @@ impl Driver {
             .filter(|id| !retained.contains(id))
             .copied()
             .collect();
-        let mut released = false;
         for id in removed {
-            released |= self
-                .retire_pair(id, RetirementReason::ProjectionRemoved)
-                .await;
+            self.retire_pair(id, RetirementReason::ProjectionRemoved).await;
         }
         for plan in plans {
             let id = plan.id;
@@ -2089,7 +2071,7 @@ impl Driver {
                 self.fail(id, RetirementReason::SetupFailed).await;
             }
         }
-        self.refresh_media(released).await;
+        self.refresh_outputs().await;
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
             self.report_room_data_ready(id).await;
         }
@@ -2134,7 +2116,6 @@ impl Driver {
                 mapping: None,
                 pending_offer: None,
                 stable_outputs: None,
-                failed_offer: None,
                 answer: None,
                 negotiate: false,
                 ignore_offer: false,
@@ -2289,7 +2270,7 @@ impl Driver {
             for signal in pending.signals {
                 self.signal(id, signal).await?;
             }
-            self.refresh_media(false).await;
+            self.refresh_outputs().await;
             self.report_room_data_ready(id).await;
             Ok::<_, anyhow::Error>(())
         }
@@ -2356,12 +2337,13 @@ impl Driver {
                 }
                 continue;
             };
-            if pair.connected() {
-                self.send(Command::LinkState {
-                    pair_id: id,
-                    state: LinkState::Connected,
-                })
-                .await;
+            let state = match pair.state.load(Ordering::Acquire) {
+                state if state == PeerState::Connected as u8 => Some(LinkState::Connected),
+                state if state == PeerState::Disconnected as u8 => Some(LinkState::Disconnected),
+                _ => None,
+            };
+            if let Some(state) = state {
+                self.send(Command::LinkState { pair_id: id, state }).await;
             }
             if pair.room_data_failed || (pair.connected() && pair.dc_open) {
                 for room_id in &pair.plan.rooms {
@@ -2426,76 +2408,13 @@ impl Driver {
             p.negotiate = true;
             return Ok(());
         }
-        let outputs = p.output_ids();
-        if p.failed_offer.as_ref() == Some(&p.offer_work()) {
-            return Ok(());
-        }
         p.negotiate = false;
-        let stable = p.stable_outputs.is_some() && p.stable().await;
-        let result = async { p.pc.offer().await }.await;
-        if matches!(result, Ok(false)) {
+        if !p.pc.offer().await? {
             return Ok(());
         }
-        self.finish_offer(id, stable, outputs, result.map(|_| ()))
-            .await
-    }
-
-    async fn finish_offer(
-        &mut self,
-        id: Uuid,
-        was_stable: bool,
-        outputs: HashSet<Uuid>,
-        result: Result<()>,
-    ) -> Result<()> {
-        if let Err(error) = result {
-            let p = self.pairs.get_mut(&id).unwrap();
-            if !was_stable || p.pending_offer.is_some() || !p.stable().await {
-                return Err(error);
-            }
-            let stable = p.stable_outputs.as_ref().unwrap();
-            let added: Vec<_> = p
-                .outputs
-                .iter()
-                .filter_map(|(key, output)| {
-                    (outputs.contains(&output.id) && !stable.contains(&output.id)).then_some(*key)
-                })
-                .collect();
-            let mut affected = HashSet::new();
-            for key in added {
-                let output = p.outputs.remove(&key).unwrap();
-                p.rejected_outputs.insert(key, output.source);
-                affected.insert(key.0);
-                output.close(&p.pc).await;
-            }
-            let failed: Vec<_> = affected
-                .into_iter()
-                .filter(|flow| {
-                    let binding = p
-                        .plan
-                        .outgoing
-                        .iter()
-                        .find(|binding| binding.id == *flow)
-                        .expect("an allocated output owns a current flow");
-                    let primary = if self.publications[&binding.publication_id].kind
-                        == piik_channel_core::wire::Kind::Screen
-                    {
-                        MediaKind::Video
-                    } else {
-                        MediaKind::Audio
-                    };
-                    !binding.selected || !p.outputs.contains_key(&(*flow, primary))
-                })
-                .collect();
-            p.failed_offer = Some(p.offer_work());
-            eprintln!("Native local offer failed before signaling: {error}");
-            for flow_id in failed {
-                self.fail_flow(id, flow_id).await;
-            }
-            return Ok(());
-        }
+        let outputs = p.output_ids();
         let offer = self.local_signal(id, Uuid::new_v4()).await?;
         let p = self.pairs.get_mut(&id).unwrap();
-        p.failed_offer = None;
         p.pending_offer = Some(PendingOffer {
             signal: offer.clone(),
             outputs,
@@ -2587,7 +2506,7 @@ impl Driver {
                 self.offer(id).await?;
             }
             self.reconcile_receivers(id).await?;
-            self.refresh_media(false).await;
+            self.refresh_outputs().await;
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
                 if p.pc.remote_description().await {
@@ -2719,7 +2638,14 @@ impl Driver {
         let Some(p) = self.pairs.get_mut(&id) else {
             return;
         };
-        if p.connected() && p.dc_open && !p.room_data_failed {
+        if !p.established() {
+            return;
+        }
+        if p.dc_open && !p.room_data_failed {
+            p.deadline = None;
+            if !p.connected() {
+                return;
+            }
             let rooms: Vec<_> = p
                 .plan
                 .rooms
@@ -2728,7 +2654,6 @@ impl Driver {
                 .cloned()
                 .collect();
             p.reported.extend(rooms.clone());
-            p.deadline = None;
             for room_id in rooms {
                 self.send(Command::RoomDataState {
                     room_id,
@@ -2737,9 +2662,9 @@ impl Driver {
                 })
                 .await;
             }
-        } else if p.connected() && (p.plan.rooms.is_empty() || p.room_data_failed) {
+        } else if p.plan.rooms.is_empty() || p.room_data_failed {
             p.deadline = None;
-        } else if p.connected() && !matches!(p.deadline, Some(Deadline::Control(_))) {
+        } else if !matches!(p.deadline, Some(Deadline::Control(_))) {
             p.deadline = Some(Deadline::Control(Instant::now() + Duration::from_secs(20)));
         }
     }
@@ -2780,14 +2705,13 @@ impl Driver {
         }
         Ok(())
     }
-    async fn retire_pair(&mut self, id: Uuid, reason: RetirementReason) -> bool {
+    async fn retire_pair(&mut self, id: Uuid, reason: RetirementReason) {
         if let Some(pending) = self.preparings.remove(&id) {
             pending.close().await;
         }
         let Some(pair) = self.pairs.remove(&id) else {
-            return false;
+            return;
         };
-        let released = !pair.outputs.is_empty();
         let peer = pair.plan.peer_id;
         // Cleanup progresses even when a detach queue is full. Shutdown joins the same task.
         self.retiring_pair = Some(tokio::spawn(close_pair(pair, reason)));
@@ -2805,7 +2729,6 @@ impl Driver {
             let _ = self.retirement_failed.send(error).await;
             std::future::pending::<()>().await;
         }
-        released
     }
     async fn fail(&mut self, id: Uuid, reason: RetirementReason) {
         self.retire_pair(id, reason).await;
@@ -2819,6 +2742,11 @@ impl Driver {
     async fn deadlines(&mut self) {
         // The callback's atomic connection fact can precede the queued State event.
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
+            if !self.pairs[&id].connected() {
+                for message in self.inputs.disconnected(id) {
+                    self.send_input(message).await;
+                }
+            }
             self.report_room_data_ready(id).await;
         }
         let expired: Vec<_> = self
@@ -2828,7 +2756,7 @@ impl Driver {
                 p.overflow.swap(false, Ordering::AcqRel)
                     || p.deadline.is_some_and(|d| Instant::now() >= d.expires())
             })
-            .map(|(id, p)| (*id, p.connected()))
+            .map(|(id, p)| (*id, p.established()))
             .collect();
         for (id, connected) in expired {
             self.pairs.get_mut(&id).unwrap().deadline = None;
@@ -2911,14 +2839,7 @@ impl Driver {
                 }
             }
         }
-        if assigned_latest.is_some_and(|flow| {
-            !flow.selected
-                || key.1 == MediaKind::Video
-                || self
-                    .publications
-                    .get(&flow.publication_id)
-                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
-        }) {
+        if assigned_latest.is_some_and(|flow| Self::fails_flow(&self.publications, &flow, key.1)) {
             self.send(Command::FlowState {
                 flow_id: key.0,
                 pair_id: pair,
@@ -3078,6 +2999,12 @@ impl Driver {
                         })
                         .await;
                         self.report_room_data_ready(id).await;
+                    } else if state == PeerState::Disconnected {
+                        self.send(Command::LinkState {
+                            pair_id: id,
+                            state: LinkState::Disconnected,
+                        })
+                        .await;
                     } else if matches!(state, PeerState::Failed | PeerState::Closed) {
                         self.fail(
                             id,
@@ -3617,7 +3544,7 @@ impl Driver {
             }
         }
         self.sources.insert(source.id, source.clone());
-        self.refresh_media(false).await;
+        self.refresh_outputs().await;
         match media {
             InitialMedia::Rtp(packets) => {
                 for packet in packets {
@@ -3644,51 +3571,9 @@ impl Driver {
             }
         }
     }
-    async fn refresh_media(&mut self, released: bool) {
-        let released = self.refresh_outputs().await || released;
-        let mut retry = Vec::new();
-        let mut partial = false;
-        for (id, pair) in &mut self.pairs {
-            let changed = pair
-                .failed_offer
-                .as_ref()
-                .is_some_and(|previous| *previous != pair.offer_work());
-            if !released && !changed {
-                continue;
-            }
-            let before = pair.rejected_outputs.len();
-            // Normal retirement on any pair permits one companion-audio retry.
-            // Failed primary/candidate flows still belong to the route owner.
-            pair.rejected_outputs.retain(|(flow, kind), _| {
-                *kind != MediaKind::Audio
-                    || !pair.outputs.contains_key(&(*flow, MediaKind::Video))
-                    || !pair
-                        .plan
-                        .outgoing
-                        .iter()
-                        .any(|binding| binding.id == *flow && binding.selected)
-            });
-            let retry_audio = pair.rejected_outputs.len() != before;
-            partial |= retry_audio;
-            if changed || retry_audio {
-                retry.push(*id);
-            }
-        }
-        if partial {
-            self.refresh_outputs().await;
-        }
-        for id in retry {
-            if let Err(error) = self.offer(id).await {
-                eprintln!("Native pair negotiation failed: {error}");
-                self.fail(id, RetirementReason::NegotiationFailed).await;
-            }
-        }
-    }
-
-    async fn refresh_outputs(&mut self) -> bool {
+    async fn refresh_outputs(&mut self) {
         // Forward the exact admitted input, including shadow branches. Selection
         // belongs to local playback and cannot recreate a prewarmed sender.
-        let mut released = false;
         for pair in self.pairs.values_mut() {
             pair.rejected_outputs.retain(|key, rejected| {
                 pair.plan.outgoing.iter().any(|flow| {
@@ -3719,7 +3604,6 @@ impl Driver {
                 .collect();
             for key in retired {
                 pair.outputs.remove(&key).unwrap().close(&pair.pc).await;
-                released = true;
             }
         }
         let budgets = self.bandwidth_plans(Instant::now());
@@ -3780,11 +3664,7 @@ impl Driver {
                             Err(error) => {
                                 eprintln!("Native encoded track attach failed: {error}");
                                 p.rejected_outputs.insert(output_key, source.id);
-                                if !binding.selected
-                                    || source.kind == MediaKind::Video
-                                    || self.publications[publication].kind
-                                        == piik_channel_core::wire::Kind::Voice
-                                {
+                                if Self::fails_flow(&self.publications, binding, source.kind) {
                                     failed.insert((binding.id, *id));
                                 }
                                 continue;
@@ -3804,7 +3684,6 @@ impl Driver {
         for (flow_id, pair_id) in failed {
             self.fail_flow(pair_id, flow_id).await;
         }
-        released
     }
 }
 fn signal_candidate(
@@ -3876,6 +3755,7 @@ fn close_pair(mut pair: Pair, reason: RetirementReason) -> impl std::future::Fut
 }
 
 mod bandwidth;
+mod deadline;
 mod input;
 #[cfg(test)]
 pub(crate) use input::tests::share_pause_projection;

@@ -146,6 +146,12 @@ impl FrameDropper {
         }
         self.was_below_max = self.accumulator < self.accumulator_max;
     }
+    pub fn should_drop_at_rate(&mut self, target_kbps: f32, fps: f32) -> bool {
+        self.set_rates(target_kbps, fps);
+        self.leak(fps.round() as u32);
+        self.drop_frame()
+    }
+
     pub fn drop_frame(&mut self) -> bool {
         if self.drop_next {
             self.drop_next = false;

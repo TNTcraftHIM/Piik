@@ -38,6 +38,8 @@ const RANDOM_PORTS: usize = 256;
 const RANDOM_TARGETS: usize = RANDOM_PORTS * 2;
 const RANDOM_REQUEST_BUDGET: usize = RANDOM_TARGETS + 8;
 const RANDOM_REPLY_BUDGET: usize = 16;
+// The mean spacing of a schedule, not a sleep per packet: a timer that wakes on a
+// coarser tick (15.6 ms on Windows) sends what is due and the rate holds.
 const RANDOM_PACKET_INTERVAL: Duration = Duration::from_millis(2);
 // Shared across every site and Driver in this process. Busy peers fall back;
 // they do not queue another pool behind the current pair's deadline.
@@ -547,7 +549,7 @@ impl Survey {
                     sleep_until(next_send.into()).await;
                     socket.send_to(&request.raw, plan.targets[0]).await?;
                     requests_left -= 1;
-                    next_send = Instant::now() + RANDOM_PACKET_INTERVAL;
+                    next_send += RANDOM_PACKET_INTERVAL;
                 }
                 send(commands, preparation.pair, UdpSignal::Ready {}).await?;
             } else if plan.random == Some(RandomRole::Search) {
@@ -555,6 +557,8 @@ impl Survey {
             }
             let mut reads: FuturesUnordered<_> = sockets.iter().enumerate().map(|(i,s)| receive(i,s)).collect();
             let start = Instant::now();
+            // The wait for Ready is not time a schedule may catch up on.
+            next_send = start;
             let mut round = 0;
             let mut probe = 0;
             let probe_limit = if plan.random == Some(RandomRole::Search) { plan.targets.len() } else { RANDOM_PORTS };
@@ -585,7 +589,7 @@ impl Survey {
                             (index, target, requests[index].raw.clone())
                         };
                         sockets[index].send_to(&bytes, target).await?;
-                        next_send = Instant::now() + if random { RANDOM_PACKET_INTERVAL } else { Duration::ZERO };
+                        next_send += if random { RANDOM_PACKET_INTERVAL } else { Duration::ZERO };
                     },
                     message = incoming.recv(), if !peer_complete => {
                         ensure!(matches!(message, Some(UdpSignal::Complete)), "expected peer preparation completion");
@@ -1389,6 +1393,7 @@ mod tests {
         let (hard_commands, mut hard_events) = mpsc::channel(4);
         let (to_hard, mut hard_input) = mpsc::channel(4);
         let occupied = RANDOM_PREPARATIONS.try_acquire()?;
+        let primed = Instant::now();
         let hard = tokio::spawn(async move {
             Survey {
                 preparation: Preparation::new(pair, [73; 32], Ipv4Addr::LOCALHOST, expires)?,
@@ -1438,6 +1443,13 @@ mod tests {
                 }))
             ),
             "pool readiness missing"
+        );
+        // A sleep per packet takes about four seconds here on a 15.6 ms timer and
+        // leaves the search none of the preparation's five.
+        ensure!(
+            primed.elapsed() < RANDOM_PACKET_INTERVAL * RANDOM_PORTS as u32 * 3,
+            "pool priming lost its packet rate: {:?}",
+            primed.elapsed()
         );
         ensure!(
             (2..=RANDOM_PORTS).contains(&sources.len()),

@@ -47,9 +47,6 @@ Viewer and pauses with two or more; physical keyboard keys remain usable.
 Everyone controls the same mouse pointer; movements and clicks from approved
 players apply together. The sharer can use the stop action or shortcut to end control.
 
-Approved participants have a mouse emblem on their couch avatar.
-Everyone in the room can see who has joined; ending control removes the marker.
-
 ## Gamepads
 
 The sharer installs any required external input components from their official

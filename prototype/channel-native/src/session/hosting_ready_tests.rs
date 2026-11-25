@@ -118,7 +118,7 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
             let room = RoomBackup::stage(
                 &staging.path().join("room.sqlite"),
                 RoomMetadata {
-                    version: 3,
+                    version: RoomMetadata::VERSION,
                     domain_id: identity.0,
                     policy: policy.clone(),
                     own_credential: None,

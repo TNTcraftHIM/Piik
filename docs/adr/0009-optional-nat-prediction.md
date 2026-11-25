@@ -59,7 +59,7 @@ connection acquisition reuses the route controller's existing opportunity ledger
    and whether the selected remote foundation was ordinary, predicted, or
    unknown.
 5. The same per-share gate also enables the four-attempt Peer acquisition
-   budget in [ADR-0005](0005-automatic-hybrid-media-routing.md). Browser and
+   budget in [ADR-0005](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0005-automatic-hybrid-media-routing.md). Browser and
    Native candidates use the ordinary server-owned prepare/rollback lifecycle;
    no Viewer-owned ICE-restart loop is added. Local public-link and Hosted
    peer-only rooms can exhaust that budget without SFU, while mixed rooms use

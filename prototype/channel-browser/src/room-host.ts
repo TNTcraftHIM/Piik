@@ -1,5 +1,5 @@
 import init, { attachment_result, backup_message_reply, create_room_policy, HistoryPage, history_page_size, message_retry_key, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, ForwardingBudget, WatchDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current } from "../pkg/piik_channel_browser.js";
+export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, ForwardingBudget, WatchDelivery, file_availability_limit, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current } from "../pkg/piik_channel_browser.js";
 let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> {
   return initialization ??= init().then(() => {}, error => {
@@ -60,7 +60,7 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 8);
+    const request = indexedDB.open(name, 9);
     let unsupported = false;
     request.onupgradeneeded = event => {
       if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }

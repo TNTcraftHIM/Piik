@@ -3,8 +3,8 @@
 This document retains published 2.x interaction research and the separate
 [3.0 assessment](#piik-30-channels-rooms-and-sharing). Sections before that
 assessment describe 2.x unless explicitly marked otherwise. Its authority and
-retention belong to [rooms and access](../standards/rooms-access.md#room-interactions),
-with [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)
+retention belong to [rooms and access](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/rooms-access.md#room-interactions),
+with [presentation and lifecycle](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/presentation-lifecycle.md#product-surface)
 owning room/publication lifetime. The 3.0 section links to its current owners.
 [Status](../status.md#accepted-interaction-phase) owns delivery readiness;
 [TODO](../todo.md#now) owns remaining work.
@@ -202,7 +202,7 @@ danmaku or reaction effects. The separate 3.0 implementation follows the accepte
 
 Text, reactions and danmaku introduce no microphone capture or additional media
 peers. Published room voice and optional Host source commentary follow the
-[current microphone contract](../standards/media-quality.md#capture-and-controls).
+[2.x microphone contract](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/media-quality.md#capture-and-controls).
 
 ### Room Voice Transport Assessment
 
@@ -228,8 +228,8 @@ NAT success rates or 21-person all-speaking audio capacity.
 `PIIK_ROOM_VOICE_LEGACY_WEB` optionally points the same normal-page gate at an
 older checkout and records its revision, checking that an older Viewer retains
 picture playback without subscribing to voice events.
-Product owners are [room voice](../standards/rooms-access.md#room-voice) and
-[room media](../standards/routing-transport.md#room-media). This integration shipped
+Product owners are [room voice](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/rooms-access.md#room-voice) and
+[room media](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/routing-transport.md#room-media). This integration shipped
 in v2.4.0; the dated experiments below describe its earlier design evidence.
 
 #### Historical Prototype Assessment
@@ -270,8 +270,8 @@ second planner.
 These were synthetic local decoding/forwarding results, not production App
 integration, public-NAT reachability, echo cancellation or 21-person acceptance.
 The shipped integration above supersedes their proposed speaking/listening-grant
-policy. Current dual-microphone behavior belongs to
-[media quality](../standards/media-quality.md#capture-and-controls). Deliberately
+policy. The 2.x dual-microphone behavior belongs to
+[media quality](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/media-quality.md#capture-and-controls). Deliberately
 recapturing received voice put it into source audio; supported exclusion removed
 it. Headphones alone do not prevent system-loopback recapture, and that routing
 control is not a physical echo-cancellation result.
@@ -619,7 +619,8 @@ The [2.x input adapter](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddc
 sessions share the same physical keyboard and pointer. The co-play candidate
 adds concurrent capability-negotiated grants under that same owner and existing
 Host authorization, retaining exclusivity for older published clients,
-as defined by the [input contract](../standards/rooms-access.md#remote-control).
+as defined by the [2.x input contract](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/rooms-access.md#remote-control).
+The [remote-control standard](../standards/remote-control.md) owns the 3.0 contract.
 Remote control starts
 off. The Browser remembers the last successfully applied authorization mode;
 the Host must still enable it manually for each new shared source. Ask each time

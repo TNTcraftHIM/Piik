@@ -45,7 +45,7 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
                 "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
                 "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},
                 "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding}}]},
-        "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
+        "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[],
         "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
     }))?;
     let (_snapshot, observed) = watch::channel(Some(state));
@@ -89,6 +89,7 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
         },
         port: address.port(),
         token: "owned".into(),
+        host_creation: Default::default(),
         registry: Mutex::new(Registry {
             sites,
             approvals: BTreeMap::from([(site.clone(), permission)]),

@@ -6,7 +6,7 @@ the private 3.x owners; these results do not establish its acceptance.
 
 - Reviewed: 2026-10-11
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
-  decode; current behavior belongs to [media quality](../standards/media-quality.md)
+  decode; current behavior belongs to [media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; both macOS
   architectures compile and pass packaged startup; macOS/Linux physical media gates remain open
 
@@ -307,7 +307,7 @@ selection; an ordinary Web Host retains Browser capture.
 Native Host publication now sends its encoded source directly to the embedded
 SFU. The local Browser bridge supplies preview and Browser quality candidates;
 it does not supply the ordinary Native SFU publication. Received tracks still
-cannot own capture constraints. [Media quality](../standards/media-quality.md#framework-owned-adaptation)
+cannot own capture constraints. [Media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md#framework-owned-adaptation)
 owns the current output and adaptation contract.
 
 A shared encode cannot independently adapt one bitstream for unequal paths.
@@ -322,7 +322,7 @@ controlled weak-path physical acceptance remains open.
 Native edges now use the shared Pion/LiveKit forwarding adapter for transport
 feedback, allocation, pacing and recovery. The former no-op-pacer and
 source-payload-versus-GCC comparison are no longer the product implementation.
-[Observable truth](../standards/media-quality.md#observable-truth) owns current
+[Observable truth](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md#observable-truth) owns current
 quality evidence, including committed allocation deficiency and unknown feedback.
 
 No-Site Internet control can use the one-link mode owned by ADR-0010. Its remote
@@ -650,7 +650,7 @@ a corrected SDP interpretation, not evidence that all Firefox sharing lost audio
 
 The October 9 review developed the numeric media extension later published in
 2.0. The rationale and dated implementation checks below retain that transition;
-[media quality](../standards/media-quality.md) and [versioning](../standards/versioning.md)
+[media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md) and [versioning](../standards/versioning.md)
 own the current contract. The preceding 1.x resolution enums were enforced by
 both signaling readers and Native control, while capture admission separately
 bounded dimensions. Coordinating those consumers preserved resource admission
@@ -1091,7 +1091,7 @@ advertised capability under the current versioning owner.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
-[native sender evidence](./native-sender.md).
+[native sender evidence](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/native-sender.md).
 
 ## Primary Sources
 

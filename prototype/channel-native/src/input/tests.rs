@@ -55,6 +55,72 @@ fn desktop() -> (Desktop, Arc<Mutex<Recording>>) {
     (Desktop::with_sink(Box::new(Recorder(r.clone()))), r)
 }
 
+pub(crate) fn held_input_fixture(
+    publication: Uuid,
+    controller: Uuid,
+    flow: Uuid,
+) -> (Source, String, impl FnMut(bool)) {
+    let (d, recorded) = desktop();
+    let (s, mut replies, view) = d
+        .source(
+            publication,
+            Uuid::new_v4(),
+            Target {
+                kind: crate::capture::TargetKind::Display,
+                source_id: "fixture".into(),
+                title: "fixture".into(),
+                pid: 0,
+                creation_time: None,
+            },
+        )
+        .unwrap();
+    let mut client = Client {
+        id: controller,
+        flow,
+        sequence: 0,
+        key: [7; 32],
+    };
+    s.register(Registration {
+        controller,
+        flow,
+        secret: client.key,
+    })
+    .unwrap();
+    s.set_mode(Mode::Ask).unwrap();
+    let grant = client.approve(&s, &mut replies);
+    let key = client.packet(json!({"type":"key","code":"KeyA","down":true,"grant":grant}));
+    s.receive(controller, flow, &key).unwrap();
+    client.send(
+        &s,
+        json!({"type":"button","button":0,"down":true,"grant":grant}),
+    );
+    assert_eq!(recorded.lock().unwrap().events.len(), 2);
+    let sync = client.packet(json!({"type":"sync"}));
+    let source = s.clone();
+    (s, sync, move |released| {
+        assert!(!replies.is_closed());
+        if !released {
+            assert_eq!(view.borrow().requests.len(), 1);
+            assert_eq!(recorded.lock().unwrap().events.len(), 2);
+            return;
+        }
+        assert!(view.borrow().requests.is_empty());
+        let expected = vec![
+            Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), true),
+            Action::Held(Held::Button(0), true),
+            Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), false),
+            Action::Held(Held::Button(0), false),
+        ];
+        assert_eq!(recorded.lock().unwrap().events, expected);
+        source.receive(controller, flow, &key).unwrap();
+        client.send(
+            &source,
+            json!({"type":"button","button":0,"down":true,"grant":grant}),
+        );
+        assert_eq!(recorded.lock().unwrap().events, expected);
+    })
+}
+
 #[cfg(feature = "capture")]
 pub(crate) fn lifecycle_fixture_desktop() -> Desktop {
     desktop().0

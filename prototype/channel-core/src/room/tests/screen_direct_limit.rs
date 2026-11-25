@@ -95,6 +95,7 @@ fn source_direct_limit_replans_live_outputs() {
         source,
         FlowState::Decoded,
         0,
+        &BTreeSet::new(),
     )
     .unwrap();
     let transition = crate::publication::SCREEN_PREPARE_MS;

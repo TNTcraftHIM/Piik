@@ -62,11 +62,12 @@ sibling `web/` tree without Node.
 | `prototype/channel-android`, `mobile/android` | JNI runtime and Android permission/service ownership; reuse Native capture and shared App composition |
 | `mobile/cloudflared` | Overlay against its separately pinned upstream Go module; no Piik business core |
 
-The [forwarding model](../research/channel-forwarding-plan.md) and
-[hosting model](../research/server-hosting-plan.md) own the 3.0 architecture.
-The [network implementation](../research/channel-network-design.md) and
-[room-data model](../research/channel-storage-and-identity.md) locate their runtime
-and persistence contracts.
+[ADR-0016](../adr/0016-shared-rust-core.md) records the 3.0 framework. The
+[forwarding model](../research/channel-forwarding-plan.md),
+[hosting model](../research/server-hosting-plan.md) and
+[room-data model](../research/channel-storage-and-identity.md) own the behaviour
+built on it, and the [network implementation](../research/channel-network-design.md)
+describes the present runtime.
 Directory names locate responsibilities; they do not require another layer.
 
 ### Architecture baseline
@@ -127,22 +128,25 @@ resources from its declaration alone. Measurements are observations, not resourc
 requests: their range need not match a setting or estimated network budget.
 An unusable optional metric should become unavailable without discarding valid
 evidence or closing media control. Identity, generation, authority and required
-state consistency remain strict; never clamp a measurement into an invented fact.
+state consistency remain strict; never clamp a measurement into an invented fact
+or read a missing one as zero, and accumulate observations only from a baseline
+of the same resource generation.
 
 Detect optional platform features through bounded capability checks and actual
 operation results, not OS/browser version allowlists. Keep API availability,
 permission and successful execution distinct; version data is diagnostic context.
+For a platform-specific failure, compare a current supported runtime before
+changing product behavior around an older test engine.
 
 Preserve meaningful authorization and resource bounds; prove that a producer's
 valid aggregate output fits its consumer, including serialization overhead.
-A per-item limit alone does not establish that contract.
 
 When extending a boundary, exercise a representative new value, a larger peer
 capability and an unchanged consumer before calling the design extensible.
-Check both acceptance and the effect of rejection. For media, include another source
-orientation and distinguish encode, decode and forwarding support. Optional
-presentation additions need a bounded unsupported-value policy separate from
-authority violations, following [versioning](./versioning.md#extending-interfaces).
+Check both acceptance and the effect of rejection. For media, distinguish
+encode, decode and forwarding support. Optional presentation additions need a
+bounded unsupported-value policy separate from authority violations, following
+[versioning](./versioning.md#extending-interfaces).
 Use the existing owner and concrete capability negotiation; these checks do not
 justify a generic plugin framework or accepting unknown commands.
 
@@ -274,15 +278,11 @@ the observation or decision that would settle it.
   ownership concern; it does not by itself establish a runtime or performance
   defect.
 - State has one writer and a clear lifetime. Separate permission, capability,
-  connection readiness, requested settings, applied settings and observation.
-  Derive presentation from facts; do not synchronize parallel booleans or let
-  a cached failure outlive its evidence.
-  Selecting a runtime mode is not an edit to saved preferences; compare CLI,
-  launcher and page write paths against the same explicit user intent.
-  Cumulative observations need a valid baseline for the resource generation
-  they describe; missing measurements are not zero. Serialized recovery reads
-  current committed intent when it executes rather than replaying a queued snapshot.
-- Separate ordinary operation rejection from an unusable resource instance.
+  connection readiness, saved preferences, requested settings, applied settings
+  and observation. Derive presentation from facts; do not synchronize parallel
+  booleans or let a cached failure outlive its evidence.
+- Separate protocol rejection and ordinary operation rejection from an unusable
+  resource instance; a teardown that is already satisfied succeeds.
   Retire a broken instance at its existing lifetime owner; recreate it only from
   current authorized intent and committed state. Keep one bounded recovery policy
   at that boundary. Recreating resources does not replay user commands or renew
@@ -319,32 +319,25 @@ the observation or decision that would settle it.
   authority; the shared core retains that responsibility.
   Injected callbacks still execute in their caller's context. Synchronous
   authority hooks must not hide blocking I/O or release the caller's lock;
-  schedule slow work at an explicit, owned effect boundary.
-- Validate and normalize unknown input once at each owning trust boundary, then
-  pass typed values inward. Do not repeat shape checks already guaranteed by a
+  schedule slow work at an explicit, owned effect boundary that stays
+  cancellable and keeps control responsive.
+- Validate and normalize unknown input once at each owning trust boundary,
+  with one shared normalizer for any canonical form that is stored or compared,
+  then pass typed values inward. Do not repeat shape checks already guaranteed by a
   schema, constructor or internal contract. Authorization and mutable state or
   resource identity remain checked where they can change.
-  Keep domain error meanings stable and map them into shared localized UI.
+  Keep domain error meanings stable and map them into shared localized UI when
+  rendering: retained state keeps the failure fact, raw exceptions stay in
+  diagnostics, and only a transient notice may resolve its copy once.
   [Versioning](./versioning.md) determines which
   extensions are compatible; an optional field is not automatically compatible.
-  Dispatch separates protocol rejection, per-request operation failure and an
-  already-satisfied teardown. Late teardown is idempotent and cannot retire a
-  replacement resource; retain strict validation before looking up its target.
-  Relayed content uses the same units and limits at each boundary; its failure
-  cannot invalidate an otherwise valid local control session. Slow capture
-  mutations share one cancellable operation slot while control remains
-  responsive. Bounded queues apply backpressure rather than turning a valid
-  burst into session failure.
-  Retained media state carries failure facts; the presentation layer resolves
-  localized copy during render. Keep raw exceptions in diagnostics. Transient
-  event notices may resolve once when the event occurs.
-  Values with a defined canonical form, such as HTTP origins, use one shared
-  normalizer before storage and comparison. Verify the actual producer and
-  consumer together instead of weakening an authorization comparison.
+  Bounded queues apply backpressure rather than turning a valid burst into
+  session failure.
 - Deployment configuration describes available services; room preferences
   request allowed behavior. The server enforces the policy even when a client
   requests more. The UI retains the same controls and explains locked choices.
-  See [configuration](./configuration.md); avoid a second flag with the same job.
+  See [site forwarding](../../prototype/channel-server/README.md#site-forwarding);
+  avoid a second flag with the same job.
 - Browser/App/Server share [visual language](./visual-language.md) and
   [status projection](./media-status.md). A new page, locale or deployment
   does not invent a new palette, status model or user-role metaphor.
@@ -438,24 +431,21 @@ Before changing production recovery or state, trace the real request producers
 and their guards. A test that bypasses disabled controls or writes private state
 does not alone establish a reachable product defect. Reference scans, including
 hits from tests and previews, are leads rather than proof of product use or
-absence. Follow the actual producer-to-consumer path and check the changed
-boundary; isolated helper tests can miss a mismatch between the two ends.
+absence. Follow the actual producer-to-consumer path, for a healthy sibling as
+well as the failing child of a shared resource, and check the changed boundary;
+isolated helper tests can miss a mismatch between the two ends.
 
-For a shared-resource failure, review both the failing child and a healthy
-sibling through the real producer/consumer boundary. Compare preparation with
-live operation, and current implementations with supported compatibility paths.
-Exercise optional failure after success and a dependency that remains pending
-after cancellation; a timeout constant or a close call alone proves no deadline.
-Keep the shared resources production retains while changing the external
-condition. New request/connection IDs alone do not prove that a dependency's
-cached observations, failure state or resource lease have been refreshed.
-For media adaptation, include partial capacity restoration on the retained
-connection, not only recovery to a fast link. Check capture, encoded output,
-actual send and remote decode separately. A dependency's algorithm does not
-prove its adapter preserves assumptions about pacing, measurement or ownership.
-For overlapping connections, preserve the actual shared local and remote
-endpoints; giving each fixture an independent listener can hide demultiplexing
-conflicts. Check both commit and rollback while the surviving media still flows.
+Compare preparation with live operation, and current implementations with
+supported compatibility paths. Exercise optional failure after success and a
+dependency that remains pending after cancellation; a timeout constant or a
+close call alone proves no deadline. Keep the shared resources and endpoints
+production retains while changing the external condition, including partial
+restoration rather than only full recovery. New request/connection IDs alone do
+not prove that a dependency's cached observations, failure state or resource
+lease have been refreshed. Check capture, encoded output, actual send and remote
+decode separately. A dependency's algorithm does not prove its adapter preserves
+assumptions about pacing, measurement or ownership. Check both commit and
+rollback while the surviving media still flows.
 Keep the regression at the owning boundary and verify it rejects the old
 behavior. Report which failure sequences were exercised, rather than treating
 test counts, file coverage or an earlier audit as proof of lifecycle coverage.

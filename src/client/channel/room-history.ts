@@ -12,7 +12,7 @@ export interface HistoryRefresh {
 }
 
 export type HistoryPaging = ChannelView["historyByRoom"][string];
-type HistoryEnd = Extract<ConversationReply["record"], { type: "history_end" }>;
+type HistoryPage = Extract<ConversationReply["record"], { type: "history_page" }>;
 
 interface PendingPage {
   bindingId?: string;
@@ -20,24 +20,24 @@ interface PendingPage {
   replace: boolean;
   refresh?: HistoryRefresh;
   latestThrough?: number;
-  entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }>;
+  reactions: Map<number, MessageReactionSnapshot>;
   // Rows adjoining the requested page, bounded in its direction of travel.
   window: ChannelMessage[];
   clipped?: boolean;
 }
 
-/** A page whose records all arrived; the session removes `missing` before merging it. */
-export interface CompletedPage { readonly missing: number[]; readonly page: PendingPage; readonly rows: ChannelMessage[]; readonly current: ChannelMessage[]; readonly end: HistoryEnd }
+/** A complete writer page; the session removes `missing` before merging it. */
+export interface CompletedPage { readonly missing: number[]; readonly page: PendingPage; readonly rows: ChannelMessage[]; readonly current: ChannelMessage[]; readonly end: HistoryPage }
 
-// Bounds the entries one page under assembly may collect.
-const pageEntryLimit = 100;
+// Bounds live reactions retained while one history page is loading.
+const pageReactionLimit = 100;
 
 function withReactionSnapshot(message: ChannelMessage, snapshot: MessageReactionSnapshot): ChannelMessage {
   return { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } };
 }
 
-/** One room's history under its current binding: the confirmed window, its paging facts, removal markers and the
- * pages being assembled for pending requests. Pure state; the session correlates requests and performs effects. */
+/** One room's history under its current binding: the confirmed window, paging facts, removal markers and pending
+ * page reads. Pure state; the session correlates requests and performs effects. */
 export class RoomHistory {
   private window?: ChannelMessage[];
   private info?: HistoryPaging;
@@ -48,9 +48,9 @@ export class RoomHistory {
   get paging(): HistoryPaging | undefined { return this.info; }
   get changes(): RoomHistoryChanges | undefined { return this.markers; }
 
-  /** Starts assembling the page a history request asks for. */
+  /** Tracks the requested page while live changes continue to arrive. */
   openPage(requestId: string, { bindingId, before, replace, refresh, latestThrough }: Pick<PendingPage, "bindingId" | "before" | "replace" | "refresh" | "latestThrough">): void {
-    this.pages.set(requestId, { bindingId, before, replace, refresh, entries: new Map(), ...(before === undefined && { latestThrough }),
+    this.pages.set(requestId, { bindingId, before, replace, refresh, reactions: new Map(), ...(before === undefined && { latestThrough }),
       window: refresh?.window ?? (before !== undefined && !replace ? this.window ?? [] : []) });
   }
   hasPage(requestId: string): boolean { return this.pages.has(requestId); }
@@ -95,32 +95,26 @@ export class RoomHistory {
       if (page.bindingId !== bindingId) continue;
       page.window = project(page.window);
       if (page.before !== undefined && snapshot.messageSeq >= page.before) continue;
-      const entries = page.entries, entry = entries.get(snapshot.messageSeq);
-      if ((!entry && entries.size >= pageEntryLimit) || (entry?.message && entry.message.id !== snapshot.messageId)) {
+      const reactions = page.reactions, previous = reactions.get(snapshot.messageSeq);
+      if (!previous && reactions.size >= pageReactionLimit) {
         incomplete.push(requestId);
         continue;
       }
-      if (!entry?.snapshot || entry.snapshot.revision < snapshot.revision) entries.set(snapshot.messageSeq, { ...entry, snapshot });
+      if (!previous || previous.revision < snapshot.revision) reactions.set(snapshot.messageSeq, snapshot);
     }
     if (this.window) this.window = project(this.window);
     return incomplete;
   }
 
-  /** Adds a history_message to its page; false when the page is missing or cannot hold it. */
-  addMessage(requestId: string, message: ChannelMessage): boolean {
-    const entries = this.pages.get(requestId)?.entries, entry = entries?.get(message.seq);
-    if (!entries || entry?.message || (!entry && entries.size >= pageEntryLimit)
-      || (entry?.snapshot && entry.snapshot.messageId !== message.id)) return false;
-    entries.set(message.seq, { ...entry, message });
-    return true;
-  }
-
-  /** Assembles a page from its end record; undefined when its records do not match. */
-  completePage(requestId: string, end: HistoryEnd): CompletedPage | undefined {
+  /** Combines one complete writer page with newer reactions received while it was loading. */
+  completePage(requestId: string, end: HistoryPage): CompletedPage | undefined {
     const page = this.pages.get(requestId);
-    const entries = page ? [...page.entries.values()].filter(entry => entry.message) : [];
-    if (!page || end.count !== entries.length || entries.some(entry => !entry.snapshot)) return undefined;
-    const rows = entries.map(({ message, snapshot }) => withReactionSnapshot(message!, snapshot!)).sort((a, b) => a.seq - b.seq);
+    if (!page) return undefined;
+    const rows = end.messages.map(message => {
+      const snapshot = page.reactions.get(message.seq);
+      return snapshot?.messageId === message.id && snapshot.revision > message.reactions.revision
+        ? withReactionSnapshot(message, snapshot) : message;
+    }).sort((a, b) => a.seq - b.seq);
     const current = this.window ?? [];
     let missing: number[] = [];
     if (page.refresh) {
@@ -180,7 +174,7 @@ export class RoomHistory {
     if (!live && history?.hasMore && messages.length && message.seq < messages[0].seq) return false;
     let projected: ChannelMessage = { ...message, reactions: { revision: 0, counts: {} } };
     for (const page of this.pages.values()) {
-      const snapshot = page.entries.get(message.seq)?.snapshot;
+      const snapshot = page.reactions.get(message.seq);
       if (snapshot?.messageId === message.id) projected = mergeMessage(projected,
         withReactionSnapshot(message, snapshot));
       if (page.replace || (page.before !== undefined && history?.atLatest === false)) continue;

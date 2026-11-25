@@ -3,7 +3,7 @@
 use crate::{
     backup::RoomSnapshot,
     capture::{Settings, Target},
-    hosted_room::{storage_error, HostedRoom},
+    hosted_room::{storage_error, HostedRoom, RoomStorageInUse},
     peer::{
         CaptureInput, CaptureLease, CaptureScope, InputAuthority, NativeConnectionMetrics,
         NativeEvent, NativePeers, PreparedExternal,
@@ -287,6 +287,7 @@ pub struct RoomFile {
 }
 
 struct Live {
+    room_open_failures: BTreeMap<String, NativeRoomOpenReason>,
     forwarding_budget: piik_channel_core::forwarding::ForwardingBudget,
     session: Uuid,
     room: RoomTurns,
@@ -382,15 +383,15 @@ impl Drop for SnapshotJob {
     }
 }
 
-/// The authenticated room target owns the scratch slot through staging and installation.
 pub struct ExistingRoomRestore {
     pub room_id: String,
     pub creator: Uuid,
-    pub scratch: tokio::sync::OwnedSemaphorePermit,
 }
 
 pub struct RestoreRoom {
     pub snapshot: RoomSnapshot,
+    /// Holds Server scratch admission through staging and installation.
+    pub scratch: Option<tokio::sync::OwnedSemaphorePermit>,
     pub existing: Option<ExistingRoomRestore>,
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
@@ -400,6 +401,22 @@ pub struct RestoreRoom {
 pub struct HostingDescription {
     pub session_id: Uuid,
     pub room_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unavailable: Vec<UnavailableRoom>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeRoomOpenReason {
+    InUse,
+    Ambiguous,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnavailableRoom {
+    pub room_id: String,
+    pub reason: NativeRoomOpenReason,
 }
 
 pub struct PrepareCapture {
@@ -1226,6 +1243,7 @@ impl Session {
                     .find(|session| session.id == session_id)
                     .ok_or_else(|| anyhow!("welcome omitted current session"))?
                     .user_id;
+                let service_hosts_room = service_hosts_rooms(self.service_admission.is_some(), &state);
                 let mut ambiguous = BTreeSet::new();
                 if let Some(hosting) = &self.hosting {
                     if hosting.identity != (state.channel.id, user) {
@@ -1254,6 +1272,7 @@ impl Session {
                 if !resumed {
                     self.release().await?;
                     let mut rooms = BTreeMap::new();
+                    let mut room_open_failures = BTreeMap::new();
                     for mut file in std::mem::take(&mut self.files) {
                         let host = match std::fs::metadata(&file.path) {
                             Ok(_) => {
@@ -1277,14 +1296,21 @@ impl Session {
                                     self.files.push(file);
                                     continue;
                                 }
-                                let service_hosts_room = self.service_admission.is_some()
-                                    && state.channel.hosting_mode
-                                        == piik_channel_core::wire::HostingMode::Hosted;
                                 if !service_hosts_room && policy.creator_id != user {
                                     eprintln!("Native room data unavailable: {}: owner_mismatch", file.path.display());
                                     continue;
                                 }
                                 HostedRoom::open(&file.path, &file.id, policy.creator_id)
+                                    .inspect_err(|error| {
+                                        if self.hosting.is_some()
+                                            && error.is::<RoomStorageInUse>()
+                                        {
+                                            room_open_failures.insert(
+                                                file.id.clone(),
+                                                NativeRoomOpenReason::InUse,
+                                            );
+                                        }
+                                    })
                             }
                             Err(error)
                                 if error.kind() == std::io::ErrorKind::NotFound
@@ -1356,6 +1382,7 @@ impl Session {
                         self.config.server_udp.clone(),
                     );
                     self.live = Some(Live {
+                        room_open_failures,
                         forwarding_budget: Default::default(),
                         session: session_id,
                         room: RoomTurns {
@@ -1371,7 +1398,9 @@ impl Session {
                 }
                 let mut retired = BTreeSet::new();
                 if let Some(live) = &mut self.live {
+                    live.room_open_failures.retain(|_, reason| *reason != NativeRoomOpenReason::Ambiguous);
                     for id in ambiguous {
+                        live.room_open_failures.insert(id.clone(), NativeRoomOpenReason::Ambiguous);
                         if let Some(binding) = live.room.rooms.remove(&id).and_then(|room| room.binding()) {
                             retired.insert((id, binding));
                         }
@@ -1545,20 +1574,10 @@ impl Session {
                     else {
                         unreachable!()
                     };
-                    let installed = RoomState::new(
-                        room.id.clone(),
-                        room.name.clone(),
-                        room.icon.clone(),
-                        room.creator_id,
-                        room.access,
-                        room.hidden,
-                        None,
-                    )
-                    .map_err(anyhow::Error::msg)
-                    .and_then(|mut policy| {
-                        policy.relay_capacity = room.relay_capacity;
-                        HostedRoom::create(&file.path, policy)
-                    });
+                    let installed = room
+                        .new_policy(None, None, None)
+                        .map_err(anyhow::Error::msg)
+                        .and_then(|policy| HostedRoom::create(&file.path, policy));
                     let host = match installed {
                         Ok(host) => host,
                         Err(error) => {
@@ -1569,6 +1588,7 @@ impl Session {
                     file.id = room.id.clone();
                     self.files.push(file);
                     if let Some(live) = &mut self.live {
+                        live.room_open_failures.remove(&room.id);
                         live.room.rooms.insert(room.id.clone(), host);
                     }
                     write(
@@ -2401,6 +2421,7 @@ impl Session {
                     name: host.summary().name,
                     bootstrap: false,
                 });
+                live.room_open_failures.remove(&id);
                 live.room.rooms.insert(id.clone(), host);
             }
             Ok(live.room.rooms[&id].summary())
@@ -2438,7 +2459,21 @@ impl Session {
             .as_ref()
             .zip(self.hosting.as_ref())
             .ok_or("hosting_unavailable")?;
+        let snapshot = live.room.snapshot.borrow();
+        let unavailable = snapshot.iter().flat_map(|state| {
+            let service_hosts_room = service_hosts_rooms(self.service_admission.is_some(), state);
+            state.channel.rooms.iter().filter(move |room| {
+                (service_hosts_room || room.creator_id == hosting.identity.1)
+                    && !live.room.rooms.contains_key(&room.id)
+            })
+        })
+            .filter_map(|room| Some(UnavailableRoom {
+                room_id: room.id.clone(),
+                reason: *live.room_open_failures.get(&room.id)?,
+            }))
+            .collect();
         Ok(HostingDescription {
+            unavailable,
             session_id: live.session,
             room_ids: live
                 .room
@@ -2639,6 +2674,7 @@ impl Session {
                         bootstrap: false,
                     });
                 }
+                live.room_open_failures.remove(&id);
                 live.room.rooms.insert(id.clone(), host);
                 None
             };
@@ -2738,6 +2774,14 @@ impl Session {
             }
         }
         if let Some(live) = &mut self.live {
+            let service_hosts_room = service_hosts_rooms(self.service_admission.is_some(), &state);
+            live.room_open_failures.retain(|id, _| {
+                self.hosting.as_ref().is_some_and(|hosting| {
+                    state.channel.rooms.iter().any(|room| {
+                        &room.id == id && (service_hosts_room || room.creator_id == hosting.identity.1)
+                    })
+                })
+            });
             live.room.rooms.retain(|id, room| {
                 room.binding().is_none()
                     || state.channel.rooms.iter().any(|summary| &summary.id == id)
@@ -2870,6 +2914,10 @@ impl Session {
         }
         Ok(())
     }
+}
+
+fn service_hosts_rooms(service_admitted: bool, state: &Snapshot) -> bool {
+    service_admitted && state.channel.hosting_mode == piik_channel_core::wire::HostingMode::Hosted
 }
 
 /// Physical names are local storage, not room identities. Imported named rooms

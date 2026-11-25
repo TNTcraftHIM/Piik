@@ -1,10 +1,11 @@
 # Piik 3.0 Sites, Rooms And Networking
 
 This document describes the 3.0 runtime and its routing evidence.
-The [forwarding model](./channel-forwarding-plan.md) owns the architecture and
+[ADR-0016](../adr/0016-shared-rust-core.md) records the framework. The
+[forwarding model](./channel-forwarding-plan.md) owns forwarding behaviour and
 the [hosting plan](./server-hosting-plan.md) owns channel modes and directory authority. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
-The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
+The [2.x routing contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md) remains unchanged.
 
 ## Current Prototype Design
 
@@ -460,6 +461,16 @@ that assistance. Each viewer has one selected input per publication. A
 replacement may receive frames within the same forwarding budget to prove it
 can take over before the old input is released.
 
+Temporary disconnection is an endpoint's current-socket observation; it does not
+erase the pair's earlier bilateral confirmation. The room can prepare an
+already confirmed alternate through the existing branch-switch owner. Recovery
+uses fresh decoded or forwarding proof and checks every candidate edge before
+commit. If the original path recovers first, its usable branch stays selected.
+An independent candidate can survive terminal loss of the old ancestor while
+retaining its input identities and original deadline. Native distinguishes
+recoverable disconnection from expired send consent using the SDK's own state
+and wakeups; remote input stops on disconnection.
+
 ### App-Assisted Viewing
 
 A Browser may attach its currently approved App's live endpoint to its own
@@ -568,14 +579,17 @@ a branch; stopping viewing removes only demand that no downstream still needs;
 a departed relay repairs only affected paths. Preserve healthy unrelated branches.
 Each admitted session gets one direct attempt per publication. Viewing toggles
 and unrelated membership updates must not reset spent candidate opportunities.
-Once useful attempts finish, keep the working route rather than probing
-periodically for a mathematical global optimum.
+Once useful attempts finish, the present runtime keeps the working route: it
+reconciles on events and does not probe periodically. This describes current
+behaviour and not the intent. The [canon](../canon.md#media-and-network) asks
+that the topology keep improving quietly, and how it does so is undecided in
+[ADR-0018](../adr/0018-quiet-topology-improvement.md).
 A physical failure wakes the affected plans. Healthy independent branches keep their flows while room authority remains valid.
 
 Availability work takes priority over optional optimization. Without overlap
 capacity, leave healthy playback in place and defer or finish the optional
 attempt. A bounded-gap change belongs only to necessary availability repair,
-under the [existing transition rules](../adr/0005-automatic-hybrid-media-routing.md).
+under the forwarding model's rules for [changing a working path](./channel-forwarding-plan.md#improving-a-working-path).
 Source generation, current route and operation identity fence late callbacks;
 new work cannot inherit completion from a retired candidate.
 
@@ -695,8 +709,10 @@ App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to
 the local domain's lifetime; Browser and Native participants receive the same
 discovery configuration. Public invitations and approved external sites retain
-their domain's configured ICE servers. An individual rejected ICE candidate
-does not retire the connection or its other candidate paths.
+their domain's configured ICE servers. An individual rejected ICE candidate is
+disposable input: it does not retire the connection or its other candidate paths,
+and transport state and the operation's deadline own failure. A Browser
+lifecycle error, such as a missing description, still fails that operation.
 Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
 an unavailable address family does not disable the other. Wildcard listeners
 exclude loopback interfaces from ICE/STUN discovery. Explicit loopback listeners
@@ -728,7 +744,7 @@ One stable and one irregular observation can instead use random-port preparation
 the irregular side opens 256 sockets toward the stable side's retained tuple;
 the stable side checks 512 distinct ports on the authorized peer address, each
 once. Each endpoint permits at most 520 requests and 16 replies,
-with at least 2 ms between sends, within the same five-second preparation lifetime.
+at a mean of one send per 2 ms, within the same five-second preparation lifetime.
 At most two random preparations run per process across all sites and Drivers.
 Capacity refusal does not queue work or extend the deadline; a pair-scoped refusal
 ends the other endpoint's preparation and both continue ordinary ICE. Other
@@ -933,9 +949,9 @@ video intent and preferred original supply, independently of the current grant.
 Input bitrate does not establish the cost of a converted representation; any
 unresolved source demand keeps the connection target unknown. These targets
 do not become media ceilings. An unfittable trial retires
-its outputs without retiring selected media or the connection. Stable local-offer
-failure withdraws only unconfirmed additions; sender retirement permits one
-companion-audio retry, not retries on rollback or unchanged projections.
+its outputs without retiring selected media or the connection. A rejected
+companion-audio output retries when its source or flow changes; retiring an
+unrelated connection does not change that rejection.
 
 A producer reconciles only its own actual output demand. It reuses a warm baseline
 at full demand and independently encodes constrained outputs; zero allocation
@@ -1095,6 +1111,8 @@ and process exclusion are alternative scopes. An unavailable selected endpoint
 ends only source sound; it does not capture another device or stop the picture
 and microphone. Local playback-device selection does not change capture scope.
 
+The [remote-control standard](../standards/remote-control.md) owns input grants,
+targets and release; the platform input below implements that contract.
 Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside capture. Commit requires the selected monitor, EIS devices and first image;
 cancellation closes the candidate and preserves the share. Close a pending

@@ -65,6 +65,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         host_session_id: publisher,
         revision: 1,
         confirmed_pairs: Default::default(),
+        disconnected_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: endpoints.clone(),
         action: HostAction::Command {
@@ -104,6 +105,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
             host_session_id: publisher,
             revision: 2,
             confirmed_pairs: Default::default(),
+            disconnected_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints,
             action: HostAction::Command {
@@ -270,7 +272,6 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         });
         let recipient = initial.projection.views.get_mut(&reader_session).unwrap();
         recipient.subscriptions.push(publication);
-        recipient.failed_subscriptions.push(publication);
         recipient
             .files
             .push(piik_channel_core::file_room::FilePlan {
@@ -312,11 +313,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                     _ => None,
                 })
                 .unwrap();
-            assert!(
-                state.publications.is_empty()
-                    && state.subscriptions.is_empty()
-                    && state.failed_subscriptions.is_empty()
-            );
+            assert!(state.publications.is_empty() && state.subscriptions.is_empty());
         }
 
         let pending = core.handle(
@@ -369,7 +366,14 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                     })
                     .unwrap();
                 assert_eq!(state.files.len(), 1);
-                assert_eq!(state.failed_subscriptions, vec![publication]);
+                let failed = piik_channel_core::wire::PublicationAudience {
+                    session_id: reader_session,
+                    state: piik_channel_core::wire::AudienceState::Failed,
+                };
+                assert!(state
+                    .publications
+                    .iter()
+                    .any(|p| p.id == publication && p.audience.contains(&failed)));
                 core.expire(RECOVERY_MS + 2)
             }
             "rebind" | "resume" => core.handle(
@@ -405,9 +409,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                 })
                 .unwrap();
             assert!(
-                state.publications.is_empty()
-                    && state.files.is_empty()
-                    && state.failed_subscriptions.is_empty(),
+                state.publications.is_empty() && state.files.is_empty(),
                 "{case} retained retired activity"
             );
         }
@@ -721,7 +723,6 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
             command: Command::Browse {
                 room_id: "concurrent-review".into(),
                 active: true,
-                relay_capacity: None,
             },
         },
         1,
@@ -1430,7 +1431,6 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             Command::Browse {
                 room_id: room_id.into(),
                 active: true,
-                relay_capacity: None,
             },
         );
         let root = leg(source, branch, None, false);
@@ -1569,7 +1569,6 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                 Command::Browse {
                     room_id: room_id.into(),
                     active: false,
-                    relay_capacity: None,
                 },
             );
             committed.projection.flows = vec![root, child];
@@ -2071,4 +2070,29 @@ fn registered_writer_reloads_lineage_across_summary_change_and_full_install() {
         .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
     drop((host, archive));
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn new_host_policy_preserves_advertised_media_and_site_relay_choice() {
+    let mut policy = RoomState::new(
+        "studio".into(),
+        "Studio".into(),
+        Default::default(),
+        Uuid::new_v4(),
+        RoomAccess::Private,
+        true,
+        None,
+    )
+    .unwrap();
+    for (bitrate, capacity, allow) in [
+        (policy.voice_bitrate, policy.relay_capacity, None),
+        (96_000, 3, Some(false)),
+    ] {
+        policy.voice_bitrate = bitrate;
+        policy.relay_capacity = capacity;
+        let summary = piik_channel_core::host::RoomSummary::from_policy(&policy);
+        let installed = summary.new_policy(None, None, allow).unwrap();
+        assert!(piik_channel_core::host::RoomSummary::from_policy(&installed) == summary);
+        assert_eq!(installed.allow_service_relay, allow.unwrap_or(true));
+    }
 }

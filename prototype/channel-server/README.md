@@ -146,9 +146,17 @@ In another terminal, start the development interface:
 node node_modules/vite/bin/vite.js --config prototype/channel-server/vite.config.ts
 ```
 
-Open `http://127.0.0.1:8790/__channel-preview#owner=<owner-key>` with your own key.
-This bootstrap entry selects the site-maintenance identity. Ordinary users open
-`http://127.0.0.1:8790/__channel-preview` directly and can create their own rooms.
+To sign in as the site owner, run this command in another terminal on the Server host
+using the same OS account and data directory as the running Server.
+
+```powershell
+cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml -- owner-link
+```
+
+With a packaged Server, run `./piik-server owner-link` (Windows: `.\piik-server.exe owner-link`).
+Open the printed link in your owner browser profile within 60 seconds. It can be used once.
+The browser saves the owner credential for later visits. Ordinary users open
+`http://127.0.0.1:8790/` directly and can create their own rooms.
 Beside a room title, copy its public-room link or, as its owner, a private-room
 invitation. Private-room admission is handled after joining the site.
 Separate browser profiles represent separate users; tabs in one profile share a saved user credential but
@@ -180,7 +188,7 @@ For a standalone source deployment, build the
 [same frontend as static assets](../channel-browser/README.md), then set
 `PIIK_CHANNEL_WEB_DIR` to `build/channel-web/` and `PIIK_CHANNEL_WEB_ORIGIN` to
 the service's own origin. Rust serves the frontend and existing WebSocket on
-that listener. `/` and `/__channel-preview` open the frontend; missing assets
+that listener. `/` opens the frontend. Missing assets
 and unknown API paths return 404. Vite is only the development server; the
 deployed frontend requires no Node runtime.
 
@@ -376,6 +384,17 @@ After updating the 3.0 test App, refresh the Web page you use. An incompatible
 App Link shows the existing update prompt; [versioning](../../docs/standards/versioning.md)
 owns interface compatibility.
 
+A reachable App with an incompatible control protocol is distinct from an absent
+App. Without a selected port, discovery keeps looking for a compatible process
+before it reports the mismatch, and Browser capture stays available. Discovery
+has one bounded deadline, which starts once the Browser's local-network consent
+is no longer pending; a failed fetch alone does not establish that consent was
+denied. An explicit App action waits for that consent. Automatic checks do not:
+while local App access still needs consent or is denied, they treat the App as
+unavailable and ask again on a later attempt. Loopback pages, including App Local,
+need no cross-address-space consent, and Browsers without a permission query keep
+the bounded discovery.
+
 **Start sharing** reuses the product source picker for Browser capture and the
 App's available sources, with small Native window/display thumbnails. Closing
 the picker cancels its pending thumbnails. App capture publishes through that same Native participant;
@@ -531,6 +550,15 @@ separating other candidates and unresolved paths without retaining endpoint addr
 Windows shared-sound configuration records distinguish default-output, process-tree
 inclusion and process-tree exclusion, with the selected and Native process IDs.
 They contain no window titles, program paths, device identifiers or audio samples.
+
+A Browser page collects its own report only after **Help → Debug** or `?debug=1`;
+this does not enable App or Server collection. The page keeps up to 8,192 events
+and 8 MiB of compact event data in memory, so reloading or closing it loses that
+history. **Help → Web report** downloads the report, which DevTools can also
+produce with `await window.__PIIK_DEBUG__.export()`. Tokens, passwords, cookies,
+authorization headers, invitation grants, ICE credentials, SDP and private keys
+are filtered before export, but technical identifiers, IP addresses and device
+details may remain. A report is not anonymous: review it before sharing.
 
 On Windows, `capture-frames.json` lists active window and screen captures by
 an anonymous number. Compare two reports from the same App process to see how
@@ -882,7 +910,10 @@ gh workflow run repository-hygiene.yml --ref feat/channel-prototype -f channel_n
 This opt-in job builds and links test programs without running them. It skips
 the maintenance build and publication jobs; ordinary branch pushes stay quiet.
 
-Browser checks require `agent-browser` and its installed Chromium. The runner
+Browser checks require `agent-browser` and a current browser. Set
+`AGENT_BROWSER_EXECUTABLE_PATH` to choose the installed Chrome/Chromium executable;
+otherwise the CLI uses its managed browser. Record the actual browser version
+with acceptance results. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite
 services, runs acceptance, and stops them on exit. It does not leave a preview
 service running or restart another instance. Default acceptance covers multiple

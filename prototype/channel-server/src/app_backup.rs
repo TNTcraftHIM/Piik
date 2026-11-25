@@ -139,5 +139,5 @@ pub(super) async fn restore(
 ) -> ApiResult {
     let owner = owner(&app, &headers, domain, user).await?;
     owner.require_ready()?;
-    backup::restore(owner.commands, None, &headers, body).await
+    backup::restore(owner.commands, None, None, &headers, body).await
 }

@@ -5,7 +5,8 @@ import { useVoiceShortcuts } from "../src/client/channel/use-voice-shortcuts";
 import { APP_PROTOCOL, ChannelApp, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
-import { waitForWatchMedia } from "../src/client/channel/watch-media";
+import { AppPageMedia, waitForWatchMedia } from "../src/client/channel/watch-media";
+import { observeWatchSources } from "../src/client/channel/watch-page-media";
 
 class Socket {
   static OPEN = 1;
@@ -383,6 +384,45 @@ test("App playback samples require actual valid buffered ranges", () => {
   expect(nativePageStateSchema.safeParse(obsolete).success).toBe(false);
   expect(nativePageStateSchema.safeParse({ ...state, buffered: [[15, 13]] }).success).toBe(false);
 });
+test.each(["caller", "unsubscribe"])("%s cancellation stops source enumeration without retiring playback", async retirement => {
+  const { app, socket } = await setup();
+  const page = await openPage(app, socket), media = new AppPageMedia(page);
+  await media.opening;
+  const reading = media.read();
+  await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "page_read", pageId: page.id }));
+  const readRequest = socket.sent.at(-1)!;
+  const lifetime = new AbortController(), publish = vi.fn();
+  const observer = observeWatchSources(page, lifetime.signal, publish);
+  const old = socket.sent.at(-1)!;
+  let failure: unknown;
+  const result = observer.ready.catch(error => { failure = error; });
+  let fresh: ReturnType<typeof observeWatchSources> | undefined;
+  try {
+    expect(old).toMatchObject({ type: "page_media_sources", pageId: page.id });
+    if (retirement === "caller") lifetime.abort(); else observer.unsubscribe();
+    await vi.waitFor(() => expect(failure).toMatchObject({ name: "AbortError" }), { timeout: 200 });
+    expect(app.connected).toBe(true);
+    expect(socket.sent.some(command => command.type === "page_close" || command.type === "page_media_stop")).toBe(false);
+    socket.receive({ id: old.id, result: { choices: [], indexedCandidates: [], mpdCandidates: [], byteSource: null } });
+    expect(publish).not.toHaveBeenCalled();
+    socket.receive({ id: readRequest.id, result: state });
+    await expect(reading).resolves.toEqual(state);
+    const seek = media.patch({ position: 20 });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "page_patch", pageId: page.id, patch: { position: 20 } }));
+    socket.reply(null); await seek;
+    fresh = observeWatchSources(page, new AbortController().signal, publish);
+    expect(socket.sent.at(-1)).toMatchObject({ type: "page_media_sources", pageId: page.id });
+    socket.reply({ choices: [], indexedCandidates: [], mpdCandidates: [], byteSource: null });
+    await fresh.ready;
+    expect(publish).toHaveBeenCalledOnce();
+    expect(media.page).toBe(page);
+    expect(app.connected).toBe(true);
+  } finally {
+    observer.unsubscribe(); fresh?.unsubscribe(); media.close(); app.close();
+    await result; await reading.catch(() => {});
+  }
+});
+
 test("App webpage selection has its own candidates and closes pending reads with the window", async () => {
   const { app, socket } = await setup();
   try {

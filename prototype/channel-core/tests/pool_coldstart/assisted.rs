@@ -89,5 +89,5 @@ fn first_assisted_subscription_connects_both_legs_and_returns_to_ordinary_viewin
         json!({"type":"flow_state","pairId":direct,"flowId":ordinary.id,"state":"switch_ready"}),
     );
     assert!(input(pair(&net, browser, source), screen).unwrap().selected);
-    assert!(net.state(browser).failed_subscriptions.is_empty());
+    assert!(net.failed_screens(browser).is_empty());
 }

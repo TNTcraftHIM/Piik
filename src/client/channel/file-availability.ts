@@ -3,7 +3,6 @@ import type { FileScope } from "./file-store";
 
 interface FileObservation {
   bindingId: string;
-  limit: number;
   observationId: string;
   indices: Map<string, number>;
 }
@@ -17,7 +16,8 @@ export class VisibleFileAvailability {
   constructor(private rooms: () => readonly ChannelRoom[],
     private command: (command: Extract<ChannelCommand, { type: "observe_files" }>) => Promise<void>,
     private changed: () => void,
-    private messageRemoved: (key: ChannelFileKey) => boolean) {}
+    private messageRemoved: (key: ChannelFileKey) => boolean,
+    private limit: () => number) {}
 
   observe(key: ChannelFileKey): () => void {
     const id = fileKeyString(key);
@@ -41,7 +41,6 @@ export class VisibleFileAvailability {
     const index = observation?.indices.get(id);
     const reported = room.fileAvailability;
     if (index === undefined || !observation || observation.bindingId !== room.delivery?.bindingId
-      || observation.limit !== room.capabilities.fileAvailabilityLimit
       || reported?.observationId !== observation.observationId || reported.available.length !== observation.indices.size) return undefined;
     return reported.available[index];
   }
@@ -52,7 +51,8 @@ export class VisibleFileAvailability {
     queueMicrotask(() => {
       this.observationScheduled = false;
       const rooms = this.rooms();
-      if (!rooms.length) return;
+      const limit = this.limit();
+      if (!rooms.length || !limit) return;
       const keysByRoom = new Map<string, [string, ChannelFileKey][]>();
       for (const [id, { key }] of this.observed) {
         if (this.messageRemoved(key)) continue;
@@ -62,15 +62,15 @@ export class VisibleFileAvailability {
       }
       let changed = false;
       for (const room of rooms) {
-        const limit = room.capabilities.fileAvailabilityLimit, bindingId = room.delivery?.bindingId;
-        if (!room.authorized || !room.available || !room.reading || !limit || !bindingId) continue;
+        const bindingId = room.delivery?.bindingId;
+        if (!room.authorized || !room.available || !room.reading || !room.historyLineage || !bindingId) continue;
         const entries = keysByRoom.get(room.id)?.slice(0, limit) ?? [];
         const previous = this.observations.get(room.id);
-        if (previous?.bindingId === bindingId && previous.limit === limit && previous.indices.size === entries.length
+        if (previous?.bindingId === bindingId && previous.indices.size === entries.length
           && entries.every(([id], index) => previous.indices.get(id) === index)) continue;
         if (!entries.length && (!previous || previous.bindingId !== bindingId)) continue;
         const observationId = crypto.randomUUID();
-        this.observations.set(room.id, { bindingId, limit, observationId, indices: new Map(entries.map(([id], index) => [id, index])) });
+        this.observations.set(room.id, { bindingId, observationId, indices: new Map(entries.map(([id], index) => [id, index])) });
         changed = true;
         void this.command({ type: "observe_files", roomId: room.id, observationId,
           keys: entries.map(([, key]) => [key.messageSeq, key.attachmentId]) }).catch(() => {
@@ -93,7 +93,7 @@ export class VisibleFileAvailability {
     let changed = false;
     for (const [id, observation] of this.observations) {
       const room = rooms.find(room => room.id === id);
-      if (!room?.authorized || !room.available || !room.reading || !room.capabilities.fileAvailabilityLimit
+      if (!room?.authorized || !room.available || !room.reading || !room.historyLineage
         || room.delivery?.bindingId !== observation.bindingId) {
         this.observations.delete(id);
         changed = true;

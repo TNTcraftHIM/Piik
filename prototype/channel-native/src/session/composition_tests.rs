@@ -273,6 +273,7 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
         },
         files: vec![],
         live: Some(Live {
+            room_open_failures: Default::default(),
             forwarding_budget: Default::default(),
             session: core.session,
             room: RoomTurns {

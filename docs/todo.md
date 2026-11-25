@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-24
+Last reviewed: 2026-11-25
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -21,10 +21,20 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
-  steady selected media on a controlled link. Record the SDK estimate, media,
-  padding and minimum/desired demand before changing probe policy. Distinguish
-  insufficient observed capacity from a trial that has not prompted new probing.
+- [ ] **Native optional-flow acceptance.** Complete capture-enabled admission
+  with the actual encoder worker and presented playback. Reuse the
+  [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
+  keep cross-flow allocation separate from SDK congestion control and frame admission.
+- [ ] **Room-writer progress.** Bound unanswered host work at the binding owner.
+  A controlled unresponsive writer leaves requests and route wakes outstanding
+  while its room remains available. Set the progress budget and recovery scope
+  before adding a deadline; compare the existing fresh-binding handshake with
+  connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
+- [ ] **Host synchronization under concurrent admission.** Measure actual writer
+  draining at the supported room scale before changing the outbound queue.
+  Deterministic queue controls reproduce pressure and show that replacing an old
+  Sync in place can reverse room revisions. Preserve intervening actions and
+  their order when considering coalescing.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
@@ -33,6 +43,11 @@ the feedback period; they do not delay that delivery.
   changing the selected device. Check audible message alerts with the App in
   the foreground and background. Room microphones, source audio inputs and
   system-output capture retain their separate scopes.
+- [ ] **Capture device loss.** On real hardware, validate what a Windows share
+  does when its graphics device is lost (`capture/gpu.rs`, `capture/frames.rs`),
+  then state the accepted behaviour in the
+  [media standard](./standards/media-quality.md). The published line states a
+  rule; 3.0 has the code path and no accepted description.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during
   replacement or temporary source absence, release old media and permissions,
@@ -69,15 +84,6 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Native room-open diagnostics.** Surface identifiable local lock and
-  duplicate-file failures through the existing hosting description. Keep Browser
-  and App diagnostic lifetimes separate; unreadable files whose room cannot be
-  identified remain device-level failures. Prefer an on-demand operator view
-  before adding persistent room-list state.
-- [ ] **Standalone Server owner entry.** Replace the documented durable-key URL
-  with a local operator bootstrap flow using the existing owner identity.
-  Keep ticket issuance at an authenticated local maintenance boundary; App
-  launch tickets do not supply a remote Server administration entry.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -247,8 +253,12 @@ the feedback period; they do not delay that delivery.
   recurs. The first production step is one leaf moved to a strictly better
   place with the present proof, then one more child tried on unmet demand.
   The [evidence](./research/topology-improvement-design.md) lists the
-  remaining comparisons. Extend relay-exit controls to media-only loss while
+  remaining comparisons. Compare voice-source fanout against explicit room
+  limits and Browser hop cost, including higher audio bitrates. Extend relay-exit controls to media-only loss while
   signaling stays connected, and preserve healthy paths during control recovery.
+  Reuse the matching-runtime recovery and late-proof controls when extending
+  current operation ownership. Calibrate on independent networks before tuning
+  candidate budgets or measured-benefit policy.
 - [ ] **The life of a message.** Decide
   [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
   search, quote behavior and the merge rule for text and reaction changes.
@@ -264,9 +274,18 @@ the feedback period; they do not delay that delivery.
   Keep image restoration owned by each physical connection. Any generated types
   must replace their old owner and retain runtime validation, omission and null
   semantics.
+- [ ] **Room record fan-out.** Share broadcast eligibility and recipient
+  expansion through the conversation outcome. Keep the Browser's current-binding
+  check and the Native request processor's local-session filter in their adapters.
+- [ ] **App configuration ownership.** Move owner-seed initialization into the
+  Domain before removing the App copy; retain consent scope and cache namespaces.
+  Consolidate startup environment reads where their meanings and lifetimes match.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
+- [ ] **Connection attempt deadlines.** Trace ordinary and prepared attempts,
+  signaling recovery and data-channel readiness. Consolidate deadlines by their
+  actual owner while retaining the intended retry and resource-release behavior.
 - [ ] **Prepared socket adoption.** Verify that an active ICE engine can adopt
   an enhanced-discovery socket while keeping the physical pair and deadline.
   Retain bounded cross-peer coordination and cancellation; complete the existing
@@ -277,6 +296,15 @@ the feedback period; they do not delay that delivery.
 - [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
   separate mechanical format pass and review actionable Clippy findings by owner.
   Keep style-only changes separate from behavior fixes and new lint gates.
+- [ ] **Native frame admission.** Set one policy for fresh, forced and priming
+  frames across encoder workers. Compare the shared timestamp trace with actual
+  output feedback; keep platform timestamp acquisition and codec priming in the
+  adapters.
+- [ ] **3.0 documentation ownership.** Review the remaining research files that
+  differ from their 2.x copies, unused research data and outdated couch markers
+  against current readers and code. Consolidate repeated work-ledger prose
+  without dropping unresolved feedback. Align the homepage and public source
+  links at the accepted cutover.
 - [ ] **Whole-page collaboration.** Choose the intended co-browsing flow before
   extending synchronized playback. Evaluate a shared page with explicitly
   granted page-scoped input and each site's own collaborative links. Reuse the
@@ -284,7 +312,8 @@ the feedback period; they do not delay that delivery.
   entry and native dialogs before offering page-only control.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
-  retain manual download. The
+  retain manual download. Reclaim an abandoned download through its update owner,
+  preserving active installations and the retained handoff record. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
@@ -296,6 +325,9 @@ the feedback period; they do not delay that delivery.
   candidate. At integration, resolve main CI against the Rust release jobs and
   coordinate the Pages guides, latest downloads and Demo with the published
   version. Pin historical 2.x references at the final 2.x revision.
+  Publish the 2.x pinning guidance and verify clear startup refusal for recognized
+  incompatible configuration before changing the default major
+  ([evidence](./research/container-tags.md)).
   End separate 2.x maintenance at the accepted 3.0 cutover. Decide
   separately whether to offer a short room-code locator.
 - [ ] **3.0 playable-route improvement.** Define when a sustained limit warrants
@@ -312,6 +344,8 @@ the feedback period; they do not delay that delivery.
   on an existing call and the cost of finding a path through two idle peers.
 - [ ] **NAT field coverage.** Measure difficult physical networks and sustained
   concurrent use. [Random-mapping and linear-extension controls](./research/nat-traversal.md#random-mapping-collision-control)
+  Compare parallel surveys and search budgets under the same preparation deadline
+  before changing the accepted limits.
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before
   adding a discovery responder to its existing socket owner.
@@ -334,11 +368,10 @@ the feedback period; they do not delay that delivery.
   lower layer with encoding full-size output at the granted rate. Reuse existing
   encoder grants and prove readability, cadence and resource cost before changing
   layer preference.
-- [ ] **Native send-consent lifetime.** Complete the Windows WebView control of
-  the integrated SDK's RFC 7675 correction in both negotiation roles. Preserve
-  permitted paths during ICE restart and reject retired credentials independently
-  of candidate viability. Reuse the completed Native/Chrome controls.
-  Keep transport consent and Piik route recovery with their existing owners.
+- [ ] **Native GUI recovery acceptance.** Complete Windows WebView checks in
+  both negotiation roles with the matching App. Reuse the
+  [SDK and runtime controls](./research/nat-traversal.md#native-ice-disconnection-and-send-consent)
+  for send-consent expiry, input release and branch recovery.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify
   source-issued media grants, supported commercial live sources, target Browsers
@@ -416,7 +449,7 @@ the feedback period; they do not delay that delivery.
   physical game recognition. macOS virtual HID needs an entitled App and SDK/runtime
   checks. [Co-play assessment](./research/room-interactions.md#remote-co-play)
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
-  the [platform-output gate](./research/platform-output.md) passes.
+  the [platform-output gate](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
   the [translation guide](./guide/translating.md).
 - **Windows code signing.** Revisit when a trusted signing service is available;
@@ -430,6 +463,6 @@ the feedback period; they do not delay that delivery.
 - **Managed Demo hosting.** Keep the existing P2P-only Demo pending a concrete
   option. [Provider assessment](./operations/website.md#managed-hosting-assessment)
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
-  justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
+  justifies the [pairing and input boundary](https://github.com/TNTcraftHIM/Piik/blob/e79e658d5f2430e2b40534b1dfe20b2d20d344b0/docs/research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
   control and desktop co-play.

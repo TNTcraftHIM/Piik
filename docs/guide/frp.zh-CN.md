@@ -11,7 +11,7 @@
 
 ## 取得公网地址
 
-下面用 **SakuraFrp（樱花映射）** 演示。有自己的 frps 或其他服务商时，让它把同一 HTTPS 地址下的网页和 WebSocket 转给 Piik 的本地 HTTP 服务，然后直接做下一节。[自建 frps 配置](../operations/self-hosting.zh-CN.md#可选通过-frp-转发已有服务)
+下面用 **SakuraFrp（樱花映射）** 演示。有自己的 frps 或其他服务商时，让它把同一 HTTPS 地址下的网页和 WebSocket 转给 Piik 的本地 HTTP 服务，然后直接做下一节。[自建 frps 配置](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md#可选通过-frp-转发已有服务)
 
 1. 在运行 Piik 的电脑上打开樱花映射启动器。登录樱花账号，把管理面板「用户信息」里的访问密钥填进启动器。[启动器图文说明](https://doc.natfrp.com/launcher/usage.html)
 2. 在「隧道列表」创建 **TCP** 隧道，选择允许网页流量的节点。本地 IP 填 `127.0.0.1`，本地端口填 Piik 的网页端口。远程端口留空让平台分配，**自动 HTTPS** 选 **自动**。这样朋友用 HTTPS，本机 Piik 仍接收 HTTP。[网页隧道设置](https://doc.natfrp.com/app/http.html) · [自动 HTTPS](https://doc.natfrp.com/frpc/auto-https.html)
@@ -51,7 +51,7 @@
 
 另建一条 UDP 隧道，记录服务商分配的公网 IP 和 UDP 端口。网页隧道继续使用原来的地址。
 
-- **2.x Server** 将隧道的本地端口和 `SFU_UDP_PORT` 都设为分配的公网 UDP 端口，`SFU_PUBLIC_IP` 填该节点的公网 IPv4。[2.x 媒体转发配置](../operations/self-hosting.zh-CN.md#使用托管-frp-服务)
+- **2.x Server** 将隧道的本地端口和 `SFU_UDP_PORT` 都设为分配的公网 UDP 端口，`SFU_PUBLIC_IP` 填该节点的公网 IPv4。[2.x 媒体转发配置](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md#使用托管-frp-服务)
 - **3.0 Server** 将隧道转发到 `PIIK_CHANNEL_UDP_PORT`，`PIIK_CHANNEL_UDP_PUBLIC_ADDRESS` 填实际的公网 `IP:端口`。然后在 Server 上启用[站点转发](../../prototype/channel-server/README.md#site-forwarding)。
 
 </details>

@@ -14,7 +14,7 @@ function conversationState(host: string, sender: string, binding: string, domain
       voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,
       reading: true, participantSessionIds: [host, sender], lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
       delivery: { hostSessionId: host, bindingId: binding },
-    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], iceServers: [], pairs: [],
+    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], iceServers: [], pairs: [],
   };
 }
 
@@ -78,7 +78,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
   const requests: SignedConversationPacket[] = [], replies: SignedConversationPacket[] = [], received = vi.fn();
   const dispatchPeer = vi.fn(async (packet: SignedConversationPacket) => {
     const { command: _command, ...address } = JSON.parse(packet.payload);
-    return [{ ...address, sender: host, recipient: sender, record: { type: "history_end", count: 0, hasMore: false, oldestSeq: null, before: null } }];
+    return [{ ...address, sender: host, recipient: sender, record: { type: "history_page", messages: [], hasMore: false, oldestSeq: null, before: null } }];
   });
   const roomHost = { dispatchPeer } as unknown as HostedRoom;
   const reader = new ChannelConversation({ context: () => ({ sessionId: sender, state, connected: true }),
@@ -95,7 +95,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
     expect(dispatchPeer).toHaveBeenCalledOnce();
     await reader.receive(replies[0]);
     expect(received).toHaveBeenCalledWith(expect.objectContaining({ roomId: "room", bindingId: binding, sender: host,
-      recipient: sender, requestId: "request", record: { type: "history_end", count: 0, hasMore: false, oldestSeq: null, before: null } }));
+      recipient: sender, requestId: "request", record: { type: "history_page", messages: [], hasMore: false, oldestSeq: null, before: null } }));
     await expect(reader.receive(requests[0])).rejects.toBe("invalid_conversation_scope");
     await expect(owner.receive({ ...requests[0], signature: Array(64).fill(0) })).rejects.toBe("invalid_conversation_signature");
     state = { ...state, channel: { ...state.channel, rooms: state.channel.rooms.map(room => ({ ...room,

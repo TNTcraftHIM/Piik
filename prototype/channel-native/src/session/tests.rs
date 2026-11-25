@@ -245,6 +245,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
         host_session_id: native,
         revision: 1,
         confirmed_pairs: Default::default(),
+        disconnected_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: [(
             native,
@@ -388,7 +389,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         let room = RoomBackup::stage(
             &path.join("room.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: state.channel.id,
                 policy,
                 own_credential: None,
@@ -401,6 +402,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         session
             .restore_room(
                 RestoreRoom {
+                    scratch: None,
                     existing: None,
                     snapshot: RoomSnapshot {
                         room,
@@ -518,7 +520,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
         let room = RoomBackup::stage(
             &directory.path().join("room.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: state.channel.id,
                 policy: replacement,
                 own_credential: None,
@@ -531,10 +533,10 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
         session
             .restore_room(
                 RestoreRoom {
+                    scratch: Some(Arc::new(tokio::sync::Semaphore::new(1)).try_acquire_owned().unwrap()),
                     existing: Some(ExistingRoomRestore {
                         room_id: "guest".into(),
                         creator,
-                        scratch: Arc::new(tokio::sync::Semaphore::new(1)).try_acquire_owned().unwrap(),
                     }),
                     snapshot: RoomSnapshot { room, directory },
                     result,
@@ -674,7 +676,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         let room = RoomBackup::stage(
             &stage_path.join("room.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: state.channel.id,
                 policy: replacement,
                 own_credential: None,
@@ -687,6 +689,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         session
             .restore_room(
                 RestoreRoom {
+                    scratch: None,
                     existing: None,
                     snapshot: RoomSnapshot {
                         room,
@@ -823,6 +826,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                             host_session_id: native,
                             revision: 1,
                             confirmed_pairs: Default::default(),
+                            disconnected_pairs: Default::default(),
                             failed_pairs: Vec::new(),
                             endpoints: [(
                                 native,
@@ -968,7 +972,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         "users":[{"id":user,"name":"Source","version":"a".repeat(64)},{"id":owner,"name":"Owner","version":"b".repeat(64)}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
             {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
-        "watchActivities":[],"watchSubscriptions":[],"watchBytes":[],"files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
+        "watchActivities":[],"watchSubscriptions":[],"watchBytes":[],"files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[]
     }))
     .unwrap();
     let mut session = Session {
@@ -1461,7 +1465,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
-            "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
+            "files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[],
             "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
         }))
         .unwrap();
@@ -1666,6 +1670,104 @@ async fn room_file_failures_keep_the_sibling_on_the_same_session() -> Result<()>
     assert_eq!(live.room.rooms.len(), 1);
     assert_eq!(live.room.rooms["offline"].binding(), Some(binding_id));
     assert!(session.opening.is_empty());
+    drop(locked);
+    session.release().await
+}
+
+#[tokio::test]
+async fn hosting_description_reports_only_admitted_owned_room_file_failures() -> Result<()> {
+    for hosted_service in [false, true] {
+        check_hosting_description_file_failures(hosted_service).await?;
+    }
+    Ok(())
+}
+
+async fn check_hosting_description_file_failures(hosted_service: bool) -> Result<()> {
+    let (mut session, mut socket, _remote, mut state) = capture_projection_session().await;
+    let session_id = session.live.as_ref().unwrap().session;
+    let profile = self_profile(&state, session_id);
+    session.release().await?;
+    session.files.clear();
+    let directory = tempfile::tempdir()?;
+    let (_, commands) = mpsc::channel(1);
+    session.hosting = Some(Hosting {
+        directory: directory.path().into(),
+        identity: (state.channel.id, profile.id),
+        commands,
+        ready: watch::channel(None).0,
+        desktop: None,
+    });
+    if hosted_service {
+        state.channel.hosting_mode = piik_channel_core::wire::HostingMode::Hosted;
+        let (admission, mut requests) = mpsc::channel::<ServiceAdmission>(1);
+        session.service_admission = Some(admission);
+        tokio::spawn(async move {
+            let (_, ack) = requests.recv().await.unwrap();
+            ack.send(()).unwrap();
+        });
+    }
+    let mut locked = None;
+    for (id, copy, owned) in [
+        ("target", false, true),
+        ("duplicate", true, true),
+        ("foreign", true, false),
+        ("unadmitted", true, true),
+        ("offline", false, true),
+    ] {
+        if !matches!(id, "target" | "offline" | "unadmitted") {
+            let mut room = state.channel.rooms[1].clone();
+            room.id = id.into();
+            if owned {
+                room.creator_id = profile.id;
+            }
+            state.channel.rooms.push(room);
+        }
+        let path = directory.path().join(format!("{id}.sqlite"));
+        let creator = if hosted_service && id == "target" {
+            state.channel.rooms[0].creator_id
+        } else {
+            profile.id
+        };
+        let policy = RoomState::new(id.into(), id.into(), Default::default(), creator,
+            RoomAccess::Public, false, None).map_err(anyhow::Error::msg)?;
+        let host = HostedRoom::create(&path, policy)?;
+        if id == "target" {
+            locked = Some(host);
+        } else {
+            drop(host);
+        }
+        if copy {
+            std::fs::copy(path, directory.path().join(format!("{id}-copy.sqlite")))?;
+        }
+    }
+    if !hosted_service {
+        state.channel.rooms[0].creator_id = profile.id;
+    }
+    state.channel.rooms[1].creator_id = profile.id;
+    std::fs::write(directory.path().join("unreadable.sqlite"), b"invalid database")?;
+    session.event(Event::Welcome {
+        connection_id: Uuid::new_v4(), protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        self_profile: profile, credential: "fixture".into(), session_id, state: state.clone(),
+        invitation_origin: None,
+    }, &mut socket).await?;
+    let description = serde_json::to_value(session.hosting_description().unwrap())?;
+    assert_eq!(description["roomIds"], json!(["offline"]));
+    let mut expected = vec![
+        json!({"roomId": "target", "reason": "in_use"}),
+        json!({"roomId": "duplicate", "reason": "ambiguous"}),
+    ];
+    if hosted_service {
+        expected.push(json!({"roomId": "foreign", "reason": "ambiguous"}));
+    }
+    assert_eq!(description["unavailable"], json!(expected));
+
+    let admitted = state.clone();
+    state.channel.rooms.retain(|room| room.id == "offline");
+    session.event(Event::State { state }, &mut socket).await?;
+    session.event(Event::State { state: admitted }, &mut socket).await?;
+    let description = serde_json::to_value(session.hosting_description().unwrap())?;
+    assert_eq!(description["roomIds"], json!(["offline"]));
+    assert!(description.get("unavailable").is_none());
     drop(locked);
     session.release().await
 }

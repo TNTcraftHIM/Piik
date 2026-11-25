@@ -8,7 +8,7 @@ export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAtt
 export type RoomCopyInfo = Pick<RoomSettings, "name" | "icon" | "picture"> & { voiceBitrate: number; relayCapacity: number };
 export type BackupMetadata =
   | { kind: "domain"; version: 3; state: { id: string; name: string; icon: string; ownerId: string; hostedRooms: Record<string, RoomSummary> }; ownerKey: string }
-  | { kind: "room"; version: 3; domainId: string; policy: RoomCopyInfo & Record<string, unknown> & { id: string; creatorId: string };
+  | { kind: "room"; version: 4; domainId: string; policy: RoomCopyInfo & Record<string, unknown> & { id: string; creatorId: string };
       ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] }
   | { kind: "room_copy"; version: 2; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {

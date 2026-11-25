@@ -140,6 +140,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         host_session_id: sessions[0],
         revision: 1,
         confirmed_pairs: Default::default(),
+        disconnected_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: channel.identity.endpoints(),
         action: HostAction::Sync,

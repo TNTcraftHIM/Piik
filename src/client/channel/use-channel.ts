@@ -72,6 +72,7 @@ export function useChannel(): ChannelController {
     setRoomVoiceBitrate: session.setRoomVoiceBitrate,
     setForwardingLimit: session.setForwardingLimit,
     appRelayCapacity: session.appRelayCapacity, setAppRelayOverride: session.setAppRelayOverride,
+    nativeRoomOpenFailure: session.nativeRoomOpenFailure,
     roomBackupAvailable: session.roomBackupAvailable, exportRoomBackup: session.exportRoomBackup, restoreRoomBackup: session.restoreRoomBackup,
     exportRoomCopy: session.exportRoomCopy, inspectRoomCopy: session.inspectRoomCopy, importRoomCopy: session.importRoomCopy,
     invitationPending: session.invitationPending, createRoomInvite: session.createRoomInvite, getRoomInvite: session.getRoomInvite, revokeRoomAccess: session.revokeRoomAccess,

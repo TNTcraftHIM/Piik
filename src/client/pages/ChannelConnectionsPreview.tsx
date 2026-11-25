@@ -30,7 +30,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
       ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ audience: [], id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }))),
     ], voice: roomOnly ? [] : ["host", "self", "friend"].map(sessionId => ({
       sessionId, roomId: "room", muted: false, deafened: false,
-    })), subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    })), subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   } satisfies z.input<typeof snapshotSchema>);
   const topology: ChannelTopology = { serviceAvailable: false, serviceEnabled: false, bindingId: "binding", transitSession: null,
     sessionIds: [], pairs: roomOnly ? [] : [

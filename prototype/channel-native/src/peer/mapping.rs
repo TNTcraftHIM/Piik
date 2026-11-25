@@ -344,7 +344,7 @@ mod tests {
             driver.retire_pair(id, crate::diagnostics::RetirementReason::ProjectionRemoved),
         );
         tokio::select! {
-            result = &mut retirement => panic!("file detach unexpectedly completed: {result}"),
+            _ = &mut retirement => panic!("file detach unexpectedly completed"),
             result = tokio::time::timeout(Duration::from_secs(2), updates.closed()) => result?,
         }
         ensure!(updates.send(Some("203.0.113.5:41003".parse()?)).is_err());

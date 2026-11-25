@@ -41,7 +41,7 @@ function setup(command = async (_command: ChannelCommand) => {}) {
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
-  const files = new ChannelAttachments(command, async () => {});
+  const files = new ChannelAttachments(command, async () => {}, undefined, undefined, () => 2);
   files.update("endpoint", { domainId: "domain", userId: "self" }, [],
     [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
   return files;
@@ -51,7 +51,7 @@ function setupObservations() {
   const command = vi.fn(async (_command: ChannelCommand) => {});
   const files = setup(command);
   const room = { id: key.roomId, authorized: true, available: true, reading: true,
-    capabilities: { attachments: true, fileAvailabilityLimit: 2 },
+    historyLineage: crypto.randomUUID(), capabilities: { attachments: true },
     delivery: { bindingId: "binding" } } as ChannelRoom;
   const update = (changes: Partial<ChannelRoom> = {}) =>
     files.update("endpoint", { domainId: "domain", userId: "self" }, [], [{ ...room, ...changes }], []);
@@ -108,11 +108,11 @@ test("reader observations batch by room, match current binding and fit within th
   } finally { files.reset(); }
 });
 
-test("reader observations are unknown on legacy and offline hosts and stop when reading ends", async () => {
+test("reader observations are unknown without a detailed room or online host and stop when reading ends", async () => {
   const { files, update, observations } = setupObservations();
   try {
     const release = files.observe(key);
-    update({ capabilities: { attachments: true } });
+    update({ historyLineage: undefined });
     await Promise.resolve();
     expect(observations()).toEqual([]);
     expect(files.originalAvailability(key, attachment, false)).toBeUndefined();

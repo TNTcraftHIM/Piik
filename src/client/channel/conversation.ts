@@ -42,6 +42,8 @@ export class ChannelConversation {
     return Array.from(signer.signing_key());
   }
 
+  fileAvailabilityLimit() { return this.runtime?.file_availability_limit() ?? 0; }
+
   forwardingBudget() { return this.runtime && new this.runtime.ForwardingBudget(); }
 
   async fileFrame(control: string): Promise<string> {

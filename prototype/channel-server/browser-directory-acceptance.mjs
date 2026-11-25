@@ -41,7 +41,7 @@ const rows = () => sample(`[...document.querySelectorAll('#c3-people .c3-user')]
 const more = '#c3-people button[aria-label="More people"]';
 const retry = '#c3-people button[aria-label="Retry"]';
 try {
-  await browser(0, "open", `${origin}/__channel-preview`);
+  await browser(0, "open", `${origin}/`);
   await sample("localStorage.setItem('piik:ui-lang', 'en')");
   await browser(0, "reload");
   await until("browser joins", () => sample(`${gate}?.snapshot().connection`), value => value === "connected");

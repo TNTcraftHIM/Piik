@@ -100,9 +100,9 @@ physical mixed Browser/App media flow. Package size, startup and idle memory
 are measured below. Keep one strict wire contract and one schema owner;
 avoid hand-maintained parallel TypeScript/Go validation rules. The Node server,
 bundled runtime, supervisor and old packaging paths retire in this same accepted
-integration boundary, preserving [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
-and [ADR-0010](../adr/0010-cross-platform-client-runtime.md) as amended by
-[ADR-0012](../adr/0012-shared-go-backend-core.md).
+integration boundary, preserving [ADR-0005](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0005-automatic-hybrid-media-routing.md)
+and [ADR-0010](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0010-cross-platform-client-runtime.md) as amended by
+[ADR-0012](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0012-shared-go-backend-core.md).
 
 ## Measured Before And After
 

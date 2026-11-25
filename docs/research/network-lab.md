@@ -6,9 +6,41 @@ evidence. The [current Rust source map](../standards/engineering.md#module-map)
 owns the private 3.x implementation; retired runners are not current entrypoints.
 
 This document owns the laboratory's method and evidence limits. Product routing
-remains in [routing and transport](../standards/routing-transport.md); pending
+remains in the [network model](./channel-network-design.md); pending
 work remains in [TODO](../todo.md). The laboratory does not authorize NAT or
 adaptation changes.
+
+## Browser Relay After Local Unwatch
+
+A Chrome 152.0.7977.82 control used four independent Browser sessions and real
+WebRTC, with synthetic capture, one source output and a relay feeding two
+viewers. After the relay started and stopped its own screen, then stopped local
+watching, received frames could continue while its decoded frames and
+jitter-buffer output stopped. The downstream pictures also stopped, with the
+pair identities and live sender tracks retained. The ordering is timing-sensitive;
+an initial passing transition did not establish stable recovery.
+
+A reduced four-document control using the actual media modules passed with a
+plain visible player, then reproduced after registering one empty
+`requestVideoFrameCallback` before player removal. The same source and sequence
+passed three cycles on installed Chrome 156.0.8078.80. The complete G49 product
+also passed three cycles there with both encoding pools enabled; each downstream
+advanced 34–36 frames after the relay stopped local watching. The broader
+five-Browser media check passed selective viewing, voice, non-listening relay,
+signaling reconnection and relay-exit recovery on that runtime.
+
+The first fixed browser version and its underlying engine change are unknown.
+No application workaround was adopted. Bypassing encoding pools, isolating
+sender frames, requesting new keyframes and resetting the video element did
+not provide a reliable repair on 152. A metadata-only ring of 307 source outputs
+had increasing RTP timestamps and stable producer identity. These observations
+remain version-scoped; acceptance records must identify the actual runtime.
+
+The same acceptance run exposed a different measurement error after deafen:
+an unplayed audio track can receive RTP while decoded-sample counters stop.
+A focused control retained two relay outputs and increasing downstream audio
+samples while local listening was disabled. The fixture now checks received
+bytes/packets at the deafened node and decoded samples at actual listeners.
 
 ## Design And References
 
@@ -604,6 +636,39 @@ Removing the limit restored 640-pixel-wide output after 3.12 seconds; the final
 window delivered about 30 fps. The source track and healthy sibling retained
 their behavior. This verifies that control's delivery and recovery, without a
 route switch; it is not a comparative Internet performance or NAT-success result.
+
+A four-arm in-process control on `2e051685` used two real RTCs and the pinned
+[str0m probe controller](https://github.com/TNTcraftHIM/str0m/blob/2d0d6eaaf4d19d7530588f695cd631eedf42acf5/src/bwe/probe/control.rs)
+with its Netem: 25 seconds per arm, 20 ms each way, a 100 kB forward queue and
+no configured random loss. Selected RTP stayed at 2 Mbps. At 8 seconds,
+`minimum` stayed at 2 Mbps; the trial arm raised `desired` from 2 to 5 Mbps.
+Both media sections were already negotiated. The fixture admitted the fixed
+3 Mbps optional flow when the SDK estimate reached the combined 5 Mbps cost.
+
+| Link | Arm | Desired after request | Optional RTP after request |
+| --- | --- | --- | --- |
+| 6 Mbps | Steady | 2 Mbps | None requested |
+| 6 Mbps | Trial | 5 Mbps | 84.592 ms; estimate crossed 5 Mbps at 61 ms |
+| 3 Mbps | Steady | 2 Mbps | None requested |
+| 3 Mbps | Trial | 5 Mbps | Not admitted; estimate remained below 5 Mbps |
+
+Both trial arms emitted an SDK probe in the request's virtual-clock turn;
+exponential probing took precedence over allocation probing. All four arms
+received 6,244,500 bytes of selected RTP payload. Estimate, media, explicit
+padding and RTX were recorded separately. This supports keeping SDK probing:
+the constrained trial probed but lacked capacity. Full Native Driver admission
+and decoded-picture quality were outside this control; these timings are not
+field performance guarantees.
+
+A Windows Driver control on `86980991` kept injected feedback at 180 kbps and
+forwarded decodable synthetic VP8 and Opus silence. With selected video held at 10 fps,
+reducing the optional source from 10 to 2 fps lowered desired demand from
+269,727 to 159,099 bps. The Driver admitted optional picture and sound together
+after 2.018 seconds. Selected output identities stayed unchanged, and the
+received selected and optional media decoded through the existing Windows VP8
+and Opus decoders. This used the original-forwarding Driver without capture;
+received data was decoded offline. Capture-enabled derivation, physical audio,
+presented cadence and Internet performance remain separate checks.
 
 ### Duplicate NACK Feedback
 

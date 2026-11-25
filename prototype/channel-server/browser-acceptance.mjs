@@ -60,7 +60,7 @@ async function browser(index, ...args) {
   assert(result.success, result.error ?? `agent-browser ${args[0]} failed`);
   return result.data;
 }
-const { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, assertNoError } = fixture(browser);
+const { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, audioReceiving, assertNoError } = fixture(browser);
 const voicePlayback = (index, publications, retain = false) => evaluate(index,
   `${JSON.stringify(publications)}.map(id => window.__channelProbe.voicePlayback(id, ${retain}))`);
 const nativeVoicePlaying = values => values.length > 0 && values.every(value =>
@@ -578,7 +578,7 @@ async function roomBase(initial) {
   const voicePairIds = (await view(0)).state.pairs.map(pair => pair.id).sort();
   await action(0, `setDeafened(${JSON.stringify(room)}, true)`);
   await until("deafen retires the retained local voice players", () => voicePlayback(0, listenedVoices), voicePlayersRetired);
-  await Promise.all([audioProgressing(0, dVoice), audioProgressing(0, localVoice), audioProgressing(1, dVoice), audioProgressing(3, localVoice)]);
+  await Promise.all([audioReceiving(0, dVoice), audioReceiving(0, localVoice), audioProgressing(1, dVoice), audioProgressing(3, localVoice)]);
   const deafenedPicture = await screenSound();
   assert.equal(deafenedPicture.elementId, soundingPicture.elementId, "deafen keeps the other room's actual picture player");
   assert.deepEqual(deafenedPicture.audioObjects, soundingPicture.audioObjects, "deafen keeps the other room's sound track");
@@ -814,7 +814,7 @@ async function roomOwner(initial, serverRoom) {
   assert((await sample(0)).captures.some(track => track.kind === "video" && track.state === "live"));
   assert.equal((await view(0)).state.pairs.find(pair => pair.peerId === viewerSession).id, sharedPair);
   await progressing(2, serverPicture);
-  await browser(1, "open", `${origin}/__channel-preview`);
+  await browser(1, "open", `${origin}/`);
   await until("reopened owner restores the saved room", () => view(1), value => value.connection === "connected" &&
     value.state.channel.rooms.some(entry => entry.id === room && entry.authorized && entry.available !== false));
   await action(1, `browse(${JSON.stringify(room)})`);
@@ -1208,7 +1208,7 @@ async function profileControls(roomId, messageId) {
   }), value => !value.sessions.some(session => session.userId === member.id && session.online)
       && value.profile?.name === name && value.profile.avatar === avatar
       && value.message.name === name && value.message.avatar === avatar);
-  await browser(1, "open", `${origin}/__channel-preview#room=${encodeURIComponent(roomId)}`);
+  await browser(1, "open", `${origin}/#room=${encodeURIComponent(roomId)}`);
   await reenter();
   if (!await evaluate(0, "document.querySelector('#c3-people')?.checkVisibility() ?? false"))
     await browser(0, "click", "#c3-companion-trigger");
@@ -1452,7 +1452,7 @@ try {
       }
       await writeFile(script, probe);
     }
-    await browser(index, "open", `${origin}/__channel-preview${index === 0 ? `#owner=${encodeURIComponent(ownerKey)}` : ""}`);
+    await browser(index, "open", `${origin}/${index === 0 ? `#owner=${encodeURIComponent(ownerKey)}` : ""}`);
   }
   const initial = [];
   for (const index of active) {
@@ -1560,7 +1560,8 @@ try {
   const voicePairs = (await view(4)).state.pairs.map(pair => pair.id).sort();
   await action(4, `setDeafened(${JSON.stringify(roomId)}, true)`);
   await until("deafen retires the actual local voice players", () => voicePlayback(4, playedVoices), voicePlayersRetired);
-  await Promise.all(playedVoices.map(publication => audioProgressing(4, publication)));
+  // Deafen can stop leaf decoding while RTP and forwarding remain active.
+  await Promise.all(playedVoices.map(publication => audioReceiving(4, publication)));
   assert.deepEqual((await view(4)).state.pairs.map(pair => pair.id).sort(), voicePairs, "local deafen must retain routing transports");
   await action(4, `setDeafened(${JSON.stringify(roomId)}, false)`);
   await until("undeafen restores actual native voice playback", () => voicePlayback(4, playedVoices), nativeVoicePlaying);
@@ -1623,8 +1624,11 @@ try {
   console.log("Relay exit recovers its downstream subscription");
 
   const layoutIndex = relay === 4 ? 0 : 4;
-  assert.equal(await evaluate(layoutIndex, "document.querySelector('#c3-people').checkVisibility()"), true,
-    "the desktop roster is always available");
+  await browser(layoutIndex, "set", "viewport", "1440", "900");
+  await browser(layoutIndex, "wait", '.c3-shell[data-sidebars="inline"][data-companion="chat"] .c3-chat-panel .c3-composer textarea');
+  assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-chat-panel .c3-composer textarea').checkVisibility()"), true,
+    "chat is available in the desktop side panel while viewing");
+  await browser(layoutIndex, "screenshot", join(output, "chat-desktop.png"), "--full");
   await evaluate(layoutIndex, "(() => { window.__panePlayers = [...document.querySelectorAll('video')]; return true; })()");
   await browser(layoutIndex, "set", "viewport", "390", "844");
   for (const lang of ["zh", "en"]) for (const theme of ["light", "dark"]) {
@@ -1641,26 +1645,44 @@ try {
     assert(layout.scroll <= layout.width, `${lang}/${theme} page overflows at 390px: ${JSON.stringify(layout)}`);
     await browser(layoutIndex, "screenshot", join(output, `${lang}-${theme}-390.png`), "--full");
   }
+  const chatBack = ".c3-chat-panel .c3-chat-heading button";
+  const companion = "#c3-companion-trigger";
+  await browser(layoutIndex, "click", companion);
+  await browser(layoutIndex, "wait", '.c3-shell[data-pane="chat"] .c3-chat-panel .c3-composer textarea');
+  await until("chat drawer focuses its Back button", () => evaluate(layoutIndex,
+    `document.activeElement === document.querySelector(${JSON.stringify(chatBack)})`), Boolean);
   await browser(layoutIndex, "fill", ".c3-composer textarea", "A draft while checking the room");
   const beforePanes = await view(layoutIndex);
+  await browser(layoutIndex, "click", chatBack);
+  await until("chat dismissal restores the trigger focus", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-companion-trigger");
   await showRoomList(layoutIndex);
-  await browser(layoutIndex, "click", ".c3-domain-name button");
-  await browser(layoutIndex, "click", ".c3-domain-menu-actions > button");
-  assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-people-heading");
+  await until("room list focuses its heading", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-room-list-heading");
+  await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
+  await browser(layoutIndex, "find", "role", "button", "click", "--name", "Back", "--exact");
+  await until("room list dismissal restores the trigger focus", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-rooms-trigger");
+  await showRoomList(layoutIndex);
+  await browser(layoutIndex, "click", `.c3-room-link[aria-label=${JSON.stringify(initial[0].state.channel.rooms[1].name)}]`);
+  await browser(layoutIndex, "click", companion);
+  await until("people drawer focuses its heading", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-people-heading");
   await browser(layoutIndex, "screenshot", join(output, "people-mobile.png"), "--full");
   await browser(layoutIndex, "click", "#c3-people .c3-pane-back button");
-  await browser(layoutIndex, "click", "#c3-rooms-trigger");
-  assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-room-list-heading");
-  await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
-  await browser(layoutIndex, "click", ".c3-room-list-actions button[aria-controls=\"c3-room-list\"]");
+  await showRoomList(layoutIndex);
+  await browser(layoutIndex, "click", sharedRoomLink);
+  await browser(layoutIndex, "click", companion);
+  await browser(layoutIndex, "wait", '.c3-shell[data-pane="chat"] .c3-chat-panel .c3-composer textarea');
   assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-composer textarea').value"), "A draft while checking the room");
+  await browser(layoutIndex, "click", chatBack);
   assert.equal(await evaluate(layoutIndex, "window.__panePlayers.every(video => video.isConnected)"), true);
   const afterPanes = await view(layoutIndex);
   assert.equal(afterPanes.sessionId, beforePanes.sessionId);
   assert(afterPanes.state.subscriptions.includes(primaryPublication), "pane navigation retains the watched screen");
   await progressing(layoutIndex, primaryPublication);
   await writeFile(join(output, "result.json"), JSON.stringify({ scenarios: ["two sources", "selective watching", "voice", "fanout relay",
-    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px", "room/people panes retain drafts and playback"],
+    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px", "chat, room and people drawers retain drafts and playback"],
     sourceCopies, relay, downstreamIndex }, null, 2));
   console.log(`Browser acceptance passed; evidence: ${output}`);
   }

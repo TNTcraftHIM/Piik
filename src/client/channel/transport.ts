@@ -73,6 +73,7 @@ interface TransportOptions {
   retire?(flowId: string): void;
   outgoingFailed?(flowId: string): void;
   connected(): void;
+  disconnected?(): void;
   roomData(ready: boolean): void;
   failed(resourcesReleased: boolean): void;
   data?(kind: "control" | "chunk", data: string | Uint8Array): void;
@@ -160,7 +161,10 @@ export class ChannelTransport {
         this.reportRoomDataReady();
         this.syncDeadline();
       } else if (this.pc.connectionState === "failed") this.fail();
-      else if (["disconnected", "closed"].includes(this.pc.connectionState)) options.input?.(null);
+      else if (this.pc.connectionState === "disconnected") {
+        options.input?.(null);
+        options.disconnected?.();
+      } else if (this.pc.connectionState === "closed") options.input?.(null);
     };
     this.pc.ondatachannel = ({ channel }) => {
       if (this.closed || ["failed", "closed"].includes(this.pc.connectionState)) { channel.close(); return; }
@@ -1021,6 +1025,9 @@ export class ChannelTransport {
     for (const owner of this.sending.values()) for (const binding of owner.senders) this.removeSender(binding);
     for (const slots of this.mediaSlots) for (const slot of slots.senders) slot.encoded?.dispose();
     this.mediaSlots.clear();
+    // Closing ends received tracks, and a video still showing an ended track paints a black frame.
+    // Emptied streams leave their consumers on the last frame, as a withdrawn remote track does.
+    for (const stream of this.receiving.values()) for (const track of stream.getTracks()) stream.removeTrack(track);
     this.pc.close();
     this.sending.clear();
     this.receiving.clear();

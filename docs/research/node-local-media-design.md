@@ -7,7 +7,7 @@ the private 3.x owners; these results do not establish its acceptance.
 The initial experiments date from 2026-09-07. This document records their
 tradeoffs, the shared Native/SFU implementation boundaries and subsequent
 recovery evidence. [ADR-0013](../adr/0013-embedded-node-local-media.md) owns the
-accepted model; [media quality](../standards/media-quality.md) owns current
+accepted model; [media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md) owns current
 behavior. The architecture is published. [Verification status](../verification-status.md)
 retains unresolved physical limits; controlled results do not establish a
 diagnosis for unmatched field reports.
@@ -718,7 +718,7 @@ Concrete feedback and recovery defects remain separate from that policy choice.
 
 ### Capture Boundary
 
-Output construction follows the [media-quality owner](../standards/media-quality.md):
+Output construction follows the [media-quality owner](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md):
 original plus a half-size output at the same FPS, with lower bitrate bounded by
 the source ceiling. Derived NV12 dimensions round down to even values. The
 group's bounded output slots do not add product presets.

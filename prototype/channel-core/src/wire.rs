@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 48;
+pub const CHANNEL_PROTOCOL: u8 = 51;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -60,8 +60,6 @@ pub enum Command {
     Browse {
         room_id: String,
         active: bool,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        relay_capacity: Option<u8>,
     },
     FileOffer {
         room_id: String,
@@ -583,6 +581,7 @@ fn video_settings_preserves_fractional_fps_and_rejects_invalid_source_facts() {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkState {
+    Disconnected,
     Connected,
     Failed,
 }
@@ -842,10 +841,6 @@ pub struct RoomDelivery {
 #[serde(rename_all = "camelCase")]
 pub struct RoomCapabilities {
     pub attachments: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub history_seek: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_availability_limit: Option<usize>,
 }
 
 pub const FILE_AVAILABILITY_LIMIT: usize =
@@ -888,50 +883,17 @@ fn file_availability_wire_is_additive() {
     let mut room = policy.view(observation_id).unwrap();
     let legacy = serde_json::to_value(&room).unwrap();
     assert!(legacy.get("fileAvailability").is_none());
-    assert!(legacy["capabilities"]
-        .get("fileAvailabilityLimit")
-        .is_none());
     let decoded: Room = serde_json::from_value(legacy).unwrap();
     assert!(decoded.file_availability.is_none());
-    assert!(decoded.capabilities.file_availability_limit.is_none());
 
     room.file_availability = Some(FileAvailability {
         observation_id,
         available: vec![true, false],
     });
-    room.capabilities.file_availability_limit = Some(FILE_AVAILABILITY_LIMIT);
     let encoded = serde_json::to_value(room).unwrap();
     assert_eq!(
         encoded["fileAvailability"],
         serde_json::json!({ "observationId": observation_id, "available": [true, false] })
-    );
-    assert_eq!(encoded["capabilities"]["fileAvailabilityLimit"], 400);
-}
-
-#[cfg(test)]
-#[test]
-fn history_seek_capability_is_optional() {
-    let old = serde_json::json!({ "attachments": true });
-    let mut capabilities: RoomCapabilities = serde_json::from_value(old.clone()).unwrap();
-    assert!(!capabilities.history_seek);
-    assert_eq!(serde_json::to_value(&capabilities).unwrap(), old);
-
-    capabilities.history_seek = true;
-    let new = serde_json::to_value(&capabilities).unwrap();
-    assert_eq!(
-        new,
-        serde_json::json!({ "attachments": true, "historySeek": true })
-    );
-
-    #[derive(Deserialize)]
-    struct LegacyCapabilities {
-        attachments: bool,
-    }
-
-    assert!(
-        serde_json::from_value::<LegacyCapabilities>(new)
-            .unwrap()
-            .attachments
     );
 }
 
@@ -1069,7 +1031,6 @@ pub struct Snapshot {
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
     pub subscriptions: Vec<Uuid>,
-    pub failed_subscriptions: Vec<Uuid>,
     pub pairs: Vec<PairInfo>,
     pub ice_servers: Vec<Value>,
 }
@@ -1138,18 +1099,6 @@ pub enum Event {
     },
     Conversation {
         packet: crate::conversation::SignedPacket,
-    },
-    RoomInvite {
-        room_id: String,
-        key: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
-    },
-    RoomInviteState {
-        room_id: String,
-        invitation: RoomInvitation,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
     },
     RoomCreated {
         room: crate::host::RoomSummary,

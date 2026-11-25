@@ -76,7 +76,8 @@
 .c3-room-name h2 { min-width: 0; font-size: 19px; letter-spacing: -.02em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-room-name > .c3-room-invitation-entry { border-inline-start: 1px solid var(--line); padding-inline-start: 8px; }
 .c3-room-actions, .c3-room-tools { display: flex; align-items: center; gap: 6px; flex: none; }
-.c3-room-toolbar { display: flex; align-items: flex-start; gap: 12px; flex: none; }
+.c3-room-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; flex: none; max-width: 100%; }
+.c3-room-actions { min-width: 0; max-width: 100%; }
 .c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
 .c3-room-tools { gap: 4px; }
 .c3-room-actions:not(:empty) + .c3-room-tools { border-inline-start: 1px solid var(--line); padding-inline-start: 12px; }

@@ -21,12 +21,13 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { id as channelId, roomInvitationSchema, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, roomOpenFailure, type ChannelActions, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type RoomOpenFailure, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
-import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
+import { BrowserHosting, browserRoomStorage } from "./browser-hosting";
+import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
 import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
@@ -221,10 +222,16 @@ export class ChannelSession {
     seekAfter?: number;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
-  private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
+  private readonly hosting = new BrowserHosting({
+    view: () => this.view,
+    socket: () => this.socket,
+    request: command => this.request(command),
+    write: command => this.write(command),
+    report: error => this.patch({ error }),
+    failures: roomOpenFailures => this.patch({ roomOpenFailures }),
+  });
   private app: ChannelApp | undefined;
   private localNativeEndpoints = new Set<string>();
-  private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
   private watching = new Map<string, ScreenWatch>();
   private historyChannel: string | null = null;
@@ -269,7 +276,7 @@ export class ChannelSession {
   });
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
-    host: roomId => this.hostedRooms.get(roomId)?.host,
+    host: roomId => this.hosting.host(roomId),
     pending: (requestId, bindingId) => this.requests.get(requestId)?.bindingId === bindingId,
     send: (packet, requestId) => {
       if (this.view.connection !== "connected" || this.socket?.readyState !== WebSocket.OPEN) throw new Error("disconnected");
@@ -309,7 +316,7 @@ export class ChannelSession {
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed, request) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed, request),
     key => messageRemoved(this.view.historyChangesByRoom[key.roomId], key.messageSeq),
-    (peer, request) => this.media.cancelChunks(peer, request));
+    (peer, request) => this.media.cancelChunks(peer, request), () => this.conversation.fileAvailabilityLimit());
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -528,7 +535,9 @@ export class ChannelSession {
       const state = this.view.state;
       this.patch({ connection: "reconnecting", state: state ? withoutRoomPictures(state) : null });
       this.beginRecovery();
-      this.retry = setTimeout(() => { this.retry = null; this.connect(acceptWelcome); }, 1000);
+      // Spread the retries of everyone a restarting site dropped at the same instant
+      // (RFC 6455 section 7.2.3). No later than the second it has always been.
+      this.retry = setTimeout(() => { this.retry = null; this.connect(acceptWelcome); }, 500 + Math.random() * 500);
     };
     socket.onerror = () => { /* The close event owns retry. */ };
   }
@@ -572,9 +581,9 @@ export class ChannelSession {
       this.applyState(event.state, true);
       void this.syncAppWatching(resumed);
       void this.resumeWatches();
-      const socket = this.socket;
-      void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
-        if (!this.closed && this.socket === socket && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
+      const socket = this.socket, current = () => this.socket === socket && this.view.sessionId === event.sessionId && !this.closed;
+      void this.hosting.restore(event.sessionId, current, skipRestoreRoom).catch(error => {
+        if (current()) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
       if (resumed) {
         this.media.resync();
@@ -596,38 +605,9 @@ export class ChannelSession {
       }
     } else if (event.type === "conversation") {
       void this.conversation.receive(event.packet).catch(() => {});
-    } else if (event.type === "host_bound") {
-      const hosted = this.hostedRooms.get(event.roomId), socket = this.socket;
-      if (!hosted) return;
-      hosted.bindingId = event.bindingId;
-      // bind and later dispatch share this host's existing serialized storage turn.
-      void hosted.host.bind(event.bindingId).catch(error => {
-        if (this.hostedRooms.get(event.roomId) === hosted && hosted.bindingId === event.bindingId && this.socket === socket) {
-          this.hostedRooms.delete(event.roomId);
-          this.write({ type: "host_stop", roomId: event.roomId, bindingId: event.bindingId });
-          this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
-          this.patch({ error: error instanceof Error ? error.message : "room_host_failed" });
-        }
-      });
-    } else if (event.type === "host_input") {
-      const hosted = this.hostedRooms.get(event.roomId), socket = this.socket;
-      if (!hosted || hosted.bindingId !== event.input.bindingId) return;
-      const binding = hosted.bindingId;
-      void hosted.host.dispatch(event.input).then(output => {
-        if (this.hostedRooms.get(event.roomId) === hosted && hosted.bindingId === binding && this.socket === socket) {
-          const result = (output as { reply?: { result?: { type?: string; dataRemoved?: boolean } } }).reply?.result;
-          if (result?.type === "deleted" && result.dataRemoved === true) {
-            this.hostedRooms.delete(event.roomId);
-            this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
-          }
-          this.write({ type: "host_output", roomId: event.roomId, output });
-        }
-      }).catch(error => {
-        if (this.hostedRooms.get(event.roomId) === hosted && hosted.bindingId === binding && this.socket === socket) {
-          this.patch({ error: error instanceof Error ? error.message : "room_host_failed" });
-        }
-      });
-    } else if (event.type === "room_reply") {
+    } else if (event.type === "host_bound") this.hosting.bound(event.roomId, event.bindingId);
+    else if (event.type === "host_input") this.hosting.input(event.roomId, event.input);
+    else if (event.type === "room_reply") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
       if (!request && event.requestId && event.result.type === "error") this.settleInteraction(event.roomId, event.requestId);
@@ -650,16 +630,12 @@ export class ChannelSession {
       this.mergeProfiles(event.profiles);
       request.result?.(event); request.resolve();
     }
-    else if (event.type === "room_invite" || event.type === "room_invite_state") {
-      if (event.requestId) {
-        const request = this.requests.get(event.requestId);
-        if (request?.roomId === event.roomId) request.result?.(event);
-      }
-    } else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
+    else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
     else if (event.type === "ack" || event.type === "error") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : null;
       if (request && event.requestId) {
+        if (event.type === "ack" && (request.kind === "room_invite" || request.kind === "get_room_invite")) return;
         this.retireRequest(event.requestId);
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
@@ -864,11 +840,7 @@ export class ChannelSession {
     const historyProfiles = Object.values(this.view.messagesByRoom).flatMap(historyProfileIds);
     void this.loadProfiles([...state.users.map(user => user.id), ...historyProfiles]).catch(() => {});
     if (refreshHelper) void this.syncAppWatching(true);
-    for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
-      this.hostedRooms.delete(id);
-      this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
-    }
-    for (const id of this.view.roomOpenFailures.keys()) if (!state.channel.rooms.some(room => room.id === id)) this.setRoomOpenFailure(id);
+    this.hosting.update(state);
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
       if (!restoring && room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)) this.voice.resumed(state, room.id);
       if (room.id !== this.roomId && room.reading && room.authorized && room.available
@@ -978,6 +950,8 @@ export class ChannelSession {
               if (needsClock) {
                 const time = event.result.serverTime;
                 if (kind !== "watch_ready" || typeof time !== "number" || !Number.isSafeInteger(time) || time < 0) throw new Error("invalid_response");
+              } else if (command.type === "room_invite" || command.type === "get_room_invite") {
+                if (kind !== (command.type === "room_invite" ? "invite" : "invite_state")) throw new Error("invalid_response");
               } else if (command.type !== "delete_room" && command.type !== "room_topology" && (conversation || kind !== "done")) {
                 throw new Error("invalid_response");
               }
@@ -1071,11 +1045,7 @@ export class ChannelSession {
       return;
     }
     const history = this.histories.get(reply.roomId);
-    if (record.type === "history_message") {
-      if (!history?.addMessage(reply.requestId, record.message)) this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
-      return;
-    }
-    if (record.type === "history_end" && history?.hasPage(reply.requestId)) {
+    if (record.type === "history_page" && history?.hasPage(reply.requestId)) {
       const page = history.completePage(reply.requestId, record);
       if (!page) {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
@@ -1181,14 +1151,11 @@ export class ChannelSession {
     return undefined;
   }
 
-  private releaseHosts(): void {
-    const hosts = [...this.hostedRooms.values()];
-    this.hostedRooms.clear();
-    if (this.view.roomOpenFailures.size) this.patch({ roomOpenFailures: new Map() });
+  private releaseHosts(stop = false): void {
+    this.hosting.release(stop);
     const app = this.app;
     this.app = undefined;
     app?.close();
-    this.hostCleanup = Promise.all([this.hostCleanup, ...hosts.map(value => value.host.close())]).then(() => {});
   }
 
   private async connectApp(verifiedHealth?: unknown, signal?: AbortSignal): Promise<ChannelApp> {
@@ -1308,86 +1275,6 @@ export class ChannelSession {
     }
     return shortcut;
   };
-
-  private async browserStorage(channelId: string, userId: string) {
-    const runtime = await loadRoomHosting(), database = roomDatabaseName(channelId, userId);
-    return {
-      storedRoomIds: () => runtime.BrowserRoomHost.storedRoomIds(database),
-      openExisting: (id: string) => runtime.BrowserRoomHost.openExisting(database, id),
-      open: (policy: string) => runtime.BrowserRoomHost.open(database, policy),
-    };
-  }
-
-  private async restoreHosts(sessionId: string, skipRoom?: string): Promise<void> {
-    if (typeof indexedDB === "undefined") return;
-    const socket = this.socket;
-    const current = () => this.socket === socket && this.view.sessionId === sessionId && !this.closed;
-    await this.hostCleanup;
-    if (!current()) return;
-    const state = this.view.state, self = this.view.self;
-    if (!state || !self) return;
-    const storage = await this.browserStorage(state.channel.id, self.id);
-    const retained = new Set(await storage.storedRoomIds());
-    if (!current()) return;
-    for (const id of this.view.roomOpenFailures.keys()) if (!retained.has(id)) this.setRoomOpenFailure(id);
-    for (const [id, hosted] of this.hostedRooms) if (!retained.has(id)) {
-      if (!current()) return;
-      this.hostedRooms.delete(id);
-      await hosted.host.close();
-    }
-    for (const id of retained) {
-      if (!current()) return;
-      if (id === skipRoom) continue;
-      if (!this.view.state?.channel.rooms.some(room => room.id === id && room.creatorId === self.id)) continue;
-      let hosted = this.hostedRooms.get(id);
-      let room: RoomSummary;
-      try {
-        if (!hosted) {
-          const host = await storage.openExisting(id);
-          if (!current()) { await host.close(); return; }
-          hosted = { host };
-          this.hostedRooms.set(id, hosted);
-        }
-        room = await hosted.host.summary();
-        if (room.creatorId !== self.id) throw new Error("owner_mismatch");
-      } catch (error) {
-        if (!current()) return;
-        if (this.hostedRooms.get(id) !== hosted) continue;
-        if (hosted) {
-          this.hostedRooms.delete(id);
-          await hosted.host.close();
-        }
-        this.setRoomOpenFailure(id, error instanceof Error && error.message === "room_not_found" ? undefined : roomOpenFailure(error));
-        continue;
-      }
-      if (!current()) return;
-      if (this.hostedRooms.get(id) !== hosted) continue;
-      this.setRoomOpenFailure(id);
-      try { await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId }); }
-      catch (error) {
-        if (!current()) return;
-        if (!(error instanceof Error) || !["room_not_in_domain", "room_already_hosted", "room_creation_restricted"].includes(error.message)) throw error;
-        if (this.hostedRooms.get(id) !== hosted) continue;
-        this.hostedRooms.delete(id);
-        await hosted.host.close();
-      }
-    }
-    if (!current()) return;
-    for (const room of this.view.state?.channel.rooms ?? []) {
-      if (room.delivery?.hostSessionId === sessionId && !this.hostedRooms.has(room.id)) {
-        this.write({ type: "host_stop", roomId: room.id, bindingId: room.delivery.bindingId });
-      }
-    }
-  }
-
-  /** The local hosting runtime's record of a room it could not open; an omitted failure clears it. */
-  private setRoomOpenFailure(roomId: string, failure?: RoomOpenFailure): void {
-    if (this.view.roomOpenFailures.get(roomId) === failure) return;
-    const failures = new Map(this.view.roomOpenFailures);
-    if (failure) failures.set(roomId, failure);
-    else failures.delete(roomId);
-    this.patch({ roomOpenFailures: failures });
-  }
 
   private async action<T>(key: string, work: () => Promise<T>, reportError: ReportError = true, options: { clearError?: boolean } = {}): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
@@ -1685,7 +1572,7 @@ export class ChannelSession {
       if (this.view.connection !== "connected" || this.view.sessionId !== sessionId) throw new Error("disconnected");
       if (this.readings.get(roomId) !== reading || !this.wantedReadings().has(roomId)) throw new DOMException("Read cancelled", "AbortError");
       if (!bindingId || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized
-        && room.available && room.delivery?.bindingId === bindingId && room.capabilities.historySeek)) throw new Error("room_unavailable");
+        && room.available && room.delivery?.bindingId === bindingId && room.historyLineage)) throw new Error("room_unavailable");
     };
     for (let attempt = 0; attempt < 2; attempt++) {
       guard();
@@ -1777,12 +1664,12 @@ export class ChannelSession {
         await this.request({ type: "browse", roomId: opened.id, active: true });
         return opened.id;
       }
-      const storage = await this.browserStorage(state.channel.id, self.id);
+      const storage = await browserRoomStorage(state.channel.id, self.id);
       current();
       const host = await storage.open(policy);
       creation = "committed";
       requestBrowserRoomPersistence();
-      await this.registerBrowserHost(room.id, host, current);
+      await this.hosting.register(room.id, host, current);
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
     } catch (error) {
@@ -1790,15 +1677,6 @@ export class ChannelSession {
       throw new RoomCreationInterrupted(room.id, creation === "committed");
     }
   }, reportError);
-  private async registerBrowserHost(roomId: string, host: HostedRoom, current: () => void): Promise<void> {
-    try { current(); } catch (error) { await host.close(); throw error; }
-    this.hostedRooms.set(roomId, { host });
-    this.setRoomOpenFailure(roomId);
-    const summary = await host.summary();
-    current();
-    if (this.hostedRooms.get(roomId)?.host !== host) throw new Error("disconnected");
-    await this.request({ type: "host_register", room: summary });
-  }
   private sessionContext(): () => void {
     const { sessionId, self, state } = this.view, socket = this.socket;
     if (!sessionId || !self || !state || this.view.connection !== "connected") throw new Error("disconnected");
@@ -1882,10 +1760,8 @@ export class ChannelSession {
       const native = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${this.credential}` });
       return { current, native: { snapshot: (signal?: AbortSignal) => native.snapshot(roomId, signal), restore: (blob: Blob) => native.restore(blob, roomId) } };
     }
-    const hosted = this.hostedRooms.get(roomId);
-    if (hosted && delivery.hostSessionId === this.view.sessionId && hosted.bindingId === delivery.bindingId) {
-      return { current, snapshot: (signal?: AbortSignal) => hosted.host.snapshot(signal) };
-    }
+    const host = this.hosting.host(roomId, delivery.bindingId);
+    if (host && delivery.hostSessionId === this.view.sessionId) return { current, snapshot: (signal?: AbortSignal) => host.snapshot(signal) };
     const app = this.app?.connected ? this.app : undefined;
     if (app) {
       const description = await app.describeHosting().catch(() => undefined); current();
@@ -1903,6 +1779,25 @@ export class ChannelSession {
     }
     throw new Error("room_host_unavailable");
   }
+
+  nativeRoomOpenFailure: ChannelActions["nativeRoomOpenFailure"] = async (roomId, operator, signal) => {
+    const current = this.sessionContext();
+    const { self, state } = this.view;
+    const eligible = () => this.view.state?.channel.rooms.some(room =>
+      room.id === roomId && room.authorized && !room.available && (operator === "domain" || room.creatorId === self?.id));
+    if (!eligible() || (operator === "app" && state?.channel.hostingMode === "hosted")) return;
+    const app = this.app;
+    const credential = this.credential;
+    const native = operator === "domain" && self?.id === state?.channel.ownerId && credential
+      ? new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` }, "/prototype/channel/hosting")
+      : undefined;
+    const description = operator === "app" && app?.connected ? await app.describeHosting(signal)
+      : await native?.describe(signal);
+    current();
+    if (signal.aborted || !eligible() || (operator === "app" && (app !== this.app || !app?.connected))
+      || (operator === "domain" && (credential !== this.credential || self?.id !== this.view.state?.channel.ownerId))) return;
+    return description?.unavailable?.find(entry => entry.roomId === roomId)?.reason;
+  };
 
   roomBackupAvailable = async (roomId: string): Promise<boolean> => {
     try { await this.backupOwner(roomId); return true; } catch { return false; }
@@ -1976,7 +1871,7 @@ export class ChannelSession {
         } catch (error) { await stage?.close(); throw error; }
       } else {
         snapshot = await owner.snapshot!(signal); current();
-        metadata = { kind: "room", version: 3, domainId: this.view.state!.channel.id,
+        metadata = { kind: "room", version: 4, domainId: this.view.state!.channel.id,
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
       if (copy) {
@@ -2132,7 +2027,7 @@ export class ChannelSession {
       const { room, cancel } = await this.allocateRoom(settings);
       cancelReservation = cancel;
       current();
-      return await this.installRoomHistory({ kind: "room", version: 3, domainId: state.channel.id,
+      return await this.installRoomHistory({ kind: "room", version: 4, domainId: state.channel.id,
         policy: { ...JSON.parse(policy), id: room.id }, retainedFiles: metadata.retainedFiles }, contents, { kind: "copy", stage });
     } catch (error) {
       if (!roomRestoreRecovery(error)) cancelReservation?.();
@@ -2239,24 +2134,20 @@ export class ChannelSession {
         if (!stage) throw new Error("invalid_backup");
         await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
         check(); owner?.current();
-        const hosted = this.hostedRooms.get(target);
         // The transaction retires the durable writer. Keep the old host alive
         // until commit so a storage rollback needs no competing registration.
-        const cancel = this.abortWhenStale(check);
-        try {
-          if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
-          else await stage.replace(cancel.signal);
-          committed = true;
-          if (!owner) requestBrowserRoomPersistence();
-        }
-        finally { cancel.dispose(); }
-        if (hosted && this.hostedRooms.get(target) === hosted) {
-          this.hostedRooms.delete(target);
-          if (hosted.bindingId) this.write({ type: "host_stop", roomId: target, bindingId: hosted.bindingId });
-          await hosted.host.close();
-        }
-        const host = await (await this.browserStorage(metadata.domainId, metadata.policy.creatorId)).openExisting(target);
-        await this.registerBrowserHost(target, host, check);
+        await this.hosting.replace(target, async () => {
+          const cancel = this.abortWhenStale(check);
+          try {
+            if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
+            else await stage.replace(cancel.signal);
+            committed = true;
+            if (!owner) requestBrowserRoomPersistence();
+          }
+          finally { cancel.dispose(); }
+        });
+        const host = await (await browserRoomStorage(metadata.domainId, metadata.policy.creatorId)).openExisting(target);
+        await this.hosting.register(target, host, check);
       }
       await this.waitForState(() => {
         const room = this.view.state?.channel.rooms.find(room => room.id === target);
@@ -2338,7 +2229,10 @@ export class ChannelSession {
     return { dataRemoved };
   }, false);
 
-  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => this.updateRoom(roomId, { voiceBitrate });
+  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
+    if (!Number.isInteger(voiceBitrate)) return Promise.reject(new Error("invalid_audio_bitrate"));
+    return this.updateRoom(roomId, { voiceBitrate });
+  };
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }), false);
   private roomInvitationURL(roomId: string, key: string): string {
     const url = new URL(location.pathname, this.invitationOrigin);
@@ -2348,8 +2242,11 @@ export class ChannelSession {
   getRoomInvite = async (roomId: string): Promise<RoomInvitationState> => {
     let invitation: RoomInvitationState | undefined;
     await this.request({ type: "get_room_invite", roomId }, event => {
-      if (event.type === "room_invite_state") invitation = event.invitation.state === "available"
-        ? { state: "available", url: this.roomInvitationURL(roomId, event.invitation.key) } : event.invitation;
+      if (event.type !== "room_reply") throw new Error("invalid_response");
+      const state = roomInvitationSchema.safeParse(event.result.invitation);
+      if (!state.success) throw new Error("invalid_response");
+      invitation = state.data.state === "available"
+        ? { state: "available", url: this.roomInvitationURL(roomId, state.data.key) } : state.data;
     });
     if (!invitation) throw new Error("invalid_response");
     return invitation;
@@ -2361,7 +2258,12 @@ export class ChannelSession {
   createRoomInvite = async (roomId: string): Promise<string> => {
     if (this.invitationPending(roomId)) throw new Error("operation_pending");
     let key: string | undefined;
-    await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
+    await this.request({ type: "room_invite", roomId }, event => {
+      if (event.type !== "room_reply") throw new Error("invalid_response");
+      const parsed = channelId.safeParse(event.result.key);
+      if (!parsed.success) throw new Error("invalid_response");
+      key = parsed.data;
+    });
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
   };
@@ -2796,7 +2698,7 @@ export class ChannelSession {
       const url = this.watchSource(rawURL).url;
       const selection = this.selectSource(roomId);
       try {
-        const app = await this.connectApp();
+        const app = await this.connectApp(undefined, selection.controller.signal);
         selection.controller.signal.throwIfAborted();
         const page = await app.preparePage(url, () => this.patch({}), selection.controller.signal);
         selection.controller.signal.throwIfAborted();
@@ -3031,7 +2933,7 @@ export class ChannelSession {
       if (!activity || activity.source.kind !== "website" || activity.sessionId === this.view.sessionId) throw new Error("watch_unavailable");
       if (activity.playback.timeline === "program") throw new Error("watch_live_timeline_unsupported");
       const media = new AppPageMedia(async signal => {
-        const app = await this.connectApp();
+        const app = await this.connectApp(undefined, signal);
         signal.throwIfAborted();
         return app.preparePage(originalWatchURL(activity.source), () => this.patch({}), signal);
       });
@@ -3361,7 +3263,7 @@ export class ChannelSession {
       && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
   nativeSources = async (signal?: AbortSignal): Promise<NativeCaptureSources> => {
     signal?.throwIfAborted();
-    const app = await this.connectApp();
+    const app = await this.connectApp(undefined, signal);
     const sources = await app.sources(signal);
     if (this.app !== app || !app.connected || this.closed) throw new Error("app_context_changed");
     if (this.view.encodingExecution === "software" && !sources.softwareEncodingCodecs.length)
@@ -3387,7 +3289,7 @@ export class ChannelSession {
   startExternalScreen = (roomId: string, reportError: ReportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     try {
-      const app = await this.connectApp();
+      const app = await this.connectApp(undefined, selection.controller.signal);
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
       await app.prepareExternalInput(share.id, roomId);
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
@@ -3653,7 +3555,7 @@ export class ChannelSession {
     let app: ChannelApp | undefined;
     let ownsPreparation = false;
     try {
-      app = await this.connectApp();
+      app = await this.connectApp(undefined, signal);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
         && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);
@@ -3687,6 +3589,7 @@ export class ChannelSession {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");
     if (this.view.connection !== "connected") throw new Error("disconnected");
+    if (limit !== null && !Number.isInteger(limit)) throw new Error("invalid_relay_capacity");
     const key = "direct-limit:" + publicationId;
     if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
       await this.action(key, () => this.request({ type: "set_screen_direct_limit", publicationId, limit }, undefined, publication.roomId), false);
@@ -3878,7 +3781,6 @@ export class ChannelSession {
       voice: this.voice.project(state.voice),
       ...this.projectWatches(state),
       subscriptions,
-      failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),
     };
   }
 
@@ -3920,8 +3822,7 @@ export class ChannelSession {
     this.endRecovery();
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;
-    for (const [roomId, hosted] of this.hostedRooms) if (hosted.bindingId) this.write({ type: "host_stop", roomId, bindingId: hosted.bindingId });
-    this.releaseHosts();
+    this.releaseHosts(true);
     this.write({ type: "leave" });
     const socket = this.socket;
     this.socket = null;

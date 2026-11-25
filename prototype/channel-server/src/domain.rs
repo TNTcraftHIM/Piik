@@ -15,10 +15,9 @@ pub(crate) use backup::RestoreDomain;
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
     backup::DomainMetadata,
-    host::RoomSummary,
     storage,
     wire::{Event, HostingMode, Request, RoomCreationPolicy},
-    Authority, Effects, RoomState,
+    Authority, Effects,
 };
 use std::{
     collections::BTreeMap,
@@ -287,7 +286,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     use piik_channel_core::wire::Command;
     use piik_channel_native::session::{HostCommand, OpenRoom};
 
-    let (room, request_id, commands, password, picture, allow_service_relay) = {
+    let (room, session, request_id, commands, password, picture, allow_service_relay) = {
         let mut hub = state.hub.lock().unwrap();
         if hub.authority.hosting_mode() == HostingMode::Lightweight {
             hub.request(connection, request);
@@ -313,6 +312,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         };
         (
             room,
+            hub.authority.session_for_connection(connection).expect("room creator session"),
             request_id,
             hub.room_commands.clone(),
             password,
@@ -324,7 +324,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     let result = async {
         let commands = commands.ok_or_else(|| "hosting_unavailable".to_owned())?;
         let policy = tokio::task::spawn_blocking(move || {
-            hosted_room_policy(room, password, picture, allow_service_relay)
+            room.new_policy(password, picture, allow_service_relay)
         })
         .await
         .map_err(|_| "hosting_unavailable")??;
@@ -332,42 +332,21 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         commands
             .try_send(HostCommand::Open(OpenRoom { policy, result }))
             .map_err(|_| "hosting_unavailable")?;
-        response.await.map_err(|_| "hosting_unavailable")?
+        response.await.unwrap_or_else(|_| Err("room_creation_unconfirmed".into()))
     }
     .await;
     let mut hub = state.hub.lock().unwrap();
     match result {
         Ok(room) => hub.send(connection, Event::RoomCreated { room, request_id }),
         Err(code) => {
-            hub.authority.cancel_room_reservation(connection, &id);
+            if !matches!(code.as_str(), "room_creation_unconfirmed" | "room_created_connection_failed") {
+                let mut effects = Effects::default();
+                hub.authority.cancel_reservation(session, &id, &mut effects);
+                hub.apply(effects);
+            }
             hub.send(connection, Event::Error { code, request_id });
         }
     }
-}
-
-fn hosted_room_policy(
-    room: RoomSummary,
-    password: Option<String>,
-    picture: Option<String>,
-    allow_service_relay: Option<bool>,
-) -> Result<RoomState, &'static str> {
-    let mut policy = RoomState::new(
-        room.id,
-        room.name,
-        room.icon,
-        room.creator_id,
-        room.access,
-        room.hidden,
-        password,
-    )?;
-    policy.appearance.picture = picture;
-    policy.voice_bitrate = room.voice_bitrate;
-    policy.relay_capacity = room.relay_capacity;
-    if let Some(allowed) = allow_service_relay {
-        policy.allow_service_relay = allowed;
-    }
-    policy.validate()?;
-    Ok(policy)
 }
 
 async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: String) {
@@ -562,13 +541,11 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
             send_frame(&mut writer, Message::Close(None)).await;
         };
         let reading = async {
-            let mut last_seen = tokio::time::Instant::now();
             loop {
-                let incoming = tokio::select! {
-                    _ = tokio::time::sleep_until(last_seen + Duration::from_secs(20)) => break,
-                    incoming = reader.next() => incoming,
+                let incoming = match tokio::time::timeout(Duration::from_secs(20), reader.next()).await {
+                    Ok(incoming) => incoming,
+                    Err(_) => break,
                 };
-                last_seen = tokio::time::Instant::now();
                 match incoming {
                     Some(Ok(Message::Text(text))) => match Request::parse(&text) {
                         Ok(value) => dispatch_request(&state, connection, value).await,
@@ -799,8 +776,8 @@ impl Domain {
             .map(str::to_owned)
     }
 
-    /// Only an explicit App launcher navigation issues a bearer for the first Join.
-    pub(crate) fn launch_ticket(&self) -> anyhow::Result<String> {
+    /// An explicit local operator action issues a bearer for the first Join.
+    pub fn launch_ticket(&self) -> anyhow::Result<String> {
         // Allow time for an external browser to start and load the site.
         const LAUNCH_TIMEOUT: Duration = Duration::from_secs(60);
         let mut hub = self.hub.lock().unwrap();
@@ -854,10 +831,6 @@ impl Domain {
             .route("/prototype/channel/rooms/backup", put(backup::restore))
             .route("/prototype/channel/rooms/copy", post(backup::create_copy))
             .route("/prototype/channel/hosting", get(backup::describe))
-            .route(
-                "/prototype/channel/limits",
-                get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),
-            )
             .with_state(self.clone())
             .merge(routes);
         let (stop_http, mut http_stopped) = watch::channel(false);
