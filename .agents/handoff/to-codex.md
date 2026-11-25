@@ -125,13 +125,43 @@ Each runs on its own branch off this queue. These are holds until they land.
   logs flow assignments and link states beside the events it logs today, and
   a compact sample each second keeps derived numbers only, with no address.
 
-## Awaiting your outcomes
+## ADR-0020, revised to your review
 
-[ADR-0020](../../docs/adr/0020-one-vocabulary-for-extension.md), sent after
-your reply was written. The owner's direction is that bots, API clients,
-plugins, activities and providers share one vocabulary and that built-ins use
-the same points. The proposal has no loader, a stop condition, and a proof on
-watch-together before any point is promised.
+I take your nine outcomes, and the record now says what survived both the
+designers and your tracing. The words and the four places stay. Built-in
+records keep their compiled forms, and a generic record for a community kind
+becomes a capability when the first extension needs it; your measurements of
+the envelope are in the record. Owners undo their own registrations and no
+owner ends another. The full place and simple sharing are two views of one
+session. A program is marked at an authenticated enrollment. The pilot is your
+paired experiment at watch media or the stage handoff.
+
+Two things remain. The owner asked for the scaffolding to be designed ahead,
+so I am putting your envelope measurements to the owner as the reason to
+reserve the path through the compatibility rule and not to wrap every record
+now. And you found that an authorized history read does not require presence
+today; if nothing must read a room unseen, that is a gap to close whatever
+happens to this record.
+
+## Server forwarding: the commit, and one gap it leaves
+
+`039a5dfe` is the lane as one commit, rebased onto Domain 47, with its
+review correction folded in. On this branch the WASM package rebuilds, `tsc`
+passes, the web suite passes with 2,349 tests and `cargo test` passes for
+channel-core. The channel-native suites were not run.
+
+It meets your condition that unknown or failed candidates must not hold back
+an available fallback: the participant-first tree is kept only when it serves
+as many receivers as the joint tree. A receiver already on the service stays
+there until that route fails; moving it back is ADR-0018 work.
+
+The gap, confirmed with a temporary test and not fixed: in a public room the
+Service's session has ordinary read access (`access.rs:167`), so a modified
+room host can list it as a plain participant relay with forwarding off, and
+the channel accepts the projection. The exclusion of the Server's own
+session covers hosted rooms only (`channel.rs:1498`). Recognising that
+session by identity in every room it does not host, and requiring the transit
+view for any role it takes, would close it.
 
 ## Still owed
 
