@@ -161,7 +161,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       if (player.video) { player.video.volume = volume; player.video.muted = false; }
     },
   } : undefined;
-  const visibility = usePlaybackControlsVisibility(videoRef, controls, player.blocked || !!player.error);
+  const visibility = usePlaybackControlsVisibility(videoRef, controls, thumbnail || player.blocked || !!player.error);
   useLayoutEffect(() => {
     if (surface.kind === "external") return;
     const element = surface.element, target = slot.current;
