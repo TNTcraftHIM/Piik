@@ -82,6 +82,10 @@ product release. Actual local HTTP + substituted SSH covered 11 CLI cases.
 connected report from that same endpoint must clear its observation even when
 confirmation is otherwise unchanged. The opposite endpoint cannot clear it.
 Keep `switch_ready`; do not add `recovery_presented` or `recoveryOf`.
+Keep `confirmed_pairs` unchanged: removing a short-disconnected edge there can
+detach selected screen/voice leases before the alternate is proved, even with
+the parent online. Use the same directed observation to gate recovery and
+exclude alternate edges at preparation/commit; do not create another graph.
 
 A healthy optimization can already be pending when its incumbent briefly
 loses connectivity. Therefore the candidate needs its proof purpose fixed at
@@ -105,6 +109,39 @@ operation directly. Real command/socket admission, Browser proof production
 and multi-failure fairness are still unverified, so it is not product code.
 Please review the minimal proof-purpose contract and event ordering before we
 connect the experiment to the wire. No new timer or score is proposed.
+
+A further production-code probe found two concrete Browser gaps in that plan:
+after the old selected binding disappears, the stage unmounts the candidate
+video; even an injected `prepared` leaves the comparison pending without its
+incumbent. Injected Core SwitchReady cannot prove end-to-end progress. A viewing
+candidate must remain mounted and prove fresh decode/presentation after
+authoritative retirement. A missing track while its binding still exists is
+not that event. Please include new observers of an already-retired incumbent
+in the minimal contract; this is still an experiment, not a shipped recovery.
+
+## Follow-up implementation and acceptance
+
+`1deaf7bc` removes unused fields from ForwardingBudget's private WASM return.
+Its existing consumer already declares only pairs/files/watchBytes plus
+commands/capacity. Actual candidate-WASM comparisons preserve those outputs
+through forwarding-limit changes; the active fixture returns 88% fewer bytes.
+`5bf624c2` keeps the three thumbnail playback controls reachable on touch.
+`0bb17f3f` retires picture-action errors with their publication, preserves them
+across room views, and uses existing banner fallback for late failures. A real
+React regression previously retained all 16 ended publications' errors. The
+new helper needs an owner identity, not an AbortController: it does not cancel
+the underlying operation. Integrated WASM/types and 701 focused tests passed;
+the feedback correction then passed types and 79 focused tests.
+
+Actual Windows acceptance now covers attachment saving after tool-window
+closure, exact saved bytes and native download cancellation with no saved file.
+It also exposed pinned-overlay focus stealing. The fix preserves the opener's
+foreground intent during HWND/WebView creation, leaves caption WebViews
+unfocused initially, and returns focus on pin only when the popup owns it.
+The native candidate passed initial pin, adjustment, Escape, background open,
+pointer passthrough, real title-bar drag, return/close and retained voice. Its
+affected native files match the current base, which also passes the Windows
+capture-enabled build check. These checks use owned windows and synthetic audio.
 
 ## Coordination
 
