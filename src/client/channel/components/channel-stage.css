@@ -81,15 +81,12 @@
 }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 .c3-monitor-wait-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
-/* The failure hangs at the lower edge so the centred status and Retry picture do not move. */
-.c3-monitor-wait:has(> .c3-picture-failure) { position: relative; }
-.c3-monitor-wait > .c3-picture-failure { position: absolute; inset-inline: 12px; bottom: 12px; justify-content: center; text-align: center; }
-/* A thumbnail has no room below Retry picture, so its failure takes the status line's place there. */
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait > .c3-picture-failure { position: static; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait:has(> .c3-picture-failure) > [role="status"] { display: none; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait:has(> .c3-picture-failure) > .c3-monitor-wait-actions { order: 1; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait:is([data-failed], :has(> .c3-picture-failure)) { padding: 8px; gap: 4px; text-align: center; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-wait:is([data-failed], :has(> .c3-picture-failure)) > :is(svg, .lr-brand-loader) { display: none; }
+.c3-monitor-wait > .c3-picture-failure { justify-content: center; text-align: center; }
+/* The operation failure replaces the wait status and leaves Retry picture reachable. */
+.c3-monitor-wait:has(> .c3-picture-failure) > [role="status"] { display: none; }
+.c3-monitor-wait:has(> .c3-picture-failure) > .c3-monitor-wait-actions { order: 1; }
+:is(.c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed], .c3-monitor-wait:has(> .c3-picture-failure)) { padding: 8px; gap: 4px; text-align: center; }
+:is(.c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed], .c3-monitor-wait:has(> .c3-picture-failure)) > :is(svg, .lr-brand-loader) { display: none; }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */
 .c3-app:has(.c3-monitor.is-theater) .c3-shell { visibility: hidden; }
 .c3-shell:has(.c3-monitor.is-theater) { container-type: normal; }
