@@ -12,10 +12,16 @@
 //! keeping every pair confirmed earlier would give leaf moves what attempting
 //! one pair does; the published tables used `STUDY_SCALE=2`.
 //!
+//! `timed::time_model` gives endpoint answers a duration and measures each
+//! viewer's first-picture delay (see `topology_study/timed.rs` for its
+//! variables); with `--features sqlite,study` it also runs policies P1 and P2,
+//! whose switches live in `src/study.rs`, off by default and compiled only
+//! with that feature.
+//!
 //! The core is driven through the same public command path as the other
-//! integration tests; nothing under `src/` is touched. Inputs are drawn from a
-//! seed, and participants are numbered in session-identifier order, so a seed
-//! reproduces a run (checked by `runs_are_deterministic`).
+//! integration tests. Inputs are drawn from a seed, and participants are
+//! numbered in session-identifier order, so a seed reproduces a run (checked
+//! by `runs_are_deterministic` and `timed::timed_runs_are_deterministic`).
 
 #[path = "topology_study/driver.rs"]
 mod driver;
