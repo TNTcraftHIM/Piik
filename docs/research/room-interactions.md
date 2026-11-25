@@ -619,7 +619,8 @@ The [2.x input adapter](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddc
 sessions share the same physical keyboard and pointer. The co-play candidate
 adds concurrent capability-negotiated grants under that same owner and existing
 Host authorization, retaining exclusivity for older published clients,
-as defined by the [input contract](../standards/rooms-access.md#remote-control).
+as defined by the [2.x input contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md#remote-control).
+The [remote-control standard](../standards/remote-control.md) owns the 3.0 contract.
 Remote control starts
 off. The Browser remembers the last successfully applied authorization mode;
 the Host must still enable it manually for each new shared source. Ask each time

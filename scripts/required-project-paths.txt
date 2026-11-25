@@ -33,6 +33,7 @@ docs/standards/rooms-access.md
 docs/standards/routing-transport.md
 docs/standards/media-quality.md
 docs/standards/presentation-lifecycle.md
+docs/standards/remote-control.md
 docs/deployment.md
 docs/operations/self-hosting.md
 docs/operations/github.md

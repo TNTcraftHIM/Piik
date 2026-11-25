@@ -1098,6 +1098,8 @@ and process exclusion are alternative scopes. An unavailable selected endpoint
 ends only source sound; it does not capture another device or stop the picture
 and microphone. Local playback-device selection does not change capture scope.
 
+The [remote-control standard](../standards/remote-control.md) owns input grants,
+targets and release; the platform input below implements that contract.
 Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside capture. Commit requires the selected monitor, EIS devices and first image;
 cancellation closes the candidate and preserves the share. Close a pending

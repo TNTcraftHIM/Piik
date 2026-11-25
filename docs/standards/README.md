@@ -18,6 +18,7 @@ both lines.
 | 3.0 room policy, history, identity and file storage | [Room-data model](../research/channel-storage-and-identity.md) |
 | 3.0 target channel modes, authority and moderation | [Server hosting design](../research/server-hosting-plan.md) |
 | 3.0 target forwarding model and candidate delivery details | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) |
+| 3.0 remote input authorization, simultaneous control and release | [Remote control](./remote-control.md) |
 | Published 2.x room authority, invitation/password access and persistence | [Rooms and access](./rooms-access.md) |
 | Published 2.x routes, capacity, P2P/SFU transitions and route operations | [Routing and transport](./routing-transport.md) |
 | Published 2.x capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |

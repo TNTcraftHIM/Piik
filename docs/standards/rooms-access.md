@@ -196,63 +196,8 @@ owns placement and recovery; [status](../status.md#current-work) indexes deliver
 
 ## Remote Control
 
-Remote input belongs to one active App-owned window or screen share. The Host
-explicitly enables it for that source using Ask each time, Room Viewers or a
-separate control password. Viewer identity and requests reuse authenticated room
-membership; grants and encrypted input stay bound to the current route and source.
-Changing the source, stopping sharing, authorization loss or route retirement
-releases the corresponding grants and held input. Reconnection requires a new grant.
-Pausing the share releases held input and clears grants and pending requests.
-Resuming accepts fresh requests under the same authorization mode.
-Preparing a source replacement preserves the current source's authorization;
-failed preparation or cancellation does not retire a still-active source.
-An individual input execution failure drops that operation and preserves the
-grant. Failed key/button releases remain owned cleanup; only releases are retried,
-never presses, movement or text. Missing current target geometry suspends input
-until observation recovers; confirmed target identity loss retires its grants.
-
-Remote control defaults to one controller. The Host can enable **Allow
-simultaneous control** for the current source so approved, capability-negotiated
-Viewers share input through the same authorization choice. Changing this setting
-retires current requests and grants without changing the authorization mode or
-password; replacing the source resets it off. Older published clients retain the
-exclusive keyboard/mouse baseline. Gamepad support and participant presentation
-remain available with simultaneous control off.
-One grant authorizes one Viewer to use keyboard/mouse and an optional supported
-gamepad. Switching or combining input devices requires no additional approval.
-The simultaneous-control limit counts approved Viewers, not device types.
-Held keys and mouse buttons belong to each grant; releasing one
-participant cannot release another's still-held inputs. All approved keyboard/mouse
-grants contribute to the same pointer, with no per-player mouse assignment or
-join-order priority. Committed text insertion is available with one approved
-Viewer and pauses while two or more grants coexist; physical key input remains available.
-Input still belongs to one process-wide source owner, not multiple simultaneous shares.
-
-Collaboration markers describe granted participation, not live key or pointer
-activity. The Host publishes the native grant owner's current input endpoints;
-room signaling resolves their authenticated room identities and distributes a
-read-only, share-scoped snapshot to opted-in Viewers. Pending requests are not
-participants, and stopped sources or replaced endpoints cannot retain a marker.
-This presentation neither grants control nor creates another routing path.
-
-Optional Windows x64 gamepad use creates independent Xbox 360 devices through
-the public device interface of an already-installed ViGEmBus. Optional input
-drivers and third-party input SDK binaries stay external on every platform:
-Piik does not download, install or bundle them. Each approved Viewer owns their
-virtual device under the same remote-control grant. Windows is subject to the four
-XInput slots shared with the Host's existing devices; slot limits belong to the
-platform backend. Driver connection and target creation determine availability;
-keyboard/mouse input continues when the optional backend is unavailable.
-Linux uinput has kernel-level validation; macOS virtual HID remains a prototype, with
-platform permissions and evidence limits recorded in the
-[co-play assessment](../research/room-interactions.md#remote-co-play).
-
-Losing shared-window focus releases held input and neutralizes gamepads while
-keeping grants suspended. Disconnecting a gamepad neutralizes and removes only
-its device; ending remote control releases every input owned by that Viewer. The Host's stop
-shortcut ends all remote input. The [reader guide](../guide/remote-control.md)
-owns usage and driver setup; [interaction research](../research/room-interactions.md#remote-co-play)
-owns backend rationale and measurements.
+The [remote-control standard](./remote-control.md) owns the 3.0 input grant,
+target and release contract.
 
 ## Persistence Modes
 
