@@ -11893,6 +11893,79 @@ test("two waiting successors retain a viewer's peer choice when the App can open
     expect(session.getSnapshot().watchPlayers.get(second.id)?.mode).toBe("peer");
   } finally { session.close(); }
 });
+test.each([
+  ["watch", "connected"], ["watch", "reconnected"], ["watch", "left"],
+  ["screen", "connected"], ["screen", "reconnected"], ["screen", "left"], ["screen", "revoked"],
+] as const)("consecutive watch replacements follow a %s successor while the previous join is pending (%s)", async (kind, mode) => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const original = { id: "old", roomId: "first", sessionId: "publisher", userId: "other", viewerSessionIds: [],
+    source: { kind: "media" as const, url: "https://fixture.test/old.mp4" },
+    playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const middle = { ...original, id: "middle", predecessor: { kind: "watch", id: original.id } };
+  const latest = { ...middle, id: "latest" };
+  const screen = { id: latest.id, userId: original.userId, sessionId: original.sessionId, roomId: original.roomId, kind: "screen",
+    predecessor: middle.predecessor, paused: false, audience: [], source: { kind: "screen", name: "Display" }, title: null };
+  const channel = mode === "revoked" ? {
+    ...base.channel, rooms: base.channel.rooms.map(room => room.id === original.roomId ? { ...room, authorized: false } : room),
+  } : base.channel;
+  const final = { ...base, channel, watchActivities: kind === "watch" ? [latest] : [], publications: kind === "screen" ? [screen] : [] };
+  try {
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original] } });
+    const initial = session.joinWatch(original.id);
+    confirmWatchJoinOrLeave(socket);
+    await initial;
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original], watchSubscriptions: [{ id: original.id, mode: "direct" }] } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
+    expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: middle.id, mode: "direct" });
+    if (mode === "left") {
+      const leave = session.leaveWatch(middle.id);
+      expect(socket.sent.filter(c => c.type === "join_watch" && c.mode === null).map(c => c.id)).toEqual([original.id, middle.id]);
+      confirmWatchJoinOrLeave(socket);
+      await leave;
+    }
+    let current = socket;
+    if (mode === "reconnected") {
+      socket.close();
+      session.reconnect();
+      current = ChannelSocket.current;
+      await current.onopen?.();
+      current.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint",
+        state: final });
+    } else {
+      current.receive({ type: "state", state: final });
+    }
+    if (kind === "screen") {
+      const subscriptions = () => current.sent.filter(command => command.type === "subscribe" && command.publicationId === latest.id && command.enabled);
+      if (mode === "left" || mode === "revoked") {
+        expect(subscriptions()).toHaveLength(0);
+        expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
+        return;
+      }
+      expect(session.getSnapshot().state?.publications[0].predecessor).toEqual({ kind: "watch", id: middle.id });
+      await vi.waitFor(() => expect(subscriptions()).toHaveLength(1));
+      current.receive({ type: "room_reply", roomId: screen.roomId, requestId: subscriptions()[0].requestId, result: { type: "done" } });
+      current.receive({ type: "state", state: { ...final, subscriptions: [latest.id] } });
+      expect(session.getSnapshot().state?.subscriptions).toEqual([latest.id]);
+      return;
+    }
+    const joins = current.sent.filter(c => c.type === "join_watch" && c.id === latest.id && c.mode === "direct");
+    if (mode === "left") {
+      expect(joins).toHaveLength(0);
+      expect(session.getSnapshot().watchPlayers.size).toBe(0);
+      return;
+    }
+    expect(joins).toHaveLength(1);
+    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: middle.id });
+    expect(session.getSnapshot().waitingWatchPages?.has(latest.id)).toBe(true);
+    confirmWatchJoinOrLeave(current);
+    current.receive({ type: "state", state: { ...base, watchActivities: [latest], watchSubscriptions: [{ id: latest.id, mode: "direct" }] } });
+    expect(session.getSnapshot().watchPlayers.get(latest.id)?.mode).toBe("direct");
+    expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
+  } finally { session.close(); }
+});
+
 test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a new ordinary subscription for a %s viewer", async status => {
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), next = new WatchTestVideo();
