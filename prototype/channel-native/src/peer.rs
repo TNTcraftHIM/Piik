@@ -3755,6 +3755,7 @@ fn close_pair(mut pair: Pair, reason: RetirementReason) -> impl std::future::Fut
 }
 
 mod bandwidth;
+mod deadline;
 mod input;
 #[cfg(test)]
 pub(crate) use input::tests::share_pause_projection;

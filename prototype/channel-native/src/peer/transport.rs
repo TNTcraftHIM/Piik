@@ -497,6 +497,7 @@ impl Runtime {
                 None
             };
             let (network, mut incoming) = mpsc::channel::<Datagram>(256);
+            let deadline = super::deadline::Deadline::new();
             let mut gateway: Option<super::mapping::Mapping> = None;
             let mut mapped: Option<Candidate> = None;
             let mut sockets: Vec<Socket> = vec![];
@@ -619,10 +620,8 @@ impl Runtime {
                             }
                         }
                     },
-                    _=async {
-                        // A freshly expired Sleep can still wait for Tokio's next millisecond tick.
-                        if next > Instant::now() { tokio::time::sleep_until(next.into()).await; }
-                    }=> {
+                    // The SDK's pacer and probes need this instant met, not the next system tick.
+                    _=deadline.wait(next)=> {
                         let now=Instant::now();
                         for engine in engines.values_mut().filter(|e|e.deadline<=now) {
                             for endpoint in engine.turn.values_mut(){endpoint.timeout(now);}
