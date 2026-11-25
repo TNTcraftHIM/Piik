@@ -1,6 +1,7 @@
 # ADR-0013: Embedded Node-Local Media
 
 - Status: Accepted; physical evidence and release boundaries are owned by status
+- Scope: published 2.x. 3.0 keeps its rules for sharing an encoding among children. The Pion and LiveKit embedding is replaced by the Native RTC SDK of [ADR-0016](./0016-shared-rust-core.md).
 - Date: 2026-09-07
 
 ## Context

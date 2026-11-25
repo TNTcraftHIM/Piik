@@ -56,8 +56,9 @@ that design can be replaced by a better one that serves the same statement.
   itself slowly: connections toward a more reliable graph, encodings toward
   fewer encoders.
 - **Subsets downward, built upward.** Each level uses a subset of the one
-  above: channel, room, activity. Connections are built the other way, by the
-  activity that needs one, and kept for the next.
+  above: channel, room, activity. Connections are built mostly the other way,
+  by the activity that needs one, and kept for the next. When idle, the pool
+  may also build and check connections ahead of need.
   [Forwarding](./research/channel-forwarding-plan.md)
 
 ## Media And Network

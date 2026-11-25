@@ -18,6 +18,13 @@ code and wire identifiers include `Domain` for the technical authority and
 runtime. Preserve identifier spelling when discussing protocol messages.
 WebRTC data channels and DNS domains retain their technical meanings.
 
+Two words changed meaning between the generations. In 2.x a **Host** is the
+person sharing and controlling the room. In 3.0 a room's **host** is the device
+or server that runs its writer, and the person who created the room is its
+owner. A **relay** is a participant that forwards for another. Forwarding by a
+server is called **server forwarding**. Its placement is owned by the
+[network model](../research/channel-network-design.md).
+
 The table below describes the published 2.x model.
 
 | Meaning | English | Chinese |

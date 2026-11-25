@@ -176,8 +176,9 @@ Keep one confirmed order at the actual room runtime:
 Confirmation records a successful save by the room writer. Delivery to each
 participant and attachment copying are independent of confirmation. The domain
 forwards live packets without storing conversation or issuing a second
-confirmation. Its operator can see the forwarded plaintext;
-the signing boundary authenticates the host, not confidentiality from the domain.
+confirmation. Its operator can read the forwarded plaintext. Readers authenticate
+the writer's signature using the session key and room-host binding supplied by
+the domain.
 Keep retry association with the
 retained message rather than a permanent second ledger. Automatic retries stay
 within the advertised retention/recovery boundary; an expired pending send is

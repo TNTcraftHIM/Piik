@@ -5,7 +5,7 @@ This guide covers the 3.0 internal test. For the published version, use the [roo
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
 Choose a room you can enter from the sidebar to read chat, join voice, share your screen or watch a friend.
-The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. To read messages in a private room, the site owner needs access to it too.
+The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. The site owner needs access to open a private room in Piik. The site operator can read the chat text and inline images the site forwards. A Server-hosted room also stores its records on the operator's machine.
 
 - **The couch** shows who is in the current room, including people who are just reading chat.
 - **Under a room name on the left**, you see people in voice, sharing, watching or transferring files, including anyone forwarding to others. The icons beside their names show what they are doing.
@@ -41,7 +41,10 @@ in place. The tabs show the tasks available to you:
 - **Room:** Change the name, image or access, then **Save**. **Hide from users
   without access** hides a private room from people who have not been admitted.
   Under **Users with access**, **Remove room access** ends that user's access and
-  activities in this room; they need a new grant to return.
+  activities in this room. Someone who still has the room's invitation link or
+  password can enter again. To prevent re-entry with those credentials, first
+  reset the invitation and change or remove any room password, then remove the
+  person's access.
 - **Connection:** Choose how many people this device helps forward to in this room.
 - From **Records**, export loaded chat text or select **Clear local room cache**
   to remove this identity's cached attachments on this device. Room history and

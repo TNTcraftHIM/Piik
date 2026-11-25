@@ -56,8 +56,8 @@ the feedback period; they do not delay that delivery.
 - [ ] **Contracts fixed before release.** Decide
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md): before the first
   public 3.0 release, settle the compatibility baseline and matrix, explicit
-  reply outcomes, release storage fixtures, a new history lineage on restore,
-  and one owner for history rules with strict IndexedDB durability. Schema
+  reply outcomes, release storage fixtures and the implemented history and
+  storage boundaries. Schema
   generation, a state revision, a generic activity envelope and the encoding of
   wire keys wait for a consumer. The
   [design review](./research/clean-room-design-review.md) records the
@@ -68,14 +68,15 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Restored history identity.** Keep an offline reader's old position from
-  hiding new messages after a backup restores an earlier sequence. Give restored
-  history a durable lineage distinct from ordinary writer reconnection, and verify
-  unread, pagination and deletion behavior without a transaction-wide event log.
-- [ ] **Browser room persistence.** Evaluate persistent-storage permission at
-  explicit Browser hosting separately from transaction durability and local
-  caches. The browser may decline; report the actual storage state without
-  blocking the basic room flow.
+- [ ] **Local owner launch credential.** Replace the App's long-lived owner
+  key in launch URLs with an operation-scoped credential through the existing
+  launcher and Join boundary. Chrome retains the original fragment URL in
+  persistent history after `replaceState`. Cover WebView, Browser fallback,
+  terminal reopening and startup without changing saved room authority.
+- [ ] **Restored message attribution.** Verify the Server-hosted backup path's
+  acceptance of imported author identities. Decide the room creator's trust
+  boundary before adding export proofs or changing historical attribution.
+  A writer's signature authenticates the served page, not each archived sender.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -229,19 +230,19 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Design quiet topology improvement.** The
-  [canon](./canon.md#media-and-network) asks for a topology that keeps
-  improving by itself, judged by actual playback and by how well two nodes
-  suit each other, without disturbing what works. No design exists yet. Gather
-  primary evidence on how mature overlays measure, explore and stay stable,
-  then propose one. The earlier decisions against a weighted route score, an
-  all-pairs probe and periodic rebalancing are inputs to revisit with that
-  evidence, each with the reason it gave. The same design settles two shapes
-  it depends on. One is how dense the pool's standby connections should be:
-  they are ring neighbours and a bounded alternate today, and a denser mesh
-  would give faster repair and more candidates to improve with. The other is
-  voice, which follows the room fanout today and so reaches most listeners
-  over several hops.
+- [ ] **Quiet topology improvement.** Decide
+  [ADR-0018](./adr/0018-quiet-topology-improvement.md). Stage 0 is offline:
+  replay the planner on exported diagnostics and look for an opportunity that
+  recurs. The first production step is one leaf moved to a strictly better
+  place with the present proof, then one more child tried on unmet demand.
+  The [evidence](./research/topology-improvement-design.md) lists the
+  measurements still missing, first of them the wait after a silent parent
+  death.
+- [ ] **The life of a message.** Decide
+  [ADR-0019](./adr/0019-the-life-of-a-message.md): edit by the author with no
+  earlier version kept, delete as today, one revision per message, and search
+  at the writer. Five points of the stored format are settled before it is
+  first published.
 - [ ] **Separate the canon from derived design in the documents.** Where a
   record states a founding idea beside defaults, numbers or mechanisms, link
   the [canon](./canon.md) and keep the derived design. Start with

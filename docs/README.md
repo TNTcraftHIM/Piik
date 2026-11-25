@@ -90,6 +90,7 @@ and [website preview and publishing](./operations/website.md).
 | 3.0 forwarding design and candidate delivery details | [Channel, room and activity forwarding](./research/channel-forwarding-plan.md) |
 | 3.0 target channel modes, authority and moderation | [Server hosting design](./research/server-hosting-plan.md) |
 | 3.0 design compared with designs written from requirements alone | [Clean-room design review](./research/clean-room-design-review.md) |
+| How the topology should keep improving, and voice without a server | [Topology improvement evidence](./research/topology-improvement-design.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 
 ## Shared conventions

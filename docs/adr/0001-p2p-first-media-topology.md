@@ -1,6 +1,7 @@
 # ADR-0001: P2P-First Media Topology
 
 - Status: Historical MVP baseline; superseded for current routing by ADR-0005
+- Scope: 3.0 retains the preference for direct paths, small trusted groups and low server media cost in the [canon](../canon.md). The single-broadcaster topology describes the MVP.
 - Date: 2026-08-18
 
 ## Durable Rationale
