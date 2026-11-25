@@ -296,6 +296,16 @@ impl Discovery<'_> {
     fn proposal(&self, endpoints: Pair) -> DiscoveryEdge {
         DiscoveryEdge::current(endpoints, self.identity).unwrap()
     }
+    /// Study P1 only: this unconfirmed direct pair is still pending and has
+    /// had its head start, so repair may race one alternative beside it.
+    #[cfg(feature = "study")]
+    fn raced(&self, direct: Pair) -> bool {
+        !self.confirmed.contains(&direct) && self.transports.raced(&self.proposal(direct))
+    }
+    #[cfg(not(feature = "study"))]
+    fn raced(&self, _: Pair) -> bool {
+        false
+    }
     fn current(&self, edge: &DiscoveryEdge) -> bool {
         DiscoveryEdge::current(edge.endpoints, self.identity).as_ref() == Some(edge)
     }
@@ -388,7 +398,8 @@ impl Discovery<'_> {
                     scope.contains(&t)
                         && requested.get(&direct) == Some(&true)
                         && (self.confirmed.contains(&direct)
-                            || self.transports.rejected(&self.proposal(direct)))
+                            || self.transports.rejected(&self.proposal(direct))
+                            || self.raced(direct))
                 })
                 .collect();
             if targets.is_empty() {
@@ -512,6 +523,7 @@ impl Discovery<'_> {
                     (f.source == source && f.waiting.contains(&viewer))
                         || (f.source == viewer && f.waiting.contains(&source))
                 });
+            let raced = waiting && self.raced(pair);
             if !self.transports.rejected(&direct) && !confirmed_gap {
                 // Let admission skip a capacity-blocked request when another
                 // waiting delivery in this room can start on different peers.
@@ -519,9 +531,11 @@ impl Discovery<'_> {
                     if waiting {
                         plan.completions.push((direct.clone(), BTreeSet::new()));
                     }
-                    plan.keep(direct, Interest::Activity);
+                    plan.keep(direct.clone(), Interest::Activity);
                 }
-                continue;
+                if !raced {
+                    continue;
+                }
             }
             if !waiting {
                 continue;
@@ -558,6 +572,7 @@ impl Discovery<'_> {
                         |a, b| {
                             let e = self.proposal((a, b));
                             !links.contains(&(a, b))
+                                && !(raced && (a, b) == pair)
                                 && !self.transports.rejected(&e)
                                 && (self.transports.pending(&e)
                                     || !self.transports.has_pair((a, b)))
@@ -655,6 +670,10 @@ impl Discovery<'_> {
 }
 impl Channel {
     pub(super) fn reconcile_transports(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>) {
+        #[cfg(feature = "study")]
+        {
+            self.transports.study_now = self.now;
+        }
         let discovery = Discovery {
             identity: &self.identity,
             transports: &self.transports,

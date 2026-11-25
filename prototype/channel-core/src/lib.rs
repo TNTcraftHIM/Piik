@@ -26,6 +26,8 @@ mod routes;
 pub mod storage;
 #[cfg(feature = "sqlite")]
 mod stored_room;
+#[cfg(feature = "study")]
+pub mod study;
 pub mod topology;
 mod transport;
 pub mod udp;

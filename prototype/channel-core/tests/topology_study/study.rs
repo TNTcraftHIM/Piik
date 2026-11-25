@@ -1,9 +1,10 @@
 //! One scripted session through the real core, observed after every event.
 
-use super::driver::{Driver, Observation};
+use super::driver::{Driver, Observation, Timing};
 use super::model::{Action, Script, QUIET_STEPS_MS};
 use super::solver::Value;
 use super::tree::Instant;
+use super::waits::{Wait, Waits};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy)]
@@ -17,6 +18,38 @@ pub struct Options {
     pub execute_stage1: bool,
     /// Print every instant.
     pub verbose: bool,
+    /// Endpoint answers take time (None: instant, as in the stage 0 tables).
+    pub timing: Option<Timing>,
+    /// Policy P1: race one alternative once the direct pair has been pending
+    /// this long. Needs the crate feature `study`.
+    pub race_ms: Option<u64>,
+    /// Viewers enable peer transport only on arrival (see `Driver::cold`).
+    pub cold: bool,
+}
+
+/// After the last scripted event, timed sessions keep running this long so
+/// that waits still open can finish. Nothing else is recorded meanwhile.
+const DRAIN_MS: u64 = 60_000;
+
+/// Sets the study-only product switches for one session on this thread and
+/// restores the shipped rule afterwards.
+struct Policy;
+
+impl Policy {
+    fn set(race_ms: Option<u64>) -> Self {
+        #[cfg(feature = "study")]
+        piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(race_ms));
+        #[cfg(not(feature = "study"))]
+        assert!(race_ms.is_none(), "policy P1 needs --features sqlite,study");
+        Policy
+    }
+}
+
+impl Drop for Policy {
+    fn drop(&mut self) {
+        #[cfg(feature = "study")]
+        piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(None));
+    }
 }
 
 /// Sums over the observed instants of one session.
@@ -150,6 +183,14 @@ pub struct Session {
     pub trace: Vec<BTreeMap<usize, usize>>,
     /// Instants worth reading, with the reason.
     pub notes: Vec<String>,
+    pub seed: u64,
+    pub log: Vec<String>,
+    // Timed sessions only.
+    /// One entry per viewer arrival.
+    pub waits: Vec<Wait>,
+    /// Distinct physical pair ids any endpoint was asked to try.
+    pub pairs_started: u32,
+    pub early_observations: u32,
 }
 
 fn instant(driver: &Driver, observation: &Observation, limit: u8) -> Instant {
@@ -166,7 +207,10 @@ fn instant(driver: &Driver, observation: &Observation, limit: u8) -> Instant {
 }
 
 pub fn run(script: &Script, options: Options) -> Session {
-    let mut driver = Driver::new(script, options.limit);
+    let _policy = Policy::set(options.race_ms);
+    let mut driver = Driver::new(script, options.limit, options.timing, options.cold);
+    let mut waits = Waits::default();
+    let timed = options.timing.is_some();
     let mut session = Session::default();
     let mut last: Option<Instant> = None;
     let mut changes: BTreeMap<usize, u32> = BTreeMap::new();
@@ -176,11 +220,18 @@ pub fn run(script: &Script, options: Options) -> Session {
     let mut seen_viewers = BTreeSet::new();
     let mut any_departure = false;
     for event in &script.events {
-        driver.advance(event.at);
+        if timed {
+            driver.run_until(event.at, |d| waits.step(d));
+        } else {
+            driver.advance(event.at);
+        }
         let mut departed = None;
         match event.action {
             Action::Arrive(viewer) => {
                 driver.arrive(viewer);
+                if timed {
+                    waits.start(&driver, viewer);
+                }
                 seen_viewers.insert(viewer);
             }
             Action::Leave(viewer) => {
@@ -207,8 +258,17 @@ pub fn run(script: &Script, options: Options) -> Session {
             }
         }
         any_departure |= departed.is_some();
-        for quiet in QUIET_STEPS_MS {
-            driver.advance(event.at + quiet);
+        if timed {
+            waits.step(&mut driver);
+            // Observe at the server's expiry tick after the quiet period, a
+            // moment the authority has input anyway (see `Driver::observe`).
+            let tick = super::driver::EXPIRE_EVERY_MS;
+            let at = (event.at + QUIET_STEPS_MS[1]).div_ceil(tick) * tick;
+            driver.run_until(at, |d| waits.step(d));
+        } else {
+            for quiet in QUIET_STEPS_MS {
+                driver.advance(event.at + quiet);
+            }
         }
         let observation = driver.observe();
         let mut now = instant(&driver, &observation, options.limit);
@@ -389,6 +449,14 @@ pub fn run(script: &Script, options: Options) -> Session {
         session.trace.push(now.parent.clone());
         last = Some(now);
     }
+    if timed {
+        driver.run_until(driver.now + DRAIN_MS, |d| waits.step(d));
+        session.waits = waits.finish(&driver);
+        session.pairs_started = driver.pairs_started.len() as u32;
+        session.early_observations = driver.early_observations as u32;
+    }
+    session.seed = script.seed;
+    session.log = std::mem::take(&mut driver.log);
     session.most_changes = changes.values().copied().max().unwrap_or(0);
     session.viewers_seen = seen_viewers.len() as u32;
     session.errors = driver.errors as u32;

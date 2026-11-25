@@ -8,6 +8,9 @@ publish = false
 [features]
 default = []
 sqlite = ["dep:rusqlite"]
+# Policy switches for tests/topology_study.rs only (study branch). Off by
+# default; every switch inside also defaults to the shipped rule.
+study = []
 
 [dependencies]
 rusqlite = { version = "0.41", features = ["bundled", "backup", "fallible_uint"], optional = true }

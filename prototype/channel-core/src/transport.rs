@@ -122,9 +122,26 @@ pub struct TransportBook {
     rejected: BTreeMap<DiscoveryEdge, Failure>,
     next_required_retry: Option<u64>,
     pairs: BTreeMap<PairKey, Pair>,
+    /// Study P1 only: the channel clock of the current reconcile, and the
+    /// last expiry check that looked for head starts ending.
+    #[cfg(feature = "study")]
+    pub(crate) study_now: u64,
+    #[cfg(feature = "study")]
+    race_checked: u64,
 }
 
 impl TransportBook {
+    /// Study P1 only: a pending attempt on this edge has had its head start.
+    #[cfg(feature = "study")]
+    pub(crate) fn raced(&self, edge: &DiscoveryEdge) -> bool {
+        crate::study::race_direct_after().is_some_and(|head| {
+            self.discovery.get(&edge.endpoints).is_some_and(|pending| {
+                pending.edge == *edge
+                    && pending.deadline - DISCOVERY_TIMEOUT_MS + head <= self.study_now
+            })
+        })
+    }
+
     pub(crate) fn pending(&self, edge: &DiscoveryEdge) -> bool {
         self.discovery
             .get(&edge.endpoints)
@@ -797,6 +814,16 @@ impl TransportBook {
 
     pub(crate) fn expire_discovery(&mut self, now: u64) -> bool {
         let retry_due = self.next_required_retry.take_if(|at| *at <= now).is_some();
+        // Study P1 only: wake a reconcile when a pending attempt's head start ends.
+        #[cfg(feature = "study")]
+        let retry_due = retry_due
+            || crate::study::race_direct_after().is_some_and(|head| {
+                let checked = std::mem::replace(&mut self.race_checked, now);
+                self.discovery.values().any(|pending| {
+                    let at = pending.deadline - DISCOVERY_TIMEOUT_MS + head;
+                    checked < at && at <= now
+                })
+            });
         let pending_before = self.discovery.len();
         self.discovery.retain(|key, pending| {
             if pending.deadline > now {

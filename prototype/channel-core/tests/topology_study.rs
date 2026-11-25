@@ -26,8 +26,12 @@ mod solver;
 #[path = "topology_study/study.rs"]
 mod study;
 mod support;
+#[path = "topology_study/timed.rs"]
+mod timed;
 #[path = "topology_study/tree.rs"]
 mod tree;
+#[path = "topology_study/waits.rs"]
+mod waits;
 
 use model::{Connectivity, Rng, Script, BASE, OPTIMISTIC, PESSIMISTIC};
 use solver::Graph;
@@ -166,6 +170,9 @@ fn runs_are_deterministic() {
                 all_pairs: false,
                 execute_stage1: index == 0,
                 verbose: false,
+                timing: None,
+                race_ms: None,
+                cold: false,
             };
             let first = study::run(&script, options);
             let second = study::run(&script, options);
@@ -687,6 +694,9 @@ fn grid(model: &Connectivity, sizes: &[usize], limits: &[u8], execute_up_to: usi
                 all_pairs: true,
                 execute_stage1: false,
                 verbose: false,
+                timing: None,
+                race_ms: None,
+                cold: false,
             };
             rows.push((viewers, limit, run_row(model, viewers, options)));
             if viewers <= execute_up_to {
@@ -751,6 +761,17 @@ fn trace() {
             all_pairs: false,
             execute_stage1: parts.get(3) == Some(&1),
             verbose: true,
+            // Timed: `STUDY_TRACE_F` = failure ms (success and proof 500 ms);
+            // `STUDY_TRACE_RACE` = P1 head start ms.
+            timing: std::env::var("STUDY_TRACE_F").ok().map(|f| driver::Timing {
+                success_ms: 500,
+                failure_ms: f.parse().unwrap(),
+                proof_ms: 500,
+            }),
+            race_ms: std::env::var("STUDY_TRACE_RACE")
+                .ok()
+                .map(|h| h.parse().unwrap()),
+            cold: std::env::var_os("STUDY_TRACE_COLD").is_some(),
         },
     );
     for note in &session.notes {
@@ -774,6 +795,9 @@ fn released_pairs() {
                     all_pairs: true,
                     execute_stage1: false,
                     verbose: false,
+                    timing: None,
+                    race_ms: None,
+                    cold: false,
                 };
                 (viewers, 2, run_row(&model, viewers, options))
             })
