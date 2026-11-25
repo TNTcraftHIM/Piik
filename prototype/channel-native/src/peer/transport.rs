@@ -1887,7 +1887,6 @@ impl Engine {
         self.close_turn();
         self.discovery_routes.clear();
         self.rtc.disconnect();
-        self.drain();
         self.udp_send_failures
             .flush((!self.events.local()).then_some(self.handle.pair));
         self.tracks.clear();

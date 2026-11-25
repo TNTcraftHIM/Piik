@@ -25,6 +25,14 @@ async fn drop_stun(pc: &Transport, drop: bool) -> Result<()> {
     .await
 }
 
+async fn consent_responses(pc: &Transport) -> Result<u64> {
+    pc.call(|engine| {
+        Ok(engine.peer_stats.as_ref()
+            .and_then(|stats| stats.selected_candidate_pair.as_ref())
+            .context("selected pair consent statistics unavailable")?.responses_received)
+    }).await
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_disconnection_preserves_established_media_until_sdk_consent_expires() -> Result<()>
 {
@@ -90,6 +98,7 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
         }).await?;
         ensure!(f.driver.pairs[&pair].state.load(Ordering::Acquire) == PeerState::Disconnected as u8);
         eprintln!("RECOVERY disconnected_rtp_advanced_ms={}", cut.elapsed().as_millis());
+        let responses_before_recovery = [consent_responses(&left).await?, consent_responses(&right).await?];
         drop_stun(&left, false).await?;
         drop_stun(&right, false).await?;
         until(&mut f, "the same Native RTC did not recover", |f| {
@@ -104,6 +113,15 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
         ensure!(f.observed(&stream, MediaKind::Video).unwrap().0 == before.0);
         ensure!(f.driver.pairs[&pair].dc.as_ref().unwrap().0 == control);
         eprintln!("RECOVERY same_instance_reconnected_ms={}", cut.elapsed().as_millis());
+
+        // An inbound check can restore Connected without renewing send consent.
+        // Start the next outage only after each endpoint received a fresh valid response.
+        while consent_responses(&left).await? <= responses_before_recovery[0]
+            || consent_responses(&right).await? <= responses_before_recovery[1]
+        {
+            f.step().await?;
+        }
+        eprintln!("RECOVERY renewed_responses={:?}", [consent_responses(&left).await?, consent_responses(&right).await?]);
 
         // A second outage runs through the SDK's own consent deadline. Other pairs keep their resources.
         f.reported.clear();
