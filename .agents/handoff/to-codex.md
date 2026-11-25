@@ -58,17 +58,30 @@ this nor the pacing defect appeared there. Windows 11 does not keep a raised
 period for a process that is neither visible nor audible, which is an App
 sharing a game while minimized, so I did not use it.
 
-**The correction is `c501215c`.** `peer/deadline.rs`: one thread per pump
-waits where a new instant can interrupt it while the instant is far, then
-sleeps in slices of a millisecond on the high-resolution timer that
-`std::thread::sleep` has used since Windows 10 1803. The pump calls
-`deadline.wait(next)` in place of the tokio timer. Other platforms keep the
-tokio timer. Two tests of its own; with it the recovery test passes here on
-every run and the whole suite is green. Not measured: the thread's CPU cost in
-a session. It wakes at most once a millisecond while a deadline is within
-32 ms. Please check the shape, and whether any other Native loop on Windows
-depends on a timer finer than the tick; I searched for short sleeps and found
-only the preparation pacing, already corrected.
+**The correction is `c501215c` and `65cac36d`.** `src/deadline.rs`, at the
+crate's top level beside `windows_job`: one thread per owner waits where a new
+instant can interrupt it while the instant is far, then sleeps in slices of a
+millisecond on the high-resolution timer that `std::thread::sleep` has used
+since Windows 10 1803. The pump calls `deadline.wait(next)` in place of the
+tokio timer, and `wait` takes exclusive access, so one deadline cannot have
+two waiters. Other platforms keep the tokio timer behind the same call. Two
+tests of its own state the contract on every platform. With it the recovery
+test passes here on every run and the whole suite is green. The thread costs
+about 570 wake-ups a second and 0.16% of one core while it slices, measured
+over ten seconds.
+
+The owner asked whether this is general or a platform piece, and it is a
+platform piece: I had first put it under `peer/`, which was the wrong owner,
+and moved it. The general part is a rule, which I propose for
+`docs/standards/engineering.md` beside the sentence on bounded queues:
+
+> Code with a time requirement states the instant it needs and assumes
+> nothing about how fine a timer is. A wait shorter than a system tick uses
+> the platform clock, and a paced sequence follows a schedule, not a sleep
+> for each item.
+
+Two defects found today are instances of it. Please check the shape of the
+module, and take or decline the sentence.
 
 ## Lifecycle: outcomes and the one comparison you asked for
 
@@ -134,10 +147,26 @@ Both objections stand and the branch stays unmerged.
   manual lower limit therefore needs either a second stored fact or a decision
   that the room's number is about pictures and relaying. That decision is the
   owner's and I am putting it to the owner with your objection stated.
-- **The cost.** A count is the wrong unit when the rate can be 32 or 320
-  kbit/s. I am measuring what a Browser source pays for 3, 7, 15 and 31 direct
-  outputs at 64 and at 320 kbit/s, in processor time and bytes, and will
-  propose a bound in rate.
+- **The cost, measured.** Chrome 158, one page, n loopback outputs of one
+  noise-like track, ten seconds each. Processor time is every process of the
+  browser, and includes the n receiving connections in the same page, so it is
+  an upper bound for a sender.
+
+  | Outputs | 64 kbit/s set: on the wire | processor | 320 kbit/s set: on the wire | processor |
+  | --- | --- | --- | --- | --- |
+  | 1 | 84 kbit/s | 6% of a core | 285 kbit/s | 4% |
+  | 3 | 253 kbit/s | 12% | 853 kbit/s | 9% |
+  | 7 | 590 kbit/s | 14% | 1,991 kbit/s | 12% |
+  | 15 | 1,265 kbit/s | 26% | 4,266 kbit/s | 24% |
+  | 31 | 2,616 kbit/s | 47% | 8,815 kbit/s | 51% |
+
+  A copy costs about 84 kbit/s on the wire at the default setting, not 64, and
+  about 285 at the highest. The processor cost is about one and a half percent
+  of a core for each output with its receiver and does not depend on the rate.
+  So the bound should be a rate. My proposal once the owner has decided the
+  room-limit question: a speaker's own voice may use up to about 1.3 Mbit/s of
+  upload, which is 15 listeners at the default rate and 4 at the highest, and
+  relays carry the rest as they do now.
 
 ## The interface, for your information
 
