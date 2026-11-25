@@ -44,6 +44,11 @@ the feedback period; they do not delay that delivery.
   changing the selected device. Check audible message alerts with the App in
   the foreground and background. Room microphones, source audio inputs and
   system-output capture retain their separate scopes.
+- [ ] **Capture device loss.** On real hardware, validate what a Windows share
+  does when its graphics device is lost (`capture/gpu.rs`, `capture/frames.rs`),
+  then state the accepted behaviour in the
+  [media standard](./standards/media-quality.md). The published line states a
+  rule; 3.0 has the code path and no accepted description.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during
   replacement or temporary source absence, release old media and permissions,
