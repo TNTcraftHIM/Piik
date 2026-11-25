@@ -20,10 +20,10 @@ test("a Browser relay reports a partial bulk response once and forwards the next
   });
   const relay = new WatchBytes(async (peer, kind, data) => {
     if (peer === provider) {
-      const [read] = JSON.parse(providerCore.control(relayId, JSON.stringify(JSON.parse(data as string).body)));
-      for (const chunk of JSON.parse(providerCore.read_result(read.requestId, JSON.stringify({
+      const [read] = providerCore.control(relayId, JSON.stringify(JSON.parse(data as string).body));
+      for (const chunk of providerCore.read_result(read.requestId, JSON.stringify({
         mimeType: "video/mp4", totalSize: read.length, bytes: Array(read.length).fill(7), eof: true,
-      })))) relay.data(provider, "chunk", Uint8Array.from(chunk.frame));
+      }))) relay.data(provider, "chunk", Uint8Array.from(chunk.frame));
     } else if (kind === "chunk") {
       if (++chunks > available) throw new Error("file_transfer_busy");
       receiver.data(relayId, kind, data);
@@ -58,6 +58,24 @@ async function actualRuntime() {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   return rust;
 }
+
+test("a Browser provider can finish a native range outside JS safe integer precision", async () => {
+  const rust = await actualRuntime();
+  const [provider, viewer, activityId, resourceId, requestId] = Array.from({ length: 5 }, () => crypto.randomUUID());
+  const source = { sessionId: provider, resourceId, format: "file" };
+  const key = { roomId: "room", activityId, resourceId };
+  const writer = new rust.WatchDelivery(provider);
+  try {
+    writer.update(JSON.stringify([{ roomId: key.roomId, activityId, source, upstream: null, downstream: [viewer], receiving: false }]), JSON.stringify([[viewer, [key.roomId]]]));
+    for (const offset of [Number.MAX_SAFE_INTEGER + 1, 0]) {
+      const [read] = writer.control(viewer, JSON.stringify({ type: "pull", key, requestId, offset, length: 1 }));
+      expect(read).toMatchObject({ type: "read", requestId, offset });
+      const [cancel, reply] = writer.read_failed(requestId, "watch_source_unavailable");
+      expect(cancel).toEqual({ type: "cancel_read", requestId });
+      expect(reply).toMatchObject({ type: "send_control", peer: viewer, control: { type: "error", requestId, code: "watch_source_failed" } });
+    }
+  } finally { writer.free(); }
+});
 
 test("pending reads survive source latency and retire when the peer closes", async () => {
   await actualRuntime(); vi.useFakeTimers();
@@ -118,9 +136,9 @@ test("a real response received before send completion cannot leave a response de
   const sending = new Promise<void>(resolve => { sent = resolve; });
   const bytes = new WatchBytes(async (_peer, _kind, raw) => {
     const control = JSON.parse(rust.decode_control(new TextEncoder().encode(raw as string)));
-    for (const effect of JSON.parse(sourceCore.control(viewer, JSON.stringify(control.body)))) {
+    for (const effect of sourceCore.control(viewer, JSON.stringify(control.body))) {
       if (effect.type !== "read") continue;
-      for (const result of JSON.parse(sourceCore.read_result(effect.requestId, JSON.stringify({ mimeType: "video/mp4", totalSize: 3, bytes: [1, 2, 3], eof: true })))) {
+      for (const result of sourceCore.read_result(effect.requestId, JSON.stringify({ mimeType: "video/mp4", totalSize: 3, bytes: [1, 2, 3], eof: true }))) {
         if (result.type === "send_chunk") bytes.data(peer, "chunk", Uint8Array.from(result.frame));
       }
     }
@@ -154,13 +172,13 @@ test.each(["ready", "provider", "viewer"] as const)("Browser range uses real Cor
     pulled = true;
     deliver(sourceCore.control(viewerId, JSON.stringify(control.body)));
   });
-  function deliver(raw: string): void {
-    for (const effect of JSON.parse(raw)) {
+  function deliver(effects: ReturnType<typeof sourceCore.control>): void {
+    for (const effect of effects) {
       if (effect.type === "read") deliver(sourceCore.read_result(effect.requestId, JSON.stringify({
         mimeType: "video/mp4", totalSize: content.length, bytes: Array.from(content.slice(effect.offset, effect.offset + effect.length)), eof: effect.offset + effect.length >= content.length,
       })));
       else if (effect.type === "send_chunk") {
-        const bytes = Uint8Array.from(effect.frame as number[]);
+        const bytes = effect.frame as Uint8Array;
         expect([...bytes.slice(0, 2)]).toEqual([0, 0]); expect(bytes.length).toBeLessThanOrEqual(8192);
         frames.push(bytes.length); delivery.data(sourceId, "chunk", bytes);
       } else if (effect.type === "send_control") delivery.data(sourceId, "control", JSON.stringify(effect.control));

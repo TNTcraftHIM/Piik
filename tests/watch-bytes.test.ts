@@ -13,19 +13,19 @@ const plan: WatchBytePlan = { roomId, activityId, source, upstream: peer, downst
 class Delivery {
   reads: string[] = []; cancels: string[] = [];
   available = true;
-  update() { return "[]"; }
+  update() { return []; }
   read(key: string, requestId: string) {
     this.reads.push(requestId);
-    return JSON.stringify(this.available
+    return this.available
       ? [{ type: "send_control", peer, control: { type: "pull", requestId, key: JSON.parse(key) } }]
-      : [{ type: "failed", requestId, code: "watch_path_unavailable" }]);
+      : [{ type: "failed", requestId, code: "watch_path_unavailable" }];
   }
-  cancel(id: string) { this.cancels.push(id); return "[]"; }
-  control(_peer: string, control: string) { return control; }
-  chunk() { return "[]"; }
-  peer_closed() { return "[]"; }
-  read_failed() { return "[]"; }
-  request_failed() { return "[]"; }
+  cancel(id: string) { this.cancels.push(id); return []; }
+  control(_peer: string, control: string) { return JSON.parse(control, (key, value) => key === "bytes" ? Uint8Array.from(value) : value); }
+  chunk() { return []; }
+  peer_closed() { return []; }
+  read_failed() { return []; }
+  request_failed() { return []; }
   free = vi.fn();
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });

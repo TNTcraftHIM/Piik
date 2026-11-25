@@ -4,10 +4,10 @@ import type { WatchBytePlan, WatchByteSource, ChannelPair } from "./protocol";
 import type { WatchByteResult } from "./watch-resource";
 
 interface Key { roomId: string; activityId: string; resourceId: string }
-interface Result { mimeType: string; totalSize: number | null; bytes: number[]; eof: boolean }
+interface Result { mimeType: string; totalSize: number | null; bytes: Uint8Array<ArrayBuffer>; eof: boolean }
 type Effect =
   | { type: "send_control"; peer: string; control: { type: string; key: Key; requestId: string } }
-  | { type: "send_chunk"; peer: string; key: Key; requestId: string; frame: number[] }
+  | { type: "send_chunk"; peer: string; key: Key; requestId: string; frame: Uint8Array<ArrayBuffer> }
   | { type: "received"; requestId: string; result: Result }
   | { type: "failed"; requestId: string; code: string }
   | { type: "read" | "cancel_read"; requestId: string };
@@ -105,11 +105,11 @@ export class WatchBytes {
       if (this.current(runtime)) this.effects(runtime, runtime.delivery.peer_closed(peer));
     }).catch(() => {});
   }
-  private effects(runtime: Runtime, raw: string): void {
+  private effects(runtime: Runtime, effects: Effect[]): void {
     if (!this.current(runtime)) return;
     const failedResponses = new Set<string>();
-    for (const effect of JSON.parse(raw) as Effect[]) {
-      if (effect.type === "received") this.finish(effect.requestId, { ...effect.result, bytes: Uint8Array.from(effect.result.bytes) });
+    for (const effect of effects) {
+      if (effect.type === "received") this.finish(effect.requestId, effect.result);
       else if (effect.type === "failed") {
         this.finish(effect.requestId, new Error(effect.code));
       } else if (effect.type === "read") this.effects(runtime, runtime.delivery.read_failed(effect.requestId, "watch_source_unavailable"));
@@ -125,7 +125,7 @@ export class WatchBytes {
         const terminalAllowed = () => this.current(runtime) && roomGranted();
         const allowed = () => current() && roomGranted() && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
           && sameWatchByteSource(plan.source, source) && (plan.upstream === effect.peer || plan.downstream.includes(effect.peer)));
-        const data = effect.type === "send_chunk" ? Uint8Array.from(effect.frame)
+        const data = effect.type === "send_chunk" ? effect.frame
           : this.controlFrame(runtime, effect.control);
         void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? terminalAllowed : allowed)
           .catch(() => {
