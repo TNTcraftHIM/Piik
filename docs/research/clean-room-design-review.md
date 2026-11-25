@@ -152,6 +152,10 @@ could have seen:
   commit yields at most one broadcastable record, the Native writer is never a
   reader while the Browser writer tab usually is, and storage failures return
   through `abort` in both.
+  Core already owns broadcast eligibility. Browser recipient selection occurs
+  after queued access changes and signing; moving it into the earlier shared
+  dispatch would snapshot readers before a queued revocation. Keep that timing
+  at the adapter unless a shared result preserves the same order.
 - The five cursors on a writer binding reduce to one applied position and
   named barriers.
 

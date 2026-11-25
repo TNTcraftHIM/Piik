@@ -26,10 +26,10 @@ the feedback period; they do not delay that delivery.
   Return invitation results in the correlated reply and require an explicit
   HostInput hosting mode. Set attachment-entry semantics before removing its
   capability, and settle archive validity before deriving the invitation hash
-  solely from its key. Deduplicate new-room policy defaults and name each private
-  format at its owner. Batch the private protocol change with its consumers.
-- [ ] **Native flow failure ownership.** Share equivalent primary-media failure
-  predicates; identify the released resource before narrowing companion-audio retry.
+  solely from its key. Name each private format at its owner and batch the
+  private protocol change with its consumers.
+- [ ] **Native companion-audio retry.** Identify the released resource before
+  narrowing the existing cross-pair retry.
 - [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
   steady selected media on a controlled link. Record the SDK estimate, media,
   padding and minimum/desired demand before changing probe policy. Distinguish
@@ -78,19 +78,13 @@ the feedback period; they do not delay that delivery.
   generation, a state revision, a generic activity envelope and the encoding of
   wire keys wait for a consumer. The
   [design review](./research/clean-room-design-review.md) records the
-  evidence. Assess an authority-owned persistence result to replace storage
-  adapter command inference.
+  evidence.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Native room-open diagnostics.** Surface identifiable local lock and
-  duplicate-file failures through the existing hosting description. Keep Browser
-  and App diagnostic lifetimes separate; unreadable files whose room cannot be
-  identified remain device-level failures. Prefer an on-demand operator view
-  before adding persistent room-list state.
 - [ ] **Standalone Server owner entry.** Replace the documented durable-key URL
   with a local operator bootstrap flow using the existing owner identity.
   Keep ticket issuance at an authenticated local maintenance boundary; App
@@ -312,10 +306,11 @@ the feedback period; they do not delay that delivery.
   frames across encoder workers. Compare the shared timestamp trace with actual
   output feedback; keep platform timestamp acquisition and codec priming in the
   adapters.
-- [ ] **3.0 documentation ownership.** Move current 3.0 behavior out of copied
-  2.x standards, align architecture and behavior owner links, and consolidate
-  repeated work-ledger prose without dropping unresolved feedback. Retire
-  published 2.x material and film-only controls at the accepted cutover.
+- [ ] **3.0 documentation ownership.** Review the remaining research files that
+  differ from their 2.x copies, unused research data and outdated couch markers
+  against current readers and code. Consolidate repeated work-ledger prose
+  without dropping unresolved feedback. Align the homepage and public source
+  links at the accepted cutover.
 - [ ] **Whole-page collaboration.** Choose the intended co-browsing flow before
   extending synchronized playback. Evaluate a shared page with explicitly
   granted page-scoped input and each site's own collaborative links. Reuse the
