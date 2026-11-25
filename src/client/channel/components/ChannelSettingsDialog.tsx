@@ -122,7 +122,8 @@ export function useSettingsAction(open = true): { error: string | null; run: Set
     } catch (error) {
       if (lifetime.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;
       if (isDeferredModuleFailure(error)) setError("deferred_module_load_failed");
-      else setError(error instanceof Error ? error.message : "operation_failed");
+      // The same failure code the session's banner would show.
+      else setError(error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed");
     }
   }, []);
   return { error, run, clearError: () => setError(null) };

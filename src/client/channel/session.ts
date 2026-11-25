@@ -243,7 +243,7 @@ export class ChannelSession {
     view: () => this.view,
     snapshot: () => this.roomSnapshot,
     lifetime: () => this.captureLifetime.signal,
-    action: (key, work) => this.action(key, work),
+    action: (key, work, reportError) => this.action(key, work, reportError),
     request: command => this.request(command),
     send: command => this.send(command),
     write: command => this.write(command),

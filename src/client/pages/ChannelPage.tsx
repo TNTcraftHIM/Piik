@@ -18,7 +18,7 @@ import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
-import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
 import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -230,23 +230,28 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   };
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const simpleShareKey = simpleShareRoomKey(state?.channel.id, self?.id);
+  // The quick-start button shows its own failure; another site retires it.
+  const quickStart = useSettingsAction();
+  useEffect(() => { quickStart.clearError(); }, [state?.channel.id]);
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
+    quickStart.clearError();
     const existing = self && simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey), sharesIn);
     if (existing) { selectRoom(existing.id); setPickerRoom(existing.id); return; }
     const operation = preparingShare.current = {};
-    try {
-      const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"));
-      rememberSimpleShareRoom(simpleShareKey, id);
-      if (preparingShare.current !== operation) return;
-      selectRoom(id); setPickerRoom(id);
-    } catch (error) {
-      if (error instanceof RoomCreationInterrupted && preparingShare.current === operation) {
-        channel.clearError();
+    await quickStart.run(async () => {
+      try {
+        const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"), false);
+        rememberSimpleShareRoom(simpleShareKey, id);
+        if (preparingShare.current !== operation) return;
+        selectRoom(id); setPickerRoom(id);
+      } catch (error) {
+        if (preparingShare.current !== operation) return;
+        if (!(error instanceof RoomCreationInterrupted)) throw error;
         setNewRoom(error);
       }
-    }
-    finally { if (preparingShare.current === operation) preparingShare.current = null; }
+    });
+    if (preparingShare.current === operation) preparingShare.current = null;
   };
   const publications = state?.publications ?? [];
   const screens = publications.filter(value => value.kind === "screen");
@@ -294,8 +299,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const displayedSources = new Set([...visibleScreens, ...availableScreens].map(source => source.id));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
   const joined = myVoice.some(value => value.roomId === roomId);
-  const joinVoice = room?.authorized && !joined ? <ChannelJoinVoice joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
-    onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /> : null;
+  const joinVoice = room?.authorized && !joined ? <ChannelJoinVoice key={roomId} joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
+    onJoin={listenOnly => channel.joinVoice(roomId, listenOnly, false).then(() => setVoiceFocus(roomId))} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   // A manager's room that turned down the site's available forwarding can still turn it on.
   const forwardingDeclined = (id: string) => {
@@ -529,8 +534,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             : overview && <section className="c3-site-overview">
             {layout === "quick" && canCreateRoom ? <StageTv hasEntry label={t("channel.previewPage.startSharing")}><div className="c3-quick-start">
               <p>{t(creationPolicy === "invite_only" ? "channel.previewPage.quickInviteOnlyHint" : "channel.previewPage.quickStartHint")}</p>
-              <Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
+              <div className="c3-quick-start-action"><Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
+                <ChannelSettingsError error={quickStart.error} /></div>
             </div></StageTv> : rooms.length ? <><h2><BrandMark size={30} motion="once" />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
               unread={roomHasUnread(value, channel.readByRoom[value.id])}
