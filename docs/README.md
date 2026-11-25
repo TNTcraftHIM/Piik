@@ -76,6 +76,7 @@ and [website preview and publishing](./operations/website.md).
 
 | Topic | Its reference |
 | --- | --- |
+| The founding ideas everything else follows | [Canon](./canon.md) |
 | Published 2.x invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
 | Published 2.x viewer connections | [Routing and transport](./standards/routing-transport.md) |
 | Published 2.x screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
@@ -88,6 +89,7 @@ and [website preview and publishing](./operations/website.md).
 | 3.0 room-data ownership, cached attachments and file-delivery design | [Room data and hosting](./research/channel-storage-and-identity.md) |
 | 3.0 forwarding design and candidate delivery details | [Channel, room and activity forwarding](./research/channel-forwarding-plan.md) |
 | 3.0 target channel modes, authority and moderation | [Server hosting design](./research/server-hosting-plan.md) |
+| 3.0 design compared with designs written from requirements alone | [Clean-room design review](./research/clean-room-design-review.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 
 ## Shared conventions

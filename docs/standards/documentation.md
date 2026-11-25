@@ -10,6 +10,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 | Topic | Owner | Keep here |
 | --- | --- | --- |
+| Settled core design | [Canon](../canon.md) | The founding ideas, stated generally; no dates, incidents, numbers or mechanisms. Only the owner changes it |
 | Universal constraints and navigation | `AGENTS.md` | Short mandatory boundaries and links; no procedure manual |
 | Reusable agent methods | `.agents/skills/*/SKILL.md` | Task triggers and methods under project constraints; link to domain rules and delivery rather than repeat them |
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |

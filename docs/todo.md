@@ -53,6 +53,15 @@ the feedback period; they do not delay that delivery.
   control connection. Preserve original-page playback when the selected video
   element changes its resource URL; keep media-byte grants bound to the selected
   resource. [Original-page controls](./verification-status.md#current-evidence)
+- [ ] **Contracts fixed before release.** Decide
+  [ADR-0017](./adr/0017-contracts-fixed-before-release.md): before the first
+  public 3.0 release, settle the compatibility baseline and matrix, explicit
+  reply outcomes, release storage fixtures, a new history lineage on restore,
+  and one owner for history rules with strict IndexedDB durability. Schema
+  generation, a state revision, a generic activity envelope and the encoding of
+  wire keys wait for a consumer. The
+  [design review](./research/clean-room-design-review.md) records the
+  evidence.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
@@ -63,12 +72,10 @@ the feedback period; they do not delay that delivery.
   hiding new messages after a backup restores an earlier sequence. Give restored
   history a durable lineage distinct from ordinary writer reconnection, and verify
   unread, pagination and deletion behavior without a transaction-wide event log.
-- [ ] **Browser authoritative storage durability.** Request strict IndexedDB
-  commits for room authority and history. Evaluate persistent-storage permission
-  at explicit Browser hosting separately from commit durability and local caches.
-- [ ] **Unknown operation results.** Keep an unrecognized terminal room result
-  from resolving a Browser request as successful. Align the baseline reply and
-  recipient-selected extension rules before publishing the 3.0 contract.
+- [ ] **Browser room persistence.** Evaluate persistent-storage permission at
+  explicit Browser hosting separately from transaction durability and local
+  caches. The browser may decline; report the actual storage state without
+  blocking the basic room flow.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -222,6 +229,25 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Design quiet topology improvement.** The
+  [canon](./canon.md#media-and-network) asks for a topology that keeps
+  improving by itself, judged by actual playback and by how well two nodes
+  suit each other, without disturbing what works. No design exists yet. Gather
+  primary evidence on how mature overlays measure, explore and stay stable,
+  then propose one. The earlier decisions against a weighted route score, an
+  all-pairs probe and periodic rebalancing are inputs to revisit with that
+  evidence, each with the reason it gave. The same design settles two shapes
+  it depends on. One is how dense the pool's standby connections should be:
+  they are ring neighbours and a bounded alternate today, and a denser mesh
+  would give faster repair and more candidates to improve with. The other is
+  voice, which follows the room fanout today and so reaches most listeners
+  over several hops.
+- [ ] **Separate the canon from derived design in the documents.** Where a
+  record states a founding idea beside defaults, numbers or mechanisms, link
+  the [canon](./canon.md) and keep the derived design. Start with
+  [ADR-0001](./adr/0001-p2p-first-media-topology.md), whose rationale is still
+  current under a historical status, the status lines of ADR-0002, 0005, 0007,
+  0009, 0010 and 0013 for 3.0, and the two meanings each of "relay" and "host".
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.
   Keep image restoration owned by each physical connection. Any generated types

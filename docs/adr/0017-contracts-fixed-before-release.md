@@ -1,0 +1,113 @@
+# ADR-0017: Contracts Fixed Before The First 3.0 Release
+
+- Status: proposed
+- Date: 2026-11-25
+
+## Context
+
+3.0 is unpublished, so a private wire or storage shape is replaced without
+aliases, dual readers or migrations. After the first release, installed Apps
+and room stores hold the released shapes, and later versions have to work with
+them. Some contracts are costly to change after that; others can wait for a
+consumer. [Versioning](../standards/versioning.md) promises that an older App
+keeps working with a newer site within a major version, and that forward
+upgrades preserve durable authority. The code does not yet say how:
+
+- `Join` requires the protocol number to equal 46
+  (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
+  reader accepts additions; no rule says which additions a reader may ignore.
+- The review at `35034f34` found that Browser accepts any `room_reply.result.type`
+  (`src/client/channel/protocol.ts`) and rejects only `"error"`
+  (`src/client/channel/session.ts`), so with a version mismatch or a bug an
+  unknown type resolves most room requests as success.
+- A room store opens only at one exact `user_version`
+  (`prototype/channel-core/src/storage.rs`), and the Browser store aborts any
+  upgrade (`prototype/channel-browser/src/room-host.ts`). This protects data;
+  no format change has needed an upgrade yet.
+
+## Decision
+
+### Settled before the first public release
+
+1. **Compatibility.** A stable wire baseline, plus extensions the recipient
+   selects. A written matrix covers an old client with a new domain, an old
+   writer with a new domain, unsupported actions, and the direction of
+   stored-data upgrades. Readers ignore additions defined as descriptive, not
+   unknown authority or an unknown final outcome: an unknown reply type is an
+   error, and an unknown host-input action needs a positive capability check.
+   Extension points are explicit instead of a general tolerance
+   ([RFC 9413](https://www.rfc-editor.org/rfc/rfc9413.html)). The first
+   release's readers decide what later versions may add.
+2. **Replies.** A request ends in an explicit terminal outcome that tells
+   rejected from unknown, and a copy sent to an observer is separate from the
+   requester's reply. Idempotency is scoped by operation: chat already has
+   durable nonces, and an invitation rotation is recovered by reading current
+   state. A history page as one bounded batch is measured against the present
+   101 signed replies per page: 50 messages, 50 reaction snapshots and one
+   terminator. A released client that reads an unknown outcome as success
+   cannot be corrected from the domain.
+3. **Storage.** The first public format of each store is recorded as release
+   fixtures. A concrete transactional upgrade is added when a format actually
+   changes, and a store newer than the code is refused, with no general
+   migration framework. Every later upgrade starts from the released format.
+4. **Restored history.** A restore gives the room's history a new lineage that
+   invalidates old read positions, and a normal restart keeps them. A position
+   a released reader saved without a lineage cannot later be told apart from
+   one that a restore made stale.
+5. **History rules and durability.** One owner holds the history rules that
+   both writers execute. Authoritative IndexedDB writes use strict durability,
+   because the architecture promises that history is committed before it is
+   confirmed. Persistent storage guards against eviction and is requested at
+   explicit hosting, not on every reconnect. A confirmed message that was lost
+   cannot be recovered by a later version.
+
+### Deferred until a consumer needs it
+
+- **Schema source.** First a bounded proof: generate the types for
+  `UserInfo.avatar` and `SetProfile.avatar`, keep required, omitted and null
+  semantics and runtime validation, and remove the old owner if it works.
+- **State revision.** Reopens when a delta or resume consumer needs it.
+  Readers already accept an added top-level field.
+- **Activity envelope.** Dispatch over the owned kinds is exhaustive now. A
+  generic envelope reopens when a concrete extension shows that it removes
+  work without erasing the different authority and lifetime of each kind.
+- **Bytes.** Effect outputs become binary first: a 64 KiB watch delivery
+  measured 66,773 bytes as binary and 240,441 bytes in outgoing JSON effects.
+  The encoding of small wire keys reopens only if a measurement supports it.
+
+## Not Decided Here
+
+- The serialization format. All three clean-room designs chose Protocol
+  Buffers for its evolution rules and breaking-change tooling. The decisions
+  above hold for the present JSON as well, so the format can be weighed
+  separately.
+- One SQLite schema in every runtime, using SQLite on the Browser's private
+  file system in place of IndexedDB. It would make decision 5 structural. It
+  needs a measurement of size and start-up cost first.
+- Moving the client engine into the core. It is internal and can change after
+  a release.
+
+## Consequences
+
+- Any concrete incompatible wire or storage correction lands before release
+  under the present rule for private experiments.
+- [Versioning](../standards/versioning.md) states the compatibility matrix the
+  code implements, and a feature added after release is an extension the
+  recipient selects, not a new major version.
+
+## References
+
+- [Design review against clean-room designs](../research/clean-room-design-review.md)
+- [Protocol Buffers: updating a message type](https://protobuf.dev/programming-guides/proto3/):
+  adding fields is safe, and unknown values are preserved.
+- [RFC 9413, Maintaining Robust Protocols](https://www.rfc-editor.org/rfc/rfc9413.html):
+  an extension mechanism needs clear rules for unknown elements, written
+  before deployment.
+- [JSON-RPC 2.0](https://www.jsonrpc.org/specification): a notification is a
+  request without an id.
+- [gRPC status codes](https://grpc.io/docs/guides/status-codes/): a closed
+  code set whose members say whether to retry.
+- [SQLite `user_version`](https://www.sqlite.org/pragma.html#pragma_user_version)
+  and the [IndexedDB upgrade transaction](https://w3c.github.io/IndexedDB/).
+- [IndexedDB durability](https://developer.chrome.com/blog/indexeddb-durability-mode-now-defaults-to-relaxed):
+  transactions are relaxed by default.
