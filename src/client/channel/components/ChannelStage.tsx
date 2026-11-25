@@ -3,7 +3,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy, type Copy } from "../../ui/copy";
-import { ChannelVideo, ChannelWatchVideo, WatchPeerAction, type WatchReceiving } from "./ChannelMedia";
+import { ChannelVideo, ChannelWatchVideo, PictureFailure, WatchPeerAction, type WatchReceiving } from "./ChannelMedia";
 import { ChannelAction } from "./ChannelAction";
 import type { ChannelActions, ChannelScreenInput } from "../types";
 import type { ScreenPlaybackError } from "../../media/viewer-playback";
@@ -96,6 +96,9 @@ export interface ScreenStageSource extends StagePictureSource {
   reactions?: MessageReactions;
   deliveryFailed?: boolean;
   playbackError?: ScreenPlaybackError;
+  /** The last Watch or Retry picture failure, shown wherever this picture currently is. */
+  pictureFailure?: string;
+  clearPictureFailure?(): void;
   roomAdmitted?: boolean;
   deliveryScope?: string;
   awaitingRoute?: boolean;
@@ -355,6 +358,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
             }}>
             {waiting ? <div className="c3-monitor-wait"><Glyph name="tv" size={24} /><span role="status">{t("screen.shareEnded", { name: source.name })}</span></div> : source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource} sourcePaused={source.paused}
               onRetryPicture={onRetryPicture ? () => onRetryPicture(source.id) : undefined} retryAvailable={canSubscribe && !source.pending}
+              failure={source.pictureFailure} clearFailure={source.clearPictureFailure}
               presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {
@@ -373,7 +377,8 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                     {diagnosis && canSubscribe && !source.pending && !source.hidden && <PictureDeliveryHelp
                       key={source.deliveryScope} diagnosis={diagnosis} admitted={source.roomAdmitted} playbackFailed={playbackFailed}
                       onRetry={onRetryPicture ? () => onRetryPicture(source.id) : undefined} />}
-                  </div>}</div>}
+                  </div>}
+                {source.pictureFailure && <PictureFailure error={source.pictureFailure} onDismiss={source.clearPictureFailure} />}</div>}
             <footer>
               <div className="c3-monitor-source-row" data-tooltip-controls>
                 <div className="c3-monitor-source-info">
@@ -443,6 +448,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           <div className="c3-monitor-offer-actions" data-tooltip-controls>
             <SourceOfferAction source={source} disabled={!canSubscribe || source.available === false} onWatch={onWatch} />
           </div>
+          {source.kind === "screen" && source.pictureFailure && <PictureFailure error={source.pictureFailure} onDismiss={source.clearPictureFailure} />}
         </div>)}
       </div>
     </section>}

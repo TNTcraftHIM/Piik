@@ -120,6 +120,13 @@ export interface ChatAttachmentPreparation {
   progress(percent: number | null): void;
 }
 
+/**
+ * Whether the page banner reports an operation's failure. A control that shows
+ * its own failure passes a function, asked when the failure happens, so a
+ * result its owner can no longer receive still reaches the banner.
+ */
+export type ReportError = boolean | (() => boolean);
+
 export interface ChannelActions {
   startWatch(roomId: string, url: string, reportError?: boolean): Promise<void>;
   prepareWatchEmbed(roomId: string, url: string, reportError?: boolean): Promise<void>;
@@ -219,9 +226,9 @@ export interface ChannelActions {
   browserCapturePreparation(roomId: string): "picker" | "preparing" | undefined;
   cancelScreenSelection(roomId: string): Promise<void>;
   stopScreen(publicationId: string, successorWatchId?: string): Promise<void>;
-  watch(publicationId: string): Promise<void>;
+  watch(publicationId: string, reportError?: ReportError): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
-  retryPicture(publicationId: string): Promise<void>;
+  retryPicture(publicationId: string, reportError?: ReportError): Promise<void>;
   screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation, playbackError?: ScreenPlaybackError): void;
   screenPlaybackError(publicationId: string): ScreenPlaybackError | undefined;
   inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void>;

@@ -18,7 +18,7 @@ import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
-import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, useKeyedSettingsAction, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
 import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -366,6 +366,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     return () => document.removeEventListener("keydown", escape);
   }, [mobilePane, sidebarsInline, setMobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
+  // A result this owner can no longer receive still reaches the banner.
+  const pictureAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId]));
+  const attemptPicture = (id: string, operation: (reportError: () => boolean) => Promise<void>) => {
+    void pictureAction.run(id, signal => operation(() => signal.aborted));
+  };
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
   const [hlsSupported, setHlsSupported] = useState(false);
   const inspectHls = stageWatches.some(activity => activity.sessionId !== sessionId && activity.byteSource?.format === "hls")
@@ -586,6 +592,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            pictureFailure: pictureAction.errors.get(publication.id), clearPictureFailure: () => pictureAction.clearError(publication.id),
             playbackError: channel.screenPlaybackError(publication.id),
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
             deliveryScope: JSON.stringify([roomId, sessionId, publication.sessionId,
@@ -615,8 +622,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id) || busy("retry-picture", publication.id),
           })), ...watchSources, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id)).map(source => ({ ...source, hidden: source.roomId !== roomId, onClose: () => closeWaiting(source.id) }))]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
-            onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
-            onRetryPicture={id => run(channel.retryPicture(id))}
+            onWatch={id => { showSource(roomId, id); attemptPicture(id, reportError => channel.watch(id, reportError)); }} onUnwatch={id => run(channel.unwatch(id))}
+            onRetryPicture={id => attemptPicture(id, reportError => channel.retryPicture(id, reportError))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />

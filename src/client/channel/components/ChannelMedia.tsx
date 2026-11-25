@@ -36,6 +36,7 @@ import type { WatchPlayback } from "../protocol";
 import { channelErrorPresentation } from "../error-presentation";
 import { diagnoseChannelFact } from "../diagnosis";
 import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
+import { ChannelSettingsError } from "./ChannelSettingsDialog";
 import type { VoiceRendering } from "../use-voice-playback";
 import { formatMediaTime } from "../../media/media-time";
 import { mediaLanguageLabel } from "../../media/media-language";
@@ -381,12 +382,22 @@ function readStickPositions() {
   return readRoomPreferences().stickPositions;
 }
 
-export function ChannelVideo({ stream, owned, localSource, sourcePaused = false, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, onRetryPicture, retryAvailable = true, theaterMode, onToggleTheater }: {
+/** A failed watch or picture retry stays with its picture until the next attempt, a started picture or dismissal. */
+export function PictureFailure({ error, onDismiss }: { error: string; onDismiss?(): void }) {
+  return <div className="c3-picture-failure">
+    <ChannelSettingsError error={error} />
+    {onDismiss && <Btn icon="x" title="notice.dismiss" hint="hint-close" size="dense" quiet onClick={onDismiss} />}
+  </div>;
+}
+
+export function ChannelVideo({ stream, owned, localSource, sourcePaused = false, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, onRetryPicture, retryAvailable = true, failure, clearFailure, theaterMode, onToggleTheater }: {
   stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   presentation?: "full" | "thumbnail" | "background"; sourcePaused?: boolean;
   input?: InputTransport;
   buffering?: PlaybackSettingsProps["buffering"];
   onRetryPicture?(): void; retryAvailable?: boolean;
+  /** The last watch or retry failure of this picture; a composited picture ends it. */
+  failure?: string; clearFailure?(): void;
   interaction?: RoomInteractionSession | null;
   theaterMode: boolean; onToggleTheater(): void;
   onPresentation?: ChannelActions["screenPresentation"];
@@ -563,6 +574,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       onPresentation?.(input.flowId, input.stream, state);
     }
   }, [inputs, onPresentation, consumerVersion, fullscreen.nativeActive, picture.active]);
+  useEffect(() => { if (ready) clearFailure?.(); }, [ready]);
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
@@ -570,9 +582,10 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
       interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused && !sourcePaused} />
-    {(sourcePaused || !ready && !blocked) && <div className="c3-mini-message" data-source-paused={sourcePaused || undefined} role="status">
-      <span className="c3-frame-wait">{sourcePaused ? <Glyph name="pause" size={24} /> : <BrandMark size={32} motion="loop" />}
-        {t(sourcePaused ? "host.pauseNotice" : "screen.waitingPicture")}</span>
+    {(sourcePaused || !blocked && (!ready || failure)) && <div className="c3-mini-message" data-source-paused={sourcePaused || undefined}>
+      {(sourcePaused || !ready) && <span className="c3-frame-wait" role="status">{sourcePaused ? <Glyph name="pause" size={24} /> : <BrandMark size={32} motion="loop" />}
+        {t(sourcePaused ? "host.pauseNotice" : "screen.waitingPicture")}</span>}
+      {failure && <PictureFailure error={failure} onDismiss={clearFailure} />}
     </div>}
     {blocked && !sourcePaused && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
