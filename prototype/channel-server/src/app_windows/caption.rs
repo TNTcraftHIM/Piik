@@ -59,6 +59,7 @@ impl Caption {
         let id = window.id();
         let initial = Cell::new(true);
         let view = WebViewBuilder::new()
+            .with_focused(false)
             .with_environment(content.environment())
             .with_transparent(!standalone)
             .with_browser_accelerator_keys(false)

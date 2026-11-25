@@ -480,7 +480,15 @@ impl ForwardingBudget {
             Uuid::parse_str(user_id).map_err(|_| error("invalid_user"))?,
             &mut snapshot,
         );
-        encode(&serde_json::json!({ "snapshot": snapshot, "commands": commands, "capacity": capacity }))
+        encode(&serde_json::json!({
+            "snapshot": {
+                "pairs": snapshot.pairs,
+                "files": snapshot.files,
+                "watchBytes": snapshot.watch_bytes,
+            },
+            "commands": commands,
+            "capacity": capacity,
+        }))
     }
 }
 

@@ -103,7 +103,12 @@ Windows package checks covered native window capture, attended pointer/keyboard
 input to an owned window, WebView fallback, saved-site navigation, local HTTPS
 entry, orderly shutdown and a signed update using a temporary identity and
 local providers. WebView permission and speaking-indicator controls used fake
-devices. Physical microphone/camera behavior, permission reset across process
+devices. Closing a detached room panel preserved an actual attachment save and
+its room-owned progress; saved bytes matched the source. Native download
+cancellation left no saved file. Pinned voice overlays passed native pointer
+hit testing, focus return, title-bar dragging and dismissal while voice stayed
+joined. Background opening preserved another owned window's foreground state.
+Physical microphone/camera behavior, permission reset across process
 restart or active capture, protected/admin windows, manual source selection on
 the reporter's setup, window audio and production update distribution remain
 outside those checks. An isolated shutdown stall remains unexplained.

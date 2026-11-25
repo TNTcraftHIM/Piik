@@ -378,11 +378,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
   // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
   // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
-  const pictureAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]));
+  const pictureAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]), publications);
   // A share start reports here: the picker closes first, and the room's share control moves to the tile once sharing starts.
   const shareStart = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId, connected]));
   const attemptPicture = (id: string, operation: (reportError: () => boolean) => Promise<void>) => {
-    void pictureAction.run(id, signal => operation(() => signal.aborted));
+    void pictureAction.run(id, operation);
   };
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
   const [hlsSupported, setHlsSupported] = useState(false);

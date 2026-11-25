@@ -354,8 +354,7 @@ the feedback period; they do not delay that delivery.
   matched packages. Verify physical Android capture and media-path recovery,
   and the Windows WebView entry with physical microphones
   and cameras. Check owner entry through the matching App's launcher, terminal
-  and automatic startup. Verify voice-overlay dismissal and pointer passthrough, and
-  attachment saving across native panel closure. Investigate the observed WebView renderer exit during room
+  and automatic startup. Investigate the observed WebView renderer exit during room
   navigation. Exercise macOS Quit, Dock/Finder return, permissions, physical
   capture, sound and input. Verify Linux hardware encoding and physical sound,
   and complete the remaining Linux distribution OBS checks. Verify the App
