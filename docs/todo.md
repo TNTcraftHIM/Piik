@@ -28,12 +28,10 @@ the feedback period; they do not delay that delivery.
   stop. Reproduce through the receiver and sender consumers before changing
   forwarding; separately bypassing either encoding pool did not resolve it.
   [Controlled evidence](./research/network-lab.md#browser-relay-after-local-unwatch)
-- [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
-  steady selected media on a controlled link. Record the SDK estimate, media,
-  padding and minimum/desired demand before changing probe policy. Distinguish
-  insufficient observed capacity from a trial that has not prompted new probing.
-  Record the accepted cross-flow allocation policy separately from SDK congestion
-  control and platform frame admission.
+- [ ] **Native optional-flow acceptance.** Exercise optional admission through
+  the actual Driver with selected picture and sound, changing source costs and
+  decoded playback. Reuse the [SDK demand control](./research/network-lab.md#native-desired-capacity);
+  keep cross-flow allocation separate from SDK congestion control and frame admission.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
