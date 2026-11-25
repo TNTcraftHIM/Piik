@@ -1386,7 +1386,7 @@ impl Session {
                     live.forwarding_budget.reconnected();
                 }
                 self.recovery = None;
-                self.apply_state(state, socket, retired).await?;
+                self.state(state, socket, retired).await?;
                 if let Some(admission) = &self.service_admission {
                     let (ack, registered) = oneshot::channel();
                     admission
@@ -1473,7 +1473,7 @@ impl Session {
                     if resumed { "resumed" } else { "new" }
                 );
             }
-            Event::State { state } => self.state(state, socket).await?,
+            Event::State { state } => self.state(state, socket, BTreeSet::new()).await?,
             Event::InputState { registrations } => {
                 if let Some(live) = &mut self.live {
                     await_peer(
@@ -2717,16 +2717,12 @@ impl Session {
             .as_ref()
             .and_then(|live| live.room.snapshot.borrow().clone());
         if let Some(state) = state {
-            self.state(state, socket).await?;
+            self.state(state, socket, BTreeSet::new()).await?;
         }
         Ok(())
     }
 
-    async fn state(&mut self, state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
-        self.apply_state(state, socket, BTreeSet::new()).await
-    }
-
-    async fn apply_state(
+    async fn state(
         &mut self,
         mut state: Snapshot,
         socket: &mut Writer<'_>,

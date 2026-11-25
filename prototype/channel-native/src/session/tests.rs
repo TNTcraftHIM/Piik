@@ -233,7 +233,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
         name: "Target".into(),
         bootstrap: false,
     });
-    session.state(state.clone(), &mut socket).await.unwrap();
+    session.state(state.clone(), &mut socket, BTreeSet::new()).await.unwrap();
     remote.close(None).await.unwrap();
     let _ = socket.close(None).await;
     let input = HostInput {
@@ -471,7 +471,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
     state.channel.rooms.clear();
     state.channel.owner_id = Some(owner);
     state.channel.room_creation_policy = RoomCreationPolicy::InviteOnly;
-    session.state(state.clone(), &mut socket).await.unwrap();
+    session.state(state.clone(), &mut socket, BTreeSet::new()).await.unwrap();
     let policy = RoomState::new(
         "guest".into(),
         "Private".into(),
@@ -658,7 +658,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             .as_mut()
             .unwrap()
             .host_session_id = native;
-        session.state(state.clone(), &mut socket).await.unwrap();
+        session.state(state.clone(), &mut socket, BTreeSet::new()).await.unwrap();
         let staging = tempfile::tempdir().unwrap();
         let stage_path = staging.path().to_owned();
         let offline = matches!(failure, "ambiguous-at-install" | "recovered-original");
@@ -809,7 +809,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                 .find(|s| s.id == native)
                 .unwrap()
                 .signing_key = session.signer.signing_key();
-            session.state(state, &mut socket).await.unwrap();
+            session.state(state, &mut socket, BTreeSet::new()).await.unwrap();
             session
                 .event(
                     Event::HostInput {
@@ -1137,7 +1137,7 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
 #[tokio::test]
 async fn capture_confirmation_returns_shared_signal_failure_to_carrier() {
     let (mut session, mut socket, _remote, state) = capture_projection_session().await;
-    session.state(state, &mut socket).await.unwrap();
+    session.state(state, &mut socket, BTreeSet::new()).await.unwrap();
     let (result, response) = oneshot::channel();
     let mut request = projection_capture(result);
     request.replaces = Some(Uuid::new_v4());
@@ -1278,7 +1278,7 @@ async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
                 }
                 "released" => session.release().await.unwrap(),
                 "caller-closed" => {
-                    session.state(state, &mut socket).await.unwrap();
+                    session.state(state, &mut socket, BTreeSet::new()).await.unwrap();
                     drop(response.take());
                 }
                 _ => unreachable!(),
@@ -1519,7 +1519,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     request_id,
                 ));
             }
-            session.state(state.clone(), &mut socket).await.unwrap();
+            session.state(state.clone(), &mut socket, BTreeSet::new()).await.unwrap();
             assert!(requests.iter_mut().all(|(_, response, _)| matches!(
                 response.try_recv(),
                 Err(oneshot::error::TryRecvError::Empty)
@@ -1532,7 +1532,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 "revoked" => state.channel.rooms[0].authorized = false,
                 _ => unreachable!(),
             }
-            session.state(state.clone(), &mut socket).await.unwrap();
+            session.state(state.clone(), &mut socket, BTreeSet::new()).await.unwrap();
             let cancelled = requests[0].1.try_recv();
             assert!(
                 matches!(&cancelled, Ok(Err(code)) if code == "room_unavailable"),
@@ -1567,7 +1567,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     video_settings: Some(Settings { degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,  width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()),
                 })
                 .collect();
-            session.state(state, &mut socket).await.unwrap();
+            session.state(state, &mut socket, BTreeSet::new()).await.unwrap();
             let Message::Text(text) = remote.next().await.unwrap().unwrap() else {
                 panic!("Unpublish")
             };
@@ -1605,7 +1605,7 @@ async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_res
     let directory = tempfile::tempdir().unwrap();
     let session_id = session.live.as_ref().unwrap().session;
     state.channel.rooms[0].reading = true;
-    session.state(state.clone(), &mut socket).await.unwrap();
+    session.state(state.clone(), &mut socket, BTreeSet::new()).await.unwrap();
     let (_commands, received) = mpsc::channel(1);
     session.hosting = Some(Hosting {
         directory: directory.path().into(), identity: (state.channel.id, state.sessions[0].user_id),
