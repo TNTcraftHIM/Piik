@@ -131,11 +131,10 @@ impl Sites {
                 |row| row.get(0),
             )
             .optional()?;
-        match saved.as_deref().unwrap_or("") {
-            "" => Ok(StartupIntent::None),
-            value if value.starts_with('{') => Ok(serde_json::from_str(value)?),
-            site => Ok(StartupIntent::External(origin(site)?)),
-        }
+        // An unreadable preference should still let the launcher open.
+        Ok(saved
+            .and_then(|value| serde_json::from_str(&value).ok())
+            .unwrap_or_default())
     }
     pub fn local_identity(&self) -> Result<LocalIdentity> {
         let saved: Option<String> = self
@@ -168,11 +167,7 @@ impl Sites {
         self.0.execute(
             "INSERT INTO app_setting(key,value) VALUES('startup',?1)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            [match startup {
-                StartupIntent::None => String::new(),
-                StartupIntent::External(site) => site.clone(),
-                StartupIntent::Owned(_) => serde_json::to_string(startup)?,
-            }],
+            [serde_json::to_string(startup)?],
         )?;
         Ok(())
     }
@@ -285,6 +280,27 @@ mod tests {
     }
 
     #[test]
+    fn unreadable_startup_preference_allows_reselection() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let mut sites = Sites::open(directory.path())?;
+        let site = "https://channel.example";
+        for saved in ["", site, "{", r#"{"kind":"external"}"#] {
+            sites.0.execute(
+                "INSERT OR REPLACE INTO app_setting(key,value) VALUES('startup',?1)",
+                [saved],
+            )?;
+            assert!(matches!(sites.startup()?, StartupIntent::None));
+        }
+        sites.approve(site, true, false)?;
+        sites.set_startup(&StartupIntent::External(site.into()))?;
+        assert!(matches!(sites.startup()?, StartupIntent::External(origin) if origin == site));
+        sites.set_startup(&StartupIntent::None)?;
+        let sites = Sites::open(directory.path())?;
+        assert!(matches!(sites.startup()?, StartupIntent::None));
+        Ok(())
+    }
+
+    #[test]
     fn long_data_directory_retains_approval_and_identity_after_reopen() -> Result<()> {
         let root = tempfile::tempdir()?;
         let directory = root
@@ -302,8 +318,8 @@ mod tests {
                 |row| row.get(0),
             )?;
             assert_eq!(
-                saved, site,
-                "fixed external bookmarks keep their existing representation"
+                serde_json::from_str::<serde_json::Value>(&saved)?,
+                serde_json::json!({"kind": "external", "value": site})
             );
             assert!(sites.domain_port()?.is_none());
             sites.set_domain_port(NonZeroU16::new(31337).unwrap())?;

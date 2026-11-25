@@ -38,6 +38,10 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         println!("{}", serde_json::to_string(&result)?);
         return Ok(std::process::ExitCode::from(result.exit_code()));
     }
+    ensure!(
+        std::env::var_os("PIIK_ENV").is_none(),
+        "Detected Piik 2.x configuration (PIIK_ENV). Use the matching 2.x image or start 3.0 with its own configuration and data directory."
+    );
     let room_creation_policy = first_start_setting(
         "PIIK_CHANNEL_ROOM_CREATION_POLICY",
         RoomCreationPolicy::Ordinary,

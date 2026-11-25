@@ -25,6 +25,7 @@ export const pages = [
   ['docs/guide/troubleshooting.zh-CN.md', 'zh/troubleshooting.md', '遇到问题'],
   ['docs/guide/network.zh-CN.md', 'zh/network.md', '网络连接'],
   ['docs/guide/frp.zh-CN.md', 'zh/frp.md', '网络连接'],
+  ['docs/deployment.zh-CN.md', 'zh/deployment.md', hostingGroups.zh],
   ['docs/guide/translating.zh-CN.md', 'zh/translating.md', '参与项目'],
 ].map(([source, path, group]) => {
   const markdown = readFileSync(new URL('../../' + source, import.meta.url), 'utf8');
@@ -34,6 +35,7 @@ export const pages = [
 });
 
 export const repository = 'https://github.com/TNTcraftHIM/Piik';
+export const documentationBranch = 'feat/channel-prototype';
 
 // Repository readers switch translations below the title. On the website the header owns this control.
 export function documentBody(markdown, source) {
@@ -68,7 +70,7 @@ export function documentLink(href, source) {
     const relative = posix.relative(posix.dirname(current.path), page.path).replace(/\.md$/, '.html');
     return `./${relative}${suffix}`;
   }
-  return `${repository}/blob/main/${target}${suffix}`;
+  return `${repository}/blob/${documentationBranch}/${target}${suffix}`;
 }
 
 // Keep images local to the documentation build so Vite can hash and bundle them.

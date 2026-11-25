@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitepress';
-import { pages, documentLink, documentImage, repository, hostingGroups } from '../pages.mjs';
+import { pages, documentLink, documentImage, repository, documentationBranch } from '../pages.mjs';
 import { githubSlug } from '../../../scripts/markdown-slug.mjs';
 import { THEME_STORAGE_KEY } from '../../../src/client/ui/theme.ts';
 
-const editPattern = ({ frontmatter }) => `https://github.com/TNTcraftHIM/Piik/edit/main/${frontmatter.source}`;
+const editPattern = ({ frontmatter }) => frontmatter.editUrl;
 const base = process.env.PIIK_DOCS_BASE || '/docs/';
 
 const sidebar = chinese => {
@@ -12,14 +12,7 @@ const sidebar = chinese => {
     if (!groups.has(page.group)) groups.set(page.group, []);
     groups.get(page.group).push({ text: page.text, link: `/${page.path.replace(/\.md$/, '.html')}` });
   }
-  const sections = Array.from(groups, ([text, items]) => ({ text, items }));
-  // The deployment guide is English-only; Chinese readers find it in the same
-  // place, before the last group, marked as English.
-  if (chinese) sections.splice(-1, 0, {
-    text: hostingGroups.zh,
-    items: [{ text: '服务端发布与恢复（英文）', link: '/deployment.html' }],
-  });
-  return sections;
+  return Array.from(groups, ([text, items]) => ({ text, items }));
 };
 
 export default defineConfig({
@@ -120,6 +113,6 @@ export default defineConfig({
   },
   transformPageData(data) {
     const page = pages.find(page => page.path === data.relativePath);
-    if (page) data.frontmatter.source = page.source;
+    if (page) data.frontmatter.editUrl = `${repository}/edit/${documentationBranch}/${page.source}`;
   },
 });

@@ -2,7 +2,14 @@ import { z } from "zod";
 import { roomSchema, roomSummarySchema, type RoomSummary } from "./protocol";
 import { RoomCreationInterrupted } from "./room-creation";
 
-const descriptionSchema = z.object({ sessionId: z.uuid(), roomIds: z.array(roomSchema.shape.id) });
+const nativeRoomOpenReasonSchema = z.enum(["in_use", "ambiguous"]);
+export type NativeRoomOpenReason = z.infer<typeof nativeRoomOpenReasonSchema>;
+
+const descriptionSchema = z.object({
+  sessionId: z.uuid(),
+  roomIds: z.array(roomSchema.shape.id),
+  unavailable: z.array(z.object({ roomId: roomSchema.shape.id, reason: nativeRoomOpenReasonSchema })).optional(),
+});
 export type NativeHostingDescription = z.infer<typeof descriptionSchema>;
 
 export type RoomRestoreRecovery = "room_restore_unconfirmed" | "room_restored_connection_failed";

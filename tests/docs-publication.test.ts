@@ -65,9 +65,9 @@ describe("reader documentation publication", () => {
     expect(documentLink("./getting-started.md#share-with-piik-app", guide)).toBe("./../getting-started.html#share-with-piik-app");
     expect(documentLink("/docs/guide/network.zh-CN.md", guide)).toBe("./network.html");
     expect(documentLink("../deployment.md", guide)).toBe("./../deployment.html");
-    expect(documentLink("../standards/configuration.md#diagnostics", guide))
-      .toBe("https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md#diagnostics");
-    expect(documentLink("../todo.md", guide)).toBe("https://github.com/TNTcraftHIM/Piik/blob/main/docs/todo.md");
+    expect(documentLink("../../prototype/channel-server/README.md#run", guide))
+      .toBe("https://github.com/TNTcraftHIM/Piik/blob/feat/channel-prototype/prototype/channel-server/README.md#run");
+    expect(documentLink("../todo.md", guide)).toBe("https://github.com/TNTcraftHIM/Piik/blob/feat/channel-prototype/docs/todo.md");
     for (const href of ["#选择-app-模式", "?lang=en", "https://demo.piik.tv", "mailto:example@example.com"]) {
       expect(documentLink(href, guide)).toBe(href);
     }

@@ -228,6 +228,17 @@ pub fn try_lock_file(file: &File) -> io::Result<()> {
     file.try_lock().map_err(io::Error::from)
 }
 
+#[derive(Debug)]
+pub(crate) struct RoomStorageInUse(String);
+
+impl std::fmt::Display for RoomStorageInUse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "room_storage_in_use: {}", self.0)
+    }
+}
+
+impl std::error::Error for RoomStorageInUse {}
+
 fn lock(path: &Path, room_id: &str) -> Result<File> {
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -238,7 +249,7 @@ fn lock(path: &Path, room_id: &str) -> Result<File> {
     match try_lock_file(&file) {
         Ok(()) => Ok(file),
         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-            bail!("room_storage_in_use: {room_id}")
+            Err(RoomStorageInUse(room_id.into()).into())
         }
         Err(error) => Err(error.into()),
     }

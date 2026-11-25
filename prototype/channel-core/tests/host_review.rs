@@ -2072,3 +2072,28 @@ fn registered_writer_reloads_lineage_across_summary_change_and_full_install() {
     drop((host, archive));
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn new_host_policy_preserves_advertised_media_and_site_relay_choice() {
+    let mut policy = RoomState::new(
+        "studio".into(),
+        "Studio".into(),
+        Default::default(),
+        Uuid::new_v4(),
+        RoomAccess::Private,
+        true,
+        None,
+    )
+    .unwrap();
+    for (bitrate, capacity, allow) in [
+        (policy.voice_bitrate, policy.relay_capacity, None),
+        (96_000, 3, Some(false)),
+    ] {
+        policy.voice_bitrate = bitrate;
+        policy.relay_capacity = capacity;
+        let summary = piik_channel_core::host::RoomSummary::from_policy(&policy);
+        let installed = summary.new_policy(None, None, allow).unwrap();
+        assert!(piik_channel_core::host::RoomSummary::from_policy(&installed) == summary);
+        assert_eq!(installed.allow_service_relay, allow.unwrap_or(true));
+    }
+}

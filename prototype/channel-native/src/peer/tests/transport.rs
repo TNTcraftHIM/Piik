@@ -299,6 +299,12 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
         ensure!(matches!(previous_reports.as_slice(), [NativeEvent::Command(WireCommand::FlowState {
             pair_id, flow_id, state: FlowState::Failed,
         })] if *pair_id == pair && *flow_id == key.0), "ended current video must report one scoped failure before Ready");
+        audio_packets.send(TrackEvent::End).await?;
+        driver.event(events.recv().await.context("voice audio end")?).await?;
+        ensure!(matches!(reports.try_recv(), Ok(NativeEvent::Command(WireCommand::FlowState {
+            pair_id, flow_id, state: FlowState::Failed,
+        })) if pair_id == pair && flow_id == flows[1].id));
+        ensure!(reports.try_recv().is_err());
         Ok(())
     }).await.unwrap_or_else(|error| Err(error.into()));
     for (_, pair) in std::mem::take(&mut driver.pairs) {

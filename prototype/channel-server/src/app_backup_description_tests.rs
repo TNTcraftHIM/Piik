@@ -184,6 +184,7 @@ async fn concurrent_descriptions_follow_current_admission_without_recreating_the
         .send(Ok(HostingDescription {
             session_id: Uuid::new_v4(),
             room_ids: vec!["retired-room".into()],
+            unavailable: vec![],
         }))
         .is_ok());
     assert!(old_second.send(Err("hosting_unavailable".into())).is_ok());
@@ -199,6 +200,7 @@ async fn concurrent_descriptions_follow_current_admission_without_recreating_the
             .send(Ok(HostingDescription {
                 session_id: current,
                 room_ids: vec!["owned-room".into()],
+                unavailable: vec![],
             }))
             .is_ok());
     }

@@ -29,6 +29,31 @@ pub struct RoomSummary {
 }
 
 impl RoomSummary {
+    pub fn new_policy(
+        &self,
+        password: Option<String>,
+        picture: Option<String>,
+        allow_service_relay: Option<bool>,
+    ) -> Result<RoomState, &'static str> {
+        let mut policy = RoomState::new(
+            self.id.clone(),
+            self.name.clone(),
+            self.icon.clone(),
+            self.creator_id,
+            self.access,
+            self.hidden,
+            password,
+        )?;
+        policy.appearance.picture = picture;
+        policy.voice_bitrate = self.voice_bitrate;
+        policy.relay_capacity = self.relay_capacity;
+        if let Some(allowed) = allow_service_relay {
+            policy.allow_service_relay = allowed;
+        }
+        policy.validate()?;
+        Ok(policy)
+    }
+
     pub(crate) fn validate(&self) -> Result<(), &'static str> {
         if !crate::wire::valid_id(&self.id)
             || self.name.trim().is_empty()

@@ -217,7 +217,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     purgeRoomHistory: async roomId => {
       setHistoryChangesByRoom(previous => ({ ...previous, [roomId]: { clearedThrough: nextMessage.current - 1, deleted: new Set() } }));
     },
-    interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable,
+    interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable, nativeRoomOpenFailure: async () => undefined,
     getRoomInvite: async (roomId: string) => ({ state: "available" as const, url: invites[roomId] ?? `https://friends.example/#room=${roomId}&invite=sample` }),
     invitationPending: () => false,
     createRoomInvite: async (roomId: string) => {

@@ -16,7 +16,7 @@ import { ChannelIdentityFields } from "./ChannelIdentity";
 import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
 import "./channel-room-controls.css";
 import { BackupControls, RoomRestoreResult } from "./BackupControls";
-import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
+import { roomRestoreRecovery, type RoomRestoreRecovery, type NativeRoomOpenReason } from "../hosting-api";
 import { messageAuthorName, userProfile } from "../presentation";
 import { fileSize, type AttachmentLimits } from "../attachments";
 import { protectRoomComposition, useRoomFormFocus } from "./room-form-interaction";
@@ -262,6 +262,27 @@ function BrowserRoomPersistence() {
     : persisted ? "room.settings.browserStoragePersistent" : "room.settings.browserStorageBestEffort")}</p>;
 }
 
+function NativeRoomOpenNotice({ channel, roomId, operator, serverHosted = false }: {
+  channel: ChannelController; roomId: string; operator: "app" | "domain"; serverHosted?: boolean;
+}) {
+  const { t } = useCopy();
+  const read = channel.nativeRoomOpenFailure;
+  const [reason, setReason] = useState<NativeRoomOpenReason>();
+  useEffect(() => {
+    const controller = new AbortController();
+    void read(roomId, operator, controller.signal).then(value => {
+      if (!controller.signal.aborted) setReason(value);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [read, roomId, operator]);
+  const diagnosis = reason && diagnoseChannelFact({ area: "roomOpen", failure: reason });
+  if (!diagnosis) return null;
+  return <div className="c3-settings-offline" role="status">
+    <strong>{t(operator === "app" ? "room.unopened.localOperator" : serverHosted ? "room.unopened.siteServer" : "room.unopened.domainOperator")}</strong>
+    <p>{t(diagnosis.message)} {diagnosis.next && t(diagnosis.next)}</p>
+  </div>;
+}
+
 function RoomSettings({ channel, room, onClose }: {
   channel: ChannelController; room: ChannelRoom; onClose(): void;
 }) {
@@ -293,6 +314,7 @@ function RoomSettings({ channel, room, onClose }: {
   const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
   const openFailure = channel.roomOpenFailures.get(room.id);
   const diagnosis = openFailure && diagnoseChannelFact({ area: "roomOpen", failure: openFailure });
+  const inspectNative = connected && room.authorized && !room.available && !!channel.self;
   const available = connected && room.available;
   const busy = channel.pending.has(`room:${room.id}`);
   const backupBusy = channel.pending.has("room-backup");
@@ -321,6 +343,12 @@ function RoomSettings({ channel, room, onClose }: {
           {t(diagnosis.message)} <ChannelDiagnosisHelp diagnosis={diagnosis} />
         </div> : <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
           : t("room.settings.offlineRelay")}</p>)}
+        {inspectNative && !serverHosted && channel.self?.id === room.creatorId && channel.appConnected &&
+          <NativeRoomOpenNotice key={JSON.stringify(["app", site?.id, channel.self?.id, channel.sessionId, channel.appPort])}
+            channel={channel} roomId={room.id} operator="app" />}
+        {inspectNative && channel.self?.id === site?.ownerId &&
+          <NativeRoomOpenNotice key={JSON.stringify(["domain", site?.id, channel.self?.id, channel.sessionId, serverHosted])}
+            channel={channel} roomId={room.id} operator="domain" serverHosted={serverHosted} />}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={{ ...roomDraft(room), ...draft }} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))}
             inviteOnly={inviteOnly} disabled={!available || working} busy={busy}

@@ -1784,6 +1784,25 @@ export class ChannelSession {
     throw new Error("room_host_unavailable");
   }
 
+  nativeRoomOpenFailure: ChannelActions["nativeRoomOpenFailure"] = async (roomId, operator, signal) => {
+    const current = this.sessionContext();
+    const { self, state } = this.view;
+    const eligible = () => this.view.state?.channel.rooms.some(room =>
+      room.id === roomId && room.authorized && !room.available && (operator === "domain" || room.creatorId === self?.id));
+    if (!eligible() || (operator === "app" && state?.channel.hostingMode === "hosted")) return;
+    const app = this.app;
+    const credential = this.credential;
+    const native = operator === "domain" && self?.id === state?.channel.ownerId && credential
+      ? new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` }, "/prototype/channel/hosting")
+      : undefined;
+    const description = operator === "app" && app?.connected ? await app.describeHosting(signal)
+      : await native?.describe(signal);
+    current();
+    if (signal.aborted || !eligible() || (operator === "app" && (app !== this.app || !app?.connected))
+      || (operator === "domain" && (credential !== this.credential || self?.id !== this.view.state?.channel.ownerId))) return;
+    return description?.unavailable?.find(entry => entry.roomId === roomId)?.reason;
+  };
+
   roomBackupAvailable = async (roomId: string): Promise<boolean> => {
     try { await this.backupOwner(roomId); return true; } catch { return false; }
   };
