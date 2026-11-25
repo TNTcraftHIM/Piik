@@ -11,6 +11,9 @@ import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import { browserDebugEnabled, debugEvent } from "../lib/debug";
 
+// The connections panel samples at this cadence, so a replay compares the same seconds.
+const CONNECTION_SAMPLE_MS = 1_000;
+
 interface Peer {
   plan: ChannelPair;
   transport: ChannelTransport;
@@ -48,6 +51,7 @@ export class ChannelMedia {
   private screenInputs = new Map<string, ChannelScreenInput[]>();
   private relayMedia = new Map<string, { tracks: MediaStreamTrack[]; player: HTMLMediaElement }>();
   private videoPool = new BrowserEncodingPool();
+  private sampling: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private send: (command: ChannelCommand) => void,
     private changed: (streams: ReadonlyMap<string, MediaStream>, screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void,
@@ -260,6 +264,30 @@ export class ChannelMedia {
       }
     }
     this.refresh(released);
+    this.syncSampling();
+  }
+
+  /** With debug on, one compact sample per second while any pair exists. */
+  private syncSampling(): void {
+    if (!browserDebugEnabled) return;
+    if (!this.peers.size) {
+      if (this.sampling !== null) clearTimeout(this.sampling);
+      this.sampling = null;
+      return;
+    }
+    if (this.sampling !== null) return;
+    const timer = setTimeout(async () => {
+      const peers = [...this.peers.values()];
+      const samples = await Promise.allSettled(peers.map(async peer => {
+        const report = await peer.transport.pc.getStats();
+        return this.peers.get(peer.plan.id) === peer ? [peer.transport.connectionSample(report)] : [];
+      }));
+      if (this.sampling !== timer) return;
+      debugEvent("channel", "connection-sample", { connections: samples.flatMap(result => result.status === "fulfilled" ? result.value : []) });
+      this.sampling = null;
+      this.syncSampling();
+    }, CONNECTION_SAMPLE_MS);
+    this.sampling = timer;
   }
 
   private reportRoomData(peer: Peer, ready: boolean): void {
@@ -720,6 +748,7 @@ export class ChannelMedia {
   reset(): void {
     for (const peer of this.peers.values()) this.closePeer(peer);
     this.peers.clear();
+    this.syncSampling();
     this.videoPool.dispose();
     this.videoPool = new BrowserEncodingPool();
     for (const id of [...this.local.keys()]) this.removeLocal(id);

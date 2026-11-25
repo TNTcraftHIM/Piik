@@ -15672,6 +15672,96 @@ test.each([false, true])("logs flow assignments, selections and link states only
   } finally { session.close(); }
 });
 
+const pathReport = (records: Array<[string, object]>) => new Map<string, object>([
+  ...records,
+  ["transport", { id: "transport", type: "transport", selectedCandidatePairId: "candidate-pair" }],
+  ["candidate-pair", { id: "candidate-pair", type: "candidate-pair", transportId: "transport", state: "succeeded",
+    localCandidateId: "local", remoteCandidateId: "remote", currentRoundTripTime: 0.042, availableOutgoingBitrate: 2_500_000 }],
+  ["local", { id: "local", type: "local-candidate", candidateType: "srflx", address: "192.0.2.10", port: 50_000, protocol: "udp" }],
+  ["remote", { id: "remote", type: "remote-candidate", candidateType: "host", address: "198.51.100.20", port: 60_000, protocol: "udp" }],
+]) as unknown as RTCStatsReport;
+
+test.each([false, true])("samples derived connection numbers once a second without addresses only with Browser debug enabled (%s)", async enabled => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const [pairId, flowId, publicationId] = Array.from({ length: 3 }, () => crypto.randomUUID());
+  const source = "source";
+  const state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
+    publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+    pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [],
+      incoming: [{ id: flowId, publicationId, selected: true, inputFlowId: null }] }],
+  };
+  vi.useFakeTimers();
+  try {
+    socket.receive({ type: "state", state });
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    const video = remoteTrack("video"), stream = remoteStream("remote-stream", [video]);
+    socket.receive({ type: "signal", pairId, fromSessionId: source, payload: { exchangeId: crypto.randomUUID(),
+      description: { type: "offer", sdp: "remote-sdp" }, tracks: [{ flowId, streamId: stream.id }] } });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("remote-sdp"));
+    pc.ontrack?.({ streams: [stream] });
+    let second = 0;
+    pc.getStats.mockImplementation(async () => {
+      second++;
+      return pathReport([["inbound", { id: "inbound", type: "inbound-rtp", kind: "video", trackIdentifier: video.id,
+        transportId: "transport", timestamp: second * 1_000, framesDecoded: second * 30, framesDropped: second,
+        freezeCount: second, totalFreezesDuration: second * 0.1, pauseCount: 0, totalPausesDuration: 0,
+        jitterBufferDelay: second * 1.5, jitterBufferEmittedCount: second * 30, packetsReceived: second * 100, packetsLost: second * 2 }]]);
+    });
+    const calls = pc.getStats.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3_000);
+    const samples = JSON.parse(await exportBrowserDebug()).events.filter((event: { event: string }) => event.event === "connection-sample");
+    if (!enabled) {
+      expect(samples).toEqual([]);
+      expect(pc.getStats.mock.calls.length).toBe(calls);
+      return;
+    }
+    expect(samples).toHaveLength(3);
+    const path = { pairId, peerId: source, rttMs: 42, availableOutgoingKbps: 2_500, localCandidateType: "srflx", remoteCandidateType: "host" };
+    expect(samples[0].details).toEqual({ connections: [{ ...path, outgoing: [], incoming: [{ flowId, sampleWindowMs: null,
+      intervalFramesDecoded: null, intervalFramesDropped: null, intervalFreezeDurationMs: null, intervalPauseDurationMs: null,
+      videoJitterBufferDelayMs: null, audioJitterBufferDelayMs: null, packetLossPercent: null }] }] });
+    expect(samples[2].details.connections[0].incoming[0]).toMatchObject({ flowId, sampleWindowMs: 1_000, intervalFramesDecoded: 30,
+      intervalFramesDropped: 1, intervalPauseDurationMs: 0, videoJitterBufferDelayMs: 50 });
+    const records = JSON.stringify(samples);
+    for (const address of ["192.0.2.10", "198.51.100.20", "50000", "60000", "candidate-pair", video.id]) expect(records).not.toContain(address);
+    // One record per second for one received screen on one connection, as the ring retains it.
+    const bytes = samples.map((sample: object) => new TextEncoder().encode(JSON.stringify(sample)).byteLength);
+    for (const size of bytes) expect(size).toBeLessThan(1_024);
+    session.close();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); session.close(); }
+});
+
+test("a connection sample reports each outgoing flow's limitation and loss without addresses", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const transport = new ChannelTransport({ identity: { sessionId: "self", pairId: "pair", peerId: "viewer" }, polite: true, iceServers: [],
+    send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
+  const pc = RoomPeerConnection.instances[0];
+  try {
+    transport.setOutgoing(new Map([["screen-flow", { kind: "screen", stream: remoteStream("local", [remoteTrack("video")]),
+      profile: QUALITY_PROFILES["1080p30"] }]]));
+    await vi.waitFor(() => expect(pc.senders[0]?.track).toBeTruthy());
+    const report = (second: number) => pathReport([
+      ["outbound", { id: "outbound", type: "outbound-rtp", kind: "video", mediaSourceId: "source", transportId: "transport",
+        timestamp: second * 1_000, framesEncoded: second * 30, qualityLimitationReason: "bandwidth", remoteId: "remote-inbound" }],
+      ["source", { id: "source", type: "media-source", kind: "video", trackIdentifier: pc.senders[0].track.id }],
+      ["remote-inbound", { id: "remote-inbound", type: "remote-inbound-rtp", kind: "video", timestamp: second * 1_000,
+        fractionLost: 0.05, packetsLost: second * 5 }],
+    ]);
+    transport.connectionSample(report(1));
+    const sample = transport.connectionSample(report(2));
+    expect(sample).toEqual({ pairId: "pair", peerId: "viewer", rttMs: 42, availableOutgoingKbps: 2_500, localCandidateType: "srflx",
+      remoteCandidateType: "host", incoming: [], outgoing: [{ flowId: "screen-flow", rtpRid: null, qualityLimitationReason: "bandwidth",
+        packetLossPercent: 5, pooled: false }] });
+    expect(JSON.stringify(sample)).not.toMatch(/192\.0\.2|198\.51\.100/);
+  } finally { transport.close(); }
+});
+
 test.each(["ack", "error"] as const)("a retired publish %s cannot admit or remove the pending replacement", async reply => {
   const { session, socket } = await setup();
   const id = crypto.randomUUID();
