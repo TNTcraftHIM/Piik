@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { RemoteDirectionPad } from "./RemoteDirectionPad";
 import { REMOTE_TOUCH_HOLD_MS, type RemoteTouchpad } from "../../remote-control/touchpad";
 import type { PicturePoint } from "../../media/video-geometry";
@@ -125,9 +125,12 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
     if (mode === "mini") park();
     return clearIdle;
   }, [mode, owner, park, clearIdle]);
+  // Leaving the window drops held input like a blur does, and a mini mouse docks again after the idle time.
+  // An effect event reads the current mode without resubscribing, since resubscribing releases a drag in progress.
+  const retireInactive = useEffectEvent(() => { release(); if (mode === "mini") park(); });
   useEffect(() => {
     if (!owner) return;
-    const stopListening = onDocumentInactive(owner, release);
+    const stopListening = onDocumentInactive(owner, retireInactive);
     return () => {
       stopListening();
       release();
