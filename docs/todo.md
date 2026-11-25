@@ -59,11 +59,6 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Interaction replies during room permission changes.** Let Browser
-  interaction readiness and reaction sends consume their own room-scoped delivery
-  refusals. Preserve immediate Read revocation and the nonce of an unconfirmed
-  operation whose reply was refused after a possible commit. Keep unrelated
-  requests and observer fanout independent.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
