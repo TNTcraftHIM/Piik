@@ -154,6 +154,7 @@ enum ServiceEvent {
     PageCommand(std::sync::Arc<std::sync::Mutex<Option<crate::app::page::Command>>>),
     PageMessage(uuid::Uuid, String),
     PageNavigate(uuid::Uuid),
+    PageProcessExited(uuid::Uuid),
     PagePopup(uuid::Uuid),
     Ready {
         entry: String,
@@ -931,6 +932,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 }
             }
             Event::UserEvent(ServiceEvent::PageMessage(id, body)) => pages.message(id, &body),
+            Event::UserEvent(ServiceEvent::PageProcessExited(id)) => pages.process_exited(id),
             Event::UserEvent(ServiceEvent::PageNavigate(id)) => pages.navigate(id),
             Event::UserEvent(ServiceEvent::PagePopup(id)) => {
                 pages.popup(id, target, page_events.clone())
