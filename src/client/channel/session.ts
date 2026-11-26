@@ -3471,12 +3471,12 @@ export class ChannelSession {
               if (this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
             } else if (!local) throw new Error("capture_unavailable");
           } catch (error) {
-            if (current() && (volume !== share.volume || profile !== share.profile)) continue;
+            if (current() && volume !== share.volume) continue;
             throw error;
           }
           if (!current()) throw new DOMException("Capture cancelled", "AbortError");
           appliedVolume = volume; appliedProfile = profile;
-          if (volume === share.volume && profile === share.profile) return;
+          if (volume === share.volume) return;
         } while (current());
         throw new DOMException("Capture cancelled", "AbortError");
       } catch (error) {
