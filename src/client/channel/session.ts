@@ -3168,11 +3168,12 @@ export class ChannelSession {
     const media = player.media;
     if (!player.owner || !player.error || !(media instanceof PageSuppliedMedia)) return player.resume();
     await this.action(`watch-video:${id}`, async () => {
-      const source = this.view.state?.watchActivities.find(value => value.id === id);
-      if (!source) throw new Error("watch_unavailable");
-      const replacement = media.retryCandidate(source.playback.timeline);
-      const next = this.makeWatchPlayer(id, player.roomId, true, replacement);
+      let next: WatchPlayer | undefined;
       try {
+        const source = this.view.state?.watchActivities.find(value => value.id === id);
+        if (!source) throw new Error("watch_unavailable");
+        const replacement = media.retryCandidate(source.playback.timeline);
+        next = this.makeWatchPlayer(id, player.roomId, true, replacement);
         await next.ready(player.signal);
         const activity = this.view.state?.watchActivities.find(value => value.id === id);
         if (!activity) throw new Error("watch_unavailable");
@@ -3186,8 +3187,10 @@ export class ChannelSession {
         this.stage(next.roomId).useWatch(id, next);
         this.activateWatchOwner(id, next);
       } catch (error) {
-        next.close();
-        if (this.watchPlayer(id) === player && error instanceof Error) player.error = error.message;
+        next?.close();
+        if (this.watchPlayer(id) === player && !player.signal.aborted
+          && !(error instanceof DOMException && error.name === "AbortError"))
+          player.error = error instanceof Error ? error.message : "watch_media_failed";
         throw error;
       }
     }, false);

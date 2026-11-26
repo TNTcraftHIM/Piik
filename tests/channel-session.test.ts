@@ -13644,6 +13644,36 @@ test("foreground recovery cannot withdraw a replacement watch byte source", asyn
   } finally { session.close(); }
 });
 
+test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback: the current player owns %s failure without a Session banner", async fault => {
+  const { session } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const dispose = vi.fn();
+  const page = new appLink.AppPage(crypto.randomUUID(), "https://video.test/film", vi.fn(async () => ({})), dispose, () => {});
+  const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
+  const media = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/local.mp4", "file"), bytes);
+  const player = new WatchPlayer("first", true, media, () => {});
+  player.error = "watch_media_failed";
+  installWatchPlayer(session, "owned", player);
+  const state = session.getSnapshot().state!;
+  state.watchActivities = fault === "source" ? [] : [{ id: "owned", roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } }];
+  const failure = fault === "cancel" ? new DOMException("Cancelled", "AbortError")
+    : new Error(fault === "source" ? "watch_unavailable" : fault === "candidate" ? "watch_source_unavailable" : "watch_media_access_denied");
+  const candidate = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/retry.mp4", "file"), bytes, false);
+  const closeCandidate = vi.spyOn(candidate, "close");
+  vi.spyOn(candidate, "ready").mockRejectedValue(failure);
+  vi.spyOn(media, "retryCandidate").mockImplementation(() => { if (fault === "candidate") throw failure; return candidate; });
+  try {
+    await expect(session.resumeWatch("owned")).rejects.toThrow(failure.message);
+    expect(player.error).toBe(fault === "cancel" ? "watch_media_failed" : failure.message);
+    expect(session.getSnapshot().watchPlayers.get("owned")).toBe(player);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().pending.has("watch-video:owned")).toBe(false);
+    expect(closeCandidate).toHaveBeenCalledTimes(fault === "ready" || fault === "cancel" ? 1 : 0);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { candidate.close(); session.close(); }
+});
+
 test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {
   const {session,page,socket,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[],byteSource:null}));
   localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
