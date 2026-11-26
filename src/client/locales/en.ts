@@ -209,6 +209,7 @@ export const en: Record<CopyKey, string> = {
   "room.unopened.unreadable": "This device can’t read this room’s saved data, so the room can’t open here.",
   "room.order.edit": "Reorder rooms",
   "room.order.done": "Finish reordering",
+  "room.order.scope": "Changes the order only for you",
   "room.order.help": "Only your order changes. Within a group, drag the handle, press its arrow keys, or use the up and down buttons.",
   "room.order.move": "Move {name}, position {position} of {total}",
   "room.order.up": "Move {name} up",

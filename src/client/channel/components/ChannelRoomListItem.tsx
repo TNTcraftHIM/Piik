@@ -34,18 +34,16 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
     onDragOver={event => { if (ordering?.active) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setOver(true); } }}
     onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false); }}
     onDrop={event => { if (ordering?.active) { event.preventDefault(); ordering.onDrop(); setOver(false); } }}>
-      {ordering && <div className="c3-room-order-controls">
-        <button type="button" className="lr-btn is-dense is-quiet" draggable aria-keyshortcuts="ArrowUp ArrowDown" aria-describedby="c3-room-order-help"
+      <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
+        orderHandle={ordering && <button type="button" className="lr-btn is-dense is-quiet c3-room-order-handle" draggable aria-keyshortcuts="ArrowUp ArrowDown" aria-describedby="c3-room-order-help"
           aria-label={t("room.order.move", { name: room.name, position: String(ordering.index + 1), total: String(ordering.total) })}
           onDragStart={event => { event.dataTransfer.setData("text/plain", room.id); event.dataTransfer.effectAllowed = "move"; ordering.onDrag(); }}
           onDragEnd={() => { setOver(false); ordering.onEnd(); }}
-          onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); ordering.onMove(event.key === "ArrowUp" ? -1 : 1); } }}><Glyph name="grip" size={16} /></button>
-        <button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === 0} aria-label={t("room.order.up", { name: room.name })}
+          onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); ordering.onMove(event.key === "ArrowUp" ? -1 : 1); } }}><Glyph name="grip" size={16} /></button>}
+        orderSteps={ordering && <><button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === 0} aria-label={t("room.order.up", { name: room.name })}
           onClick={() => ordering.onMove(-1)}><Glyph name="arrowUp" size={16} /></button>
         <button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === ordering.total - 1} aria-label={t("room.order.down", { name: room.name })}
-          onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={16} /></button>
-      </div>}
-      <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
+          onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={16} /></button></>}
         unread={roomHasUnread(room, channel.readByRoom[room.id])} unopened={unopened}
         compact={compact} participantCount={compact ? present.length : undefined}
         participantDisclosure={showPeople ? { open: peopleOpen, count: present.length, controls: id, onToggle: () => setPeopleOpen(value => !value) } : undefined}

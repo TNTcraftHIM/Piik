@@ -1,7 +1,11 @@
 /* A room's row is one object under the pointer: one highlight covers the whole row, quieter than the
    selection, and each control inside it answers for itself. */
 .c3-room-item { --row-hover: color-mix(in srgb, var(--ink) 6%, transparent); --row-action-hover: color-mix(in srgb, var(--ink) 14%, transparent);
-  position: relative; display: flex; align-items: center; min-width: 0; border-radius: 12px; transition: background-color var(--motion-feedback) ease; }
+  position: relative; display: flex; align-items: center; min-width: 0; border-radius: 12px; transition: var(--control-motion), background-color var(--motion-feedback) ease; }
+/* A press is answered: the room's card gives under the pointer and springs back, and so does each control inside
+   it. Nothing lifts on hover, so no control leaves its place in the row. */
+.c3-room-item:has(.c3-room-link:active) { transform: var(--control-press-transform); transition-duration: var(--motion-press); }
+.c3-room-item .lr-embedded-actions { --control-press-transform: inherit; }
 .c3-room-item:hover, .c3-room-item:focus-within { background: var(--row-hover); }
 .c3-room-item[data-selected] { background: var(--control-selected); }
 /* The selected room's bar stands on the column's edge, in the list's inset: the same place in the list and in the
@@ -49,19 +53,22 @@
 .c3-room-list-item .c3-room-link > .c3-identity-mark { grid-column: 1; }
 .c3-room-list-item .c3-room-link > :is(strong, .c3-room-activity) { grid-column: 2; padding-inline-start: var(--room-content-gap); }
 /* The two controls of the first line stand over the name's button, each a square of the line's height. */
-.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) { grid-row: 1; z-index: 1; display: flex; }
-.c3-room-voice-toggle { grid-column: 1; justify-content: flex-end; }
+.c3-room-list-item :is(.c3-room-lead, .c3-room-manage) { grid-row: 1; z-index: 1; display: flex; }
+.c3-room-lead { grid-column: 1; justify-content: flex-end; }
 .c3-room-manage { grid-column: 4; }
-.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) > .lr-comic-tip-wrap { display: flex; }
-.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) .lr-btn { --button-size: var(--room-line); --button-padding: 0; --button-icon-size: 16px; width: var(--room-line); min-width: var(--room-line); border: 0; border-radius: 8px; box-shadow: none; }
-/* The disclosure's target reaches into the list's inset, and what it paints stays inside the row. */
-.c3-room-list-item .c3-room-voice-toggle .lr-btn { --button-icon-size: 12px; --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
+.c3-room-list-item :is(.c3-room-lead, .c3-room-manage) > .lr-comic-tip-wrap { display: flex; }
+.c3-room-list-item :is(.c3-room-lead, .c3-room-manage) .lr-btn { --button-size: var(--room-line); --button-padding: 0; --button-icon-size: 16px; width: var(--room-line); min-width: var(--room-line); border: 0; border-radius: 8px; box-shadow: none; }
+/* The leading control is the disclosure of a room's people, or the handle while the list is being ordered. Its
+   target reaches into the list's inset, and what it paints stays inside the row. */
+.c3-room-list-item .c3-room-lead .lr-btn { --button-icon-size: 16px; --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
   width: calc(var(--room-disclosure-width) + var(--room-disclosure-reach)); min-width: 0; margin-inline-start: calc(-1 * var(--room-disclosure-reach)); padding-inline-start: var(--room-disclosure-reach); }
-.c3-room-voice-toggle .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
-.c3-room-voice-toggle .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
-.c3-room-voice-toggle .lr-btn > svg { position: relative; }
-.c3-room-voice-toggle [aria-expanded="false"] > svg { transform: rotate(-90deg); }
-.c3-room-voice-toggle .lr-btn > svg { transition: transform var(--motion-control) var(--spring); }
+.c3-room-lead .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
+.c3-room-lead .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
+.c3-room-lead .lr-btn > svg { position: relative; }
+.c3-room-lead [aria-expanded="false"] > svg { transform: rotate(-90deg); }
+.c3-room-lead [aria-expanded] > svg { transition: transform var(--motion-control) var(--spring); }
+.c3-room-order-handle { cursor: grab; }
+.c3-room-order-handle:active { cursor: grabbing; }
 /* Who is in the room: a picture at the end of the second line, on the edge the settings end on. It is not a
    control, so the pointer passes through it to the row. */
 .c3-room-faces { grid-column: 3 / -1; grid-row: 2; justify-self: end; z-index: 1; display: flex; align-items: center; min-height: 20px; padding-inline-end: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
@@ -77,24 +84,18 @@
 .c3-room-list-item .c3-room-people .c3-person-copy strong { font-size: 14px; font-weight: 500; }
 .c3-room-people .c3-person-copy small { display: none; }
 
-.c3-room-order-help { margin: 4px 0 8px; padding-inline: var(--room-text-start) 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.c3-room-list-item[data-ordering] { display: flex; flex-wrap: wrap; align-items: center; border-radius: 8px; }
-.c3-room-list-item[data-ordering] > .c3-room-item { order: 0; flex: 1 0 100%; min-width: 0; }
-/* The handle stands under the mark and the last step under the settings, so ordering keeps the row’s two edges. */
-.c3-room-order-controls { order: 1; display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 0;
-  padding-inline: calc(var(--room-disclosure-width) + (var(--room-icon-size) - var(--control-dense-size)) / 2) calc(var(--room-end-inset) + (var(--room-line) - var(--control-dense-size)) / 2); }
-.c3-room-order-controls > [draggable] { margin-inline-end: auto; }
-.c3-room-order-controls > [draggable] { cursor: grab; }
-.c3-room-order-controls > [draggable]:active { cursor: grabbing; }
+/* Ordering has one note, in one line, over the names. */
+.c3-room-order-help { margin: 0 0 6px; padding-inline: var(--room-text-start) 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .c3-room-list-item[data-drop] { outline: 2px solid var(--ink); outline-offset: -2px; }
 /* A finger gets the larger target; a mouse beside a touch screen does not pay for it. */
 @media (pointer: coarse) {
   .c3-room-navigation { --room-line: var(--control-compact-size); --room-disclosure-width: var(--control-compact-size); }
-  .c3-room-order-controls > button { min-width: var(--control-compact-size); min-height: var(--control-compact-size); }
 }
 @media (hover: hover) and (pointer: fine) {
   .c3-room-manage { visibility: hidden; }
   .c3-room-item:is(:hover, :focus-within, [data-selected], [data-settings-open]) > .c3-room-manage { visibility: visible; }
+  /* While the list is being ordered every room shows its steps. */
+  .c3-room-list-item[data-ordering] .c3-room-manage { visibility: visible; }
 }
 
 /* In the rail a room is its mark over the same picture of who is in it, and the whole item selects it. */

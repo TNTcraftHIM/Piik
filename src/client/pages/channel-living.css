@@ -62,7 +62,7 @@
 [data-layout="living"] .c3-room-name h2 { font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
 [data-layout="living"] .c3-room-toolbar { gap: 0; }
 [data-layout="living"] .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; }
-[data-layout="living"] .c3-room-actions:empty, .c3-living-stage-view:empty { display: none; }
+.c3-living-stage-view:empty { display: none; }
 
 /* The room's name keeps a few characters whatever else is in the row. With the arrangement switch beside it
    in a narrow window, what is always there moves to a second line as one group; the name and its tools stay. */
@@ -71,19 +71,23 @@
    cell keeps the column's full height, its content on the first line, and the room's name has the whole first line. */
 [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; }
 [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-pane-navigation { grid-column: 1; grid-row: 1; }
-[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-site-identity { grid-column: 2; grid-row: 1; }
+/* The side column has one edge from the top of the shell to its foot: the site's cell carries the line of the
+   list under it. */
+[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-site-identity { grid-column: 2; grid-row: 1; border-inline-end: 1px solid var(--line); }
 [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-room-heading { grid-column: 3; grid-row: 1; }
 [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-global-tools { grid-column: 4; grid-row: 1; }
 @container living-heading (max-width: 46rem) {
+  [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools::before { display: none; }
   [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > :is(.c3-pane-navigation, .c3-site-identity) { grid-row: 1 / span 2; padding-block-end: var(--control-compact-size); }
   [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > .c3-room-heading { grid-column: 3 / -1; }
-  [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { grid-column: 3 / -1; grid-row: 2; justify-content: flex-end; min-height: var(--control-compact-size); border-inline-start: 0; }
+  [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { grid-column: 3 / -1; grid-row: 2; justify-content: flex-end; min-height: var(--control-compact-size); }
 }
 /* An open list takes the difference between the list and the rail from the row. */
 @container living-heading (max-width: 56rem) {
+  [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools::before { display: none; }
   [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > :is(.c3-pane-navigation, .c3-site-identity) { grid-row: 1 / span 2; padding-block-end: var(--control-compact-size); }
   [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > .c3-room-heading { grid-column: 3 / -1; }
-  [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { grid-column: 3 / -1; grid-row: 2; justify-content: flex-end; min-height: var(--control-compact-size); border-inline-start: 0; }
+  [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { grid-column: 3 / -1; grid-row: 2; justify-content: flex-end; min-height: var(--control-compact-size); }
 }
 
 [data-layout="living"] > .c3-sidebar { grid-area: rooms; border-inline-end: 1px solid var(--line); background: var(--surface-frame); }
@@ -256,8 +260,6 @@
 [data-layout="living"][data-sidebars="phone"] > .c3-chat-panel { border-block-start: 1px solid var(--line); }
 /* In a bar the room is named by the heading above; my area in the dock names it, being apart from it. */
 [data-layout="living"]:is([data-sidebars="phone"], [data-minimal]) .c3-living-actions .c3-voice-entry > div { display: none; }
-/* A phone's header keeps the room's name: its tools give up four pixels each before the name gives up a letter. */
-[data-layout="living"][data-sidebars="phone"] > .c3-site-bar { --control-compact-size: 40px; }
 .c3-shell[data-layout="living"][data-sidebars="phone"] > .c3-personal { align-items: center; justify-content: center; min-height: 56px; padding: 4px 4px max(4px, env(safe-area-inset-bottom)); border: 0; }
 [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-identity:not(:focus-within, :has(.c3-name-popover:popover-open)),
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-living-actions { display: none; }
@@ -266,11 +268,9 @@
 /* A phone's bar is as wide as the phone. With more than one voice room, the others stand on the line that names
    the room, above the controls, so the controls keep the one line they have with a single room. The name's line
    takes the controls' width and no more, whatever the room is called. */
-[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
-[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) > .c3-voice-room-row[data-direct] { display: contents; }
-[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) .c3-voice-room-row[data-direct] > .c3-voice-room-info { grid-column: 1; grid-row: 1; contain: inline-size; }
-[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) > .c3-voice-room-disclosure { grid-column: 2; grid-row: 1; }
-[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) .c3-voice-room-row[data-direct] > .c3-voice-room-actions { grid-column: 1 / -1; grid-row: 2; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-row[data-direct]:has(> .c3-voice-room-disclosure) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-row[data-direct]:has(> .c3-voice-room-disclosure) > .c3-voice-room-info { contain: inline-size; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-row[data-direct]:has(> .c3-voice-room-disclosure) > .c3-voice-room-actions { grid-column: 1 / -1; }
 .c3-shell[data-layout="living"][data-sidebars="phone"] .c3-workspace .c3-monitor { --stage-padding: 0px; padding: 0; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor:not(.is-theater) .c3-monitor-heading:has(.c3-monitor-layout) { display: flex; justify-content: flex-end; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor-heading > div:first-child { display: none; }
@@ -340,7 +340,9 @@
      which are the site's and this device's. A rule parts them from the tools that follow the room's state, and
      a wider gap parts the room's from the site's. */
 [data-layout="living"] .c3-standing-room-tools:not([hidden]) { display: flex; align-items: center; gap: 2px; }
-[data-layout="living"] .c3-global-tools { display: flex; flex: none; align-self: center; align-items: center; gap: 10px; margin: 0; padding-inline: 6px 8px; border-inline-start: 1px solid var(--line); }
+[data-layout="living"] .c3-global-tools { position: relative; display: flex; flex: none; align-self: center; align-items: center; gap: 10px; margin: 0; padding-inline: 6px 8px; }
+/* The two groups of the top row are parted by a short rule, which cannot be taken for a column's edge. */
+[data-layout="living"] .c3-global-tools::before { content: ""; position: absolute; inset-inline-start: 0; inset-block: calc(50% - 10px); width: 1px; background: var(--line); }
 [data-layout="living"] .c3-global-tools > .lr-top-right { flex: none; gap: 2px; margin: 0; }
 [data-layout="living"] .c3-living-tv { flex: 1; min-height: 0; display: grid; place-items: center; padding: var(--room-inset); }
 [data-layout="living"] .c3-living-tv .lr-tv { width: min(100%, 880px); max-height: 100%; }
@@ -368,7 +370,10 @@
   .c3-voice-room-actions .lr-btn .lr-cap { display: none; }
 }
 [data-minimal]:not([data-sidebars="phone"]) .c3-identity { grid-column: 1; justify-self: start; max-width: 100%; padding: 0; overflow: hidden; }
-[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { grid-column: 2; flex-direction: row; align-items: flex-end; }
+[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { grid-column: 2; flex-direction: row; align-items: center; }
+/* A desktop's bar has one line: the room my voice is in, my other voice rooms, then the controls. */
+[data-minimal]:not([data-sidebars="phone"]) .c3-voice-room-row[data-direct] { display: flex; align-items: center; gap: 8px; }
+[data-minimal]:not([data-sidebars="phone"]) .c3-voice-room-row[data-direct] > .c3-voice-room-info { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; max-width: 12em; padding-inline: 0 4px; }
 [data-minimal] .c3-identity .c3-profile-editor { min-width: 0; flex: 0 1 auto; }
 [data-minimal] .c3-profile-editor > .lr-comic-tip-wrap { min-width: 0; max-width: 100%; }
 [data-minimal] .c3-identity .c3-profile-editor .c3-profile-name {
@@ -388,17 +393,13 @@
   position: static; transform: none;
 }
 
-/* The narrowest phones. The room's name has the top row's first line, with the control that opens the room list;
-   the room's tools and what is always there share the second. My bar stays one line: its controls give up four
-   pixels each before one of them moves to a line of its own. */
-@media (max-width: 360px) {
-  .c3-shell[data-layout="living"][data-sidebars="phone"] { --living-top-size: auto; }
+/* The narrowest phones, measured on the room itself as the page's code measures them. The room's name has the top
+   row's first line, with the control that opens the room list, as soon as it would lose its four characters; the
+   room's tools and what is always there share the second line. Every control keeps the shared size. */
+@container channel-living (max-width: 370px) {
   [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-heading { display: contents; }
   [data-layout="living"][data-sidebars="phone"] :is(.c3-pane-navigation, .c3-global-tools) { min-height: 48px; }
   [data-layout="living"][data-sidebars="phone"] .c3-room-name { flex: 1 1 0; min-height: 48px; padding-inline-start: 4px; }
   [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-name { flex-basis: calc(100% - var(--control-compact-size) - 24px); }
   [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { flex: 1; justify-content: end; padding: 0 0 4px; padding-inline-start: 4px; }
-  .c3-shell[data-layout="living"][data-sidebars="phone"] > .c3-personal { --control-compact-size: 40px; }
-  [data-layout="living"][data-sidebars="phone"] .c3-living-actions { gap: 4px; }
-  [data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"] { gap: 4px; }
 }
