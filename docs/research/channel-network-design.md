@@ -93,22 +93,20 @@ WebRTC leaves the signaling carrier to the application
 The App creates room runtimes through normal create/join actions, without a
 separate public URL, daemon, storage server or permission owner.
 
-After room admission, the room host confirms room changes and message order.
-Chat, history, message reactions and live room interactions use the existing
-domain WebSocket after room admission. This is their normal, single transport,
-not a fallback after ICE failure. The domain verifies the sending connection,
-current room-host binding and destination admission, then forwards the signed
-packet. It neither stores conversation content nor acknowledges a room commit.
-The domain operator can see forwarded text and inline images: signatures authenticate content
-but do not encrypt it from the carrier. Other file bytes and file-pull control remain
-on the room's peer paths.
-Use short-lived session signing keys, bound to admitted sessions and the current
-room-host binding through authenticated domain rendezvous. Sign the original
-payload bytes with a maintained Ed25519 implementation, verify before parsing,
-and resolve the author and permissions from current domain facts. Participants
-trust the domain to bind sessions to the correct keys and supply current grants.
-A forwarding session gains no authority from carrying a packet.
-Long-lived admission credentials are not conversation payloads.
+Admitted participants send chat, history requests, message reactions and live
+room interactions through the domain WebSocket to the current room host. This
+path works without a peer connection. The domain checks the sending session,
+current room-host binding and participant's room admission before forwarding.
+The room writer alone confirms and stores conversation. The domain operator can
+read the forwarded text and inline images. Other file bytes and pull control use
+room peer paths.
+
+Endpoints sign the original payload bytes with their Ed25519 session keys.
+Domain admission supplies verification keys. Receivers verify before parsing and
+use current room grants and the host binding to authorize delivery. Queued output
+rechecks current authority.
+Writer commits, send retries and history reads follow the
+[room-data model](./channel-storage-and-identity.md#confirmed-history).
 
 Forwarded requests use the same room authorization and storage operations as local
 execution. They run in the room host's existing serialized turn without
@@ -122,11 +120,8 @@ its result; explicit failures do not wait for a projection.
 Confirmation follows the requester's current session and room permission facts;
 another participant leaving cannot invalidate it. Room entry uses that same
 authenticated session and confirmation boundary after the site handshake.
-The [room-data model](./channel-storage-and-identity.md) owns persistence, chat
-retry identity, history correlation/complete pages, file copies and manual address
-replacement. Live results are room-host signed without a permanent signed history
-log; bounded queued output rechecks current authority. Domain Join/Welcome use
-one explicit protocol version, rejecting incompatible endpoints before admission.
+Domain Join/Welcome use one explicit protocol version, rejecting incompatible
+endpoints before admission.
 Domain and room data may reside on different devices; an App may compose both
 runtimes locally.
 The domain's public listener serves its Web UI and signaling; local approval and
@@ -194,7 +189,7 @@ endpoints before delivery starts. Channel discovery reconciles requests with
 current room grants and endpoint generations.
 | Traffic | Route and lifecycle |
 | --- | --- |
-| Room commands and conversation | The domain WebSocket carries commands to the current room host and signed replies to authorized recipients. The room host authorizes and confirms the operation. |
+| Room commands and conversation | Domain WebSocket to the current room host. [Authority and information boundaries](#authority-and-information-boundaries) |
 | Voice | Each speaker selects parents for authorized listeners on confirmed edges. |
 | File and forwarded webpage bytes | Each distribution selects its own parents from the holder or byte provider. [Room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |

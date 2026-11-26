@@ -721,6 +721,19 @@ guarantee lower overall CPU on hardware codecs.
 The owner accepts a uniform path from the first eligible consumer, without
 an audience-count threshold. Singleton and hardware costs remain explicit.
 
+A Chrome 156 VP8 1080p30 two-child control measured the local producer's
+receiver separately. Over six seconds it decoded 174 frames, received 884,293
+video RTP bytes and accumulated 420 ms of decode time. The ordinary pair
+encoded 350 full-size frames; the pool encoded 174 full-size and 348 tiny
+frames. Whole-fixture CPU was 10.588 versus 10.856 CPU-seconds, including the
+two measuring receivers. The local decoded picture feeds a detached muted
+video; children receive copied encoded frames before that decode. A follow-up
+removed only that video consumer while retaining the local connections and
+frame writes. Chrome still decoded every local frame: 178/178 with the player
+and 176/176 without it. Both children kept fresh pictures and bandwidth feedback
+advanced. Removing the player did not eliminate the measured decoder work;
+these short pairs establish no Host-only CPU saving.
+
 Receiver details stay real inbound observations. Sender transport bytes/loss
 belong to each connection; dimensions/cadence describe the frames actually
 written; native limitation evidence comes from the assigned real producer.

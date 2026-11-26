@@ -1360,23 +1360,37 @@ test.each(["unavailable", "rejected"])("%s peer construction keeps the site and 
     expect(socket.sent).toContainEqual({ type: "link_state", pairId: "failed", state: "failed" });
     expect(warning).toHaveBeenCalledWith("Channel peer connection could not be created", failure === "rejected" ? error : expect.any(TypeError));
     expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
-    state.pairs = failure === "rejected" ? state.pairs.slice(1) : [];
-    const failures = warning.mock.calls.length;
     socket.receive({ type: "state", state });
-    socket.receive({ type: "state", state });
-    expect(warning).toHaveBeenCalledTimes(failures);
+    expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
+    expect(warning.mock.calls.filter(([message]) => message === "Channel peer connection could not be created"))
+      .toHaveLength(failure === "rejected" ? 1 : 2);
+    expect(socket.sent.filter(command => command.type === "link_state" && command.pairId === "failed"))
+      .toEqual([{ type: "link_state", pairId: "failed", state: "failed" }]);
 
     const sending = session.sendMessage("first", message(1).text);
     peer.reply(await peer.next(), { type: "confirmed", message: message(1), inserted: true });
     await sending;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
 
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
+    expect(resumed.sent.filter(command => command.type === "link_state" && command.pairId === "failed"))
+      .toEqual([{ type: "link_state", pairId: "failed", state: "failed" }]);
+    state.pairs = failure === "rejected" ? state.pairs.slice(1) : [];
+    const failures = warning.mock.calls.length;
+    resumed.receive({ type: "state", state });
+    resumed.receive({ type: "state", state });
+    expect(warning).toHaveBeenCalledTimes(failures);
+
     vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
     state.pairs = [{ id: "replacement", peerId: "host", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
-    socket.receive({ type: "state", state });
+    resumed.receive({ type: "state", state });
     RoomPeerConnection.instances.at(-1)!.connected();
-    expect(socket.sent).toContainEqual({ type: "link_state", pairId: "replacement", state: "connected" });
-    expect(ChannelSocket.current).toBe(socket);
+    expect(resumed.sent).toContainEqual({ type: "link_state", pairId: "replacement", state: "connected" });
+    expect(ChannelSocket.current).toBe(resumed);
   } finally { session.close(); }
 });
 
@@ -2457,6 +2471,25 @@ test("voice shortcut preserves the whole batch, each room's buttons and membersh
     microphoneMixer([remoteStream("latest", [remoteTrack("audio")])]);
     vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("raw", [remoteTrack("audio")]) } });
     await toggle("microphone", ["second"]); // No remembered member remains.
+  } finally { session.close(); }
+});
+
+test("the microphone shortcut restores both rooms after their shared device ends", async () => {
+  const { session, active, toggle } = await shortcutRooms();
+  const raw = remoteTrack("audio");
+  const getUserMedia = vi.fn().mockResolvedValueOnce(remoteStream("raw", [raw]))
+    .mockResolvedValueOnce(remoteStream("replacement", [remoteTrack("audio")]));
+  microphoneMixer(["first", "second", "restore-first", "restore-second"].map(id => remoteStream(id, [remoteTrack("audio")])));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  try {
+    await session.joinVoice("first");
+    await session.joinVoice("second");
+    expect(active("microphone")).toEqual(["first", "second"]);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    Object.defineProperty(raw, "readyState", { value: "ended" });
+    raw.onended?.call(raw, new Event("ended"));
+    expect(active("microphone")).toEqual([]);
+    await toggle("microphone", ["first", "second"]);
   } finally { session.close(); }
 });
 
@@ -9111,6 +9144,9 @@ test("bulk waits for its own open and buffer while control and media remain avai
     await new Promise(resolve => setTimeout(resolve, 0));
     bulk.close();
     await expect(closing).rejects.toThrow("data_channel_unavailable");
+    const allocationFailure = new DOMException("Data channel IDs exhausted", "OperationError");
+    vi.spyOn(pc, "createDataChannel").mockImplementationOnce(() => { throw allocationFailure; });
+    await expect(media.sendData("z", "chunk", new Uint8Array([5]))).rejects.toBe(allocationFailure);
     await media.sendData("z", "control", "still-open");
     media.update("a", state);
     expect(pc.channels).toHaveLength(3);
@@ -10242,6 +10278,58 @@ test("transient transport loss retains base leases and proves new leases after r
     ]);
     expect(sent.at(-1)).toEqual({ type: "link_state", pairId: "pair", state: "failed" });
   } finally { media.reset(); session.close(); }
+});
+
+test.each(["piik-room", "piik-file"])("a rejected %s channel preserves the voice on the same connected pair", async rejectedLane => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { session, socket } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ audience: [], id: "voice", roomId: "first", sessionId: "z-voice", userId: "other", kind: "voice", paused: false }];
+    state.pairs = [{ id: "pair", peerId: "z-voice", canReceiveVideoLayers: false, rooms: [],
+      incoming: [{ id: "voice-flow", publicationId: "voice", selected: true, inputFlowId: null }], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    const [pc] = RoomPeerConnection.instances;
+    pc.connected();
+    const voice = remoteStream("voice-stream", [remoteTrack("audio")]);
+    socket.receive({ type: "signal", pairId: "pair", fromSessionId: "z-voice", payload: {
+      exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "voice offer" }, tracks: [{ flowId: "voice-flow", streamId: voice.id }],
+    } });
+    await vi.waitFor(() => expect(pc.remoteDescription).not.toBeNull());
+    pc.ontrack?.({ streams: [voice] });
+    expect(session.getSnapshot().streams.get("voice")).toBe(voice);
+
+    const createDataChannel = pc.createDataChannel.bind(pc);
+    const create = vi.spyOn(pc, "createDataChannel").mockImplementation((label, options) => {
+      if (label === rejectedLane) throw new DOMException("Data channel IDs exhausted", "OperationError");
+      return createDataChannel(label, options);
+    });
+    const attempted = rejectedLane === "piik-room" ? ["piik-room"] : ["piik-room", "piik-file"];
+    state.pairs[0].rooms.push("first");
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state });
+    const failure = { type: "room_data_state", pairId: "pair", roomId: "first", ready: false };
+    expect(socket.sent.filter(command => command.type === "room_data_state")).toEqual([failure]);
+    expect(create.mock.calls.map(([label]) => label)).toEqual(attempted);
+    expect(pc.channels.map(({ label, readyState }) => [label, readyState]))
+      .toEqual(rejectedLane === "piik-room" ? [] : [["piik-room", "closed"]]);
+    expect(socket.sent).not.toContainEqual({ type: "link_state", pairId: "pair", state: "failed" });
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get("voice")).toBe(voice);
+
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "room_data_state")).toEqual([failure]));
+    expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([{ type: "link_state", pairId: "pair", state: "connected" }]);
+    expect(RoomPeerConnection.instances).toEqual([pc]);
+    expect(create).toHaveBeenCalledTimes(attempted.length);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get("voice")).toBe(voice);
+  } finally { session.close(); }
 });
 
 test("connected media keeps its PC when the room data channel exceeds the existing preparation deadline", async () => {
@@ -15325,6 +15413,29 @@ test("cancelling the picker releases its gesture-activated audio context", async
     expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
     expect(session.browserCapturePreparation("first")).toBeUndefined();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("revoked access retires a Browser capture awaiting its first publish confirmation", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video");
+  const sound = remoteTrack("audio");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => remoteStream("window", [video, sound])) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const issued = nextSocketCommand(socket, "publish");
+    const result = session.startScreen("first").catch(error => error);
+    const publish = await issued;
+    const id = (publish.publication as { id: string }).id;
+    const snapshot = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...snapshot, channel: { ...snapshot.channel,
+      rooms: snapshot.channel.rooms.map(room => room.id === "first" ? { ...room, authorized: false } : room) } } });
+    await vi.waitFor(() => expect(video.stop).toHaveBeenCalled());
+    expect(sound.stop).toHaveBeenCalled();
+    expect(await result).toMatchObject({ name: "AbortError" });
+    socket.receive({ type: "ack", requestId: publish.requestId });
+    expect(session.getSnapshot().ownedScreens.has(id)).toBe(false);
+    expect(session.screenQuality(id)).toBeUndefined();
   } finally { session.close(); }
 });
 

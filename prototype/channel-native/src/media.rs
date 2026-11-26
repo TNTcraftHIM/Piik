@@ -231,7 +231,7 @@ impl std::fmt::Display for UnsupportedH264Format {
             122 => "High 4:2:2 profile requires an unsupported chroma format",
             244 => "High 4:4:4 profile requires an unsupported chroma format",
             _ if level > 52 => "level exceeds the supported 5.2 input limit",
-            _ => "profile or level is not supported",
+            _ => "format is outside the supported 8-bit 4:2:0 profiles and levels",
         };
         write!(
             formatter,

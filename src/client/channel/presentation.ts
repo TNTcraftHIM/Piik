@@ -68,7 +68,7 @@ export interface ParticipantActivity {
 }
 interface LocalWatchPresentation {
   sessionId: string | null;
-  watchPlayers: ReadonlyMap<string, Pick<WatchPlayer, "waitingForPicture" | "hasPresentedFrame" | "error">>;
+  watchPlayers: ReadonlyMap<string, Pick<WatchPlayer, "blocked" | "waitingForPicture" | "hasPresentedFrame" | "error">>;
 }
 export const viewingAppearance = {
   joined: { icon: "clapperboard", label: "watch.joined", rank: 0 },
@@ -84,6 +84,7 @@ export function participantViewingLabel(state: ParticipantViewing, t: Copy["t"])
 function watchViewerState(watch: WatchActivity, sessionId: string, local?: LocalWatchPresentation): ParticipantViewing {
   const player = sessionId === local?.sessionId ? local.watchPlayers.get(watch.id) : undefined;
   if (player?.error) return "failed";
+  if (player?.blocked) return "joined";
   if (player?.waitingForPicture) return "preparing";
   return player?.hasPresentedFrame ? "active" : "joined";
 }

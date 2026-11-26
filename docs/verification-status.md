@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-25
+Last updated: 2026-11-26
 
 Internal 3.0 evidence spans several revisions. Each package receipt identifies the
 build and workload it covers. Delivery readiness and published 2.x verification
@@ -32,7 +32,11 @@ static package checks; device behavior was not inferred from that build.
   access with an offline holder, archive restoration and invalid-archive rejection.
   Protocol-47 packaged Linux restart retained history lineage; restoring a room
   archive replaced it atomically while serving the archived rows through signed
-  history replies.
+  history replies. The frozen beta.56 Windows App and matching text participant
+  created a room and message, exited, and reopened the same data directory.
+  The original credential restored the same identity, room and confirmed row.
+  Actual Domain v1 and room v11 SQLite samples passed their integrity checks;
+  this used synthetic local data and two orderly process exits.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts
@@ -75,7 +79,8 @@ from users' networks remain open. [Website and field checks](./todo.md)
 | Bilibili ordinary video | A matched Windows App and unlinked Browser played 1080p AV1/AAC without login. Pause, unbuffered backward seek and forwarding off/on passed. The viewer could continue from cached bytes. |
 | Bilibili original webpage | Two beta.39 Windows Apps followed pause and seek on a public sample and retired playback when the source closed. The reported unexpected exit and member-only original-page case remain open. |
 | Bilibili authorized member video | The sharer and an unlinked Browser without site login played past the preview limit, paused and sought forward. Protected tracks were excluded. Member-specific backward seeking remains open. |
-| YouTube | Independent Browsers exercised ordinary-video playback, pause, seek, source transfer and retirement in the official player. Shorts coverage includes pause, resume and retirement. Ads, account/region restrictions, live and physical mobile use remain open. |
+| YouTube | Independent Browsers exercised ordinary-video playback, pause, seek and resume through room signaling in the official player, plus source transfer and retirement. Shorts coverage includes pause, resume and retirement. Ads, account/region restrictions, live and physical mobile use remain open. |
+| PeerTube | Independent desktop Browsers followed play, pause, seek and resume through room signaling in the official player. The public sample fetched media directly from its provider; private instances and physical mobile use remain open. |
 | girigirilove | A region-unavailable redirect prevented access to the supplied player. |
 
 ## Device Evidence Boundary

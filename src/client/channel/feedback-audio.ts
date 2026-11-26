@@ -117,6 +117,7 @@ export class FeedbackAudio {
   play(cue: FeedbackCue): void {
     const context = this.context, gain = this.gain;
     if (this.detach?.getWaiting() || !this.enabled || this.volume === 0 || context?.state !== "running" || !gain || this.active || this.muted[cue]) return;
+    if (playbackOutput.failedFor(context)) return;
     const custom = this.clips[cue];
     const buffer = this.decoded.get(cue)?.buffer;
     if (custom && !buffer) return;

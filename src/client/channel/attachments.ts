@@ -399,11 +399,15 @@ export class ChannelAttachments {
   }
   private installSource(source: Source): void {
     const id = fileKeyString(source.key), download = this.downloads.get(id);
-    // A confirmed send or restored original supersedes the previous platform save.
+    // A confirmed send or restored original supersedes transfers for the previous content.
     // A retained cache candidate still awaits the writer's verification.
-    if (source.storage === "original" && download && !sameContent(download.attachment, source.attachment)) {
-      this.downloads.delete(id);
-      download.controller.abort();
+    if (source.storage === "original") {
+      if (download && !sameContent(download.attachment, source.attachment)) {
+        this.downloads.delete(id);
+        download.controller.abort();
+      }
+      const sink = this.sinks.get(id);
+      if (sink && !sameContent(sink.attachment, source.attachment)) void this.stopSink(sink, new Error("attachment_unavailable"));
     }
     this.sources.set(id, source);
     this.reofferKey(source.key);

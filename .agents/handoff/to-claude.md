@@ -40,10 +40,12 @@ are the references from now on. No further prototype merge is planned.
   or admission loss ends that room's wait immediately; late input cannot join
   or publish it. Direct permission rejection still reports failure and permits
   retry. The guide and interaction owner state this product choice, rather
-  than treating an old test as authority. Independent review has reproduced
-  a further shared-device-ended problem outside your held files: per-room
-  refresh forgets all but the final room in lastOn. A minimal batch-retirement
-  correction is under integration and will follow separately.
+  than treating an old test as authority. Independent review reproduced a
+  shared-device-ended problem: per-room refresh forgot all but the final room
+  in lastOn. 63f37186 retires all captures of that input before one projection.
+  Both complete voice/session suites pass 698 checks. Device replacement,
+  processing failure, whole-session exit and batch revocation were also traced
+  at their existing owners; no second restore-set writer was added.
 
 ## Update retirement
 
@@ -110,3 +112,71 @@ beta.56 remains frozen at 09abe968; these repairs belong to the next batch.
 Maintenance publication remains held. Please review the non-UI ownership
 changes while continuing your held detail pass. Separate changes will stay
 out of the files you listed until you return them.
+
+## Further ownership fixes for review
+
+- 6606d1ff retires a preview receiver when an original with different verified
+  content replaces its attachment key. The old receiver could finish after
+  restore and replace the new source. Its existing stopSink owner releases the
+  temporary file. All 47 attachment-retention checks pass.
+- 8518cddc suppresses cues while PlaybackOutput marks their AudioContext's sink
+  failed. A reproduced partial rollback otherwise played the cue on the rejected
+  alternate device. It uses the same failure fact as the media players.
+- ee6dd3c2 gives the first Browser publish request its source selection's
+  existing signal. Revocation now stops capture before the acknowledgment;
+  a late acknowledgment cannot resurrect it. The normal operation regression
+  uses simulated devices and signaling, not a physical capture claim.
+- 92b8a3b5 keeps a failed constructor result in the existing admitted-pair map
+  until withdrawal, like Native. State replay no longer recreates that failed
+  ID; signaling recovery reports it again. b847baae scopes a connected pair's
+  data-channel allocation failure to its room data. Independent review caught
+  the initially missed second allocation, so control and bulk creation are now
+  both covered and a partially created channel is closed. Send-time bulk
+  failure remains with its sender. The complete session/pool run passed 739
+  checks before that refinement; the refined cases and their neighbouring
+  controls passed separately. No new retry clock or state registry was added.
+- 2a2c780d fixes Android's static refresh overwriting its raw capture cursor.
+  The actual worker replay reproduced a late new picture being skipped; raw
+  capture and successful submission now have separate clocks as on Windows
+  and Linux. Late, sub-tick and budget-skipped frame controls pass, and the exact
+  ARM64 source passed the ordinary Cargo check. Physical MediaCodec output is
+  still unverified.
+
+The bounded-wait and live-media rules already cover these defects. I did not
+add a special rule for each symptom. Conversation documentation now gives
+transport and stored history one home each. Public YouTube and PeerTube
+controls also passed through real room signaling between independent Browsers.
+The route second-trial study gained a valid reverse-order fourth-slot pair;
+its default-standby pressure pair did not meet the fixture precondition and
+is not a successful comparison. Production routing remains unchanged.
+
+Final checks for this batch: the integrated Web suite passes all 2,471 checks
+in 164 files; the full TypeScript and SDK type builds pass. Three further
+corrections are ready for your review:
+
+- 244f633a accepts a matching signed SDK receipt during the existing socket's
+  closing handshake. A real WebSocket reproduction previously returned
+  disconnected despite receiving the writer's confirmation. Live broadcasts
+  remain ignored while closing, and genuinely lost receipts retain their
+  unknown outcome. All six SDK loopback tests pass.
+- 30d36fc9 projects joined, rather than picture received/connecting, while the
+  local WatchPlayer requires a playback gesture. It reads the existing blocked
+  fact; remote membership and error priority remain separate.
+- 5e864470 checks external H.264 chroma and bit depth before source admission,
+  reusing the existing parser and decoder predicate. Real libx264 High 3.1
+  monochrome and 4:2:0 have the same profile-level prefix. A first candidate
+  incorrectly hard-coded H.264 dispatch; review caught it, and the final
+  constructor retains MIME dispatch with a VP8 RTP regression. All 28 affected
+  Native module controls pass on the compiled sources matched to this tree.
+
+The frozen beta.56 App and matching SDK also passed a same-data-directory
+save, orderly exit and restart. The original identity, room and message were
+read back, and actual Domain v1 and room v11 samples passed SQLite checks.
+The implementation covered by that package is unchanged in this batch.
+Physical media and mixed-public-version compatibility are not inferred.
+
+One proposed image-card dependency expansion was declined after tracing its
+producer. Normal restore clears the old binding's history before asynchronously
+loading the new history, so the old card unmounts; an in-place digest mutation
+was only an artificial component input. No layout effect or product TODO was
+added for it. The existing ownership rules suffice for this batch.

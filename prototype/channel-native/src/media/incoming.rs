@@ -287,6 +287,15 @@ pub(crate) enum Incoming {
     Vp8(Vp8),
 }
 impl Incoming {
+    #[cfg(feature = "capture")]
+    pub fn external(mime: &str, time: SourceTime, changed: Arc<Notify>) -> Self {
+        let mut input = Self::with_time(mime, time, changed);
+        if let Self::H264(h264) = &mut input {
+            h264.parameters.external_input = true;
+        }
+        input
+    }
+
     pub fn supports(mime: &str) -> bool {
         mime.eq_ignore_ascii_case("video/H264") || mime.eq_ignore_ascii_case("video/VP8")
     }
@@ -556,6 +565,23 @@ mod vp8_tests {
     use rtc_rtp::codec::vp8::Vp8Payloader;
     use rtc_rtp::packetizer::Payloader;
     use rtc_rtp::Header;
+
+    #[test]
+    #[cfg(feature = "capture")]
+    fn external_vp8_preserves_the_negotiated_frame_format() -> Result<()> {
+        let key = super::super::vp8::KEYFRAME_16X16;
+        let time = SourceTime::incoming(Instant::now(), 0, Default::default());
+        let mut input = Incoming::external("video/VP8", time, Arc::new(Notify::new()));
+        input.push(1, 0, Packet {
+            header: Header { marker: true, sequence_number: 1, ..Default::default() },
+            payload: [&[0x10][..], key].concat().into(),
+        });
+        let frame = input.pop()?.expect("complete VP8 frame");
+        assert!(frame.keyframe && frame.vp8.is_some());
+        assert_eq!(frame.bytes, key);
+        assert_eq!(input.video().codec().unwrap().mime_type, "video/VP8");
+        Ok(())
+    }
 
     #[test]
     fn keyframe_admission_waits_for_a_usable_header() -> Result<()> {
