@@ -23,10 +23,12 @@ the feedback period; they do not delay that delivery.
   actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Room layout integration.** Complete the shared shell's integrated
-  visual acceptance. Set the multi-room shortcut and speaking-overlay targets
-  before enabling them across rooms. Keep the product entry and existing layout
-  retirement on hold until the owner's workspace/screen-centred replacement decision.
+- [ ] **Room layout integration.** Match the chosen dock, typography and picture
+  composition with the shared component owners, then complete integrated visual
+  acceptance. Resolve removal of the room activity roster with the owner before
+  changing its established responsibility. Set the multi-room shortcut and
+  speaking-overlay targets before enabling them across rooms. Keep the product
+  entry and existing layout retirement on hold until the owner's replacement decision.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
