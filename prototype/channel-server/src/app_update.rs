@@ -139,7 +139,6 @@ enum State {
     Downloading {
         operation: Operation,
         cancel: watch::Sender<bool>,
-        finished: Option<oneshot::Receiver<()>>,
     },
     Ready {
         operation: Operation,
@@ -199,7 +198,6 @@ enum Work {
         id: Uuid,
         selection: Selection,
         cancel: watch::Receiver<bool>,
-        finished: oneshot::Sender<()>,
     },
     Install {
         id: Uuid,
@@ -326,7 +324,6 @@ impl Owner {
                 }
                 let id = Uuid::new_v4();
                 let (cancel, cancelled) = watch::channel(false);
-                let (finished, ended) = oneshot::channel();
                 *state = State::Downloading {
                     operation: Operation {
                         id,
@@ -336,14 +333,12 @@ impl Owner {
                         source: None,
                     },
                     cancel,
-                    finished: Some(ended),
                 };
                 if commands
                     .try_send(Work::Download {
                         id,
                         selection,
                         cancel: cancelled,
-                        finished,
                     })
                     .is_err()
                 {
@@ -352,17 +347,15 @@ impl Owner {
                 }
             }
             Request::Cancel { operation_id } => {
-                let ended = {
+                let cancellation = {
                     let mut state = self.state.lock().unwrap();
                     if state.operation().map(|op| op.id) != Some(operation_id) {
                         return Err("stale-operation");
                     }
                     match &mut *state {
-                        State::Downloading {
-                            cancel, finished, ..
-                        } => {
+                        State::Downloading { cancel, .. } => {
                             cancel.send_replace(true);
-                            finished.take()
+                            Some(cancel.clone())
                         }
                         State::Ready { .. } | State::Failed { .. } => {
                             *state = State::Idle;
@@ -371,8 +364,9 @@ impl Owner {
                         _ => return Err("update-busy"),
                     }
                 };
-                if let Some(ended) = ended {
-                    let _ = ended.await;
+                if let Some(cancel) = cancellation {
+                    // The worker drops the sole receiver after retiring this download.
+                    cancel.closed().await;
                 }
             }
             Request::Install { operation_id } => {
@@ -439,7 +433,6 @@ async fn worker(
                 id,
                 selection,
                 mut cancel,
-                finished,
             } => {
                 let progress = |received, total, source| {
                     if let State::Downloading { operation, .. } = &mut *state.lock().unwrap() {
@@ -477,8 +470,6 @@ async fn worker(
                         }
                     }
                 }
-                drop(current);
-                let _ = finished.send(());
             }
             Work::Install { id, package } => {
                 #[cfg(windows)]
