@@ -116,6 +116,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }, [selected, watchRoomId, channel.cancelScreenSelection]);
   useEffect(() => () => { preparingShare.current = null; }, []);
   const { state, self, sessionId, connection, pending, streams } = channel;
+  const roomRemoval = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId]));
+  const [removalRoom, setRemovalRoom] = useState<{ id: string; name: string } | null>(null);
+  const roomRemovalPending = !!removalRoom && pending.has(`delete:${removalRoom.id}`);
   const creationPolicy = state && self ? roomCreationPolicyFor(state.channel, self.id) : "owner_only";
   const canCreateRoom = creationPolicy !== "owner_only";
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
@@ -406,7 +409,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     const available = connected && !!rooms.find(room => room.id === activity.roomId)?.available;
     return {
       kind: "watch", id: activity.id, roomId: activity.roomId, predecessor: activity.predecessor, pictureAdmitted: rooms.some(room => room.id === activity.roomId && room.authorized), userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
-      website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
+      website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => channel.focusWatch(activity.id),
       originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
         ? t("watch.pageUnsupported") : undefined,
       browserSource,
@@ -427,7 +430,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
       onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
       onLeave: () => run(channel.leaveWatch(activity.id)), onStop: () => run(channel.stopWatch(activity.id)),
-      onResume: () => run(channel.resumeWatch(activity.id)), onPlayback: patch => run(channel.setWatchPlayback(activity.id, patch)),
+      onResume: () => channel.resumeWatch(activity.id), onPlayback: patch => channel.setWatchPlayback(activity.id, patch),
     };
   });
   const connectionLabel = connected ? t("channel.previewPage.connected") : connection === "connecting"
@@ -449,7 +452,23 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       ? joinItems(lang, [errorRoomName, failure.message]) : failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
+    {roomRemoval.error && managedRoom?.id !== removalRoom?.id && <div className="c3-notice is-error">
+      <Glyph name="alert" size={20} /><div className="c3-notice-message"><strong>{removalRoom?.name}</strong><ChannelSettingsError error={roomRemoval.error} /></div>
+      <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={roomRemoval.clearError} />
+    </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
+      deleteError={managedRoom.id === removalRoom?.id ? roomRemoval.error : null} deleting={roomRemovalPending}
+      onDelete={deleteData => {
+        const deleting = { id: managedRoom.id, name: managedRoom.name };
+        setRemovalRoom(deleting);
+        return roomRemoval.run(async signal => {
+          const result = await channel.deleteRoom(deleting.id, deleteData, signal);
+          if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
+        }, () => {
+          setRemovalRoom(null);
+          setManagedRoomId(current => current === deleting.id ? null : current);
+        });
+      }}
       onClose={closeRoomSettings} />}
     {newRoom !== null && <ChannelRoomCreateDialog channel={channel} creationPolicy={creationPolicy}
       initialName={typeof newRoom === "string" ? newRoom : ""} initialInterruption={newRoom instanceof RoomCreationInterrupted ? newRoom : null}

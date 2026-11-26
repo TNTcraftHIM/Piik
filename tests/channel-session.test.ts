@@ -5664,6 +5664,20 @@ test("a rejected deletion identifies its room after the settings surface closes"
   } finally { session.close(); }
 });
 
+test("a live deletion caller owns an unconfirmed data removal after the directory entry disappears", async () => {
+  const { session, socket } = await setup();
+  try {
+    const surface = new AbortController();
+    const deleting = session.deleteRoom("first", true, surface.signal);
+    const request = socket.sent.at(-1)!;
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, rooms: state.channel.rooms.filter(room => room.id !== "first") } } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "deleted", dataRemoved: false } });
+    await expect(deleting).resolves.toEqual({ dataRemoved: false });
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("hosted storage failure preserves directory access for a deletion retry", async () => {
   const { session, socket } = await setup();
   try {
@@ -13805,10 +13819,12 @@ test.each(['select', 'select-ack-first', 'cancel'] as const)('an unselected view
 test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquired webpage after the App reference changes', async role => {
   const { session, socket, page, request, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const activityId = role === 'viewer' ? 'website-viewer' : undefined;
+  let pageId = page.id;
   try {
     if (activityId) {
       await session.cancelScreenSelection('first');
       const viewerPage = new appLink.AppPage(crypto.randomUUID(), page.url, request, dispose, () => {});
+      pageId = viewerPage.id;
       vi.mocked((session as unknown as { connectApp(): Promise<appLink.ChannelApp> }).connectApp).mockResolvedValue({
         preparePage: async () => viewerPage,
       } as unknown as appLink.ChannelApp);
@@ -13819,6 +13835,7 @@ test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquir
       }] } });
       await session.prepareWatchPage('first', page.url, activityId);
     }
+    expect(session.watchPage('first', activityId)?.pageId).toBe(pageId);
     (session as unknown as { app: appLink.ChannelApp }).app = { stopCaptures: vi.fn(), close: vi.fn() } as unknown as appLink.ChannelApp;
     await session.focusWatchPage('first', activityId);
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_focus' }), expect.any(AbortSignal));

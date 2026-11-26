@@ -204,11 +204,14 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
     </ChannelSettingsDialog>;
 }
 
-/** One dialog instance manages the requested room independently of room navigation. */
-export function ChannelRoomSettingsDialog({ channel, room, onClose }: {
+interface RoomSettingsProps {
   channel: ChannelController; room: ChannelRoom; onClose(): void;
-}) {
-  return <RoomSettings key={room.id} channel={channel} room={room} onClose={onClose} />;
+  onDelete(deleteData: boolean): Promise<void>; deleteError?: string | null; deleting?: boolean;
+}
+/** One dialog instance manages the requested room independently of room navigation. */
+export function ChannelRoomSettingsDialog({ channel, room, onClose, onDelete, deleteError, deleting }: RoomSettingsProps) {
+  return <RoomSettings key={room.id} channel={channel} room={room} onClose={onClose}
+    onDelete={onDelete} deleteError={deleteError} deleting={deleting} />;
 }
 type RoomSettingsTask = "room" | "relay" | "data";
 
@@ -283,9 +286,7 @@ function NativeRoomOpenNotice({ channel, roomId, operator, serverHosted = false 
   </div>;
 }
 
-function RoomSettings({ channel, room, onClose }: {
-  channel: ChannelController; room: ChannelRoom; onClose(): void;
-}) {
+function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting }: RoomSettingsProps) {
   const { t } = useCopy();
   const id = useId();
   const { error, run } = useSettingsAction();
@@ -363,14 +364,15 @@ function RoomSettings({ channel, room, onClose }: {
             {membersError && <p role="status">{t("room.settings.profilesFailed")}</p>}
           </details>}
           <section className="c3-room-removal">
-            <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
+            <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working || deleting}
               title={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
               cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
               onClick={() => {
                 const question = t(serverHosted ? "room.settings.confirmHostedDelete" :
                   deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove", { name: room.name });
-                if (window.confirm(question)) void run(signal => channel.deleteRoom(room.id, deleteData, signal), onClose);
+                if (window.confirm(question)) void onDelete(deleteData);
               }} />
+            <ChannelSettingsError error={deleteError ?? null} />
           </section>
         </section>}
         {room.authorized && room.canManage && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>

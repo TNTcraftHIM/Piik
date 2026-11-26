@@ -26,7 +26,7 @@ import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
-import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
 import { diagnoseChannelFact, type ChannelDiagnosis } from "../diagnosis";
 import { Comic } from "../../components/living/Comic";
@@ -123,12 +123,12 @@ export interface WatchStageSource extends StagePictureSource {
   owned: boolean; subscribed: boolean; hidden?: boolean; paused: boolean; pending?: boolean; available?: boolean;
   shareControls?: ReactNode;
   player?: import("../watch-playback").WatchPlayer;
-  website: boolean; browserSource: boolean; originalPageAvailable: boolean; onAppWatch?: () => void; onFocusWindow(): void;
+  website: boolean; browserSource: boolean; originalPageAvailable: boolean; onAppWatch?: () => void; onFocusWindow(): Promise<void>;
   originalPageUnavailable?: string;
   receiving?: WatchReceiving;
   audience: readonly AudiencePerson[];
-  onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): void;
-  onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): void;
+  onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): Promise<void>;
+  onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;
 }
 export interface WaitingStageSource {
   roomId?: string;
@@ -467,6 +467,9 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
 }) {
   const { t } = useCopy();
   const embedded = source.player?.presentation.kind === "embed";
+  const playbackAction = useSettingsAction(!source.hidden, source.player);
+  const resumeAction = useSettingsAction(!source.hidden, source.player);
+  const windowAction = useSettingsAction(!source.hidden, source.player);
   return <article hidden={source.hidden} inert={source.hidden} tabIndex={focused ? -1 : undefined} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
@@ -474,17 +477,22 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
       if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
-      website={source.website} originalPageAvailable={source.originalPageAvailable} originalPageUnavailable={source.originalPageUnavailable} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
+      actionFeedback={playbackAction.error || resumeAction.error || windowAction.error ? <>
+        {playbackAction.error && <PictureFailure error={playbackAction.error} onDismiss={playbackAction.clearError} />}
+        {resumeAction.error && <PictureFailure error={resumeAction.error} onDismiss={resumeAction.clearError} />}
+        {windowAction.error && <PictureFailure error={windowAction.error} onDismiss={windowAction.clearError} />}
+      </> : undefined}
+      website={source.website} originalPageAvailable={source.originalPageAvailable} originalPageUnavailable={source.originalPageUnavailable} onAppWatch={source.onAppWatch} onFocusWindow={() => { void windowAction.run(source.onFocusWindow); }}
       receiving={source.receiving} retryPending={source.pending} automaticPlayback={automaticPlayback} nativeStage={focused || !focusable && !thumbnail}
       disabled={source.available === false} presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"}
       theaterMode={theaterMode} onToggleTheater={onToggleTheater}
-      onPlayback={patch => { if (embedded && patch.paused === false) onFocus(source.id); source.onPlayback(patch); }}
+      onPlayback={patch => { if (embedded && patch.paused === false) onFocus(source.id); void playbackAction.run(() => source.onPlayback(patch)); }}
       onResume={() => {
         if (embedded) {
           onFocus(source.id);
           if (source.player?.presentation.kind === "embed") source.player.presentation.element.scrollIntoView({ block: "nearest" });
         }
-        source.onResume();
+        void resumeAction.run(source.onResume);
       }} />
       : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t(source.awaitingSource ? "watch.waiting" : "watch.browserFailed")}</span>
         {!source.owned && (source.onAppWatch

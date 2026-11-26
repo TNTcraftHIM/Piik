@@ -38,6 +38,13 @@
 .c3-mini-message .c3-watch-result { flex-direction: column; max-width: min(360px, calc(100% - 24px)); text-align: center; }
 .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player:is([data-external], [data-failed]) { min-height: 240px; }
 .c3-watch-player:is([data-external], [data-failed]) .c3-mini-message { inset: 88px 12px 64px; }
+.c3-watch-player[data-external]:not([data-native-page], :fullscreen) {
+  display: flex;
+  flex-direction: column;
+  > .c3-mini-message { position: relative; inset: auto; flex: 1; min-height: 0; padding: 8px; overflow-y: auto; pointer-events: auto; }
+  > .c3-watch-controls { position: relative; inset: auto; flex: none; align-self: center; margin-block-end: 10px; }
+}
+.c3-shell:not([data-layout="quick"]) .c3-watch-player[data-external]:not([data-native-page], :fullscreen) { contain: size; }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player[data-standalone]:not(:fullscreen),
 .c3-video.c3-watch-player[data-diagnosis]:not(:fullscreen) {
   aspect-ratio: auto;
@@ -138,6 +145,7 @@
 .c3-mini-player[data-thumbnail] .c3-mini-controls { width: fit-content; }
 .c3-mini-player[data-thumbnail] .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
 .c3-mini-controls.c3-watch-controls { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0; border-radius: var(--c3-inset-radius); }
+.c3-watch-controls > .c3-picture-failure { justify-content: space-between; }
 .c3-watch-controls:has(.c3-watch-timeline) {
   width: calc(100% - 2 * var(--mini-controls-inset));
   padding: 2px clamp(6px, 1.5cqi, 12px) 5px;

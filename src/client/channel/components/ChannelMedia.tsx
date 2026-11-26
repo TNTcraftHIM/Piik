@@ -93,7 +93,7 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
 }
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, retryPending, automaticPlayback = true, nativeStage = false }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, retryPending, automaticPlayback = true, nativeStage = false, actionFeedback }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
@@ -102,6 +102,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   retryPending?: boolean;
   automaticPlayback?: boolean;
   nativeStage?: boolean;
+  actionFeedback?: ReactNode;
 }) {
   const { lang, t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
@@ -166,7 +167,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       if (player.video) { player.video.volume = volume; player.video.muted = false; }
     },
   } : undefined;
-  const visibility = usePlaybackControlsVisibility(videoRef, controls, thumbnail || player.blocked || !!player.error);
+  const visibility = usePlaybackControlsVisibility(videoRef, controls, thumbnail || player.blocked || !!player.error || !!actionFeedback);
   useLayoutEffect(() => {
     if (surface.kind === "external") return;
     const element = surface.element, target = slot.current;
@@ -266,7 +267,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </>}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon={localSeek ? "refresh" : "play"} title={resumeLabel} cap={resumeLabel} onClick={onResume} /></div>}
-    {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
+    {(hasControls || actionFeedback) && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
+      {actionFeedback}
       {showTimeline && <div className="c3-watch-timeline">
         {owned ? <input className="lr-range" type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
           style={{ "--range-fill": `${100 * (position - seekStart) / (seekEnd - seekStart)}%` } as CSSProperties}
@@ -397,7 +399,7 @@ function readStickPositions() {
   return readRoomPreferences().stickPositions;
 }
 
-/** A failed watch or picture retry stays with its picture until the next attempt, a started picture or dismissal. */
+/** A failed picture operation stays with its picture until its owner clears it or it is dismissed. */
 export function PictureFailure({ error, onDismiss }: { error: string; onDismiss?(): void }) {
   return <div className="c3-picture-failure">
     <ChannelSettingsError error={error} />

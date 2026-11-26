@@ -112,7 +112,7 @@ export function settingsActionFailure(error: unknown): string | null {
 }
 
 /** Pending stays in Session; only this open surface, for its current owner, receives its action result. */
-export function useSettingsAction(open = true, owner?: string): { error: string | null; run: SettingsAction; clearError(): void } {
+export function useSettingsAction(open = true, owner?: unknown): { error: string | null; run: SettingsAction; clearError(): void } {
   const [error, setError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   useLayoutEffect(() => {

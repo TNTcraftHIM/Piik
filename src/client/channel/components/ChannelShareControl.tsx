@@ -410,6 +410,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const [url, setURL] = useState(initialURL);
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
+  const windowAction = useSettingsAction(!!page, page?.pageId);
   const embed = !activityId ? channel.watchEmbed(roomId) : undefined;
   const portableEmbed = canMoveWatchEmbed() && !!watchEmbed(url.trim());
   const mediaURL = URL.canParse(url.trim()) ? new URL(url.trim()) : null;
@@ -502,9 +503,10 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         {!activityId && <p>{t("watch.browserSource.originalHelp")}</p>}
       </> : <div className="lr-source-picker-status" role="status">{busy && <BrandLoader />}<span>{t("watch.waitForVideo")}</span></div>}
       <div className="c3-share-title-actions">
-        <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
+        <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void windowAction.run(() => channel.focusWatchPage(roomId, activityId)); }} />
         <Btn icon="x" quiet size="compact" title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
       </div>
+      <ChannelSettingsError error={windowAction.error} />
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
       <div className="c3-share-title-actions">
         {busy ? <BrandLoader /> : <Btn icon="refresh" title="common.retry" cap="common.retry" onClick={prepareExistingWatch} />}

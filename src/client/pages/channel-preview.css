@@ -140,6 +140,7 @@
 .c3-control-divider { align-self: stretch; width: 1px; background: var(--line); margin: 7px 3px; }
 .c3-notice { flex: none; margin: 12px 20px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); font-size: 12px; line-height: 1.6; }
 .c3-notice-message { flex: 1; min-width: 0; }
+.c3-notice-message > .c3-settings-error { margin: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
 .c3-notice > .c3-diagnosis-help { flex: none; width: auto; margin: 0; }

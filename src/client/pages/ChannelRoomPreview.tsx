@@ -243,7 +243,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     ownerId: guestPreview ? "sample-bo" : sample.channel.state!.channel.ownerId, roomCreationPolicy,
     hostingMode: new URLSearchParams(location.search).has("hosted") ? "hosted" as const : "lightweight" as const,
-    managedRoomIds: guestPreview ? [] : [...roomIds, ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
+    managedRoomIds: guestPreview ? [] : [...roomIds,
+      ...(new URLSearchParams(location.search).has("hosted") && new URLSearchParams(location.search).get("fails") === "room-data-removal" ? removedRooms : []),
+      ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
     rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined, serviceRelay: undefined, picture: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
@@ -319,9 +321,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setWatchByteSource: async (_id, choiceId) => setForwarding(choiceId !== null),
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
-    prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ url, activityId,
+    prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ pageId: crypto.randomUUID(), url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
-    focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
+    focusWatchPage: async () => sample.received(), focusWatch: async () => { actionFails("watch-focus"); sample.received(); },
     cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
@@ -373,8 +375,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
     watchEmbedPreparation: () => undefined, cancelWatchPage: () => setPageSample(undefined),
     leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
-    resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blockedReason = null; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
+    resumeWatch: async id => { actionFails("watch-resume"); const player = watchPlayers.get(id); if (player) { player.blockedReason = null; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
     setWatchPlayback: async (_id, patch) => {
+      actionFails("watch-playback");
       setWatchActivity(previous => previous && ({ ...previous, playback: { ...previous.playback, ...patch } }));
       await watchPlayers.values().next().value?.patch(patch);
     },
@@ -418,9 +421,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     updateProfile: sample.channel.updateProfile, updateDomain: sample.channel.updateDomain,
     setRoomCreationPolicy: async policy => setRoomCreationPolicy(policy),
     deleteRoom: async (roomId, deleteData) => {
+      actionFails("room-delete");
       setRemovedRooms(previous => new Set(previous).add(roomId));
       setSelected(previous => previous === roomId ? "" : previous);
-      return { dataRemoved: deleteData };
+      return { dataRemoved: deleteData && new URLSearchParams(location.search).get("fails") !== "room-data-removal" };
     },
     deleteMessage: async (roomId, seq, messageId) => {
       if (roomId === "friday" && seq === fileSampleSeq && fileSample) {

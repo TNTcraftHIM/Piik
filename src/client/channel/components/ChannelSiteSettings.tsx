@@ -144,7 +144,10 @@ function DirectoryRoom({ id, label, channel, deleteData, disabled }: {
       title={{ text: t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label }) }}
       cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }} onClick={() => {
         if (window.confirm(t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })))
-          void run(signal => channel.deleteRoom(id, deleteData, signal));
+          void run(async signal => {
+            const result = await channel.deleteRoom(id, deleteData, signal);
+            if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
+          });
       }} />
     <ChannelSettingsError error={error ?? (channel.errorRoomId === id ? channel.error : null)} />
   </li>;
