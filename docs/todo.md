@@ -76,9 +76,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   host. The supplied v2.5.2 reports retain the grant and receive authorized mouse
   events, but Windows `SendInput` rejects a button event and subsequent release
   attempts. The reporter still loses control after returning to the desktop in
-  v2.8.0. Capture whether local physical input also stops during the refusal
-  to identify its OS trigger. Later same-process reports clear the release
-  backlog; the local controlled Chrome trial did not reproduce the failure.
+  v2.8.0. The physical mouse still works, and returning to Chrome before
+  disconnection restores remote control under the same grant. Later same-process
+  reports clear the release backlog. Compare the first native rejection and
+  release counters across that transition on the original host. The local
+  controlled Chrome trial did not reproduce the failure.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
