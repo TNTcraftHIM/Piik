@@ -289,7 +289,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       attachments: [{ id: "sample-document", name: longNames ? "AnnualPlanningNotes_".repeat(3) + "final.pdf" : "Notes.pdf",
         mediaType: "application/octet-stream", size: 12 * 1024 * 1024, sha256: "0".repeat(64) }] }] };
   }
-  const profiles = new Map(users.map(user => [user.id, { ...sample.channel.profiles.get(user.id)!, ...user }]));
+  const sampleAvatar = (index: number) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="hsl(${index * 97 % 360} 55% 62%)"/><circle cx="32" cy="26" r="13" fill="hsl(${index * 97 % 360} 45% 30%)"/><path d="M8 64q4-24 24-24t24 24" fill="hsl(${index * 97 % 360} 45% 30%)"/></svg>`)}`;
+  const withAvatars = new URLSearchParams(location.search).has("avatars");
+  const profiles = new Map(users.map((user, index) => [user.id, { ...sample.channel.profiles.get(user.id)!, ...user,
+    ...(withAvatars && index % 2 === 0 ? { avatar: sampleAvatar(index) } : {}) }]));
   const browserSourceChoices = [
     { id: "sample-hls", name: "Evening playlist", displayURL: "https://video-cdn.media.example/films/evening-with-friends/alternate-audio/master.m3u8?private=not-in-title", format: "hls" as const },
     { id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/films/evening/video.mp4?private=not-in-title", format: "file" as const },

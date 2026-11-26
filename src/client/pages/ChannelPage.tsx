@@ -49,6 +49,7 @@ import { roomHasUnread, roomPeople, roomSessionViewing, viewingAppearance, scree
 import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
 import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
+import { VoiceListeningButton, VoiceMicrophoneButton } from "../room-voice/VoiceAudioButtons";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { useClientNavigationTarget } from "../channel/client-navigation";
@@ -130,8 +131,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const phone = living && workspaceWidth > 0 && workspaceWidth < 600;
   // Which companion sits beside the pictures: the conversation, the people of the site, or nothing. Local
   // presentation for this prototype, not saved. A phone or a narrow window starts with the picture and the couch alone.
-  const [panel, setPanel] = useState<"chat" | "people" | "none">(() => typeof window !== "undefined" && window.innerWidth >= 600 && window.innerWidth < 1080 ? "none" : "chat");
-  const togglePanel = (kind: "chat" | "people") => setPanel(current => current === kind ? "none" : kind);
+  const [panelChoice, setPanel] = useState<"chat" | "people" | "none">();
   // The stage's grid and focus switch is shown in the top bar, with the other view tools.
   const [viewHome, setViewHome] = useState<HTMLElement | null>(null);
   const [toolHome, setToolHome] = useState<HTMLElement | null>(null);
@@ -320,6 +320,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // Living: the centre belongs to the main activity. With pictures the conversation is a companion beside
   // them; without pictures it is the main column, and only the people of the site can be a companion.
   const hasPictures = visibleScreens.length > 0;
+  // Until I choose, the conversation is open where it has room: a desktop from 1080 px, and a phone that
+  // shows one picture or none. Two or more pictures on a phone keep the room for themselves.
+  const panel = panelChoice ?? (phone ? visibleScreens.length <= 1 ? "chat" : "none" : workspaceWidth >= 1080 ? "chat" : "none");
+  const togglePanel = (kind: "chat" | "people") => setPanel(panel === kind ? "none" : kind);
   const livingPane = !living || overview || roomToolOpen ? "none" : hasPictures ? panel : panel === "people" ? "people" : "none";
   const livingChat = !living || overview || roomToolOpen ? "none" : !hasPictures ? "main" : panel === "chat" ? "panel" : "none";
   // Only one side region fits beside a large picture: below a 1600 px viewport (the shell is 40 px narrower)
@@ -526,9 +530,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               }} />}
           </div></div>
         </RoomHeading>;
-  // The App link and my preferences are mine, not the room's: the living layout keeps them with my name.
-  const myTools = <div className="lr-top c3-global-tools">
-    <HeaderControls appControl={appControl} personalControls={<>
+  // My preferences are mine, not the room's: the living layout keeps them with my name. The App link is the
+  // window's, so on a desktop it ends the top row with its word, where such a link is looked for.
+  const myTools = (withApp: boolean) => <div className="lr-top c3-global-tools">
+    <HeaderControls appControl={withApp ? appControl : undefined} personalControls={<>
       {onLayoutChange && layout !== "living" && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
       <PlaybackDeviceSelect />
       <ChannelFeedbackSounds channel={channel} />
@@ -578,7 +583,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       data-rooms={living ? roomsRail ? "rail" : "list" : undefined} data-stage={living ? visibleScreens.length ? "pictures" : "empty" : undefined}
       data-chat={living ? livingChat : undefined}
       // My controls are a dock under the rooms column; a phone has no such column and keeps them in a bar.
-      data-controls={living ? phone ? "bar" : "dock" : undefined}
+      data-controls={living ? phone ? "bar" : "dock" : undefined} data-pictures={living ? Math.min(visibleScreens.length, 2) : undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
@@ -590,7 +595,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {layout === "quick" && <Btn id="c3-rooms-trigger" icon="couch" quiet size="compact"
           title={{ text: t("channel.previewPage.roomList") }} cap={{ text: t("channel.previewPage.rooms") }} hint="hint-room-list"
           controls="c3-room-list" expanded={mobilePane === "rooms"} onClick={showRooms} />}
-      </div>{living && roomHeading}{!(living && !phone) && myTools}</header>
+      </div>{living && roomHeading}{living && !phone ? <div className="c3-living-app">{appControl}</div> : myTools(true)}</header>
       <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}>
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
@@ -644,7 +649,24 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />}</div>}
         {living && phone && !overview && hasPictures && <Btn className="c3-living-chat" icon="chat" size="compact" quiet title="conversation.chat"
           controls="c3-chat" expanded={panel === "chat"} pressed={panel === "chat"} onClick={() => togglePanel("chat")} />}
-        {living && !phone && myTools}
+        {living && !phone && voiceActivity && <button type="button" className="c3-living-voice-name" data-here={voiceActivity.roomId === roomId || undefined}
+          onClick={() => selectRoom(voiceActivity.roomId)}>{nameOfRoom(voiceActivity.roomId)}</button>}
+        {/* Every other room my voice is in is a row of its own, with its own microphone, listening and leaving. */}
+        {living && !phone && voiceActivity && myVoice.length > 1 && <div className="c3-living-voices">
+          {myVoice.filter(value => value.roomId !== voiceActivity.roomId).map(value => {
+            const controls = resolveVoiceDockControls(channel, value.roomId);
+            return <div key={value.roomId} className="c3-living-voice">
+              <button type="button" className="c3-living-voice-name" data-here={value.roomId === roomId || undefined}
+                onClick={() => { selectRoom(value.roomId); setVoiceFocus(value.roomId); }}>{nameOfRoom(value.roomId)}</button>
+              <VoiceMicrophoneButton active={!value.muted} disabled={controls.microphoneDisabled} cancelPending={controls.microphonePending} quiet
+                onClick={() => controls.toggle("microphone")} />
+              <VoiceListeningButton deafened={value.deafened} quiet onClick={() => controls.toggle("listening")} />
+              <Btn icon="door" title="voice.leave" size="compact" quiet onClick={() => run(channel.leaveVoice(value.roomId))} />
+            </div>;
+          })}
+          <button type="button" className="c3-living-voices-more" aria-label={t("channel.previewPage.roomList")} onClick={toggleRoomList}>+{myVoice.length - 1}</button>
+        </div>}
+        {living && !phone && myTools(false)}
       </div>
       <section className="c3-main" aria-label={room?.name ?? t("channel.previewPage.room")}>
         {!living && roomHeading}
