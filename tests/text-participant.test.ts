@@ -19,8 +19,9 @@ test('Node text conversation ignores unrelated media descriptions and retains si
   const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}/prototype/channel`,
     origin: 'http://127.0.0.1', roomId: 'room', name: 'Text fixture' });
   const commands: string[] = [], live: ChannelMessage[] = [], errors: unknown[] = [];
+  const firstLive = new Promise<ChannelMessage>(resolve => client.once('ready', () => client.once('live', resolve)));
   client.on('live', value => live.push(value));
-  server.on('connection', socket => socket.on('message', raw => {
+  server.on('connection', (socket, request) => socket.on('message', raw => {
     try {
       const command = JSON.parse(raw.toString()); commands.push(command.type);
       if (command.type === 'join') {
@@ -66,6 +67,14 @@ test('Node text conversation ignores unrelated media descriptions and retains si
             }
           } catch (error) { errors.push(error); socket.terminate(); }
         });
+      } else if (command.type === 'browse') {
+        // One network read can contain both the Browse receipt and the first reader broadcast.
+        const packet = JSON.parse(signer.sign(host, JSON.stringify({ roomId: 'room', bindingId: binding,
+          sender: host, recipient: local, requestId: randomUUID(), record: { type: 'live_message', message } })));
+        request.socket.cork();
+        socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: command.requestId, result: { type: 'done' } }));
+        socket.send(JSON.stringify({ type: 'conversation', packet }));
+        request.socket.uncork();
       } else if (command.type !== 'conversation') socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
     } catch (error) { errors.push(error); socket.terminate(); }
   }));
@@ -73,12 +82,12 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     await client.connect();
     expect(client.summary()).toMatchObject({ userId: user, roomId: 'room', available: true, reading: true, bindingId: binding });
     expect(await client.history()).toEqual({ messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
-    expect(live).toEqual([]);
+    expect(await firstLive).toEqual(message);
     const delivered = once(client, 'live');
     const confirmed = await client.chat('notice');
     expect(confirmed).toMatchObject({ text: 'notice' });
     await delivered;
-    expect(live).toEqual([{ ...message, text: 'live' }]);
+    expect(live).toEqual([message, { ...message, text: 'live' }]);
     await expect(client.deleteOwnMessage({ ...confirmed, userId: owner })).rejects.toThrow('own_confirmed_message_required');
     await client.deleteOwnMessage(confirmed);
     await client.stop();

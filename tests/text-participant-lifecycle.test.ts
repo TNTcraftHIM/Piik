@@ -196,7 +196,7 @@ test('concurrent stop callers await the same leave and socket retirement, includ
   await expect(client.chat('after close')).rejects.toThrow('closed');
 });
 
-test('a completed old browse cannot announce readiness for a replacement socket', async () => {
+test.each(['receipt-first', 'close-first'] as const)('browse readiness follows %s socket ordering', async order => {
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   vi.useFakeTimers();
   const [local, host, binding, user] = Array.from({ length: 4 }, () => randomUUID());
@@ -208,18 +208,22 @@ test('a completed old browse cannot announce readiness for a replacement socket'
   const first = client.connect().catch(error => error as Error), old = boundary.socket;
   old.readyState = 1; old.emit('open'); old.emit('message', Buffer.from(JSON.stringify(welcome)));
   await Promise.resolve();
-  old.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: old.sent.at(-1)!.requestId })));
+  const receipt = Buffer.from(JSON.stringify({ type: 'ack', requestId: old.sent.at(-1)!.requestId }));
+  if (order === 'receipt-first') old.emit('message', receipt);
+  const oldReady = order === 'receipt-first' ? 1 : 0;
+  expect(ready).toHaveBeenCalledTimes(oldReady);
   old.readyState = 3; old.emit('close');
   const replacing = client.reconnect(), next = boundary.socket;
+  old.emit('message', receipt);
   const result = await first;
   expect(result).toBeInstanceOf(Error);
   expect((result as Error).message).toBe('disconnected');
-  expect(ready).not.toHaveBeenCalled();
+  expect(ready).toHaveBeenCalledTimes(oldReady);
   next.readyState = 1; next.emit('open'); next.emit('message', Buffer.from(JSON.stringify(welcome)));
   await Promise.resolve();
   next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
   await replacing;
-  expect(ready).toHaveBeenCalledOnce();
+  expect(ready).toHaveBeenCalledTimes(oldReady + 1);
   const stopping = client.stop();
   next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
   await Promise.resolve(); await Promise.resolve();
@@ -255,10 +259,19 @@ test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s wr
     expect(observed).not.toHaveBeenCalled();
     receive({ type: 'room_created', room, requestId: request.requestId });
     expect(await creation).toEqual(room);
+    const ready = vi.fn(); client.on('ready', ready);
+    const timedOut = expect(client.browse(room.id)).rejects.toThrow('request_timeout');
+    const retiredId = socket.sent.at(-1)!.requestId;
+    await vi.advanceTimersByTimeAsync(10_000);
+    await timedOut;
     const browsing = client.browse(room.id);
+    receive({ type: 'ack', requestId: retiredId });
+    expect(ready).not.toHaveBeenCalled();
+    expect(client.summary()).toMatchObject({ roomId: undefined, reading: false });
     expect(socket.sent.at(-1)).toMatchObject({ type: 'browse', roomId: room.id, active: true });
     receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
     await browsing;
+    expect(ready).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ roomId: room.id, reading: false }));
   }
   const stopping = client.stop();
   receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
