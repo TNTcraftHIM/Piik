@@ -3776,6 +3776,83 @@ mod lifecycle_tests {
     };
 
     #[tokio::test]
+    async fn app_static_ranges_preserve_control_and_launcher_routes() {
+        let directory = tempfile::tempdir().unwrap();
+        let assets = directory.path().join("web");
+        std::fs::create_dir_all(assets.join("assets")).unwrap();
+        std::fs::write(assets.join("index.html"), "launcher document").unwrap();
+        std::fs::write(assets.join("assets/view.js"), "0123456789").unwrap();
+        let config = Config {
+            data_root: directory.path().into(),
+            assets,
+            open_browser: false,
+            terminal_notice: None,
+            page_player: None,
+            website_permission_reset: None,
+            window_navigation: None,
+            cloudflared: PathBuf::new(),
+            ice_servers: vec![],
+            update: Default::default(),
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (ready, entry) = oneshot::channel();
+        let (stop, stopped) = oneshot::channel();
+        let service = tokio::spawn(serve(
+            listener,
+            config,
+            async {
+                let _ = stopped.await;
+            },
+            Some(ready),
+        ));
+        let deadline = Duration::from_secs(5);
+        timeout(deadline, entry).await.unwrap().unwrap();
+
+        let client = reqwest::Client::builder().timeout(deadline).build().unwrap();
+        let range = |path: &str| {
+            client
+                .get(format!("{origin}{path}"))
+                .header(header::RANGE, "bytes=2-4")
+        };
+        let stale = |path: &str| range(path).header(header::IF_RANGE, "\"old\"");
+
+        let asset = "/assets/view.js";
+        let full = stale(asset).send().await.unwrap();
+        assert_eq!(full.status(), StatusCode::OK);
+        assert!(!full.headers().contains_key(header::CONTENT_RANGE));
+        assert_eq!(full.bytes().await.unwrap().as_ref(), b"0123456789");
+        let partial = range(asset).send().await.unwrap();
+        assert_eq!(partial.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(partial.headers()[header::CONTENT_RANGE], "bytes 2-4/10");
+        assert_eq!(partial.bytes().await.unwrap().as_ref(), b"234");
+
+        let discovery = stale("/connect-discovery").send().await.unwrap();
+        assert_eq!(discovery.status(), StatusCode::OK);
+        let discovery: Value = serde_json::from_slice(&discovery.bytes().await.unwrap()).unwrap();
+        assert_eq!(discovery["connectURL"], format!("{origin}/client"));
+
+        let bookmarks = "/api/client-launcher/bookmarks";
+        let allowed = stale(bookmarks)
+            .header(header::ORIGIN, &origin)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(allowed.status(), StatusCode::OK);
+        let allowed: Value = serde_json::from_slice(&allowed.bytes().await.unwrap()).unwrap();
+        assert_eq!(allowed, json!({"bookmarks":[]}));
+        let forbidden = stale(bookmarks)
+            .header(header::ORIGIN, "https://other.example")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+        stop.send(()).unwrap();
+        timeout(deadline, service).await.unwrap().unwrap().unwrap();
+    }
+
+    #[tokio::test]
     async fn external_startup_checks_the_site_before_opening_it() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let directory = tempfile::tempdir().unwrap();
