@@ -92,7 +92,7 @@ a plainer thing takes their place: "房间列表的展开可能又有必要了�
   consumer. The standard that records the activity roster is yours to amend
   with this decision. The people panel still shows every state.
 
-## The prototype's head is `d60e0ff9`: the owner's fifth review
+## The prototype's head is `41f03e46`: the owner's fifth review
 
 The web suite passes there (2,409). `people=N` on the preview seats that many
 of the sample's people. Take the composition from this head.
@@ -133,15 +133,23 @@ of the sample's people. Take the composition from this head.
    stylesheet, once. Those controls are yours. Take or decline each as a
    change to the control. Do not carry them over as overrides of a layout.
 
-Three things I found in overlays and did not change, because they are your
+Two more since, from my own list:
+
+- **A custom picture is a circle in every layout**, the shape of the figure's
+  own head, and its headset is drawn for a circle: the band over the top, the
+  cups at the sides, the boom along the lower arc, the neckband below when
+  listening is paused (`Pawn.tsx`, `pawn.css`). This is art and mine. The
+  layout's override that rounded only the picture is gone.
+- **The minimal form starts sharing in one press when there is no room.** It
+  showed the full form's first-room page. It now shows its waiting television
+  with the quick layout's `prepareShare`, unchanged.
+
+Two things I found in overlays and did not change, because they are your
 components:
 
 1. Voice settings is an anchored card 806 px tall at 1360 by 860. A sheet that
    long is a dialog, like room settings.
 2. Type inside cards and dialogs is still the old scale (11 to 15, and 22).
-3. The headphones drawn for a person with a custom picture follow a rounded
-   square. Around a circle they do not fit. That one is art and mine to draw;
-   tell me if you would rather I leave the square.
 
 ## The voice shortcut: the rule, corrected again
 
@@ -223,10 +231,165 @@ delay D:
 Whether it raises success on a sequential mapping is a question for your
 namespace routers, not for loopback.
 
+## Preparation on the same pair: the design, for you to build
+
+One idea: **preparation is a source of candidates for the pair's one engine. It
+is not a second attempt.** A pair has one id, one engine, one set of ICE and
+DTLS credentials and one deadline from admission to the end. Preparation
+starts with the engine, and when it finds a path it gives that path to the
+engine as one more candidate pair. The SDK's own nomination does the rest.
+
+### Today, as read
+
+- Preparation starts only after a failure. A Native gives its ordinary engine
+  5 s when the snapshot says `Available` (`peer.rs:2139-2148`), then closes the
+  engine and only then reports `Failed` (`:2733-2741`).
+- The core answers by replacing the attempt: a new pair id, `Attempt::Prepared`,
+  the 20 s deadline armed again (`transport.rs:782-796`). The other Native
+  drops its engine when the old id leaves the snapshot (`peer.rs:2013-2022`).
+- Preparation then has 5 s (`preparation.rs:78`): the initiator surveys, Offer,
+  the responder surveys, Answer, checks.
+- Whatever the result, the Driver builds a new engine on the new id
+  (`peer.rs:2268`): fresh credentials, a second SDP exchange, 20 s more. When
+  preparation failed, that engine is ordinary ICE again (`:2260-2264`), on a
+  pair where it has just failed.
+
+So a hard pair waits 5 s to learn what it could have started learning at once,
+and then establishes a connection twice. The constants allow 5 + 5 + 20 s
+before a hopeless pair is reported. The lab measured 23.6 s to media on the
+sequential profile.
+
+### What changes
+
+**Core.** `TransportBook::prepare`, `Attempt` and `prepared()` go. `Failed`
+always retires the pair, as it already does for a pair with a Browser. The
+snapshot keeps one fact, that both ends can prepare; `Required` goes. A UDP
+signal is authorized on the current pair when both ends can prepare, with the
+roles fixed by session order as now. No id is replaced and no deadline is
+armed twice.
+
+**Driver.** `create_pair` builds the engine as now and, when the pair can
+prepare, starts `preparation::Pending` for the same id beside it. The engine's
+connecting deadline is one value, 20 s. UDP signals go to the pending
+preparation when there is one and are dropped otherwise, as now. When
+preparation succeeds the Driver adopts instead of creating. When it fails,
+times out or is refused, nothing happens to the engine: the task ends and its
+sockets are released. `OrdinaryFallback` has nothing left to report.
+
+**Runtime.** One new command gives a live engine a socket. It carries the
+pair id and the engine's instance, and it is dropped with its socket when
+that engine is gone, which is your "late attachment to a closed handle was
+rejected". In one turn, before the engine is polled again, it installs the
+socket's reader under that owner and makes the socket one the engine sends
+from, and only then adds the local host candidate. That order is your
+finding and it is the invariant. The peer's tuple is added as a remote
+candidate through the queue that already waits for the remote description
+(`Pair.candidates`). Nothing is signaled for it: each end learned the other's
+tuple from the checks, and the ICE credentials were exchanged at the start.
+
+**The survey.** With no grant, both ends start when the pair is created. That
+is the parallel survey I sent, with "on the grant" read as "when the pair is
+created". If you have not built it yet, build it here.
+
+### When preparation ends
+
+One predicate: **the pair has a direct path**, meaning its engine has selected
+a candidate pair that is not a relay.
+
+- When it becomes true, the pending preparation is closed and `Unavailable`
+  is sent, so the peer's ends as well. Your control already covers this as
+  "normal-path-first".
+- A result that arrives while it is true is dropped and its socket released.
+- Otherwise preparation runs to its own 5 s.
+
+If the engine connects through a relay first, preparation goes on. The pinned
+SDK moves by itself when a better pair succeeds: `evaluate_nomination` picks
+the highest-priority succeeded pair every time a pair's state changes
+(`crates/is/src/agent.rs:2352-2411`). A relay is then the fallback it is
+meant to be, and today a pair that connected through one is never prepared
+(`transport.rs:782-788`). If the selected pair's kind cannot be read where the
+Driver decides, tell me before you settle for "connected".
+
+### A precondition: the survey must tolerate other flows
+
+Today the survey runs after the engine has closed, on a quiet host. Beside a
+live engine it does not: gathering, a TURN allocation and the first checks
+each open a new flow, and on a sequential NAT each new flow takes the next
+port. The classifier requires the two differences to be equal
+(`preparation.rs:346-359`), so one flow opened between two bindings turns a
+sequential mapping into `Irregular`, and `Irregular` beside anything but
+`Stable` is unsupported (`:400-402`). This weakness exists today for any
+other traffic behind the same NAT. Beside the engine it becomes the usual
+case.
+
+The model is "a fixed step for each new flow, and other flows may come in
+between". Test the model:
+
+- all three equal: `Stable`;
+- both differences non-zero, of one sign, each within 64, and their greatest
+  common divisor within 16: `Sequential` with that divisor as the step;
+- anything else: `Irregular`.
+
+The equal-steps rule is the case with nothing in between. This is small,
+stands alone, and can go first.
+
+### What I am not proposing
+
+- A head start for ordinary ICE. The survey and the two relay hops are the
+  head start, and an easy pair connects inside them.
+- Publishing the mapping class with the endpoint to skip the survey. The
+  ending rule already stops an easy pair early, at the cost you measured: 16
+  packets and one socket at the peak.
+- Counting our own new flows to correct a prediction.
+- Any change to the checks, their budgets, the random search, `Ready` or the
+  process-wide limit of two.
+- Anything for a Browser.
+
+### The risk I can name
+
+A sequential prediction aims four steps past the last binding
+(`wire.rs:733`), which survives three foreign flows before the probes leave,
+or seven with the alternate target. Beside a live engine, a candidate that
+arrives between the last binding and the first probe opens such a flow. With
+both ends surveying at once that window is about two relay hops. The lab's
+sequential profile advances its counter on every new flow, so it will show
+whether this matters. If success falls below today's, widen the aim by the
+same rule (more sockets, a later target). Do not order the engine and the
+survey against each other.
+
+### Checks
+
+1. The classifier, as a unit: (40000, 40001, 40002) is sequential by 1;
+   (40000, 40003, 40004) is sequential by 1; (40000, 40002, 40006) by 2;
+   (40000, 51234, 40007) is irregular; three equal ports are stable.
+2. An easy pair on loopback: the engine connects, preparation is closed on
+   both ends, and no socket beyond the engine's remains.
+3. The sequential kernel-NAT profile with the engine alive: the pair delivers
+   media on the engine it was created with. Pair id, engine instance, ICE
+   credentials and certificate are unchanged, there is one SDP exchange and
+   one `Connected` from each end, and the core's deadline is armed once.
+4. Preparation fails or is refused while the engine lives: the engine is
+   untouched, no `Failed` is sent for it, and the ports are released.
+5. A result for an engine that has gone: dropped, port released.
+6. Relay first, where the fixture has a relay: the engine connects through
+   it, preparation completes, and the selected path becomes the prepared pair
+   with DTLS and SCTP kept.
+7. The measurement, same profile, before and after: admission to `Connected`
+   and to first media, against 23.6 s. I expect the 5 s wait and the second
+   establishment to be gone. The number is to be measured, not promised.
+
+### Order
+
+The classifier first, by itself. The Runtime command second, with your
+control as its test, and no caller. The contract last and in one change, core
+and Driver together, because a core that still replaces the pair beside a
+Driver that prepares at creation would prepare twice. That change also
+updates `channel-network-design.md` where it records the replacement and its
+second deadline, and closes "Prepared socket adoption" in the ledger.
+
 ## Still owed by me
 
-Preparation on the same pair, as a design. Your adoption control through two
-real routers is the premise it needed; thank you.
+The comparison for the long first-picture tail. Not started.
 
 ## Holds
 
