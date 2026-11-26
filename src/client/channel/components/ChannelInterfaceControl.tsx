@@ -16,12 +16,15 @@ export function ChannelInterfaceControl({ value, onChange }: {
   value: RoomLayout; onChange(value: RoomLayout): void;
 }) {
   const { t } = useCopy();
-  return <label className="c3-interface-choice">
-    <span>{t("channel.interfaceControl.interface")}</span>
-    <select className="lr-select" value={value} onChange={event => onChange(event.target.value as RoomLayout)}>
-      {interfaceOptions(t).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
-  </label>;
+  const labelId = useId();
+  return <div className="c3-interface-choice">
+    <span id={labelId}>{t("channel.interfaceControl.interface")}</span>
+    <div className="lr-toggle" role="group" aria-labelledby={labelId}>
+      {interfaceOptions(t).map(option => <button key={option.value} type="button" title={option.description}
+        className={value === option.value ? "is-selected" : undefined} aria-pressed={value === option.value}
+        onClick={() => onChange(option.value)}><span>{option.label}</span></button>)}
+    </div>
+  </div>;
 }
 
 /** An optional first-use choice; creation and personal preference stay with the page. */

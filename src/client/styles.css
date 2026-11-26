@@ -133,9 +133,19 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-header-controls .lr-btn.is-compact:not([popover] .lr-btn, .lr-app-connect) { width: var(--control-compact-size); padding: 0; }
 .lr-header-controls .lr-cap:not([popover] .lr-cap, .lr-app-connect > .lr-cap) { display: none; }
 .lr-header-more { display: inline-flex; }
-.lr-header-options:is(:popover-open, .\:popover-open) { display: grid; gap: 16px; }
+/* The menu is one column on one edge. Its groups are parted by a rule, their rows by an even step, and a row
+   that is a button reaches past the edge so that its icon stands on it. */
+.lr-header-options:is(:popover-open, .\:popover-open) { display: grid; gap: 12px; }
 .lr-header-settings { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.lr-header-options .lr-help-content { padding-top: 14px; border-top: 1px solid var(--control-edge); }
+.lr-header-options .lr-capture-device { padding: 12px 0 0; border-top: 1px solid var(--control-edge); }
+.lr-header-options .lr-capture-device label { font-size: 14px; font-weight: 600; color: inherit; }
+.lr-header-options .lr-capture-device-controls > select { flex: 1; min-width: 0; }
+.lr-header-options .c3-forwarding-settings { padding-top: 6px; border-top: 1px solid var(--control-edge); }
+.lr-header-options .lr-help-content { padding-top: 12px; border-top: 1px solid var(--control-edge); }
+.lr-header-options .lr-help-content header { margin: 0 0 8px; }
+.lr-header-options[popover] > span > .lr-comic-tip-wrap > .lr-btn.is-compact,
+.lr-header-options[popover] .lr-help-content nav .lr-btn.is-compact { justify-content: flex-start; width: calc(100% + 16px); margin-inline: -8px; padding-inline: 8px; }
+.lr-header-options .lr-help-content nav { gap: 0; }
 .lr-top .lr-leds { width: var(--control-compact-size); height: var(--control-compact-size); padding: 0; justify-content: center; }
 .lr-top .lr-leds-label { display: none; }
 

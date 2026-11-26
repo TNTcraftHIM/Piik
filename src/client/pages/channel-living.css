@@ -211,7 +211,8 @@
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-toolbar { display: none; }
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-heading { flex: none; }
 [data-layout="living"][data-sidebars="phone"] .c3-global-tools { align-self: center; padding-inline-end: 4px; }
-[data-layout="living"][data-sidebars="phone"] .c3-global-tools .lr-btn .lr-cap { display: none; }
+/* The row's own buttons give up their words on a phone. What opens from the row is not the row. */
+[data-layout="living"][data-sidebars="phone"] .c3-global-tools .lr-btn:not([popover] .lr-btn, .lr-floating-panel .lr-btn) .lr-cap { display: none; }
 [data-layout="living"][data-sidebars="phone"] > :is(.c3-chat-panel, .c3-people-panel) { border-inline-start: 0; }
 [data-layout="living"][data-sidebars="phone"] > .c3-people-panel { grid-area: 2 / 1 / -2 / -1; }
 [data-layout="living"][data-sidebars="phone"] > .c3-chat-panel { border-block-start: 1px solid var(--line); }
