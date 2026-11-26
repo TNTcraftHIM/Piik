@@ -466,7 +466,6 @@ pub(crate) struct Engine {
     pending: Option<SdpPendingOffer>,
     local: Option<(String, String)>,
     remote: bool,
-    prepared_remote: Option<Candidate>,
     remote_media: HashMap<Mid, (String, String, Option<Uuid>)>,
     linear_enabled: bool,
     bandwidth: watch::Sender<Estimate>,
@@ -608,8 +607,7 @@ impl Runtime {
                                 if engine.rtc.add_local_candidate(local).is_none() { return Ok(false); }
                                 engine.sockets.push(socket.clone());
                                 add_reader(&mut sockets, socket, Some((id, instance)), network.clone());
-                                if engine.remote { engine.rtc.add_remote_candidate(remote); }
-                                else { engine.prepared_remote = Some(remote); }
+                                engine.rtc.add_remote_candidate(remote);
                                 engine.drain();
                                 Ok(true)
                             })();
@@ -1044,7 +1042,6 @@ impl Runtime {
             pending: None,
             local: None,
             remote: false,
-            prepared_remote: None,
             remote_media: HashMap::new(),
             linear_enabled: linear,
             bandwidth,
@@ -1380,7 +1377,6 @@ impl Transport {
             e.remote_media = remote_media;
             e.prune_stats();
             e.remote = true;
-            if let Some(candidate) = e.prepared_remote.take() { e.rtc.add_remote_candidate(candidate); }
             e.outputs.retain(|_, out| {
                 !out.retired
                     || out

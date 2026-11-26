@@ -1867,23 +1867,19 @@ async fn live_ice_adopts_prepared_path_on_original_pair() -> Result<()> {
         a.offer().await?;
         let (k, s) = a.local_description().await?;
         let [(wa, la), (wb, lb)] = loopback_winners(id).await?;
+        let mut local_winner = Some(wa);
         let mut remote_winner = Some(wb);
         if !ordinary_first {
+            ensure!(a.adopt(local_winner.take().unwrap()).await?);
             ensure!(b.adopt(remote_winner.take().unwrap()).await?);
-            ensure!(b.call(|engine| Ok(engine.prepared_remote.is_some())).await?);
+            // Both ICE agents advance without remote credentials until SDP arrives.
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
         b.accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? }).await?;
         let (k, s) = b.local_description().await?;
         a.accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? }).await?;
         let identities = (identity(&a).await?, identity(&b).await?);
         ensure!(std::net::UdpSocket::bind(la).is_err() && std::net::UdpSocket::bind(lb).is_err());
-        let mut local_winner = Some(wa);
-        if !ordinary_first {
-            let wa = local_winner.take().unwrap();
-            ensure!(!a.call(|e| Ok(e.rtc.has_send_consent())).await?);
-            ensure!(!b.call(|e| Ok(e.rtc.has_send_consent())).await?);
-            ensure!(a.adopt(wa).await?);
-        }
         let remote = tokio::time::timeout(Duration::from_secs(5), async {
             while let Some(event) = events.recv().await {
                 if let Event::Channel(_, channel) = event {return Ok(channel)}
@@ -1924,6 +1920,94 @@ async fn live_ice_adopts_prepared_path_on_original_pair() -> Result<()> {
         let _released = (std::net::UdpSocket::bind(la)?, std::net::UdpSocket::bind(lb)?);
         l.transport.close().await;
         r.transport.close().await;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn ordinary_connection_stops_preparation_only_on_stun_only_sites() -> Result<()> {
+    use crate::peer::{preparation::loopback_winners, tests::{driver, support::{endpoint, exchange, open}}, IceServer, NativeEvent};
+    use piik_channel_core::wire::{Command, PairInfo, Signal, UdpPreparation, UdpSignal};
+
+    for turn in [false, true] {
+        let (mut driver, mut events, mut commands, _stop) = driver();
+        driver.session = Uuid::from_u128(2);
+        driver.transport.test_binds = Some(&["[::1]:0"]);
+        let local_ipv4 = crate::peer::preparation::local_ipv4().await.context("IPv4 interface for scoped STUN servers")?;
+        let mut servers = JoinSet::new();
+        let mut urls = vec![];
+        for _ in 0..3 {
+            let server = UdpSocket::bind((local_ipv4, 0)).await?;
+            urls.push(format!("stun:{}", server.local_addr()?));
+            servers.spawn(async move {
+                use rtc_stun::{message::{Message, BINDING_SUCCESS}, xoraddr::XorMappedAddress};
+                let mut buf = [0; 2048];
+                loop {
+                    let (n, peer) = server.recv_from(&mut buf).await?;
+                    let mut request = Message::new();
+                    request.raw = buf[..n].to_vec();
+                    request.decode()?;
+                    let mut reply = Message::new();
+                    reply.build(&[Box::new(BINDING_SUCCESS), Box::new(request.transaction_id),
+                        Box::new(XorMappedAddress { ip: peer.ip(), port: peer.port() })])?;
+                    server.send_to(&reply.raw, peer).await?;
+                }
+                #[allow(unreachable_code)]
+                Ok::<_, anyhow::Error>(())
+            });
+        }
+        let turn_socket = UdpSocket::bind("127.0.0.1:0").await?;
+        if turn {
+            urls.push(format!("turn:{}", turn_socket.local_addr()?));
+        }
+        driver.ice = vec![IceServer { urls, username: "test".into(), credential: "test".into() }];
+        let id = Uuid::new_v4();
+        let plan = PairInfo {
+            id, peer_id: Uuid::from_u128(1), udp_preparation: Some(UdpPreparation::Available),
+            can_receive_video_layers: false, rooms: vec![], incoming: vec![], outgoing: vec![],
+        };
+        driver.update(vec![plan.clone()], vec![], vec![]).await;
+        let rtc = driver.pairs[&id].pc.clone();
+        let job = driver.preparings[&id].task.abort_handle();
+
+        let remote = Runtime::new(Some(ServerUdp::bind(&[("[::1]:0".parse()?, None)])?));
+        let (peer, mut peer_events) = endpoint(&remote, id).await?;
+        let (left, right) = open(&rtc, &peer, &mut peer_events).await?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(event) = events.recv().await {
+                if matches!(event, Event::State(pair, PeerState::Connected) if pair == id) {
+                    return driver.event(event).await;
+                }
+            }
+            Err(anyhow!("RTC ended before reporting Connected"))
+        }).await??;
+        let refused = std::iter::from_fn(|| commands.try_recv().ok()).any(|event| matches!(event,
+            NativeEvent::Command(Command::Signal { pair_id, payload: Signal {udp: Some(UdpSignal::Unavailable {}), ..} })
+                if pair_id == id));
+        ensure!(driver.preparings.contains_key(&id) == turn && refused != turn, "configured TURN={turn}, pending={}, sent refusal={refused}, job ended={}", driver.preparings.contains_key(&id), job.is_finished());
+        if !turn { ensure!(job.is_finished()); }
+        exchange(&left, &right, "ordinary").await?;
+        if turn {
+            // An authenticated winner completes on the old instance just before its lease disappears.
+            let mut completed = driver.preparings.remove(&id).unwrap();
+            completed.task.abort();
+            let _ = (&mut completed.task).await;
+            let [(winner, port), _other] = loopback_winners(id).await?;
+            driver.update(vec![], vec![], vec![]).await;
+            driver.update(vec![plan], vec![], vec![]).await;
+            ensure!(driver.pairs[&id].pc.instance != rtc.instance);
+            driver.prepared(completed, Ok(Ok(winner))).await;
+            let _released = std::net::UdpSocket::bind(port)?;
+            driver.pairs[&id].pc.connection_metrics().await?;
+        }
+        driver.update(vec![], vec![], vec![]).await;
+        ensure!(job.is_finished());
+        peer.close().await?;
+        remote.close().await;
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        servers.shutdown().await;
     }
     Ok(())
 }
