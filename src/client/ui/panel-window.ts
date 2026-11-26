@@ -105,7 +105,7 @@ export async function openPanelWindow(container: HTMLElement, signal: AbortSigna
   }
   declareNative();
   const observer = new MutationObserver(() => copyAttributes());
-  const attributes = ["lang", "dir", "data-theme", "data-reduced-motion", "data-comic-reduced-motion"];
+  const attributes = ["lang", "dir", "data-theme", "data-living-room", "data-reduced-motion", "data-comic-reduced-motion"];
   function copyAttributes() {
     for (const name of attributes) {
       const value = home.documentElement.getAttribute(name);

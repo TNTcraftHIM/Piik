@@ -19,6 +19,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
   const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}/prototype/channel`,
     origin: 'http://127.0.0.1', roomId: 'room', name: 'Text fixture' });
   const commands: string[] = [], live: ChannelMessage[] = [], errors: unknown[] = [];
+  let contradictDelete = false;
   const firstLive = new Promise<ChannelMessage>(resolve => client.once('ready', () => client.once('live', resolve)));
   client.on('live', value => live.push(value));
   server.on('connection', (socket, request) => socket.on('message', raw => {
@@ -59,6 +60,9 @@ test('Node text conversation ignores unrelated media descriptions and retains si
             } else if (request.command.type === 'delete_message') {
               expect(request.command).toEqual({ type: 'delete_message', messageSeq: message.seq, messageId: message.id });
               socket.send(JSON.stringify({ type: 'ack', requestId: address.requestId }));
+              socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: address.requestId, result: { type: 'done' } }));
+              reply({ type: 'live_message', message });
+              if (contradictDelete) reply({ type: 'confirmed', message, inserted: false });
               reply({ type: 'message_deleted', messageSeq: message.seq });
             } else {
               expect(request.command).toMatchObject({ type: 'chat', text: 'notice', attachments: [] });
@@ -90,8 +94,14 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     expect(live).toEqual([message, { ...message, text: 'live' }]);
     await expect(client.deleteOwnMessage({ ...confirmed, userId: owner })).rejects.toThrow('own_confirmed_message_required');
     await client.deleteOwnMessage(confirmed);
+    expect(live.at(-1)).toEqual(message);
+    contradictDelete = true;
+    const receipts: ChannelMessage[] = [];
+    client.on('confirmed', value => receipts.push(value));
+    await expect(client.deleteOwnMessage(confirmed)).rejects.toThrow('invalid_response');
+    expect(receipts).toEqual([]);
     await client.stop();
-    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'leave']);
+    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'conversation', 'leave']);
     expect(errors).toEqual([]);
   } finally {
     await client.stop();

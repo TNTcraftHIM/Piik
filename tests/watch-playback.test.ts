@@ -1,3 +1,4 @@
+import { AppPage } from "../src/client/channel/app-link";
 import { playbackOutput } from "../src/client/media/playback-output";
 import { HTMLVideoMedia, AppPageMedia, type AppPagePort, type WatchMediaEvent, type WatchMedia, type WatchMediaState } from "../src/client/channel/watch-media";
 import { afterEach, expect, test, vi } from "vitest";
@@ -287,6 +288,37 @@ test("creator playing reanchors initial start and buffer recovery even at the sa
     video.dispatchEvent(new Event("playing"));
     await player.serialize(async () => {});
     expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ paused: true }));
+  } finally { player.close(); }
+});
+
+test("the original-page viewer refreshes readiness on buffering and recovery before the next clock tick", async () => {
+  vi.useFakeTimers();
+  const candidateId = crypto.randomUUID();
+  let readyState = 4;
+  const state = () => ({ position: 0, paused: false, rate: 1, duration: 60, readyState, ended: false, buffered: [] });
+  const page = new AppPage(crypto.randomUUID(), "https://video.test/", async () => state(), () => {}, () => {});
+  const media = new AppPageMedia(page, candidateId);
+  const player = new WatchPlayer("room", false, media, vi.fn());
+  try {
+    await player.ready();
+    const now = performance.now();
+    player.calibrate(now, now, now);
+    player.update({ timeline: "media", position: 0, paused: false, rate: 1, anchorTime: now });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(false);
+    readyState = 2;
+    const sample = (event: "waiting" | "playing", id = candidateId) =>
+      page.receive({ type: "page_sample", candidateId: id, event, pageId: page.id });
+    sample("waiting", crypto.randomUUID());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(false);
+    sample("waiting");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(true);
+    readyState = 3;
+    sample("playing");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(false);
   } finally { player.close(); }
 });
 

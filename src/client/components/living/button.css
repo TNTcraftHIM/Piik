@@ -17,6 +17,11 @@
   --control-motion: transform var(--motion-control) var(--spring);
 }
 button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+:root[data-living-room] {
+  --control-label-size: 14px;
+  --control-selected: color-mix(in srgb, var(--ink) 10%, transparent);
+  --control-selected-ink: var(--ink);
+}
 .lr-btn {
   position: relative;
   display: inline-grid;
@@ -46,6 +51,7 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
 .lr-btn.is-on { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); box-shadow: inset 0 0 0 1px var(--action), var(--control-shadow); }
 .lr-btn.is-on:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: inset 0 0 0 1px var(--action); }
+:root[data-living-room] .lr-btn.is-on { border-color: transparent; box-shadow: none; }
 .lr-btn .lr-cap { margin-left: 2px; font-size: var(--control-label-size); font-weight: 600; }
 .lr-btn > .lr-glyph { width: var(--button-icon-size, var(--control-icon-size)); height: var(--button-icon-size, var(--control-icon-size)); }
 .lr-btn.is-compact { --button-size: var(--control-compact-size); --button-padding: 10px; }

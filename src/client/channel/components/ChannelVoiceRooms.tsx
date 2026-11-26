@@ -51,6 +51,7 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
   </div>;
 
   return <div ref={layout} data-density={density} className="c3-voice-room-layout" role="region" aria-label={label}>
+    {density === "rows" && <h3 className="c3-voice-rooms-heading">{label}</h3>}
     {direct && row(direct, true, true)}
     {density === "rows" ? rows(true) : listed.length > 0 && <ChannelVoiceRoomDisclosure
       count={listed.length} layoutAnchor={density === "rail" ? layout : undefined}>{rows}</ChannelVoiceRoomDisclosure>}
@@ -93,18 +94,18 @@ function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct
   return <div className="c3-voice-room-row" role="group" aria-labelledby={showRoomInfo ? id : undefined} aria-label={showRoomInfo ? undefined : name}
     data-current={current || undefined} data-direct={direct || undefined}>
     {showRoomInfo && <div className="c3-voice-room-info">
-      <small role="status" data-status={status}>{t(VOICE_STATUS_LABEL[status])}</small>
+      {(direct || status !== "joined") && <small role="status" data-status={status}>{t(VOICE_STATUS_LABEL[status])}</small>}
       <Tooltip className="c3-voice-room c3-voice-room-name" overflow={{ text: name, selector: "button" }}>
         <button id={id} type="button" aria-current={current ? "true" : undefined} onClick={onBrowse}>{name}</button>
       </Tooltip>
     </div>}
     <div className="c3-voice-room-actions">
-      <VoiceMicrophoneButton active={!muted} level={level} disabled={microphoneDisabled} cancelPending={microphonePending} quiet
+      <VoiceMicrophoneButton active={!muted} level={level} disabled={microphoneDisabled} cancelPending={microphonePending} className="is-tonal"
         keyShortcuts={voiceShortcutAria(microphone ?? null)} shortcutLabel={microphone && shortcuts ? voiceShortcutLabel(microphone, shortcuts.mac) : undefined}
         onClick={() => toggle("microphone")} />
-      <VoiceListeningButton deafened={deafened} quiet keyShortcuts={voiceShortcutAria(listening ?? null)}
+      <VoiceListeningButton deafened={deafened} className="is-tonal" keyShortcuts={voiceShortcutAria(listening ?? null)}
         shortcutLabel={listening && shortcuts ? voiceShortcutLabel(listening, shortcuts.mac) : undefined} onClick={() => toggle("listening")} />
-      <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
+      <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" className="is-tonal"
         onClick={() => { void channel.leaveVoice(roomId).catch(() => {}); }} />
     </div>
   </div>;

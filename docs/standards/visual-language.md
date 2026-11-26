@@ -211,8 +211,10 @@ row. Give each activity a labelled icon. File arrows identify the selected
 sender and the person requesting a download, including while the path is
 being prepared. The attachment owns byte progress. Folding the list is local.
 The couch seats people present through chat or media. Select a seated person
-to open their reaction palette. The headset shows voice state. Sharing,
-watching and file activity use the same indicators as the room activity list.
+to open their reaction palette. The headset shows voice state. The figure wears
+one activity mark: sharing, files, then viewing, with remote control taking
+precedence when present. The seat's hint and accessible description retain all
+activities, using the same meanings as the room activity list.
 In the full workspace, the site directory on the right uses the same presence
 for its current-room group, then lists other online people and offline people.
 Background forwarding and cached copies belong to connection and file details.
@@ -860,7 +862,7 @@ type checking rather than silently render a warning triangle.
 | Audio / 声音 | `speaker`, `speakerOff` | Audio and mute/no audio, qualified by the source or local playback label. A source track's presence does not establish delivered sound. |
 | Size and viewing mode / 尺寸与观看模式 | `expand`, `contract`, `pip`, `pipExit`, `theater`, `theaterExit`, `fitContain`, `fitCover`, `fitStretch`, `rotatePicture` | Expand/restore, enter/leave picture in picture or theatre mode; contain, proportional crop and stretch change only local picture fit. Picture rotation switches the local landscape/portrait view. The same size symbol can accompany a resolution measurement. |
 | Local actions / 本地操作 | `copy`, `save`, `pencil`, `eye`, `eyeOff` | Copy, save, edit, reveal and conceal the named object. An action icon does not prove completion. |
-| Text appearance / 文字外观 | `textSize`, `opacity` | Relative text size and opacity. These are local display preferences, not message delivery states. |
+| Text appearance / 文字外观 | `opacity` | Opacity as a local display preference. |
 | Reply / 回复 | `reply` | Quote a message or identify its referenced message. The bent return arrow is distinct from `arrowLeft` page or panel navigation. |
 | Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight`, `arrowLeft` | Repeat/refresh, expand/collapse, proceed/enter and return. Direction follows the control's action; no arrow alone establishes delivery. |
 | Transfer and upgrade / 传输与更新 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. An explicit update label may use the upward arrow for upgrade; neither arrow is a connection-quality rating. |
@@ -871,7 +873,7 @@ type checking rather than silently render a warning triangle.
 | More / 更多 | `more` | Disclose additional actions; does not imply a separate settings surface. |
 | Progress and result / 进度与结果 | `loader`, `alert`, `check`, `x` | In progress, a problem, confirmation/positive result, cancellation/negative result. The status owner supplies severity; the shape alone cannot set it. |
 | Theme / 主题 | `sun`, `moon` | Light/dark appearance in theme controls. A moon in an idle-room scene means rest, with the idle scene providing that context. |
-| Welcome decoration / 开场装饰 | `gamepad`, `popcorn`, `clapperboard`, `trophy`, `gift`, `flag`, `heart`, `bulb`, `zap` | Games, snacks, film, achievement, gift, next stop, affection, discovery and energy. These may decorate the welcome line, never a measured speed, failure or connection verdict. |
+| Room themes / 房间主题 | `gamepad`, `popcorn`, `clapperboard`, `heart` | Games, snacks, film and affection can identify room themes. |
 
 Metrics use [METRIC_PRESENTATION](../../src/client/components/living/metric-presentation.ts)
 in both summaries and details. Labels, units and stage-specific comics distinguish

@@ -11,7 +11,7 @@ import { useElementWidth } from "../../lib/use-element-width";
 import { joinSentences, useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelActivityMarks, ChannelUser, participantActivityBadges, personVoiceLabel } from "./ChannelUser";
+import { ChannelUser, personActivityBadges, personVoiceLabel } from "./ChannelUser";
 import type { ParticipantActivity } from "../presentation";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import "./channel-couch.css";
@@ -83,16 +83,14 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const active = target?.userId === person.userId;
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
     const { voice, ...activity } = person;
-    const badges = participantActivityBadges(activity, copy);
+    const badges = personActivityBadges(activity, copy);
+    const primary = badges[0];
     const labels = badges.map(badge => badge.label);
     if (voice) labels.unshift(personVoiceLabel(voice, copy));
     const details = labels.length ? joinSentences(copy.lang, labels) : undefined;
     const inner = <>
-      <span className="c3-couch-figure">
-        <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
-          avatar={person.avatar} voice={voice} collaboration={person.collaboration} />
-        {!!badges.length && <span className="c3-couch-activity"><ChannelActivityMarks badges={badges} /></span>}
-      </span>
+      <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
+        avatar={person.avatar} voice={voice} collaboration={person.collaboration} activity={primary?.status ?? primary?.icon} />
       <span className="lr-pawn-name">{person.name}</span>
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;

@@ -70,6 +70,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     return requested === "quick" || requested === "living" ? requested : "workspace";
   });
   const [offerLayout, setOfferLayout] = useState(firstUse);
+  const [minimalForm, setMinimalForm] = useState(() => new URLSearchParams(location.search).has("minimal"));
   const changeLayout = (value: RoomLayout) => { setLayout(value); setOfferLayout(false); };
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => firstUse || new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
@@ -482,6 +483,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
           <fieldset><legend>{zh ? "界面入口" : "Interface entry"}</legend><div className="c3-room-preview-tools">
+            {layout === "living" && <Chip title={zh ? "极简布局" : "Minimal layout"} selected={minimalForm} onClick={() => setMinimalForm(!minimalForm)}>{zh ? "极简布局" : "Minimal layout"}</Chip>}
             <Chip title={zh ? "客厅布局" : "Living room layout"} selected={layout === "living"}
               onClick={() => changeLayout(layout === "living" ? "workspace" : "living")}>{zh ? "客厅布局" : "Living room layout"}</Chip>
             <Btn icon="sidebar" quiet size="compact" cap={{ text: zh ? "首次使用提示" : "First-use suggestion" }}
@@ -526,7 +528,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     </div>
   </>;
   return <div className="c3-room-preview">
-    <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
+    <ChannelRoomPage channel={channel} layout={layout} minimalForm={minimalForm} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
       appControl={<AppConnectionButton discovery={previewAppDiscovery} connected={channel.appConnected} wakeURL={null} />} previewOptions={previewOptions} />
     <span className="visually-hidden" role="status">{sample.notice}</span>
   </div>;

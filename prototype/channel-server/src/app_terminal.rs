@@ -215,11 +215,12 @@ fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize
         "─".repeat(width),
     ];
     lines.push("App connection ready / App 连接服务已就绪".into());
+    let site_failed = state["reason"].is_string();
     let status = if error.is_some() {
         "Launcher status unavailable / 暂时无法读取启动页状态"
     } else if state["starting"].as_bool() == Some(true) {
         "Site starting / 站点正在启动"
-    } else if state["reason"].is_string() {
+    } else if site_failed {
         "Site unavailable / 站点暂不可用"
     } else if state["target"].is_string() {
         "Site ready / 站点已就绪"
@@ -253,7 +254,11 @@ fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize
         );
     }
     lines.push("─".repeat(width));
-    lines.push("O + Enter  Open launcher / 打开启动页".into());
+    lines.push(if site_failed {
+        "O + Enter  Open launcher to retry / 打开启动页重试".into()
+    } else {
+        "O + Enter  Open launcher / 打开启动页".into()
+    });
     if state["target"].is_string() {
         lines.push("S + Enter  Open site / 打开当前站点".into());
     }
@@ -292,20 +297,15 @@ mod tests {
         let starting = render(&json!({"starting":true}), None, None, 20);
         assert!(starting.contains("Site starting"));
         assert!(!starting.contains("S + Enter"));
-        assert!(render(
+        let failed = render(
             &json!({"reason":"tunnel-timeout","detail":"private raw error"}),
             None,
             None,
-            20
-        )
-        .contains("tunnel-timeout"));
-        assert!(!render(
-            &json!({"reason":"tunnel-timeout","detail":"private raw error"}),
-            None,
-            None,
-            20
-        )
-        .contains("private raw error"));
+            20,
+        );
+        assert!(failed.contains("tunnel-timeout"));
+        assert!(failed.contains("O + Enter  Open launcher to retry / 打开启动页重试"));
+        assert!(!failed.contains("private raw error"));
     }
     #[test]
     fn configured_address_is_shown_when_the_local_site_is_ready() {
@@ -331,7 +331,7 @@ mod tests {
         assert!(failed.contains("Launcher status unavailable"));
         assert!(failed.contains("Settings temporarily unavailable"));
         assert!(failed.contains("http://127.0.0.1:39721/client"));
-        assert!(failed.contains("O + Enter"));
+        assert!(failed.contains("O + Enter  Open launcher / 打开启动页"));
         assert!(failed.contains("Q + Enter"));
         assert!(!failed.contains("S + Enter"));
     }

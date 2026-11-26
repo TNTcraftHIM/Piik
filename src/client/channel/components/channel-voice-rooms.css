@@ -3,15 +3,21 @@
   gap: 4px;
   min-width: 0;
 }
+.c3-voice-rooms-heading {
+  margin: 0 4px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
 .c3-voice-room-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 4px;
-  border-radius: var(--control-radius);
 }
-.c3-voice-room-row[data-current] { background: var(--control-hover); }
+.c3-voice-room-row .c3-voice-room-name > button { font-weight: 500; }
+.c3-voice-room-row .c3-voice-room-name > button[aria-current] { font-weight: 700; }
 .c3-voice-room-row small { display: block; color: var(--live-ink); font-size: 11px; }
 .c3-voice-room-row small[data-status="joining"] { color: var(--busy); }
 .c3-voice-room-actions, .c3-voice-shared-tools {
@@ -43,7 +49,6 @@
   min-width: 0;
   gap: 0;
   padding: 0;
-  background: transparent;
 }
 .c3-voice-room-row[data-direct] .c3-voice-room-info {
   display: flex;

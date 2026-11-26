@@ -62,6 +62,9 @@ type Pending = {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 };
+function expectsWriterResult(pending: Pending): boolean {
+  return pending.expects !== 'ack' && pending.expects !== 'room_created';
+}
 /** Only socket/request I/O; the existing Core WASM signs and validates every room record. */
 export type TextParticipantEvents = {
   credential: [credential: string];
@@ -325,7 +328,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       // All pending conversation records belong to the one selected room and its previous binding.
       if (!room?.authorized || !room.available || room.delivery?.bindingId !== previous) {
         for (const [id, pending] of this.pending) {
-          if (pending.expects !== 'ack' && pending.expects !== 'room_created')
+          if (expectsWriterResult(pending))
             this.complete(id, undefined, new Error('room_unavailable'));
         }
       }
@@ -349,6 +352,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (!pending || pending.roomId !== event.roomId) return;
       if (event.result.type === 'error')
         this.complete(event.requestId, undefined, Error(event.result.code));
+      else if (expectsWriterResult(pending)) return;
       else if (pending.expects === 'ack' && event.result.type === 'done')
         this.complete(event.requestId, event.result);
       else this.complete(event.requestId, undefined, Error('invalid_response'));
@@ -366,9 +370,13 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       throw new Error('invalid_conversation_sender');
     const record = reply.record;
     const pending = this.pending.get(reply.requestId);
-    if (record.type === 'error') {
-      if (pending && pending.expects !== 'ack' && pending.expects !== 'room_created')
-        this.complete(reply.requestId, undefined, Error(record.code));
+    if (record.type === 'live_message') {
+      this.emit('live', record.message);
+      return;
+    }
+    if (record.type === 'message_reactions') return;
+    if (pending && expectsWriterResult(pending) && record.type !== pending.expects) {
+      this.complete(reply.requestId, undefined, Error(record.type === 'error' ? record.code : 'invalid_response'));
       return;
     }
     if (record.type === 'reaction' && pending?.expects === 'reaction' &&
@@ -388,8 +396,6 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (pending?.expects === 'confirmed') this.complete(reply.requestId, record.message);
       this.emit('confirmed', record.message);
     }
-    if (record.type === 'live_message')
-      this.emit('live', record.message);
   }
 
   async reconnect() {

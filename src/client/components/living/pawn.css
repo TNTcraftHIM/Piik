@@ -2,12 +2,12 @@
 .lr-person-body { transform-origin: 24px 48px; }
 .lr-person-eyes { transform-origin: 24px 14.1px; }
 /* Keep the same SVG parts mounted so a second toggle reverses the gesture. */
-.lr-person-headset, .lr-person-collaboration { opacity: 0; }
+.lr-person-headset, .lr-person-emblem { opacity: 0; }
 .lr-person-headset { color: var(--ink); }
 .lr-person-status[data-voice] .lr-person-headset,
-.lr-person-status[data-collaboration] .lr-person-collaboration { opacity: 1; }
-.lr-person-collaboration { transform: translateY(2px) scale(.94); transform-origin: 24px 40px; }
-.lr-person-status[data-collaboration] .lr-person-collaboration { transform: none; }
+.lr-person-status[data-emblem] .lr-person-emblem { opacity: 1; }
+.lr-person-emblem { transform: translateY(2px) scale(.94); transform-origin: 24px 40px; }
+.lr-person-status[data-emblem] .lr-person-emblem { transform: none; }
 .lr-person-neckband { opacity: 0; transform: translateY(-14px); }
 .lr-person-status[data-deafened] .lr-person-neckband { opacity: 1; transform: none; }
 .lr-person-headband { opacity: 1; }
@@ -31,7 +31,7 @@
 .lr-person[data-avatar] .lr-person-status[data-microphone]:not([data-deafened]) .lr-person-mic-tip { transform: translate(-10px, 7px); }
 @media (prefers-reduced-motion: no-preference) {
   :where(html:not([data-reduced-motion])) {
-    .lr-person-headset, .lr-person-collaboration { transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease-out; }
+    .lr-person-headset, .lr-person-emblem { transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease-out; }
     .lr-person-headband, .lr-person-neckband,
     .lr-person-earcup-left, .lr-person-earcup-right, .lr-person-mic-position,
     .lr-person-mic-open, .lr-person-mic-folded, .lr-person-mic-tip {

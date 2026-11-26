@@ -10,7 +10,7 @@ import type { ChannelController } from "../types";
 import { roomVoiceStatus, type VoiceRendering } from "../use-voice-playback";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
-import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { createPortal } from "react-dom";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
@@ -108,10 +108,14 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
   if (roomList) {
     const inputAvailable = channel.connection === "connected" && state.channel.rooms.some(room => room.available
       && joined.some(value => value.roomId === room.id));
-    const tools = <div className="c3-voice-shared-tools">
-      <ChannelVoiceSettings channel={channel} available={inputAvailable} shortcuts={shortcuts} />
-      {overlayTools}
-    </div>;
+    const target = props.toolsTarget;
+    // The desktop rail and phone header can replace the tools slot while settings are open.
+    const renderTools = (settings: ReactNode) => {
+      const tools = <div className="c3-voice-shared-tools">{settings}{overlayTools}</div>;
+      return target ? createPortal(
+        <SurfaceDocument.Provider value={target.ownerDocument}>{tools}</SurfaceDocument.Provider>, target,
+      ) : tools;
+    };
     return <>
       <div ref={controls} className="c3-voice-dock-rooms">
         <ChannelVoiceRooms key={props.density} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
@@ -120,10 +124,8 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
           directRoomId={props.directRoomId} />
         {mutedNotice}
       </div>
-      {props.toolsTarget ? createPortal(
-        <SurfaceDocument.Provider value={props.toolsTarget.ownerDocument}>{tools}</SurfaceDocument.Provider>,
-        props.toolsTarget,
-      ) : tools}
+      <ChannelVoiceSettings channel={channel} available={inputAvailable} shortcuts={shortcuts}
+        triggerDocument={target?.ownerDocument} renderTrigger={renderTools} />
       {overlayView}
     </>;
   }

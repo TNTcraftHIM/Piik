@@ -79,7 +79,12 @@ export class WatchPlayer {
         this.alignedPlayback = null;
         void this.align(true);
       }
-      if (!owner) return;
+      if (!owner) {
+        // The original page reports events over the App link. Read its current buffering state.
+        if (this.presentation.kind === "external" && (event === "waiting" || event === "playing" || event === "loadeddata"))
+          void this.align();
+        return;
+      }
       if (event === "waiting") {
         if (this.ownerWaiting) return;
         this.ownerWaiting = true;
