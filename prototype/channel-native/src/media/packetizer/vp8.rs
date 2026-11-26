@@ -144,8 +144,13 @@ mod tests {
                 layer_sync: true,
                 key_idx: Some(7),
             };
+            let head = if tid == 0 {
+                crate::media::vp8::KEYFRAME_16X16
+            } else {
+                &[1]
+            };
             let frame = Arc::new(EncodedFrame {
-                bytes: [vec![u8::from(tid != 0)], vec![0x55; 3000]].concat(),
+                bytes: [head, &[0x55; 3000]].concat(),
                 presentation_time: now + Duration::from_millis(u64::from(index) * 50),
                 keyframe: tid == 0,
                 vp8: Some(metadata),

@@ -63,6 +63,12 @@ impl Depacketizer for Vp8Frame {
 }
 
 #[cfg(test)]
+pub(crate) const KEYFRAME_16X16: &[u8] = &[
+    0x10, 0x02, 0x00, 0x9d, 0x01, 0x2a, 0x10, 0x00, 0x10, 0x00, 0x02, 0x47, 0x08, 0x85, 0x85, 0x88,
+    0x85, 0x84, 0x88, 0x0c, 0x82, 0x00, 0x0c, 0x0d, 0x60, 0x00, 0xfe, 0xfc, 0x5c, 0xd0,
+];
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::media::{clock::SourceTime, incoming::Incoming};
@@ -92,8 +98,8 @@ mod tests {
         };
         let frames = [
             (
-                vec![vec![0x90, 0xf0, 0x80, 1, 0x33, 0x27, 0, 0x55, 0x55]],
-                vec![0, 0x55, 0x55],
+                vec![[&[0x90, 0xf0, 0x80, 1, 0x33, 0x27][..], KEYFRAME_16X16].concat()],
+                KEYFRAME_16X16.to_vec(),
                 full,
             ),
             (
@@ -113,13 +119,13 @@ mod tests {
                 },
             ),
             (
-                vec![vec![0x10, 0, 0x44, 0x55]],
-                vec![0, 0x44, 0x55],
+                vec![vec![0x10, 1, 0x44, 0x55]],
+                vec![1, 0x44, 0x55],
                 Vp8FrameMetadata::default(),
             ),
             (
-                vec![vec![0x90, 0x10, 0x28, 0, 0x44, 0x55]],
-                vec![0, 0x44, 0x55],
+                vec![vec![0x90, 0x10, 0x28, 1, 0x44, 0x55]],
+                vec![1, 0x44, 0x55],
                 Vp8FrameMetadata {
                     layer_sync: true,
                     key_idx: Some(8),
