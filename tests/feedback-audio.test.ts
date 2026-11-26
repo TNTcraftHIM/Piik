@@ -197,3 +197,45 @@ test("drops notifications until the selected output is ready", async () => {
     expect(oscillators[0].start).toHaveBeenCalledOnce();
   } finally { blocker(); release(); complete?.(); audio.close(); await choosing; await playbackOutput.choose(""); }
 });
+
+test("drops feedback on a sink whose rollback failed until a new choice succeeds", async () => {
+  let previousAvailable = true;
+  let cueOutput = "";
+  class OutputContext extends AudioBoundary {
+    async setSinkId(id: string) {
+      if (id === "headphones" && !previousAvailable) throw new DOMException("Unplugged", "NotFoundError");
+      cueOutput = id;
+    }
+  }
+  vi.stubGlobal("document", new EventTarget());
+  vi.stubGlobal("AudioContext", OutputContext);
+  const audio = new FeedbackAudio();
+  audio.configure({ enabled: true, volume: 1 });
+  audio.activate();
+  const stopOtherOutput = playbackOutput.attach({
+    async setSinkId(id: string) {
+      if (id === "alternate") {
+        previousAvailable = false;
+        throw new DOMException("Switch failed", "AbortError");
+      }
+    },
+  } as unknown as HTMLMediaElement);
+  try {
+    const context = AudioBoundary.instances[0];
+    await playbackOutput.choose("headphones");
+    await expect(playbackOutput.choose("alternate")).rejects.toThrow("Switch failed");
+    expect(playbackOutput.selected).toBe("headphones");
+    expect(cueOutput).toBe("alternate");
+    audio.play("message");
+    expect(context.oscillators).toHaveLength(0);
+
+    await playbackOutput.choose("working");
+    expect(cueOutput).toBe("working");
+    audio.play("message");
+    expect(context.oscillators).toHaveLength(2);
+  } finally {
+    stopOtherOutput();
+    audio.close();
+    await playbackOutput.choose("");
+  }
+});
