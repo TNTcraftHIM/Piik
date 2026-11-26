@@ -189,6 +189,45 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
+test.each(["latest", "message"] as const)("leaving a room retires a %s read still awaiting browse admission", async kind => {
+  const { session, socket, peer } = await setup(1000, false);
+  try {
+    const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    const reading = (kind === "latest" ? session.loadLatestHistory("first") : session.loadMessage("first", 1))
+      .then(() => "completed", error => error);
+    session.browse("second");
+    const second = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: second.requestId });
+    const current = await peer.next();
+    expect(current).toMatchObject({ type: "history", roomId: "second" });
+    peer.page(current, [message(2)], false, 2);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
+
+    socket.receive({ type: "ack", requestId: first.requestId });
+    await vi.waitFor(() => expect(peer.sent.some(request => request.roomId === "first")
+      || !session.getSnapshot().pending.has("history:first")).toBe(true));
+    const stale = peer.sent.find(request => request.roomId === "first");
+    if (stale) peer.page(stale, [message(1)], false, 1);
+    expect(await reading).toMatchObject({ name: "AbortError" });
+    expect(peer.sent.map(request => request.roomId)).toEqual(["second"]);
+    expect(session.getSnapshot().messagesByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().messagesByRoom.second).toEqual([message(2)]);
+    expect(session.getSnapshot().error).toBeNull();
+
+    session.browse("first");
+    const reopened = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    expect(reopened.requestId).not.toBe(first.requestId);
+    socket.receive({ type: "ack", requestId: first.requestId });
+    expect(peer.sent).toHaveLength(1);
+    socket.receive({ type: "ack", requestId: reopened.requestId });
+    const fresh = await peer.next();
+    expect(fresh).toMatchObject({ type: "history", roomId: "first" });
+    peer.page(fresh, [message(3)], false, 3);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3)]);
+  } finally { session.close(); }
+});
+
 test("writer-confirmed moderation removes messages, quotations and transfers for both readers", async () => {
   const moderator = await setup();
   const reader = await setup();

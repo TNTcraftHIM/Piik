@@ -1321,7 +1321,7 @@ export class ChannelSession {
     for (const id of this.view.interactionsByRoom.keys()) if (!keep.has(id)) this.closeInteraction(id);
     for (const [id] of this.readings) if (!keep.has(id)) {
       this.closeInteraction(id); this.readings.delete(id);
-      for (const [requestId, request] of this.requests) if (request.roomId === id && (this.histories.get(id)?.hasPage(requestId) || request.seekAfter !== undefined)) {
+      for (const [requestId, request] of this.requests) if (request.roomId === id && (request.kind === "browse" || this.histories.get(id)?.hasPage(requestId) || request.seekAfter !== undefined)) {
         this.retireRequest(requestId);
         request.reject(new DOMException("Read cancelled", "AbortError"));
       }
