@@ -119,6 +119,9 @@ pub struct Driver {
     /// `CHANNEL_SATURATED` or more pairs in flight.
     pub ticks: usize,
     pub saturated_ticks: usize,
+    /// Failed pairs per participant whose other side is not the sharer
+    /// (repair trials, not the direct pair).
+    pub trial_failures: Vec<u32>,
     /// Every answer the driver gave, in participant terms (for replay checks).
     pub log: Vec<String>,
 }
@@ -207,6 +210,7 @@ impl Driver {
             peak_channel: 0,
             ticks: 0,
             saturated_ticks: 0,
+            trial_failures: vec![0; script.people],
             log: Vec::new(),
         };
         let room = driver.room.clone();
@@ -442,6 +446,10 @@ impl Driver {
                     } else {
                         self.answered.insert((peer, pair.id));
                         self.pair_failures += 1;
+                        if person != self.source && peer != self.source {
+                            self.trial_failures[person] += 1;
+                            self.trial_failures[peer] += 1;
+                        }
                         self.log.push(format!("{} {person} link {peer} failed", self.now));
                         self.send(
                             person,
@@ -506,6 +514,29 @@ impl Driver {
                 (!self.pair_confirmed(person, peer, pair.id)).then_some((peer, pair.id))
             })
             .collect()
+    }
+
+    /// Study P3 and P4: whether the last channel reconcile asked for a second
+    /// trial incident to `person` (None if not), and if so whether that pair
+    /// is in flight in `person`'s state now (false: admission refused it).
+    pub fn second_trial(&self, person: usize) -> Option<bool> {
+        #[cfg(feature = "study")]
+        {
+            let me = self.people[person].session;
+            let other = piik_channel_core::study::SECOND_TRIALS_ASKED.with(|asked| {
+                asked
+                    .borrow()
+                    .iter()
+                    .find_map(|&(a, b)| (a == me).then_some(b).or_else(|| (b == me).then_some(a)))
+            })?;
+            let peer = *self.rank.get(&other)?;
+            Some(self.pending_pairs(person).iter().any(|&(p, _)| p == peer))
+        }
+        #[cfg(not(feature = "study"))]
+        {
+            let _ = person;
+            None
+        }
     }
 
     /// Both sides of this physical pair have answered `connected`.

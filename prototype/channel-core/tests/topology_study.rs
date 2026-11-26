@@ -43,7 +43,7 @@ mod waits;
 
 use model::{Connectivity, Rng, Script, BASE, OPTIMISTIC, PESSIMISTIC};
 use solver::Graph;
-use study::{Options, Session};
+use study::{Options, SecondTrial, Session};
 
 /// Branch-and-bound budget per solve, by number of viewers.
 fn budget(viewers: usize) -> u64 {
@@ -181,7 +181,7 @@ fn runs_are_deterministic() {
                 timing: None,
                 race_ms: None,
                 depth_first: false,
-                second_trial: false,
+                second_trial: SecondTrial::Off,
                 cold: false,
             };
             let first = study::run(&script, options);
@@ -707,7 +707,7 @@ fn grid(model: &Connectivity, sizes: &[usize], limits: &[u8], execute_up_to: usi
                 timing: None,
                 race_ms: None,
                 depth_first: false,
-                second_trial: false,
+                second_trial: SecondTrial::Off,
                 cold: false,
             };
             rows.push((viewers, limit, run_row(model, viewers, options)));
@@ -784,7 +784,7 @@ fn trace() {
                 .ok()
                 .map(|h| h.parse().unwrap()),
             depth_first: std::env::var_os("STUDY_TRACE_DEPTH").is_some(),
-            second_trial: false,
+            second_trial: SecondTrial::Off,
             cold: std::env::var_os("STUDY_TRACE_COLD").is_some(),
         },
     );
@@ -812,7 +812,7 @@ fn released_pairs() {
                     timing: None,
                     race_ms: None,
                     depth_first: false,
-                    second_trial: false,
+                    second_trial: SecondTrial::Off,
                     cold: false,
                 };
                 (viewers, 2, run_row(&model, viewers, options))

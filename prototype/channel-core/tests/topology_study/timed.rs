@@ -3,7 +3,7 @@
 
 use super::driver::{Timing, EXPIRE_EVERY_MS};
 use super::model::{Connectivity, BASE, OPTIMISTIC, PESSIMISTIC};
-use super::study::Options;
+use super::study::{Options, SecondTrial};
 use super::waits::CLASSES;
 use super::{budget, header, ratio, run_row, spread, Row};
 
@@ -256,6 +256,63 @@ pub fn time_tables(rows: &[TimedRow]) {
             100.0 * ratio(row.sum(|s| s.saturated_ticks), row.sum(|s| s.ticks)),
         );
     }
+    header(
+        "Second trials in long waits (tree: the sharer and placed viewers; second trial: the pair the last reconcile asked for under P3 or P4)",
+        &[
+            "arrival",
+            "setting",
+            "F s",
+            "N",
+            "policy",
+            "waits over 5 s",
+            "of them, no confirmed pair into the tree at 5 s",
+            "TrialBehindFull at 5 s",
+            "of those, at 5 s: second in flight / asked, not admitted / none asked",
+            "second in flight at some moment of the wait",
+            "of those, 2 or more trial failures during the wait",
+            "their seconds beyond 5 s: in flight / not admitted / none asked %",
+            "TrialAfterDirect at 5 s: count, second in flight / asked, not admitted / none asked",
+        ],
+    );
+    for r in rows {
+        let long: Vec<_> = r.waits().filter(|w| w.class.is_some()).collect();
+        let behind: Vec<_> = long
+            .iter()
+            .filter(|w| w.class == Some(super::waits::Class::TrialBehindFull))
+            .collect();
+        let after: Vec<_> = long
+            .iter()
+            .filter(|w| w.class == Some(super::waits::Class::TrialAfterDirect))
+            .collect();
+        let count = |waits: &[&&super::waits::Wait], state: Option<bool>| {
+            waits.iter().filter(|w| w.second_at5 == Some(state)).count()
+        };
+        let at5 = |state| count(&behind, state);
+        let seen: Vec<_> = behind.iter().filter(|w| w.second_seen).collect();
+        let ticks: Vec<u32> = (0..3)
+            .map(|i| behind.iter().map(|w| w.second_ticks[i]).sum())
+            .collect();
+        let all: u32 = ticks.iter().sum();
+        println!(
+            "{} {} | {} | {} | {} / {} / {} | {} | {} | {:.0} / {:.0} / {:.0} | {}, {} / {} / {} |",
+            r.key(),
+            long.len(),
+            long.iter().filter(|w| w.unlinked).count(),
+            behind.len(),
+            at5(Some(true)),
+            at5(Some(false)),
+            at5(None),
+            seen.len(),
+            seen.iter().filter(|w| w.trial_failures >= 2).count(),
+            100.0 * ratio(ticks[0], all),
+            100.0 * ratio(ticks[1], all),
+            100.0 * ratio(ticks[2], all),
+            after.len(),
+            count(&after, Some(true)),
+            count(&after, Some(false)),
+            count(&after, None),
+        );
+    }
 }
 
 /// Endpoint answers take time: first-picture delay under the present rule
@@ -282,7 +339,11 @@ fn timed_runs_are_deterministic() {
                 }),
                 race_ms: cfg!(feature = "study").then_some(1_000),
                 depth_first: cfg!(feature = "study") && index % 2 == 1,
-                second_trial: cfg!(feature = "study") && index % 4 >= 2,
+                second_trial: match index % 4 {
+                    2 if cfg!(feature = "study") => SecondTrial::BehindFull,
+                    3 if cfg!(feature = "study") => SecondTrial::Any,
+                    _ => SecondTrial::Off,
+                },
                 cold,
             };
             let first = super::study::run(&script, options);
@@ -334,13 +395,14 @@ fn time_model() {
         .into_iter()
         .filter(|m| wanted.is_empty() || wanted.split(',').any(|w| w == m.name))
         .collect();
-    let mut policies: Vec<(&'static str, Option<u64>, bool, bool)> =
-        vec![("present", None, false, false)];
+    let mut policies: Vec<(&'static str, Option<u64>, bool, SecondTrial)> =
+        vec![("present", None, false, SecondTrial::Off)];
     if cfg!(feature = "study") {
-        policies.push(("P1 H=1s", Some(1_000), false, false));
-        policies.push(("P1 H=2s", Some(2_000), false, false));
-        policies.push(("P2", None, true, false));
-        policies.push(("P3", None, false, true));
+        policies.push(("P1 H=1s", Some(1_000), false, SecondTrial::Off));
+        policies.push(("P1 H=2s", Some(2_000), false, SecondTrial::Off));
+        policies.push(("P2", None, true, SecondTrial::Off));
+        policies.push(("P3", None, false, SecondTrial::BehindFull));
+        policies.push(("P4", None, false, SecondTrial::Any));
     }
     // `STUDY_POLICIES`: comma-separated names to run (default: present and P1;
     // the second-trial run used `present,P3` with `STUDY_SCALE=2`).

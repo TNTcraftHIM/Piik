@@ -26,12 +26,21 @@ pub struct Options {
     /// Policy P2: crossings and reductions rank the offered parent's depth
     /// before identifiers. Needs the crate feature `study`.
     pub depth_first: bool,
-    /// Policy P3: a waiting receiver whose confirmed pairs into the tree end
-    /// only at full members may have two repair trials in flight. Needs the
-    /// crate feature `study`.
-    pub second_trial: bool,
+    /// Policies P3 and P4: a second repair trial in flight beside the first.
+    /// Needs the crate feature `study`.
+    pub second_trial: SecondTrial,
     /// Viewers enable peer transport only on arrival (see `Driver::cold`).
     pub cold: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SecondTrial {
+    /// The shipped rule: one repair trial.
+    Off,
+    /// P3: only for a receiver with a confirmed pair into the tree prefix.
+    BehindFull,
+    /// P4: for any waiting receiver.
+    Any,
 }
 
 /// After the last scripted event, timed sessions keep running this long so
@@ -43,17 +52,20 @@ const DRAIN_MS: u64 = 60_000;
 struct Policy;
 
 impl Policy {
-    fn set(race_ms: Option<u64>, depth_first: bool, second_trial: bool) -> Self {
+    fn set(race_ms: Option<u64>, depth_first: bool, second_trial: SecondTrial) -> Self {
         #[cfg(feature = "study")]
         {
             piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(race_ms));
             piik_channel_core::study::DEPTH_BEFORE_ID.with(|c| c.set(depth_first));
-            piik_channel_core::study::SECOND_TRIAL.with(|c| c.set(second_trial));
+            piik_channel_core::study::SECOND_TRIAL
+                .with(|c| c.set(second_trial == SecondTrial::BehindFull));
+            piik_channel_core::study::SECOND_TRIAL_ANY
+                .with(|c| c.set(second_trial == SecondTrial::Any));
         }
         #[cfg(not(feature = "study"))]
         assert!(
-            race_ms.is_none() && !depth_first && !second_trial,
-            "policies P1 to P3 need --features sqlite,study"
+            race_ms.is_none() && !depth_first && second_trial == SecondTrial::Off,
+            "policies P1 to P4 need --features sqlite,study"
         );
         Policy
     }
@@ -66,6 +78,7 @@ impl Drop for Policy {
             piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(None));
             piik_channel_core::study::DEPTH_BEFORE_ID.with(|c| c.set(false));
             piik_channel_core::study::SECOND_TRIAL.with(|c| c.set(false));
+            piik_channel_core::study::SECOND_TRIAL_ANY.with(|c| c.set(false));
         }
     }
 }

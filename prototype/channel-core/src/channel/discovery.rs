@@ -321,10 +321,11 @@ impl Discovery<'_> {
     fn raced(&self, _: Pair) -> bool {
         false
     }
-    /// Study P3 only: when the waiting receiver of `direct` has a confirmed
-    /// pair into the frontier's tree prefix (each such member is full, or it
-    /// would not be waiting), the best unconfirmed crossing other than `first`
-    /// and the direct pair, with the confirmed path it would complete.
+    /// Study P3 and P4 only: for the waiting receiver of `direct`, the best
+    /// unconfirmed crossing other than `first` and the direct pair, with the
+    /// confirmed path it would complete. With `behind_full` (P3) only when
+    /// the receiver has a confirmed pair into the frontier's tree prefix
+    /// (each such member is full, or it would not be waiting).
     #[cfg(feature = "study")]
     fn second_trial(
         &self,
@@ -332,6 +333,7 @@ impl Discovery<'_> {
         scope: &BTreeSet<Uuid>,
         direct: Pair,
         first: &DiscoveryEdge,
+        behind_full: bool,
     ) -> Option<(DiscoveryEdge, BTreeSet<Pair>)> {
         let (a, b) = direct;
         projection
@@ -345,11 +347,12 @@ impl Discovery<'_> {
                 } else {
                     return None;
                 };
-                let behind_full = f.waiting.contains(&target)
-                    && f.before
-                        .keys()
-                        .any(|&m| self.confirmed.contains(&pair(m, target)));
-                if !behind_full {
+                let eligible = f.waiting.contains(&target)
+                    && (!behind_full
+                        || f.before
+                            .keys()
+                            .any(|&m| self.confirmed.contains(&pair(m, target))));
+                if !eligible {
                     return None;
                 }
                 let tail = self.suffix(f, target, scope, projection);
@@ -665,14 +668,15 @@ impl Discovery<'_> {
                 plan.keep(trial.clone(), Interest::Activity);
                 repair.trial = Some(trial);
             }
-            // Study P3 only: request a second trial beside the first.
+            // Study P3 and P4 only: request a second trial beside the first.
             #[cfg(feature = "study")]
-            if crate::study::second_trial() {
-                if let Some((second, path)) = repair
-                    .trial
-                    .as_ref()
-                    .and_then(|first| self.second_trial(projection, scope, pair, first))
-                {
+            if crate::study::second_trial() || crate::study::second_trial_any() {
+                let behind_full = !crate::study::second_trial_any();
+                if let Some((second, path)) = repair.trial.as_ref().and_then(|first| {
+                    self.second_trial(projection, scope, pair, first, behind_full)
+                }) {
+                    crate::study::SECOND_TRIALS_ASKED
+                        .with(|asked| asked.borrow_mut().insert(second.endpoints));
                     for &leg in &path {
                         plan.keep(self.proposal(leg), Interest::Activity);
                     }
@@ -751,6 +755,7 @@ impl Channel {
         #[cfg(feature = "study")]
         {
             self.transports.study_now = self.now;
+            crate::study::SECOND_TRIALS_ASKED.with(|asked| asked.borrow_mut().clear());
         }
         let discovery = Discovery {
             identity: &self.identity,

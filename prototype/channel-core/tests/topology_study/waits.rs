@@ -82,6 +82,22 @@ pub struct Wait {
     /// At subscription its direct pair to the sharer was already confirmed
     /// (for example by the channel standby graph).
     pub direct_ready: bool,
+    /// At the first observation at or after `LONG_WAIT_MS`: no confirmed
+    /// pair into the tree.
+    pub unlinked: bool,
+    /// P3 and P4, at that observation: a second trial asked for and in
+    /// flight (Some(true)), asked for but not in flight (Some(false)), or
+    /// none asked (None).
+    pub second_at5: Option<Option<bool>>,
+    /// The same per sampled second beyond `LONG_WAIT_MS`: in flight, asked
+    /// but not in flight, none asked.
+    pub second_ticks: [u32; 3],
+    /// A second trial was in flight at some observation of the wait.
+    pub second_seen: bool,
+    /// Failed pairs of the viewer, other than with the sharer, while it
+    /// waited.
+    pub trial_failures: u32,
+    failures_before: u32,
 }
 
 #[derive(Default)]
@@ -107,6 +123,7 @@ impl Waits {
                 viewer,
                 since: driver.now,
                 direct_ready,
+                failures_before: driver.trial_failures[viewer],
                 ..Wait::default()
             },
         );
@@ -145,6 +162,9 @@ impl Waits {
                 self.done.push(self.open.remove(&v).unwrap());
                 continue;
             }
+            let second = driver.second_trial(v);
+            wait.second_seen |= second == Some(true);
+            wait.trial_failures = driver.trial_failures[v] - wait.failures_before;
             let pending = driver.pending_pairs(v);
             if let Some(&(_, direct)) = pending.iter().find(|(peer, _)| *peer == source) {
                 if let Some(&at) = driver.seen.get(&(v, direct)) {
@@ -166,10 +186,20 @@ impl Waits {
             }
             let waited = now - wait.since;
             if waited >= LONG_WAIT_MS {
-                let class = classify(driver, &observation, v, &pending);
-                wait.class.get_or_insert(class);
+                let (class, unlinked) = classify(driver, &observation, v, &pending);
+                if wait.class.is_none() {
+                    wait.class = Some(class);
+                    wait.unlinked = unlinked;
+                    wait.second_at5 = Some(second);
+                }
                 if now % super::driver::EXPIRE_EVERY_MS == 0 && waited > LONG_WAIT_MS {
                     *wait.seconds.entry(class).or_default() += 1;
+                    let state = match second {
+                        Some(true) => 0,
+                        Some(false) => 1,
+                        None => 2,
+                    };
+                    wait.second_ticks[state] += 1;
                     if std::env::var_os("STUDY_WAIT_TRACE").is_some() {
                         let ages: Vec<_> = pending
                             .iter()
@@ -219,10 +249,7 @@ fn classify(
     observation: &Observation,
     v: usize,
     pending: &[(usize, Uuid)],
-) -> Class {
-    if observation.edges.iter().any(|&(_, r, ..)| r == v) {
-        return Class::OwnFlow;
-    }
+) -> (Class, bool) {
     let source = driver.source;
     let tree: BTreeSet<usize> = observation.parent.keys().copied().chain([source]).collect();
     let mut children = BTreeMap::<usize, u32>::new();
@@ -235,6 +262,10 @@ fn classify(
         .copied()
         .filter(|&p| observation.confirmed.contains(&(p.min(v), p.max(v))))
         .collect();
+    let unlinked = linked.is_empty();
+    if observation.edges.iter().any(|&(_, r, ..)| r == v) {
+        return (Class::OwnFlow, unlinked);
+    }
     if linked
         .iter()
         .any(|p| children.get(p).copied().unwrap_or(0) < limit)
@@ -243,20 +274,22 @@ fn classify(
             .edges
             .iter()
             .any(|&(_, r, selected, proof)| r != v && (!selected || proof.is_none()));
-        return if operation {
+        let class = if operation {
             Class::OtherOperation
         } else {
             Class::Idle
         };
+        return (class, unlinked);
     }
     let direct = pending.iter().any(|(peer, _)| *peer == source);
     let other = pending.iter().any(|(peer, _)| *peer != source);
-    match (direct, other, linked.is_empty()) {
+    let class = match (direct, other, unlinked) {
         (true, false, _) => Class::DirectOnly,
         (true, true, _) => Class::TrialBesideDirect,
         (false, true, false) => Class::TrialBehindFull,
         (false, true, true) => Class::TrialAfterDirect,
         (false, false, false) => Class::Capacity,
         (false, false, true) => Class::Nothing,
-    }
+    };
+    (class, unlinked)
 }
