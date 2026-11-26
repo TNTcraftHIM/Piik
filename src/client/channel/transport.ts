@@ -203,8 +203,8 @@ export class ChannelTransport {
       let channel: RTCDataChannel;
       try { channel = this.pc.createDataChannel("piik-input", { ordered: true }); }
       catch (error) {
-        // A live media carrier can continue without the optional input lane.
-        if (enabled && this.pc.connectionState === "connected" && error instanceof DOMException && error.name === "OperationError") {
+        // Once established, the pair can recover without a new data channel.
+        if (this.established && error instanceof DOMException && error.name === "OperationError") {
           console.warn("Could not create the screen input channel", error);
           return;
         }
@@ -267,7 +267,7 @@ export class ChannelTransport {
       }
       this.ensureBulkChannel();
     } catch (error) {
-      if (this.pc.connectionState !== "connected" || !(error instanceof DOMException) || error.name !== "OperationError") throw error;
+      if (!this.established || !(error instanceof DOMException) || error.name !== "OperationError") throw error;
       console.warn("Could not create the room data channels", error);
       this.failRoomData();
       return;
