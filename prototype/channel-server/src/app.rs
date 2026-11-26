@@ -468,7 +468,7 @@ pub async fn serve(
         entry.push_str("?start=1");
     }
     let open_browser = config.open_browser;
-    let terminal_enabled = (config.open_browser || ready.is_some()) && config.page_player.is_none()
+    let terminal_enabled = config.open_browser && config.page_player.is_none()
         && std::env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none();
     let terminal_notice = config.terminal_notice.clone();
     let approvals = sites
