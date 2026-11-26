@@ -77,11 +77,13 @@ export function ChannelUser({ id, name, avatar, self, owner, online, roomActivit
   const pawn = <PawnSvg centered color={participantColor(id)} identity={id} avatar={avatar} host={owner} voice={roomActivity?.voice} collaboration={collaboration} />;
   return <div className={`c3-user${online ? "" : " is-offline"}`} data-user-id={id}>
     <div className="c3-person">
-      {avatar ? <Tooltip text={previewLabel}><button type="button" className="c3-avatar-preview" aria-haspopup="dialog"
-        aria-label={previewLabel} onClick={() => onPreviewAvatar ? onPreviewAvatar() : setPreview(true)}>{pawn}</button></Tooltip> : pawn}
-      <div className="c3-person-copy">
-        <strong>{name}{self && <span className="c3-you">{t("channel.user.you")}</span>}</strong>
-        {(activity || owner) && <small>{activity || t("channel.user.roomOwner")}</small>}
+      <div className="c3-person-identity">
+        {avatar ? <Tooltip text={previewLabel}><button type="button" className="c3-avatar-preview" aria-haspopup="dialog"
+          aria-label={previewLabel} onClick={() => onPreviewAvatar ? onPreviewAvatar() : setPreview(true)}>{pawn}</button></Tooltip> : pawn}
+        <div className="c3-person-copy">
+          <strong><Tooltip overflow={{ text: name, selector: ".c3-person-name" }}><span className="c3-person-name">{name}</span></Tooltip>{self && <span className="c3-you">{t("channel.user.you")}</span>}</strong>
+          {(activity || owner) && <small>{activity || t("channel.user.roomOwner")}</small>}
+        </div>
       </div>
       {(roomActivity || listen) && <div className="c3-person-actions">
         {roomActivity && <ChannelActivityIndicators {...roomActivity} />}
