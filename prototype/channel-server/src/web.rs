@@ -130,7 +130,17 @@ pub fn frontend(directory: &Path) -> anyhow::Result<Router> {
         .fallback_service(static_files(
             ServeDir::new(directory).append_index_html_on_directories(false),
         ))
+        .layer(middleware::map_request(static_range))
         .layer(middleware::map_response_with_state(index, missing_document)))
+}
+
+// ServeDir handles ranges but does not validate If-Range. Piik has no strong
+// per-representation validator for resuming a partial static response.
+pub(crate) async fn static_range(mut request: Request) -> Request {
+    if request.headers().contains_key(header::IF_RANGE) {
+        request.headers_mut().remove(header::RANGE);
+    }
+    request
 }
 
 async fn missing_document(
@@ -400,6 +410,14 @@ mod tests {
                 .await
                 .unwrap();
         });
+        for (headers, status, expected) in [
+            ("Range: bytes=2-4\r\n", 206, &identity[2..5]),
+            ("Range: bytes=2-4\r\nIf-Range: \"old\"\r\n", 200, &identity[..]),
+        ] {
+            let response = request_bytes(address, "/assets/adapter.wasm", headers).await;
+            assert_eq!(response.0, status);
+            assert_eq!(response.2, expected);
+        }
         let mut responses = Vec::new();
         for path in ["/assets/adapter.wasm", "/app/assets/adapter.wasm"] {
             for (encoding, expected) in [
