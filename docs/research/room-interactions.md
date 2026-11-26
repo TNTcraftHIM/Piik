@@ -337,8 +337,9 @@ including those of one user.
 Voice shortcuts work in the focused Piik page or detached room
 tool. Ctrl+Shift+M toggles the microphone across this endpoint's joined rooms.
 When any microphones are on, the key mutes them together and cancels pending opens.
-A press while only opens are pending cancels those opens, including the first
-join while the page has keyboard focus. Once all are off,
+A press while input opens are pending cancels those input waits. A requested
+room join continues with listening only; leaving or losing admission cancels
+that room's participation. Once all are off,
 the key restores the rooms in which microphones were last actually on. If
 none of those rooms remain, it tries the current member room the user most
 recently chose to join, in request order. Local
