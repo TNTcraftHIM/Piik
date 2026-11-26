@@ -209,6 +209,58 @@ fn review_register(
 }
 
 #[test]
+fn unchanged_host_projection_keeps_replies_without_rebroadcasting_room_state() {
+    use piik_channel_core::{
+        host::RoomResult,
+        wire::{Event, Request},
+        Authority,
+    };
+
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    let session = review_admit(&mut core, owner, "owner");
+    let mut host = RoomHost::new(RoomState::new(
+        "emission-review".into(), "Living room".into(), Default::default(),
+        core.identity().1, RoomAccess::Public, false, None,
+    ).unwrap());
+    let input = review_register(&mut core, owner, &host);
+    host.dispatch(input).unwrap();
+    let first = review_host_turn(&mut core, owner, "emission-review", host.finish(None).unwrap());
+    assert!(first.events.iter().any(|(_, event)| matches!(event, Event::State { state }
+        if state.channel.rooms.iter().any(|room| room.id == "emission-review" && room.available))),
+        "first available projection must reach the client");
+
+    // A repeated public admission has a real reply, but changes no room view.
+    let enter = core.handle(owner, Request {
+        request_id: Some("enter".into()),
+        command: Command::EnterRoom { room_id: "emission-review".into(), password: None, invite_key: None },
+    }, 2);
+    let input = enter.events.into_iter().find_map(|(_, event)| match event {
+        Event::HostInput { input, .. } => Some(input), _ => None,
+    }).unwrap();
+    host.dispatch(input).unwrap();
+    let unchanged = review_host_turn(&mut core, owner, "emission-review", host.finish(None).unwrap());
+    assert!(unchanged.events.iter().any(|(_, event)| matches!(event,
+        Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "enter")));
+    assert!(!unchanged.events.iter().any(|(_, event)| matches!(event, Event::State { .. })));
+
+    let read = core.handle(owner, Request {
+        request_id: Some("read".into()),
+        command: Command::Browse { room_id: "emission-review".into(), active: true },
+    }, 3);
+    let input = read.events.into_iter().find_map(|(_, event)| match event {
+        Event::HostInput { input, .. } => Some(input), _ => None,
+    }).unwrap();
+    host.dispatch(input).unwrap();
+    let changed = review_host_turn(&mut core, owner, "emission-review", host.finish(None).unwrap());
+    assert!(changed.events.iter().any(|(_, event)| matches!(event, Event::State { state }
+        if state.channel.rooms.iter().any(|room| room.id == "emission-review" && room.reading))));
+    assert!(changed.events.iter().any(|(_, event)| matches!(event,
+        Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "read")));
+    assert_eq!(core.current_connection(session), Some(owner));
+}
+
+#[test]
 fn pending_room_request_finishes_when_its_host_binding_retires() {
     use piik_channel_core::{
         host::RoomResult,
@@ -1611,7 +1663,7 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
                        socket,
                        credential: Option<String>,
                        resume: Option<Uuid>| {
-        core.handle(
+        let effects = core.handle(
             socket,
             Request::parse(
                 &json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
@@ -1620,22 +1672,23 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
             )
             .unwrap(),
             1,
-        )
-        .events
-        .into_iter()
+        );
+        let admitted = effects.events
+        .iter()
         .find_map(|(_, event)| match event {
             Event::Welcome {
                 session_id,
                 credential,
                 ..
-            } => Some((session_id, credential)),
+            } => Some((*session_id, credential.clone())),
             _ => None,
         })
-        .unwrap()
+        .unwrap();
+        (admitted.0, admitted.1, effects)
     };
-    let (viewer, credential) = join_reader(&mut core, reader, None, None);
+    let (viewer, credential, _) = join_reader(&mut core, reader, None, None);
     let helper_socket = Uuid::new_v4();
-    let (helper, _) = join_reader(&mut core, helper_socket, Some(credential.clone()), None);
+    let (helper, _, _) = join_reader(&mut core, helper_socket, Some(credential.clone()), None);
     let room = "media-grants";
     let mut host = RoomHost::new(
         RoomState::new(
@@ -1766,10 +1819,13 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
         &mut core, writer, room, new_choice
     )));
 
-    let (resumed, _) = join_reader(&mut core, Uuid::new_v4(), Some(credential), Some(helper));
+    let (resumed, _, joined) = join_reader(&mut core, Uuid::new_v4(), Some(credential), Some(helper));
     assert_eq!(resumed, helper);
     let retained = review_host_turn(&mut core, writer, room, output.clone());
-    assert!(retained
+    assert!(!retained.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
+    assert!(!retained.events.iter().any(|(_, event)| matches!(event, Event::State { .. })),
+        "the unchanged projection does not repeat the state already sent by rejoin");
+    assert!(joined
         .events
         .iter()
         .any(|(socket, event)| matches!(event, Event::State { state }

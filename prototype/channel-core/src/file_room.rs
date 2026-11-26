@@ -20,7 +20,7 @@ pub struct FileKey {
     pub attachment_id: Uuid,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FilePlan {
     pub author_id: Uuid,

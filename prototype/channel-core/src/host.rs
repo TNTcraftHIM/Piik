@@ -226,7 +226,7 @@ pub struct RoomReply {
     pub result: RoomResult,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
     /// Search results for currently undelivered activities. Each prefix edge appears once per tree.

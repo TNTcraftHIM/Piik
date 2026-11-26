@@ -31,7 +31,7 @@ struct Activity {
     next_interaction_at: u64,
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub struct SourceHandoff {
     pub predecessor: ViewSource,
     pub target: ViewSource,
@@ -88,7 +88,7 @@ pub struct RoomSnapshot {
     pub subscriptions: Vec<Uuid>,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomRecipient {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
