@@ -18,7 +18,7 @@ const INSTALL_EXTENSION: &str = "piik-room-install";
 pub struct HostedRoom {
     path: PathBuf,
     host: StoredRoomHost,
-    binding: Option<Uuid>,
+    binding: tokio::sync::watch::Sender<Option<Uuid>>,
     // Keep the process lock until the room runtime and SQLite connection drop.
     _file_owner: File,
 }
@@ -59,7 +59,7 @@ impl HostedRoom {
         self.host
             .replace(backup)
             .map_err(anyhow::Error::from_boxed)?;
-        self.binding = None;
+        self.binding.send_replace(None);
         Ok(())
     }
 
@@ -72,7 +72,7 @@ impl HostedRoom {
         Ok(Self {
             path: path.into(),
             host,
-            binding: None,
+            binding: tokio::sync::watch::channel(None).0,
             _file_owner: file_owner,
         })
     }
@@ -123,21 +123,26 @@ impl HostedRoom {
         Ok(Self {
             path: path.into(),
             host,
-            binding: None,
+            binding: tokio::sync::watch::channel(None).0,
             _file_owner: file_owner,
         })
     }
 
+    pub(crate) fn publish_binding(&mut self, binding: tokio::sync::watch::Sender<Option<Uuid>>) {
+        binding.send_replace(self.binding());
+        self.binding = binding;
+    }
+
     pub fn binding(&self) -> Option<Uuid> {
-        self.binding
+        *self.binding.borrow()
     }
 
     pub fn bind(&mut self, binding: Uuid) -> Result<()> {
-        if self.binding.is_some_and(|old| old != binding) {
+        if self.binding().is_some_and(|old| old != binding) {
             self.host =
                 StoredRoomHost::open(&self.path).map_err(|error| anyhow!(error.to_string()))?;
         }
-        self.binding = Some(binding);
+        self.binding.send_replace(Some(binding));
         Ok(())
     }
 
@@ -146,7 +151,7 @@ impl HostedRoom {
     }
 
     pub fn dispatch(&mut self, input: HostInput) -> Result<HostOutput, &'static str> {
-        if self.binding != Some(input.binding_id) {
+        if self.binding() != Some(input.binding_id) {
             return Err("stale_room_host");
         }
         self.host.dispatch(input)
@@ -157,7 +162,7 @@ impl HostedRoom {
         packet: &SignedPacket,
         now: u64,
     ) -> Result<ConversationOutcome, &'static str> {
-        if self.binding.is_none() {
+        if self.binding().is_none() {
             return Err("stale_room_host");
         }
         self.host.dispatch_peer(packet, now)

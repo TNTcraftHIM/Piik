@@ -36,10 +36,6 @@ the feedback period; they do not delay that delivery.
   while its room remains available. Set the progress budget and recovery scope
   before adding a deadline; compare the existing fresh-binding handshake with
   connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
-- [ ] **Native room execution.** Give each room an independent serial work
-  owner over bounded shared execution. Preserve same-room order, storage locks,
-  rebinding and shutdown; compare optimized carrier behavior before adopting
-  additional concurrency.
 - [ ] **Native preparation test under load.** If the completed-success refusal
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a

@@ -347,6 +347,13 @@ async fn backup_controls_only_expose_rooms_created_by_the_hosting_identity() {
         let room = HostedRoom::create(&directory.path().join(format!("{id}.sqlite")), policy).unwrap();
         session.live.as_mut().unwrap().room.rooms.insert(id.into(), room);
     }
+    session
+        .live
+        .as_mut()
+        .unwrap()
+        .room
+        .rooms
+        .reserve("pending", owner);
     assert_eq!(session.hosting_description().unwrap().room_ids, ["own"]);
     let (result, response) = oneshot::channel();
     session.snapshot_room(SnapshotRoom { room_id: "guest".into(), creator: None, own_credential: None, result }).await;
@@ -414,6 +421,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
             )
             .await
             .unwrap();
+        session.flush_tests(&mut socket).await.unwrap();
         let request =
             Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert!(matches!(request.command, Command::AdmitRoom { .. }));
@@ -511,7 +519,11 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
             assert_eq!(result.unwrap().room.metadata().policy.name, "Private");
         }
     }
-    for access in [RoomAccess::Public, RoomAccess::Private] {
+    for (access, cancelled) in [
+        (RoomAccess::Public, false),
+        (RoomAccess::Private, true),
+        (RoomAccess::Private, false),
+    ] {
         let directory = tempfile::tempdir().unwrap();
         let mut replacement = policy.clone();
         replacement.name = "Restored".into();
@@ -530,6 +542,20 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
         )
         .unwrap();
         let (result, response) = oneshot::channel();
+        let (resume, wait) = std::sync::mpsc::channel();
+        if cancelled {
+            session
+                .live
+                .as_mut()
+                .unwrap()
+                .room
+                .rooms
+                .post("guest", true, false, move |_| {
+                    wait.recv_timeout(Duration::from_secs(4)).unwrap();
+                    Ok(Box::new(|_, _| Ok(vec![])))
+                })
+                .unwrap();
+        }
         session
             .restore_room(
                 RestoreRoom {
@@ -545,6 +571,23 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
             )
             .await
             .unwrap();
+        if cancelled {
+            drop(response);
+            resume.send(()).unwrap();
+            session.flush_tests(&mut socket).await.unwrap();
+            assert!(!session.opening.contains_key("guest"));
+            let slot = &session.live.as_ref().unwrap().room.rooms["guest"];
+            assert!(!slot.installing);
+            assert_eq!(
+                piik_channel_core::StoredRoomHost::open(slot.source.as_ref().unwrap())
+                    .unwrap()
+                    .summary()
+                    .name,
+                "Private"
+            );
+            continue;
+        }
+        session.flush_tests(&mut socket).await.unwrap();
         if access == RoomAccess::Public {
             assert_eq!(
                 response.await.unwrap().err().unwrap(),
@@ -552,7 +595,13 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
             );
             let host = &session.live.as_ref().unwrap().room.rooms["guest"];
             assert_eq!(host.binding(), Some(binding));
-            assert_eq!(host.summary().name, "Private");
+            assert_eq!(
+                piik_channel_core::StoredRoomHost::open(host.source.as_ref().unwrap())
+                    .unwrap()
+                    .summary()
+                    .name,
+                "Private"
+            );
         } else {
             let registration =
                 Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
@@ -701,6 +750,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             )
             .await
             .unwrap();
+        session.flush_tests(&mut socket).await.unwrap();
         let admission =
             Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert!(matches!(admission.command, Command::AdmitRoom { .. }));
@@ -761,6 +811,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             )
             .await
             .unwrap();
+        session.flush_tests(&mut socket).await.unwrap();
         assert_eq!(
             session.opening.len(),
             1,
@@ -976,6 +1027,10 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     }))
     .unwrap();
     let mut session = Session {
+        release_error: None,
+        ingress: signaling_budget(),
+        turn: None,
+        local_slots: None,
         forwarding_limit: None,
         service_admission: None,
         config: Config {
@@ -1341,6 +1396,10 @@ async fn capture_command_completes_only_on_the_correlated_room_reply() {
     let (mut socket, _) = client.unwrap();
     let _remote = remote.unwrap();
     let mut session = Session {
+        release_error: None,
+        ingress: signaling_budget(),
+        turn: None,
+        local_slots: None,
         forwarding_limit: None,
         service_admission: None,
         config: Config {
@@ -1470,7 +1529,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
         }))
         .unwrap();
             let mut session = Session {
-                forwarding_limit: None,
+                release_error:None, ingress:signaling_budget(),turn:None,local_slots:None, forwarding_limit: None,
                 service_admission: None,
                 config: Config {
                     url,
@@ -1662,7 +1721,14 @@ async fn room_file_failures_keep_the_sibling_on_the_same_session() -> Result<()>
     let binding_id = Uuid::new_v4();
     session.event(Event::HostBound { room_id: "offline".into(), binding_id }, &mut socket).await?;
     let request_id = session.opening["pending"].request_id.clone();
-    let mut room = session.live.as_ref().unwrap().room.rooms["offline"].summary();
+    let mut room = piik_channel_core::StoredRoomHost::open(
+        session.live.as_ref().unwrap().room.rooms["offline"]
+            .source
+            .as_ref()
+            .unwrap(),
+    )
+    .unwrap()
+    .summary();
     room.id = "domain-created".into();
     session.event(Event::RoomCreated { room, request_id: Some(request_id) }, &mut socket).await?;
     let live = session.live.as_ref().unwrap();
