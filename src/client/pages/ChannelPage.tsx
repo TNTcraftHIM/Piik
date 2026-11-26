@@ -133,6 +133,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     return () => root.removeAttribute("data-living-room");
   }, [ownerDocument]);
   const phone = workspaceWidth <= 600;
+  // Where chat's toggle stands: with people in the room's heading, except on a phone whose heading is one line.
+  // Its heading has no room there, and its conversation opens just above my bar. The narrowest phones wrap the
+  // heading to a second line, which has the room again.
+  const chatInBar = phone && workspaceWidth > 360;
   const minimal = layout === "minimal";
   const bar = phone || minimal;
   const [roomListFolded, setRoomListFolded] = useState(() => readRoomPreferences().roomListFolded);
@@ -485,8 +489,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     {state && !overview && !roomToolOpen && <>
       <Btn id="c3-people-trigger" icon="users" title={{ text: t("channel.people.users") }} size="compact" quiet textTooltip
         pressed={companionVisible && companionPane === "people"} controls="c3-people" onClick={() => toggleCompanion("people")} />
-      {/* A phone's header has no room for it beside the room's name, and its conversation opens just above my bar. */}
-      {!phone && chatToggle}
+      {!chatInBar && chatToggle}
     </>}
   </div></div>
 </div>;
@@ -500,16 +503,18 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
         busy={busy("profile")} onSave={channel.updateProfile} />
     </div>;
+  // Who I am ends my dock and begins my bar, and in each it is tabbed where it is seen.
   const personal = <div className="c3-personal">
+    {bar && identity}
     <div className="c3-living-actions">
       <div ref={voiceSlot} className="c3-room-slot" />
       {room?.authorized && (stopOwnShare ? <Btn icon="stop" size="compact" tone="danger" title="host.stop"
         cap={phone || roomListCompact ? undefined : "host.stop"} disabled={!connected} busy={busy("stop", ownShareId)} onClick={stopOwnShare} />
         : <ChannelShareControl variant={roomListCompact ? undefined : "split"} compact={phone || roomListCompact} channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)}
             disabled={!connected || !room.available} openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />)}
-      {phone && chatToggle}
+      {chatInBar && chatToggle}
     </div>
-    {identity}
+    {!bar && identity}
   </div>;
   return <LayerHistory.Provider value={track}><div className="lr-app c3-app c3-living-app-frame">
     {stageWatches.map(activity => {

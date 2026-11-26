@@ -139,6 +139,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-header-settings { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .lr-header-options .lr-capture-device { padding: 12px 0 0; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-capture-device label { font-size: 14px; font-weight: 600; color: inherit; }
+.lr-header-options :is(.lr-capture-device small, .c3-feedback-sounds p) { font-size: 12px; }
 .lr-header-options .lr-capture-device-controls > select { flex: 1; min-width: 0; }
 .lr-header-options .c3-forwarding-settings { padding-top: 6px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content { padding-top: 12px; border-top: 1px solid var(--control-edge); }

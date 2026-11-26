@@ -13,11 +13,11 @@
   position: relative;
   container-name: channel-living;
   grid-template-columns: var(--room-nav) minmax(0, 1fr) 0;
-  grid-template-rows: var(--living-top-size, 48px) minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--living-top-size, minmax(48px, auto)) minmax(0, 1fr) auto auto;
   grid-template-areas: "top top top" "rooms stage side" "self stage side" "self couch side";
 }
 .c3-shell[data-layout="living"][data-main-chat] {
-  grid-template-rows: var(--living-top-size, 48px) auto minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--living-top-size, minmax(48px, auto)) auto minmax(0, 1fr) auto auto;
   grid-template-areas: "top top top" "rooms stage side" "rooms chat side" "self chat side" "self couch side";
 }
 .c3-shell[data-layout="living"][data-sidebars="rail"] { --room-nav: var(--room-rail); }
@@ -63,13 +63,11 @@
 [data-layout="living"] .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; }
 [data-layout="living"] .c3-room-actions:empty, .c3-living-stage-view:empty { display: none; }
 
-@media (max-width: 820px) {
-  .c3-shell[data-layout="living"][data-sidebars="rail"] { --living-top-size: auto; }
-}
-@container living-heading (max-width: 48rem) {
-  [data-sidebars="rail"] .c3-room-heading { display: contents; }
-  [data-sidebars="rail"] .c3-room-name { flex: 1 1 0; padding-inline: 8px; }
-  [data-sidebars="rail"] .c3-room-toolbar { order: 1; flex: 1 0 100%; padding-inline: 8px; justify-content: end; }
+/* The room's name keeps a few characters whatever else is in the row. With the arrangement switch beside it
+   in a narrow window, what is always there moves to a second line as one group; the name and its tools stay. */
+[data-layout="living"]:not([data-sidebars="phone"]) .c3-room-title { min-width: 4em; }
+@container living-heading (max-width: 44rem) {
+  .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { flex: 1 0 100%; justify-content: flex-end; min-height: 44px; border-inline-start: 0; }
 }
 
 [data-layout="living"] > .c3-sidebar { grid-area: rooms; border-inline-end: 1px solid var(--line); background: var(--surface-frame); }
@@ -139,6 +137,10 @@
   background: var(--surface-frame);
 }
 [data-layout="living"] .c3-identity { min-width: 0; gap: 8px; padding: 4px 0 0 4px; }
+/* The retired layouts hid my name in a narrow window and capped joining voice in a short one. Neither is this
+   layout's rule: a phone's bar decides for itself below. */
+[data-layout="living"]:not([data-sidebars="phone"]) .c3-personal .c3-identity { display: flex; }
+[data-layout="living"] .c3-personal .c3-voice-entry { flex: none; }
 /* A name gets the space before its edit action, and says so when it does not fit. */
 [data-layout="living"] .c3-identity-name { flex: 1; min-width: 0; }
 [data-layout="living"] .c3-identity strong { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 14px; white-space: nowrap; }
@@ -182,7 +184,7 @@
 }
 .c3-shell[data-layout="living"][data-sidebars="phone"] {
   --room-inset: 12px;
-  grid-template-rows: var(--living-top-size, 48px) minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--living-top-size, minmax(48px, auto)) minmax(0, 1fr) auto auto;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "top" "stage" "couch" "self";
   margin: 0;
@@ -191,7 +193,7 @@
   box-shadow: none;
 }
 .c3-shell[data-layout="living"][data-sidebars="phone"][data-companion="chat"] {
-  grid-template-rows: var(--living-top-size, 48px) auto auto minmax(0, 1fr) auto;
+  grid-template-rows: var(--living-top-size, minmax(48px, auto)) auto auto minmax(0, 1fr) auto;
   grid-template-areas: "top" "stage" "couch" "side" "self";
   overflow: clip;
 }
@@ -244,7 +246,7 @@
 }
 
 .c3-shell[data-layout="living"][data-sidebars="phone"][data-main-chat] {
-  grid-template-rows: var(--living-top-size, 48px) auto minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--living-top-size, minmax(48px, auto)) auto minmax(0, 1fr) auto auto;
   grid-template-areas: "top" "stage" "chat" "couch" "self";
 }
 
@@ -297,24 +299,37 @@
      a wider gap parts the room's from the site's. */
 [data-layout="living"] .c3-standing-room-tools:not([hidden]) { display: flex; align-items: center; gap: 2px; }
 [data-layout="living"] .c3-global-tools { display: flex; flex: none; align-self: center; align-items: center; gap: 10px; margin: 0; padding-inline: 6px 8px; border-inline-start: 1px solid var(--line); }
-[data-layout="living"] .c3-global-tools > .lr-top-right { gap: 2px; margin: 0; }
+[data-layout="living"] .c3-global-tools > .lr-top-right { flex: none; gap: 2px; margin: 0; }
 [data-layout="living"] .c3-living-tv { flex: 1; min-height: 0; display: grid; place-items: center; padding: var(--room-inset); }
 [data-layout="living"] .c3-living-tv .lr-tv { width: min(100%, 880px); max-height: 100%; }
 [data-layout="living"] .c3-living-tv p { max-width: 28em; text-align: center; text-wrap: balance; }
 
 .c3-shell[data-minimal]:not([data-sidebars="phone"]) {
   --room-nav: 0px;
-  grid-template-rows: var(--living-top-size, 48px) minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--living-top-size, minmax(48px, auto)) minmax(0, 1fr) auto auto;
   grid-template-areas: "top top top" "rooms stage side" "rooms couch side" "self self side";
 }
 [data-minimal]:not([data-sidebars="phone"]) .c3-pane-navigation { display: inline-flex; }
 [data-minimal]:not([data-sidebars="phone"]):not([data-room-list-open]) .c3-site-identity { display: none; }
 [data-minimal][data-room-list-open]:not([data-sidebars="phone"]) > .c3-sidebar { width: var(--room-list); z-index: 3; }
-.c3-shell[data-minimal]:not([data-sidebars="phone"]) > .c3-personal { position: relative; flex-direction: row; align-items: center; justify-content: center; min-height: 64px; border-inline-end: 0; padding: 6px var(--room-inset); }
-[data-minimal]:not([data-sidebars="phone"]) .c3-identity { position: absolute; inset-inline-start: var(--room-inset); }
-[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { flex-direction: row; align-items: center; }
+/* The bar has three places: who I am at its start, my controls at its centre, and an equal place at its end
+   that keeps them centred. They are tracks, so a narrow window moves the centre and overlaps nothing. */
+.c3-shell[data-minimal]:not([data-sidebars="phone"]) > .c3-personal { display: grid; grid-template-columns: minmax(96px, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 12px; min-height: 64px; border-inline-end: 0; padding: 6px var(--room-inset); container: living-bar / inline-size; }
+/* Words are the first thing a narrow bar gives up: the icons and their names for assistive technology stay. */
+@container living-bar (max-width: 860px) {
+  .c3-voice-room-actions .lr-btn .lr-cap { display: none; }
+}
+[data-minimal]:not([data-sidebars="phone"]) .c3-identity { grid-column: 1; justify-self: start; max-width: 100%; padding: 0; }
+[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { grid-column: 2; flex-direction: row; align-items: center; }
 
 @media (max-width: 360px) {
   [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-name { flex-basis: 100%; }
   [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { order: 0; flex: 1; padding-inline-end: 0; }
+}
+/* On the narrowest phones my bar stays one line: its controls give up four pixels each before one of them
+   moves to a line of its own. */
+@media (max-width: 360px) {
+  .c3-shell[data-layout="living"][data-sidebars="phone"] > .c3-personal { --control-compact-size: 40px; }
+  [data-layout="living"][data-sidebars="phone"] .c3-living-actions { gap: 4px; }
+  [data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"] { gap: 4px; }
 }
