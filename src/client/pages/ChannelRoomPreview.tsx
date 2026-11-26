@@ -518,7 +518,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     </div>
   </>;
   return <div className="c3-room-preview">
-    <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
+    <ChannelRoomPage channel={channel} livingMinimal={new URLSearchParams(location.search).has("minimal")} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
       appControl={<AppConnectionButton discovery={previewAppDiscovery} connected={channel.appConnected} wakeURL={null} />} previewOptions={previewOptions} />
     <span className="visually-hidden" role="status">{sample.notice}</span>
   </div>;

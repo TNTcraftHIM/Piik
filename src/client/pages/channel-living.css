@@ -468,3 +468,26 @@
 
 /* The frame is one step deeper than the shared dark wall, so the site and the room stand apart. */
 :root[data-theme="dark"]:has(.c3-shell.c3-living) { --piik-dark-wall: #1b2029; --piik-dark-hover: #3a465c; }
+
+/* ---------- The minimal form: the room alone ---------- */
+/* No rooms column and no dock. The top row is the room's; my controls are a labelled bar under the couch; the
+   rooms open over the room from the top row, and the conversation opens beside it on demand. */
+.c3-shell.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) { --lv-nav: 0px; }
+.c3-shell.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) > .c3-site-bar { background: var(--lv-room); }
+.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) .c3-site-identity { display: none; }
+.c3-shell.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) .c3-pane-navigation { display: inline-flex; flex: none; }
+.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) .c3-pane-navigation .lr-btn { --button-size: var(--control-dense-size); --button-padding: 8px; --button-icon-size: 16px; }
+.c3-shell.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) .c3-room-heading { padding-inline-start: 8px; }
+.c3-living.c3-living.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) > .c3-sidebar { display: none; }
+.c3-living.c3-living.c3-living[data-form="minimal"][data-pane="rooms"]:not([data-sidebars="phone"]) > .c3-sidebar { display: block; grid-row: 2 / me-start; grid-column: 1 / 3; justify-self: start; z-index: 5; width: var(--lv-rooms); border-inline-end: 1px solid var(--line); box-shadow: 12px 0 24px -12px rgb(0 0 0 / .45); clip-path: inset(0 -32px 0 0); }
+/* With the rooms open, the site's cell heads them, over the room's header, as in the full form's rail. */
+.c3-shell.c3-living[data-form="minimal"][data-pane="rooms"]:not([data-sidebars="phone"]) > .c3-site-bar { position: relative; z-index: 6; }
+.c3-living[data-form="minimal"][data-pane="rooms"]:not([data-sidebars="phone"]) .c3-site-identity { display: grid; flex: 0 0 var(--lv-rooms); margin-inline-end: calc(-1 * var(--lv-rooms)); position: relative; z-index: 1; background: var(--lv-site); border-inline-end: 1px solid var(--line); box-shadow: 12px 0 24px -12px rgb(0 0 0 / .45); clip-path: inset(0 -32px 0 0); }
+/* My name sits at the bar's start without moving the controls off the couch's axis. */
+.c3-shell.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) > .c3-personal { position: relative; }
+.c3-shell.c3-living[data-form="minimal"]:not([data-sidebars="phone"]) .c3-personal .c3-identity { position: absolute; inset-inline-start: 0; inset-block: 0; flex: none; width: auto; margin: 0; padding-inline: var(--lv-inset) 8px; }
+/* The waiting television: the room's picture when nobody shares. */
+.c3-living .c3-living-tv { flex: 1 1 0; min-height: 0; display: grid; place-items: center; padding: var(--lv-inset) var(--lv-inset) 4px; }
+.c3-living .c3-living-tv .lr-tv { width: min(100%, 880px); max-height: 100%; }
+.c3-living .c3-living-tv .c3-quick-start p { margin: 0; max-width: 28em; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; text-wrap: balance; }
+.c3-living[data-form="minimal"] .c3-workspace:not(.has-screens) > .c3-monitor { display: none; }
