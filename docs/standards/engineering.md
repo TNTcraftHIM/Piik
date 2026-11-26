@@ -314,6 +314,9 @@ the observation or decision that would settle it.
   closed, as a Browser connection can leave its promises pending: abort the
   owner's waits instead of awaiting them, and bound late work. Convenience
   actions never block lifecycle handling.
+  A release failure must not skip independent owned cleanup; return the error
+  after that cleanup settles. Skipped queued work still settles its caller
+  through the operation's existing completion owner.
 - Construction is acquisition. On failure release what it created and report
   through the operation's owner, which keeps its identity. Initialize
   callback-visible state before registering; constructors can start background
