@@ -111,24 +111,7 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, options);
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
-  const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
-  const themeButton = (
-    <button
-      type="button"
-      className="lr-btn is-compact lr-theme-toggle"
-      aria-label={themeTitle}
-      onClick={(event) => {
-        // Pointer activation must not pin the hint open; keyboard keeps focus.
-        if (event.detail !== 0) event.currentTarget.blur();
-        applyTheme(theme === "dark" ? "light" : "dark");
-      }}
-    >
-      <Glyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />
-      <span className="lr-cap">
-          {t(theme === "dark" ? "theme.light.short" : "theme.dark.short")}
-        </span>
-    </button>
-  );
+  const dark = theme === "dark";
   return (
     <div className="lr-top-right lr-header-controls">
       {appControl}
@@ -141,9 +124,9 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
         }}>
         <div className="lr-header-settings">
           <LanguageControl />
-          <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={themeTitle} place="below" align="end">
-            {themeButton}
-          </Tooltip>
+          <Btn icon={dark ? "sun" : "moon"} title={dark ? "theme.light" : "theme.dark"} cap={dark ? "theme.light.short" : "theme.dark.short"}
+            size="compact" draw="theme-toggle" hint={dark ? "hint-theme-light" : "hint-theme-dark"} hintPlace="below" hintAlign="end"
+            onClick={() => applyTheme(dark ? "light" : "dark")} />
         </div>
         {personalControls}
         <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} />
