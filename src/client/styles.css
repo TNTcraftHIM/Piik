@@ -140,7 +140,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-header-options .lr-capture-device { padding: 12px 0 0; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-capture-device label { font-size: 14px; font-weight: 600; color: inherit; }
 .lr-header-options :is(.lr-capture-device small, .c3-feedback-sounds p) { font-size: 12px; }
-.lr-header-options .lr-capture-device-controls > select { flex: 1; min-width: 0; }
+.lr-capture-device-controls > .lr-device-value { flex: 1; min-width: 0; }
 .lr-header-options .c3-forwarding-settings { padding-top: 6px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content { padding-top: 12px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content header { margin: 0 0 8px; }
@@ -1061,6 +1061,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-tiles .lr-tile.is-selected small { color: var(--control-selected-ink); }
 
 /* text inputs */
+.c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-inset-radius); padding: 10px 11px; font: inherit; font-size: 13px; }
+.c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
+
 .lr-input {
   display: inline-flex;
   align-items: center;

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { CaptureDevice } from "../../media/capture-devices";
 import { useCopy, type CopyKey } from "../../ui/copy";
+import { Tooltip } from "./Tooltip";
 import { Btn } from "./primitives";
 
 type DeviceList = { status: "loading" | "ready" | "failed"; devices: CaptureDevice[] };
@@ -57,18 +58,21 @@ export function AudioDeviceSelect({ value, list, label, disabled, unavailable, o
     : browser && output && !busy && !devices.length && !("selectAudioOutput" in navigator.mediaDevices) ? t("voice.output.permissionHint")
     : browser && !output && !busy && devices.every(device => !device.label) ? t("host.device.permission.microphone") : undefined;
 
+  const select = <select id={id} value={value} disabled={disabled || unavailable} aria-busy={busy || undefined}
+      aria-describedby={status ? messageId : undefined} onChange={event => onChange(event.target.value)}>
+      <option value="">{t("host.device.default")}</option>
+      {value !== "" && !devices.some(device => device.id === value) &&
+        <option value={value} disabled>{selectedFallback}</option>}
+      {devices.map((device, index) => <option key={device.id} value={device.id}>
+        {device.label || t(deviceLabel) + " " + (index + 1)}
+      </option>)}
+    </select>;
   return <div className="lr-capture-device">
     <label htmlFor={id}>{t(label)}</label>
     <div className="lr-capture-device-controls">
-      <select id={id} value={value} disabled={disabled || unavailable} aria-busy={busy || undefined}
-        aria-describedby={status ? messageId : undefined} onChange={event => onChange(event.target.value)}>
-        <option value="">{t("host.device.default")}</option>
-        {value !== "" && !devices.some(device => device.id === value) &&
-          <option value={value} disabled>{selectedFallback}</option>}
-        {devices.map((device, index) => <option key={device.id} value={device.id}>
-          {device.label || t(deviceLabel) + " " + (index + 1)}
-        </option>)}
-      </select>
+      <Tooltip className="lr-device-value" overflow={{ text: selected?.label ?? "", selector: "select" }} disabled={!selected?.label}>
+        {select}
+      </Tooltip>
       {onRefresh && <Btn icon="refresh" className="lr-device-refresh" title="host.device.refresh" hint="hint-refresh-sources"
         disabled={busy || disabled || unavailable} busy={busy} onClick={onRefresh} />}
     </div>

@@ -28,8 +28,8 @@ firewall rules. A working web page does not establish that peer traffic is allow
 - On a managed network, ask the network administrator about blocked UDP, or use another network.
 - If you joined a Piik Server site, ask the site operator whether it offers
   forwarding for the affected picture, voice or file. When offered, Piik can use
-  it as a fallback. In **Room settings → Connection**, check that **Use site forwarding**
-  is on if you manage the room.
+  it as a fallback. If you manage the room, check **Use site forwarding** under
+  **Room settings → Network**. If you turn it on, select **Save**.
 
 Piik selects routes automatically. The App's automatic **Public invite** uses
 Cloudflare Tunnel for the invitation page and signaling. Picture, voice and file

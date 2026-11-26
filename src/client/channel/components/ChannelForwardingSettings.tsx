@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useCopy } from "../../ui/copy";
+import { Glyph } from "../../ui/icons";
 import { MAX_RELAY_CAPACITY } from "../protocol";
 import type { NativeRelayCapacity } from "../app-link";
 import type { ChannelController } from "../types";
@@ -41,7 +42,7 @@ export function ChannelForwardingSettings({ channel }: { channel: ChannelControl
   }, [open, connected, channel.appConnected, channel.sessionId, read]);
   if (!channel.self) return null;
   return <details className="c3-forwarding-settings" onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary>{t("channel.forwarding.title")}</summary>
+    <summary className="lr-btn is-compact is-quiet"><Glyph name="chevron" size={16} />{t("channel.forwarding.title")}</summary>
     <p>{t("channel.forwarding.note")}</p>
     <ForwardingLimit label={t("room.relay.webpage")} value={channel.forwardingLimit} onChange={channel.setForwardingLimit} />
     {channel.appConnected && (app ? <ForwardingLimit label={t("room.relay.app")} value={app.relayOverride ?? -1}

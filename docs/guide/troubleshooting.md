@@ -384,7 +384,7 @@ If your browser reports that it could not decode or play the shared picture, sel
 
 1. **Viewer.** If the picture says **No route to this picture yet**, keep it open: watching starts by itself once a route is available. You can stop watching at any time. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot for a **public invitation**. For a **local or virtual-LAN invitation**, stay connected to that network and [check local access and UDP firewall rules](#local-invitation-will-not-open).
 2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
-3. **Site operator and room manager.** Ask whether the site offers screen forwarding. If you manage the room, check that **Use site forwarding** is on under **Room settings → Connection**. Piik can use the site when participants cannot deliver the picture.
+3. **Site operator and room manager.** Ask whether the site offers screen forwarding. If you manage the room, check **Use site forwarding** under **Room settings → Network**. If you turn it on, select **Save**. Piik can use the site when participants cannot deliver the picture.
 
 If you joined on Android over a virtual LAN, [check which VPN your browser uses](#android-cannot-open-a-virtual-lan-invitation).
 

@@ -3,7 +3,7 @@ import { MicrophoneSettings } from "../../components/living/MicrophoneSettings";
 import { AudioVolumeControl } from "../../components/living/AudioVolumeControl";
 import { WrappingSegmentedControl } from "../../components/living/WrappingSegmentedControl";
 import { supportsStrongerSuppression } from "../../media/microphone-input";
-import { dbfsFromLevel, microphoneModes, VOICE_ACTIVATION_RANGE_DBFS } from "../../media/voice-gate";
+import { dbfsFromLevel, microphoneModes, VOICE_ACTIVATION_RANGE_DBFS, type MicrophoneMode } from "../../media/voice-gate";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 import { useCopy } from "../../ui/copy";
@@ -12,7 +12,7 @@ import type { ChannelController } from "../types";
 import type { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutLabel, type VoiceShortcutBinding } from "../voice-shortcut-binding";
 import { ChannelVoiceShortcutSettings } from "./ChannelVoiceShortcutSettings";
-import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 import "./channel-voice-settings.css";
 
 type VoiceSettingsProps = {
@@ -26,6 +26,7 @@ export function ChannelVoiceSettings({ triggerDocument, renderTrigger, ...props 
   const triggerId = useId();
   const surface = useSurfaceDocument();
   const [openDocument, setOpenDocument] = useState<Document | null>(null);
+  const { error, run } = useSettingsAction(!!openDocument, props.channel.sessionId);
   useEffect(() => {
     const view = openDocument?.defaultView;
     const close = () => setOpenDocument(null);
@@ -37,7 +38,7 @@ export function ChannelVoiceSettings({ triggerDocument, renderTrigger, ...props 
   return <>
     {renderTrigger ? renderTrigger(trigger) : trigger}
     {openDocument && <SurfaceDocument.Provider value={openDocument}>
-      <ChannelSettingsDialog title={t("voice.settings")} compact dismissOnBackdrop onClose={() => {
+      <ChannelSettingsDialog title={t("voice.settings")} error={error} compact dismissOnBackdrop onClose={() => {
         setOpenDocument(null);
         openDocument.defaultView?.requestAnimationFrame(() => {
           // A layout change can replace the button that the browser would restore.
@@ -46,24 +47,27 @@ export function ChannelVoiceSettings({ triggerDocument, renderTrigger, ...props 
           if (currentTrigger?.getClientRects().length) currentTrigger.focus({ preventScroll: true });
         });
       }}>
-        <ChannelVoiceSettingsForm {...props} />
+        <ChannelVoiceSettingsForm {...props} run={run} />
       </ChannelSettingsDialog>
     </SurfaceDocument.Provider>}
   </>;
 }
 
-export function ChannelVoiceSettingsForm({ channel, available, shortcuts }: VoiceSettingsProps) {
+export function ChannelVoiceSettingsForm({ channel, available, shortcuts, run }: VoiceSettingsProps & { run: SettingsAction }) {
   const { t } = useCopy();
   const id = useId();
   const busy = channel.voiceBusy();
   const enabled = channel.state?.publications.some(publication => publication.kind === "voice" && publication.sessionId === channel.sessionId) ?? false;
   const supportsEnhanced = supportsStrongerSuppression();
-  const configure = (settings: Parameters<ChannelController["configureVoiceInput"]>[0]) => { void channel.configureVoiceInput(settings).catch(() => {}); };
+  const configure = (settings: Parameters<ChannelController["configureVoiceInput"]>[0]) => {
+    void run(() => channel.configureVoiceInput(settings, false));
+  };
   return <div className="c3-settings-panels c3-voice-settings">
     <section aria-labelledby={id}>
       <h3 id={id}>{t("voice.settings.sharedMicrophone")}</h3>
       <MicrophoneModeSettings channel={channel} disabled={busy} captured={enabled}
-        talk={shortcuts.bindings.talk} mac={shortcuts.mac} />
+        talk={shortcuts.bindings.talk} mac={shortcuts.mac}
+        onChange={mode => { void run(() => channel.setMicrophoneMode(mode, false)); }} />
       <MicrophoneSettings host={false} enabled={enabled} disabled={!available || busy}
         loadDevices={channel.microphones} deviceId={channel.voiceInput.deviceId} onDevice={deviceId => configure({ deviceId })}
         volume={channel.voiceInput.volume} onVolume={channel.setInputVolume}
@@ -82,8 +86,9 @@ export function ChannelVoiceSettingsForm({ channel, available, shortcuts }: Voic
 }
 
 /** How the shared microphone transmits. Mute still overrides every mode. */
-function MicrophoneModeSettings({ channel, disabled, captured, talk, mac }: {
+function MicrophoneModeSettings({ channel, disabled, captured, talk, mac, onChange }: {
   channel: ChannelController; disabled: boolean; captured: boolean; talk: VoiceShortcutBinding | null; mac: boolean;
+  onChange: (mode: MicrophoneMode) => void;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -95,7 +100,7 @@ function MicrophoneModeSettings({ channel, disabled, captured, talk, mac }: {
     <WrappingSegmentedControl role="radiogroup" aria-labelledby={`${id}-title`} aria-describedby={`${id}-hint`}>
       {microphoneModes.map(value => <label key={value} className={value === mode ? "is-selected" : undefined}>
         <input type="radio" name={id} value={value} checked={value === mode} disabled={disabled}
-          onChange={() => { void channel.setMicrophoneMode(value).catch(() => {}); }} />
+          onChange={() => onChange(value)} />
         <span>{t(`voice.mode.${value}`)}</span>
       </label>)}
     </WrappingSegmentedControl>

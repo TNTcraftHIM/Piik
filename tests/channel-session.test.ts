@@ -2670,7 +2670,8 @@ test("voice rooms share one microphone gain graph and release it after the last 
     expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
     expect(replacement.stop).not.toHaveBeenCalled();
     getUserMedia.mockRejectedValueOnce(new DOMException("Cannot open device", "NotReadableError"));
-    await expect(session.configureVoiceInput({ deviceId: "failed-device" })).rejects.toThrow("Cannot open device");
+    await expect(session.configureVoiceInput({ deviceId: "failed-device" }, false)).rejects.toThrow("Cannot open device");
+    expect(session.getSnapshot().error).toBe("voice_microphone_permission_denied");
     expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
     expect(replacement.stop).not.toHaveBeenCalled();
     expect(contexts[0].close).not.toHaveBeenCalled();

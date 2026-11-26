@@ -266,14 +266,14 @@ export class VoiceParticipation {
   };
 
   /** A capture in progress applies the mode before it publishes, so this waits for it. */
-  setMicrophoneMode = (mode: MicrophoneMode): Promise<void> => this.session.action(inputKey, async () => {
+  setMicrophoneMode = (mode: MicrophoneMode, reportError = true): Promise<void> => this.session.action(inputKey, async () => {
     const signal = this.session.lifetime();
     // The pending capture reports its own failure.
     await this.microphoneRequest?.promise?.catch(() => {});
     signal.throwIfAborted();
     await this.microphone?.gate(mode);
     this.session.saveTransmission({ ...this.transmission, mode });
-  });
+  }, reportError);
 
   setActivationThreshold = (activationThreshold: number): void => {
     this.microphone?.threshold(activationThreshold);
@@ -288,7 +288,7 @@ export class VoiceParticipation {
 
   inputLevel = (): number | undefined => this.microphone?.level();
 
-  configureInput = (settings: Partial<Pick<VoiceInput, "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void> => this.session.action(inputKey, async () => {
+  configureInput = (settings: Partial<Pick<VoiceInput, "deviceId" | "voiceProcessing" | "strongerSuppression">>, reportError = true): Promise<void> => this.session.action(inputKey, async () => {
     const signal = this.session.lifetime();
     if (this.microphoneRequest) await this.microphoneRequest.promise;
     signal.throwIfAborted();
@@ -307,7 +307,7 @@ export class VoiceParticipation {
       } finally { captured?.getTracks().forEach(track => track.stop()); }
     }
     this.session.saveInput({ ...voiceInput, volume: this.preference.volume });
-  });
+  }, reportError);
 
   /** Follows an authority snapshot: a room that no longer lists this endpoint ends its participation unless a request for it is pending. */
   update(state: ChannelSnapshot): void {

@@ -43,11 +43,17 @@ in place. The tabs show the tasks available to you:
   password can enter again. To prevent re-entry with those credentials, first
   reset the invitation and change or remove any room password, then remove the
   person's access.
-- **Connection:** Choose how many people this device helps forward to in this room.
+- **Network:** Set the room’s default forwarding limit and voice bitrate. If you see
+  **Use site forwarding**, choose whether this room allows it. **Save** applies changes
+  from both **Room** and **Network**.
 - From **Records**, export loaded chat text or select **Clear local room cache**
   to remove this identity's cached attachments on this device. Room history and
   saved downloads are kept. Save any file this device holds as the only copy
   before clearing its cache.
+
+Use **More options → Forwarding for others** to set a limit for this webpage or
+for the connected App. Screens, voice and files each count separately across
+all rooms.
 
 Invitations open beside the room title. Copy the link there or use the QR button
 below the copy action. Public rooms share a direct link; private invitations
@@ -167,7 +173,7 @@ browser's site storage and are not sent to the room.
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
 Microphone and listening controls do not change the shared picture's sound.
-Room managers can change **Room voice bitrate** in the room's settings.
+Room managers can change **Room voice bitrate** under **Room settings → Network**.
 The microphone's green fill follows your voice level. Friends' microphone booms
 light up as their voices arrive; an unfolded boom by itself means the microphone is on.
 

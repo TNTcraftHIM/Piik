@@ -4,6 +4,7 @@ import { ReactionBurst, ReactionIcon } from "../../components/living/RoomReactio
 import { RoomReactionGrid } from "../../components/living/RoomReactionPicker";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
+import { useLayerHistory } from "../../ui/layer-history";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import type { ContentReactionTarget, RoomInteractionSession } from "../../lib/room-interactions";
@@ -32,6 +33,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
     if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
   }, [session, targetId]);
   useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open, closeWhenAnchorClipped: "messageSeq" in target });
+  useLayerHistory(menu, open);
   const canSend = !!state?.canSend && !disabled;
   const send = (reaction: typeof REACTION_IDS[number]) => { if (canSend) session?.send({ kind: "reaction", reaction }, target); };
   const counts = REACTION_IDS.filter(reaction => (reactions?.counts[reaction] ?? 0) > 0).map(reaction => {

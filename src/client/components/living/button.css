@@ -105,8 +105,8 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
   border-inline-start-color: color-mix(in srgb, currentColor 44%, transparent);
 }
 
-/* Actions embedded in content keep their position and their focus ring inside it. */
-.lr-embedded-actions { --control-hover-transform: none; --control-press-transform: none; }
+/* Embedded actions stay in place on hover and focus and inherit the shared press. */
+.lr-embedded-actions { --control-hover-transform: none; }
 .lr-embedded-actions :is(.lr-btn, .lr-chip):focus-visible { outline-color: currentColor; outline-offset: -3px; }
 @media (prefers-reduced-motion: reduce) {
   :root { --control-hover-transform: none; --control-press-transform: none; --motion-press: 0ms; --motion-feedback: 0ms; --motion-control: 0ms; --motion-surface: 0ms; --motion-emphasis: 0ms; }

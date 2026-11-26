@@ -4,6 +4,7 @@ import { Btn } from "../../components/living/primitives";
 import { PawnSvg } from "../../components/living/Pawn";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { Glyph } from "../../ui/icons";
+import { useLayerHistory } from "../../ui/layer-history";
 import { useCopy } from "../../ui/copy";
 import { ChannelIdentityImageInput } from "./ChannelIdentity";
 import { MAX_USER_NAME_UNITS, type ProfileUpdate } from "../protocol";
@@ -25,14 +26,19 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
   const [preparing, setPreparing] = useState(false);
   const { error, run } = useSettingsAction(open);
   useAnchoredPopover(trigger, panel, { side: "above" });
+  useLayerHistory(panel, open);
   const close = () => panel.current?.hidePopover();
   const editable = !disabled && profileReady && !busy;
   const { message } = channelErrorPresentation(error, t);
+  const editLabel = t("channel.profileEditor.editProfile");
+  const hint = triggerStyle === "name"
+    ? { text: editLabel, overflow: { text: name, selector: "strong" } }
+    : { kind: "hint-rename" as const, text: editLabel };
   return <>
     <span ref={trigger} className="c3-profile-editor">
-      <Tooltip kind="hint-rename" text={t("channel.profileEditor.editProfile")} disabled={open}>
+      <Tooltip {...hint} disabled={open}>
         <button type="button" className={"lr-btn is-dense is-quiet c3-profile-" + triggerStyle} disabled={disabled}
-          aria-label={triggerStyle === "name" ? undefined : t("channel.profileEditor.editProfile")} aria-haspopup="dialog"
+          aria-label={triggerStyle === "name" ? undefined : editLabel} aria-haspopup="dialog"
           popoverTarget={id} aria-controls={id} aria-expanded={open}>
           {triggerStyle === "name" ? <strong>{name}</strong> : triggerStyle === "pawn"
             ? <PawnSvg centered color={color} identity={userId} avatar={avatar ?? undefined} /> : <Glyph name="pencil" />}

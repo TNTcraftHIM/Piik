@@ -4,13 +4,13 @@
   min-width: 0;
 }
 /* The heading names the section and ends with what adjusts all of it, as the rooms' heading does. */
+:is(.c3-voice-rooms-head, .c3-voice-room-row) { padding-inline: 4px; }
 .c3-voice-rooms-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-height: var(--control-dense-size);
-  padding-inline-start: 4px;
 }
 .c3-voice-rooms-heading {
   margin: 0;
@@ -25,18 +25,25 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 4px;
+  padding-block: 4px;
 }
 .c3-voice-room-info { min-width: 0; }
 .c3-voice-room-name { display: block; min-width: 0; max-width: 100%; }
-.c3-voice-room-name > button {
+.c3-voice-room-name > .lr-btn {
+  --control-hover: transparent;
+  --control-hover-transform: none;
+  display: block;
+  min-width: 0;
+  height: auto;
   max-width: 100%;
   border: 0;
+  border-radius: 0;
   padding: 0;
   background: transparent;
+  box-shadow: none;
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   text-align: start;
   overflow: hidden;
@@ -45,7 +52,7 @@
 }
 .c3-voice-room-name > button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c3-voice-room-row .c3-voice-room-name > button[aria-current] { font-weight: 700; }
-.c3-voice-room-row small { display: block; color: var(--live-ink); font-size: 11px; }
+.c3-voice-room-row small { display: block; color: var(--live-ink); font-size: 12px; }
 .c3-voice-room-row small[data-status="joining"] { color: var(--busy); }
 .c3-voice-room-actions, .c3-voice-shared-tools {
   display: flex;
@@ -84,7 +91,6 @@
   column-gap: 6px;
   padding-inline: 4px;
 }
-.c3-voice-room-row[data-direct] .c3-voice-room-name { order: -1; }
 .c3-voice-room-row[data-direct] .c3-voice-room-name > button { min-height: 24px; }
 .c3-voice-room-layout[data-density="bar"] > .c3-voice-room-disclosure { flex: none; }
 .c3-voice-room-layout[data-density="rail"] {
@@ -115,3 +121,6 @@
 .c3-voice-room-layout:is([data-density="bar"], [data-density="rail"]) .c3-voice-room-row[data-direct] .c3-voice-room-actions { gap: 4px; }
 .c3-voice-room-layout[data-density="bar"] .c3-voice-room-row[data-direct] .c3-voice-room-actions > .lr-comic-tip-wrap:last-child,
 .c3-voice-room-layout[data-density="bar"] .c3-voice-room-row[data-direct] .c3-voice-room-actions > .lr-btn:last-child { margin-inline-start: 8px; }
+
+.lr-anchored-card.c3-voice-talk-muted { width: max-content; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.c3-voice-talk-muted:is(:popover-open, .\:popover-open) { display: flex; align-items: center; gap: 6px; }
