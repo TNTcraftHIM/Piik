@@ -7,7 +7,7 @@ import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
 import { AudioVolumeControl } from "../../components/living/AudioVolumeControl";
-import { PlaybackSettings, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
+import { PlaybackSettings, PlaybackSettingsHeading, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { debugEvent } from "../../lib/debug";
@@ -26,6 +26,7 @@ import type { VideoFit, VideoRotation, VideoSize } from "../../media/video-geome
 import type { ChannelActions, ChannelScreenInput } from "../types";
 import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
+import { useLayerHistory } from "../../ui/layer-history";
 import { Glyph } from "../../ui/icons";
 import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
@@ -65,9 +66,13 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
   const { t } = useCopy();
   const directSelected = receiving?.mode === "direct" && !originalPage;
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  useLayerHistory(panel, open);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
-  return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} />
-    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}>
+  return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} controls={id} expanded={open} />
+    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
+      <PlaybackSettingsHeading onClose={() => panel.current?.hidePopover()} />
       {audio && <div className="c3-watch-volume lr-audio-settings"><AudioVolumeControl {...audio} /></div>}
       {playback ? <label className="c3-watch-rate"><span>{t("watch.rate")}</span>
         <select className="lr-select" aria-label={t("watch.rate")} value={playback.rate} disabled={playback.disabled}
@@ -431,6 +436,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const pictureId = useId();
   const pictureTrigger = useRef<HTMLSpanElement>(null), picturePanel = useRef<HTMLDivElement>(null);
   const [pictureOpen, setPictureOpen] = useState(false);
+  useLayerHistory(picturePanel, pictureOpen);
   const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
@@ -641,6 +647,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
         className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
           if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
         }}>
+        <PlaybackSettingsHeading onClose={() => picturePanel.current?.hidePopover()} />
         {pictureOpen && <PlaybackSettings buffering={!owned && !localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
