@@ -30,7 +30,7 @@ Sources:
 
 - <https://developer.android.com/ndk/reference/group/networking>
 - <https://android.googlesource.com/platform/system/netd/+/refs/heads/android15-release/client/NetdClient.cpp>
-- <https://github.com/cloudflare/cloudflared/blob/de6376c5af4a67cbc65258682e5a01781827643d/supervisor/tunnel.go>
+- <https://github.com/cloudflare/cloudflared/blob/dc57315806d5faa8715f728fd37b5302c81c467b/supervisor/tunnel.go>
 
 The APK's existing third-party notice includes the pinned cloudflared source and
 dependency licenses. Generated source overlays, probes and executables remain
