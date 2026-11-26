@@ -347,8 +347,8 @@ action. If background registration is unavailable, page shortcuts remain usable.
 
 ### Identity And Share Titles
 
-The custom avatar sits upright on the couch as a rounded square. The headset
-follows its outer corners. The microphone extends along the lower edge when
+The custom avatar uses the same full circular portrait on the couch and in
+participant rows. The headset follows its outer edge. The microphone extends along the lower edge when
 enabled and folds to the side when muted. The default Pawn fills the same seat
 when the image is absent or unavailable. Both use the same participant, voice
 state, name tag and interaction target. Image preparation, saving and

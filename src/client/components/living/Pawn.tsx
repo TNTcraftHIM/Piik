@@ -40,25 +40,25 @@ function PawnAdornment({ voice, collaboration, activity, host, avatar }: PawnSta
     stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
     <g className="lr-person-headset">
       <g className="lr-person-neckband">
-        <path d={avatar ? "M5 38v5q0 9 9 9h20q9 0 9-9v-5" : "M15 28q0-5 9-5t9 5"} strokeWidth="1.6" />
+        <path d={avatar ? "M5 35a19 19 0 0 0 38 0" : "M15 28q0-5 9-5t9 5"} strokeWidth="1.6" />
       </g>
       <g className="lr-person-headband">
-        <path d={avatar ? "M5 31V22q0-9 9-9h20q9 0 9 9v9"
+        <path d={avatar ? "M5 33a19 19 0 0 1 38 0"
           : host ? "M14.8 15v-2a9.2 9.2 0 0 1 3.5-7.2m11.4 0a9.2 9.2 0 0 1 3.5 7.2v2"
           : "M14.8 15v-2a9.2 9.2 0 0 1 18.4 0v2"} strokeWidth="1.6" />
       </g>
-      <path className="lr-person-earcup-left" d={avatar ? "M5 31v12" : "M14.8 13v5"} strokeWidth="3.4" />
-      <path className="lr-person-earcup-right" d={avatar ? "M43 31v12" : "M33.2 13v5"} strokeWidth="3.4" />
+      <path className="lr-person-earcup-left" d={avatar ? "M5 28v10" : "M14.8 13v5"} strokeWidth="3.4" />
+      <path className="lr-person-earcup-right" d={avatar ? "M43 28v10" : "M33.2 13v5"} strokeWidth="3.4" />
       <g className="lr-person-mic-position">
-        <path className="lr-person-mic-open lr-person-mic-head" d={avatar ? "M0 0v4q0 3-4 3h-6" : "M0 0v1.5q0 3-4 3h-2"} strokeWidth="1.4" />
+        <path className="lr-person-mic-open lr-person-mic-head" d={avatar ? "M0 0a19 19 0 0 1-8 10.5" : "M0 0v1.5q0 3-4 3h-2"} strokeWidth="1.4" />
         <path className="lr-person-mic-open lr-person-mic-neck" d="M0 0v-4q0-3-4-3h-2" strokeWidth="1.4" />
         <path className="lr-person-mic-folded" d="M0 0l2-8" strokeWidth="1.4" />
         <circle className="lr-person-mic-tip" r="1.2" fill="currentColor" stroke="none" />
       </g>
     </g>
     <g className="lr-person-emblem" color={avatar ? "var(--ink)" : undefined}>
-      {avatar && <circle cx="12" cy="47" r="7" fill="var(--paper)" stroke="none" />}
-      <g transform={avatar ? `translate(6.5 41.5)${pointer ? " rotate(-45 5.5 5.5)" : ""}`
+      {avatar && <circle cx="10" cy="48" r="7" fill="var(--paper)" stroke="none" />}
+      <g transform={avatar ? `translate(4.5 42.5)${pointer ? " rotate(-45 5.5 5.5)" : ""}`
         : pointer ? "translate(16.5 32.5) rotate(-45 7.5 7.5)" : "translate(17 33)"}>
         {drawn && <Glyph name={drawn} size={avatar ? 11 : pointer ? 15 : 14} />}
       </g>
@@ -78,7 +78,7 @@ export function PawnSvg({ color, host, identity, voice, collaboration, activity,
   useLayoutEffect(() => {
     if (identity && root.current) return bindParticipantMotion(root.current, identity);
   }, [identity, surfaceDocument]);
-  // The standing figure and the square picture share a footline, but have different centres.
+  // The standing figure and the round picture share a footline, with different centres.
   const frameTop = centered && picture ? 5 : 0;
   return <svg ref={root} className="lr-person" viewBox={`0 ${frameTop} 48 56`} width="40" height="48"
     aria-hidden="true" data-avatar={picture ? "" : undefined} data-motion={identity ? "" : undefined} style={motion ? {
@@ -89,10 +89,8 @@ export function PawnSvg({ color, host, identity, voice, collaboration, activity,
     } as CSSProperties : undefined}>
     <g className="lr-reaction-body"><g className="lr-person-body" fill={color}>
       {picture ? <>
-        <defs><clipPath id={avatarClip}>
-          <rect x="7" y="16" width="34" height="34" rx="5" />
-        </clipPath></defs>
-        <rect x="7" y="16" width="34" height="34" rx="5" />
+        <defs><clipPath id={avatarClip}><circle cx="24" cy="33" r="17" /></clipPath></defs>
+        <circle cx="24" cy="33" r="17" />
         <image key={picture} className="lr-person-head lr-person-avatar" href={picture} x="7" y="16" width="34" height="34"
           preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} onError={() => setFailedAvatar(picture)} />
         {host && <HostMark x={18} y={frameTop} width={12} />}
