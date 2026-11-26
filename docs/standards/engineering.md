@@ -353,6 +353,9 @@ the observation or decision that would settle it.
   ASCII, with format exceptions in [`.gitattributes`](../../.gitattributes).
   Scripts use stable executable paths; physical confidence stays explicit in
   [verification status](../verification-status.md).
+  Cargo build scripts read build-specific paths from the
+  [runtime build environment](https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts),
+  so a shared cache does not retain a previous source directory.
 - Update generated files through their source schema, template or generator and
   the existing regeneration command; do not patch generated output by hand.
 - Retained tools declare their direct package dependencies. Documented TypeScript
