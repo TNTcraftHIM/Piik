@@ -15347,6 +15347,29 @@ test("cancelling the picker releases its gesture-activated audio context", async
   } finally { session.close(); }
 });
 
+test("revoked access retires a Browser capture awaiting its first publish confirmation", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video");
+  const sound = remoteTrack("audio");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => remoteStream("window", [video, sound])) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const issued = nextSocketCommand(socket, "publish");
+    const result = session.startScreen("first").catch(error => error);
+    const publish = await issued;
+    const id = (publish.publication as { id: string }).id;
+    const snapshot = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...snapshot, channel: { ...snapshot.channel,
+      rooms: snapshot.channel.rooms.map(room => room.id === "first" ? { ...room, authorized: false } : room) } } });
+    await vi.waitFor(() => expect(video.stop).toHaveBeenCalled());
+    expect(sound.stop).toHaveBeenCalled();
+    expect(await result).toMatchObject({ name: "AbortError" });
+    socket.receive({ type: "ack", requestId: publish.requestId });
+    expect(session.getSnapshot().ownedScreens.has(id)).toBe(false);
+    expect(session.screenQuality(id)).toBeUndefined();
+  } finally { session.close(); }
+});
+
 test("capture stage diagnostics distinguish an unanswered picker and stop a late cancelled grant", async () => {
   const events: { stage: string; outcome: string; details?: object }[] = [];
   vi.spyOn(browserDiagnostics, "debugOperation").mockImplementation((scope, stage) => {

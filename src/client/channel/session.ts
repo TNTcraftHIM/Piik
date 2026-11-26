@@ -2333,7 +2333,7 @@ export class ChannelSession {
   }, reportError);
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId, signal }: { signal?: AbortSignal; microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
     const id = publicationId ?? crypto.randomUUID();
     const sourceProfile = kind === "screen" ? profile ?? this.view.quality : undefined;
     const capture = { roomId, kind, stream, microphone, audio, camera, admitted: false };
@@ -2342,7 +2342,8 @@ export class ChannelSession {
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
       await this.request({ type: "publish", publication: { id, roomId, kind,
-        ...(sourceProfile ? { videoSettings: screenVideoSettings(sourceProfile), source: source ?? captureSource(stream.getVideoTracks()[0], camera) } : {}) } });
+        ...(sourceProfile ? { videoSettings: screenVideoSettings(sourceProfile), source: source ?? captureSource(stream.getVideoTracks()[0], camera) } : {}) } }, undefined, roomId, { signal });
+      signal?.throwIfAborted();
       if (this.local.get(id) !== capture) throw new DOMException("Capture cancelled", "AbortError");
       const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
       if (primary?.readyState === "ended" || (microphone && !microphone.stream.active)) {
@@ -2354,7 +2355,10 @@ export class ChannelSession {
       else primary?.addEventListener("ended", () => this.voice.captureEnded(id, stream), { once: true });
       return id;
     } catch (error) {
-      if (this.local.get(id) === capture) this.retireCapture(id);
+      if (this.local.get(id) === capture) {
+        if (kind === "screen" && signal?.aborted) void this.retireScreenPublication(id).catch(() => {});
+        else this.retireCapture(id);
+      }
       throw error;
     }
   }
@@ -2575,7 +2579,7 @@ export class ChannelSession {
         const stream = candidate;
         candidate = undefined; // publish owns failure cleanup from this point.
         const mixer = audio; audio = undefined;
-        await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", source: metadata, publicationId: share.id });
+        await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", source: metadata, publicationId: share.id, signal: selection.controller.signal });
       }
       await this.finishScreenSelection(roomId, share.id);
       if (app?.externalInput(share.id)) {
