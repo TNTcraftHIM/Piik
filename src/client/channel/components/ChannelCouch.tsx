@@ -88,7 +88,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const states = [...(person.voice ? [personVoiceLabel(person.voice, copy)] : []), ...doing.map(badge => badge.label)];
     const status = joinSentences(copy.lang, states);
     const inner = <>
-      <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner} seated
+      <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
         avatar={person.avatar} voice={person.voice} collaboration={person.collaboration}
         activity={doing[0] && (doing[0].status ?? doing[0].icon)} />
       <span className="lr-pawn-name">{person.name}</span>
