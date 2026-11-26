@@ -254,6 +254,10 @@ impl Owner {
                 return Self::unavailable("unmanaged-installation", closing);
             }
         };
+        #[cfg(windows)]
+        if let Err(error) = windows::retire_download(&installation) {
+            log::warn!(target: "piik.update", "Retire abandoned update download: {error:#}");
+        }
         let version = Some(options.version.clone());
         let state = Arc::new(Mutex::new(State::Idle));
         let (commands, incoming) = mpsc::channel(1);

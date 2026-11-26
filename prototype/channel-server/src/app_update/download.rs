@@ -151,6 +151,9 @@ pub(super) async fn prepare(
 ) -> Result<Prepared> {
     let client = client()?;
     let (index, signature, package) = index(&client, options, selection).await?;
+    #[cfg(windows)]
+    let directory = super::windows::DownloadWorkspace::create(installation, operation)?;
+    #[cfg(not(windows))]
     let directory = tempfile::Builder::new()
         .prefix(&format!(".piik-update-{operation}-"))
         .tempdir_in(

@@ -478,6 +478,12 @@ process has run, it may already have written data; a startup or health failure
 does not authorize automatic downgrade. Keep an old program copy for explicit
 recovery and never roll back authority databases.
 
+The Windows update owner registers its download workspace in the locked App
+data directory before writing the package. Restart reclaims that registered
+workspace independently of any retained installation handoff, including after
+a portable App moves. Installation transfers the record to the existing helper
+handoff. A cleanup failure stays with the update operation; it does not stop the App.
+
 The integrated Windows updater verified Node signatures with Rust `ring`, streamed
 the selected complete package, and performed replacement through the product
 helper. Saved room data survived both successful replacement and a blocked rename;
