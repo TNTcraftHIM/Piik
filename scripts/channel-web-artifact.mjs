@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileRecords, compareFileRecords } from "./package-files.mjs";
 import { webSourceAssets } from "./container-web-identity.mjs";
@@ -33,14 +33,29 @@ export function recordChannelWeb(directory, { version, revision }) {
   writeFileSync(receiptPath(directory), `${JSON.stringify({ version, revision, files }, null, 2)}\n`);
 }
 
-/** Reuse exact bytes; a missing or mismatched receipt never triggers a build. */
-export function verifyChannelWeb(directory, { version, revision }) {
-  directory = resolve(directory);
+function readReceipt(directory, { version, revision }) {
   const receipt = JSON.parse(readFileSync(receiptPath(directory), "utf8"));
   assert.ok(receipt.version === version && receipt.revision === revision, "Shared Web build identity mismatch");
   assert.ok(Array.isArray(receipt.files) && receipt.files.every(file => file && typeof file.path === "string" &&
     Number.isSafeInteger(file.size) && file.size >= 0 && /^[a-f0-9]{64}$/.test(file.sha256)), "Invalid shared Web file inventory");
+  return receipt;
+}
+
+function checkReceipt(directory, receipt) {
   compareFileRecords(receipt.files, fileRecords(directory));
-  checkEntry(directory, receipt.files, revision);
+  checkEntry(directory, receipt.files, receipt.revision);
+}
+
+/** Reuse exact bytes; a missing or mismatched receipt never triggers a build. */
+export function verifyChannelWeb(directory, identity) {
+  directory = resolve(directory);
+  checkReceipt(directory, readReceipt(directory, identity));
   return directory;
+}
+
+/** Verify reused Web against the receipt read before copying into the package. */
+export function copyChannelWeb(directory, staged, identity) {
+  const receipt = identity && readReceipt(directory, identity);
+  cpSync(directory, staged, { recursive: true });
+  if (receipt) checkReceipt(staged, receipt);
 }

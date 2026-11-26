@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAndroidLicenseNotices } from './package-licenses.mjs';
+import { copyChannelWeb } from './channel-web-artifact.mjs';
 import { buildChannelWeb } from './build-channel-web.mjs';
 import { writeAndroidAppIcon } from './app-icons.mjs';
 import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256, ANDROID_APP_PACKAGE_TARGET, androidVersionCode } from './app-package-targets.mjs';
@@ -48,14 +50,31 @@ if (!process.env.ANDROID_NDK_HOME || (!tunnelOnly && (!process.env.ANDROID_HOME 
 const revision = tunnelOnly ? undefined : releaseRevision ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 const version = tunnelOnly ? undefined : buildVersion(root, revision);
 const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
-if (webInput !== undefined) assertBuildInputRetained(webInput, webAssets);
-// Reject an incompatible shared tree before any native dependency work.
-const reusedFrontend = webInput === undefined ? undefined : buildChannelWeb(root, { version, revision, web: webInput });
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: root, env: process.env, stdio: 'inherit', windowsHide: true, ...options });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed with exit code ${result.status}`);
 }
+function archiveFrontend(frontend, archive) {
+  // AGP rewrites .gz assets; an opaque archive preserves the shared Web tree.
+  run('jar', ['--create', '--no-manifest', '--file', archive, '-C', frontend, '.']);
+}
+
+function prepareSharedFrontend(input) {
+  assertBuildInputRetained(input, webAssets);
+  const temporary = mkdtempSync(join(tmpdir(), 'piik-android-frontend-'));
+  try {
+    const frontend = join(temporary, 'web');
+    copyChannelWeb(input, frontend, { version, revision });
+    const archive = join(temporary, 'frontend.zip');
+    archiveFrontend(frontend, archive);
+    return readFileSync(archive);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+const reusedFrontend = webInput === undefined ? undefined : prepareSharedFrontend(webInput);
 // Build upstream in its own pinned module: the App never imports its CLI graph.
 const notice = JSON.parse(readFileSync(join(root, 'licenses', 'upstream.json'), 'utf8'))[`cloudflared@${CLOUDFLARED_VERSION}`];
 const commit = new URL(notice.source).pathname.split('/').at(-1);
@@ -165,8 +184,9 @@ if (!tunnelOnly) {
   const frontend = reusedFrontend ?? buildChannelWeb(root, { version, revision, cargoTarget });
   rmSync(webAssets, { recursive: true, force: true });
   mkdirSync(webAssets, { recursive: true });
-  // AGP rewrites .gz assets; an opaque archive preserves the shared Web tree.
-  run('jar', ['--create', '--no-manifest', '--file', join(webAssets, 'frontend.zip'), '-C', frontend, '.']);
+  const frontendArchive = join(webAssets, 'frontend.zip');
+  if (typeof frontend === 'string') archiveFrontend(frontend, frontendArchive);
+  else writeFileSync(frontendArchive, frontend);
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'));
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
   // Recreate the final ZIP so replaced native libraries leave no free blocks.

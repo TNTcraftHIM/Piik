@@ -181,8 +181,9 @@ containing that version, revision and every file's path, size and SHA-256.
 Copy the directory and its adjacent receipt together. App assembly, App candidate
 packaging, Server packaging and `build-android.mjs` accept
 `--web /path/to/channel-web`; all use the same complete-tree and linked-asset
-validation. A mismatched or incomplete input fails instead of rebuilding.
-Inputs overlapping that entry point's replaced build directories are rejected
+validation. Each packager checks its own copy against the receipt before native
+builds and uses that copy for the package. A mismatched or incomplete input fails
+instead of rebuilding. Inputs overlapping that entry point's replaced build directories are rejected
 before cleanup, including paths reached through links.
 Without `--web`, each entry retains its ordinary build path. Dirty development
 builds remain usable locally but do not receive a reusable receipt. Reusing Web

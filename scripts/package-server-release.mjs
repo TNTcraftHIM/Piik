@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
-  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -22,6 +21,7 @@ import { assertBuildInputRetained, assertCleanRevision, resetBuildWorkspace } fr
 import { buildVersion } from "./release-version.mjs";
 import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 import { sha256, fileRecords, compareFileRecords } from "./package-files.mjs";
+import { copyChannelWeb } from "./channel-web-artifact.mjs";
 import { buildChannelWeb } from "./build-channel-web.mjs";
 import { webSourceAssets } from "./container-web-identity.mjs";
 
@@ -131,9 +131,6 @@ const cargoTarget = resolve(process.env.CARGO_TARGET_DIR ?? join(repositoryRoot,
 
 if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
 if (values.web !== undefined) assertBuildInputRetained(values.web, join(repositoryRoot, "build", "server-package", "assembly"));
-const web = buildChannelWeb(repositoryRoot, { version, revision, cargoTarget, web: values.web });
-assertCleanRevision(repositoryRoot, revision);
-const mainAsset = mainAssetOf(web);
 
 const releaseId = revision.slice(0, 7);
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "server-package", "assembly");
@@ -144,6 +141,13 @@ let outputOwned = false;
 try {
   mkdirSync(runtimeRoot, { recursive: true });
   copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
+  const identity = { version, revision };
+  const web = values.web ?? buildChannelWeb(repositoryRoot, { ...identity, cargoTarget });
+  const stagedWeb = join(runtimeRoot, "web");
+  copyChannelWeb(web, stagedWeb, values.web === undefined ? undefined : identity);
+  const mainAsset = mainAssetOf(stagedWeb);
+  assertCleanRevision(repositoryRoot, revision);
+
   const binaryName = serverBinaryName(target);
   const serverPath = join(runtimeRoot, binaryName);
   const buildEnv = { ...process.env, CARGO_TARGET_DIR: cargoTarget,
@@ -165,7 +169,6 @@ try {
       fail("Linux Server must be statically linked with no PT_INTERP or DT_NEEDED; check flags that disable musl crt-static.");
     }
   }
-  cpSync(web, join(runtimeRoot, "web"), { recursive: true });
   if (target.goos !== "windows") chmodSync(serverPath, 0o755);
   writeServerLicenseNotices(
     repositoryRoot,

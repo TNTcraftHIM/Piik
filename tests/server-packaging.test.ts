@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { recordChannelWeb, verifyChannelWeb } from "../scripts/channel-web-artifact.mjs";
 
 const source = vi.hoisted(() => ({
-  revision: "a".repeat(40), workspace: "", web: "", scenario: "", containerRead: false, webBuilds: 0, nativeBuilt: false,
+  revision: "a".repeat(40), workspace: "", web: "", scenario: "", containerRead: false, webBuilds: 0, nativeBuilt: false, stagedWeb: "",
 }));
 
 // Keep the packager's archive/descriptor/export flow real while replacing
@@ -33,11 +33,16 @@ vi.mock("node:child_process", async (original) => ({
       const binary = join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "release");
       mkdirSync(binary, { recursive: true });
       writeFileSync(join(binary, "piik-channel-prototype"), "fixture Server");
+      if (source.scenario === "shared-replaced") {
+        writeFileSync(join(source.web, "assets", "index-fixture.js"), source.revision + " replacement");
+        recordChannelWeb(source.web, { version: "v3.0.0-beta.31", revision: source.revision });
+      }
     } else if (command === "readelf") {
       stdout = source.scenario === "dynamic-loader" ? " INTERP 0x00000000" :
         source.scenario === "dynamic-library" ? " (NEEDED) Shared library: [libc.so]" :
           " DYNAMIC 0x00000000\n (FLAGS_1) Flags: PIE";
     } else if (args[0] === "-czf") {
+      source.stagedWeb = readFileSync(join(source.workspace, "runtime/web/assets/index-fixture.js"), "utf8");
       writeFileSync(args[1]!, "fixture archive");
       if (source.scenario === "archive-failure") return { status: 1, stderr: "archive interrupted" };
     } else if (args[0] === "-tzf") {
@@ -65,7 +70,7 @@ vi.mock("../scripts/package-licenses.mjs", () => ({
 vi.mock("../scripts/release-version.mjs", () => ({ buildVersion: () => "development" }));
 vi.mock("../scripts/archive-tool.mjs", () => ({ tarExecutable: () => "fixture-tar" }));
 
-it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "existing", "dynamic-loader", "dynamic-library", "shared-web", "wrong-web"] as const)(
+it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "existing", "dynamic-loader", "dynamic-library", "shared-web", "shared-replaced", "wrong-web"] as const)(
   "exports a Server release only after all tracked inputs are settled (%s)", async (scenario) => {
     const root = mkdtempSync(join(tmpdir(), "piik-server-package-"));
     const output = join(root, "release");
@@ -78,13 +83,14 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
     source.workspace = join(root, "workspace");
     source.scenario = scenario;
     source.containerRead = false;
-    source.webBuilds = 0; source.nativeBuilt = false;
+    source.webBuilds = 0; source.nativeBuilt = false; source.stagedWeb = "";
+    const hasWebInput = ["shared-web", "shared-replaced", "wrong-web"].includes(scenario);
     source.web = join(root, "web");
     mkdirSync(join(source.web, "assets"), { recursive: true });
     writeFileSync(join(source.web, "index.html"), '<script src="./assets/index-fixture.js"></script>');
     writeFileSync(join(source.web, "assets", "index-fixture.js"), source.revision);
     writeFileSync(join(source.web, "adapter.wasm"), "fixture WASM");
-    if (scenario === "shared-web" || scenario === "wrong-web") {
+    if (hasWebInput) {
       writeFileSync(join(source.web, "adapter.wasm"), Buffer.from([0, 97, 115, 109]));
       writeFileSync(join(source.web, "third-party-licenses.txt"), "fixture notices");
       recordChannelWeb(source.web, { version: scenario === "wrong-web" ? "v3.0.0-beta.31" : "development", revision: source.revision });
@@ -95,14 +101,17 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
         writeFileSync(join(output, "user.txt"), "keep");
       }
       process.argv = [process.execPath, "package-server-release.mjs", output, "--container-image", "piik-fixture:test"];
-      if (scenario === "shared-web" || scenario === "wrong-web") process.argv.push("--web", source.web);
+      if (hasWebInput) process.argv.push("--web", source.web);
       vi.resetModules();
       const packaging = import("../scripts/package-server-release.mjs");
-      if (scenario === "clean" || scenario === "shared-web") {
+      if (scenario === "clean" || scenario === "shared-web" || scenario === "shared-replaced") {
         await packaging;
         const descriptor = JSON.parse(readFileSync(join(output, "piik-aaaaaaa.release.json"), "utf8"));
         expect(descriptor.revision).toBe(source.revision);
-        expect(descriptor.fileCount).toBe(scenario === "shared-web" ? 8 : 7);
+        expect(descriptor.fileCount).toBe(hasWebInput ? 8 : 7);
+        expect(source.stagedWeb).toBe(source.revision);
+        if (hasWebInput) expect(verifyChannelWeb(source.web, { version: scenario === "shared-replaced" ? "v3.0.0-beta.31" : "development",
+          revision: source.revision })).toBe(source.web);
         expect(descriptor.mainAsset).toBe("assets/index-fixture.js");
         expect(readFileSync(join(output, descriptor.manifest), "utf8")).toContain("web/adapter.wasm");
         expect(existsSync(join(output, descriptor.artifact))).toBe(true);
@@ -117,8 +126,8 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
         expect(existsSync(output)).toBe(false);
       }
       expect(existsSync(source.workspace)).toBe(false);
-      expect(source.containerRead).toBe(["clean", "dirty", "revision", "docker-failure", "shared-web"].includes(scenario));
-      expect(source.webBuilds).toBe(["existing", "shared-web", "wrong-web"].includes(scenario) ? 0 : 1);
+      expect(source.containerRead).toBe(["clean", "dirty", "revision", "docker-failure", "shared-web", "shared-replaced"].includes(scenario));
+      expect(source.webBuilds).toBe(scenario === "existing" || hasWebInput ? 0 : 1);
       if (scenario === "wrong-web") expect(source.nativeBuilt).toBe(false);
     } finally {
       process.argv = previousArguments;

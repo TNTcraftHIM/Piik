@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { CLOUDFLARED_VERSION } from "../scripts/app-package-targets.mjs";
-import { recordChannelWeb } from "../scripts/channel-web-artifact.mjs";
+import { recordChannelWeb, verifyChannelWeb } from "../scripts/channel-web-artifact.mjs";
 
-const source = vi.hoisted(() => ({ root: "", web: "", revision: "a".repeat(40), frontend: "", webBuilds: 0, commands: [] as string[], cargoEnvs: [] as NodeJS.ProcessEnv[] }));
+const source = vi.hoisted(() => ({ root: "", web: "", revision: "a".repeat(40), frontend: "", replaceFrontend: false, webBuilds: 0, commands: [] as string[], cargoEnvs: [] as NodeJS.ProcessEnv[] }));
 const commit = "b".repeat(40);
 vi.mock("node:url", async original => {
   const url = await original<typeof import("node:url")>();
@@ -41,18 +41,26 @@ vi.mock("node:child_process", () => ({
     const output = (file: string, bytes = "fixture") => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, bytes); };
     if (command === "tar") output(join(source.root, "build/android-cloudflared/cloudflared-" + "b".repeat(40), "supervisor/tunnel.go"));
     else if (command === "go") output(args[args.indexOf("-o") + 1]!);
-    else if (command === "cargo") { source.cargoEnvs.push(options.env); output(join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "debug/libpiik_channel_android.so")); }
-    else if (command === "jar") { source.frontend = args[args.indexOf("-C") + 1]!; output(args[args.indexOf("--file") + 1]!); }
-    else if (command === "java") output(join(source.root, "mobile/android/app/build/outputs/apk/debug/app-debug.apk"));
+    else if (command === "cargo") {
+      source.cargoEnvs.push(options.env);
+      output(join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "debug/libpiik_channel_android.so"));
+      if (source.replaceFrontend && source.cargoEnvs.length === 1) {
+        output(join(source.web, "assets/index-fixture.js"), source.revision + " replacement");
+        recordChannelWeb(source.web, { version: "v3.0.0-beta.31", revision: source.revision });
+      }
+    } else if (command === "jar") {
+      source.frontend = args[args.indexOf("-C") + 1]!;
+      output(args[args.indexOf("--file") + 1]!, readFileSync(join(source.frontend, "assets/index-fixture.js"), "utf8"));
+    } else if (command === "java") output(join(source.root, "mobile/android/app/build/outputs/apk/debug/app-debug.apk"));
     else if (command !== "git" && !command.includes("llvm-strip") && !command.includes("fallback.test")) throw new Error("Unexpected command: " + command);
     return { status: 0 };
   },
 }));
 
-it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android uses the shared Web input owner (%s)", async scenario => {
+it.each(["default", "shared", "shared-lib", "shared-replaced", "mismatched", "overlap"])("Android uses the shared Web input owner (%s)", async scenario => {
   source.root = mkdtempSync(join(tmpdir(), "piik-android-web-"));
   source.web = join(source.root, scenario === "overlap" ? "mobile/android/app/src/main/assets/web" : "web");
-  source.frontend = ""; source.webBuilds = 0; source.commands = []; source.cargoEnvs = [];
+  source.frontend = ""; source.replaceFrontend = scenario === "shared-replaced"; source.webBuilds = 0; source.commands = []; source.cargoEnvs = [];
   const previousArguments = process.argv, stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   const write = (path: string, bytes: string | Buffer) => {
     const target = join(source.root, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes);
@@ -95,7 +103,12 @@ it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android u
       expect(readFileSync(join(source.web, "assets/index-fixture.js"), "utf8")).toBe(source.revision);
     } else {
       await android;
-      expect(source.frontend).toBe(source.web);
+      if (scenario === "default") expect(source.frontend).toBe(source.web);
+      else {
+        expect(source.frontend).not.toBe(source.web);
+        expect(existsSync(source.frontend)).toBe(false);
+        expect(source.commands[0]).toBe("jar");
+      }
       expect(source.commands.filter(command => command === "cargo")).toHaveLength(2);
       for (const [index, target] of ["aarch64-linux-android", "x86_64-linux-android"].entries()) {
         const env = source.cargoEnvs[index]!, key = target.replaceAll("-", "_");
@@ -103,8 +116,9 @@ it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android u
         expect(env.PATH?.split(delimiter)[0]).toBe(join(prebuilt, "bin"));
         expect(env["BINDGEN_EXTRA_CLANG_ARGS_" + key]).toBe(`--target=${target}29 --sysroot="${join(prebuilt, "sysroot").replaceAll("\\", "/")}"`);
       }
-      expect(readFileSync(join(source.root, "mobile/android/app/src/main/assets/web/frontend.zip"), "utf8")).toBe("fixture");
-      expect(existsSync(`${source.web}.build.json`)).toBe(true);
+      expect(readFileSync(join(source.root, "mobile/android/app/src/main/assets/web/frontend.zip"), "utf8")).toBe(source.revision);
+      expect(verifyChannelWeb(source.web, { version: scenario === "shared-replaced" ? "v3.0.0-beta.31" : "development",
+        revision: source.revision })).toBe(source.web);
     }
     expect(source.webBuilds).toBe(scenario === "default" ? 1 : 0);
     expect(fetch).not.toHaveBeenCalled();

@@ -20,6 +20,7 @@ import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION, MACOS_MIN_V
 import { assertAppBundleLayout, collectAppBundleLayout } from "./app-bundle-layout.mjs";
 import { writeAppPlatformAssets } from "./app-icons.mjs";
 import { writeAppLicenseNotices } from "./package-licenses.mjs";
+import { copyChannelWeb } from "./channel-web-artifact.mjs";
 import { buildChannelWeb } from "./build-channel-web.mjs";
 import { assertBuildInputRetained, assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
@@ -116,11 +117,10 @@ const packageRoot = join(temporaryRoot, "package");
 const runtimeRoot = join(packageRoot, appPackageDirectory(target));
 let outputOwned = false;
 try {
-  const web = buildChannelWeb(repositoryRoot, { version, revision, web: webArgument });
+  const identity = { version, revision };
+  const web = webArgument ?? buildChannelWeb(repositoryRoot, identity);
   mkdirSync(runtimeRoot, { recursive: true });
-  cpSync(web, join(runtimeRoot, "web"), {
-    recursive: true,
-  });
+  copyChannelWeb(web, join(runtimeRoot, "web"), webArgument === undefined ? undefined : identity);
 
   let packagedTunnel = null;
   if (tunnelPath) {
