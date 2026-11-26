@@ -13,7 +13,7 @@ The table describes current prototype placement.
 | Domain identity, users and room-to-creator binding | Domain runtime's durable data. Clients and room runtimes receive authenticated identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
-| Messages, attachment descriptions and bounded image renditions | Confirmed history at the room runtime; participants may keep readable local copies. |
+| Messages, attachment descriptions and bounded image renditions | The room writer saves confirmed history. Readers keep bounded windows in page memory. |
 | New attachment originals | The sender and recipients that retain complete copies. The site operator does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
@@ -103,10 +103,9 @@ room title. Source URLs locate the runtime; they are not the room's identity.
 Cached content remains a local copy when the room is offline. It cannot reopen
 the room, confer management permission or become authoritative by being newer.
 
-Recommend room admission also permits reading its retained conversation. Do not
-add a separate history permission or per-user storage configuration in this
-first model. Joining a room fetches its recent history, not every room in the
-site or every attachment's bytes.
+Room admission permits reading its retained conversation. Opening the
+conversation loads recent history for that room. Attachment originals load on
+demand.
 
 ### Messages And Attachments
 
@@ -162,45 +161,28 @@ locate a description for authorization; no separate metadata service is needed.
 
 ## Confirmed History
 
-Keep one confirmed order at the actual room runtime:
+A send carries a stable retry identity. The room writer authorizes the
+authenticated author and commits the message, its order and retry identity in
+one transaction. After commit it returns the confirmed identity and order to
+the sender and sends the change to current readers. A successful save confirms
+the send independently of delivery to readers or attachment copying. The sender
+replaces its pending local echo with the confirmation. Only confirmed records
+enter the reading window.
 
-1. A participant sends a signed command through the domain WebSocket to its
-   actual room host with a stable send identity.
-   The authenticated user is its author; the carrier's identity or a nickname cannot
-   replace that author.
-2. The room writer authorizes the command and commits the message, its order and
-   retry identity in one transaction. Failed storage means the send is not confirmed.
-3. Return the host-signed confirmed message identity and order through the domain
-   WebSocket, and send confirmed changes to the room's current readers over that
-   same carrier. A retry resolves to the same retained result.
-4. Participants replace their pending local echo with that result and cache only
-   confirmed history. An unconfirmed send stays separate from readable history.
-
-Confirmation records a successful save by the room writer. Delivery to each
-participant and attachment copying are independent of confirmation. The domain
-forwards live packets without storing conversation or issuing a second
-confirmation. Its operator can read the forwarded plaintext. Readers authenticate
-the writer's signature using the session key and room-host binding supplied by
-the domain.
-Keep retry association with the
-retained message rather than a permanent second ledger. Automatic retries stay
-within the advertised retention/recovery boundary; an expired pending send is
-not silently submitted again as a new message.
+A retry returns the existing confirmation while the message is retained.
+Automatic retries stay within the advertised recovery window. An expired send
+requires a new explicit action. Signatures apply to live packets.
+[Conversation transport](./channel-network-design.md#authority-and-information-boundaries)
 
 [Matrix transaction identifiers](https://spec.matrix.org/latest/client-server-api/#transaction-identifiers)
 provide a reference for identifying a retransmission. This does not require
 Matrix federation, multi-writer merging or replicated confirmation.
 
-Use incremental transactions at the storage owner. Do not carry the prototype's
-whole-channel JSON rewrite into distributed room storage. Share the Rust room
-rules between native execution and any Browser/WASM adapter; use local SQLite
-or IndexedDB through that adapter rather than an external database service.
-Storage adapters read retry identity and room order inside one transaction; the
-shared core prepares the confirmation with its attachment descriptions. A Browser runtime
-serializes room operations through the transaction's
-[complete event](https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/complete_event),
-not an individual write's success. Failure ends that operation without advancing
-the confirmed order or blocking the next command.
+The shared Rust room rules use incremental SQLite transactions in Native and
+IndexedDB transactions in Browser/WASM. The core prepares the confirmation with
+its attachment descriptions. Browser room operations wait for the transaction
+to commit. Storage failure leaves the confirmed order intact and permits the
+next command to proceed. [IndexedDB transaction completion](https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/complete_event)
 
 Native keeps each open room in its own FIFO task, which owns the SQLite writer
 and file lock from opening through replacement and retirement. Room turns share
@@ -219,10 +201,7 @@ projection is unavailable. Callers end their own waits, and an unconfirmed write
 has an unknown outcome. A slow request does not revoke a binding or interrupt
 its working media.
 
-Participants synchronize from the room writer through the existing domain
-WebSocket. No peer connection is needed to read or send conversation. The domain
-forwards the authenticated response; it does not confirm it.
-Load a bounded recent window at a fixed history boundary, then continue with
+Readers load a bounded recent window at a fixed history boundary, then continue with
 confirmed changes after that boundary. Older pages are requested when needed.
 Each page is limited to 50 records and 256 KiB of serialized message data,
 accepting at least one record so pagination can always advance. SQLite and
