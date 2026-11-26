@@ -10280,7 +10280,10 @@ test("transient transport loss retains base leases and proves new leases after r
   } finally { media.reset(); session.close(); }
 });
 
-test.each(["piik-room", "piik-file"])("a rejected %s channel preserves the voice on the same connected pair", async rejectedLane => {
+test.each([
+  ["piik-room", "connected"], ["piik-file", "connected"],
+  ["piik-room", "disconnected"], ["piik-file", "disconnected"],
+] as const)("a rejected %s channel preserves the voice on the same %s pair", async (rejectedLane, connectionState) => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -10306,6 +10309,7 @@ test.each(["piik-room", "piik-file"])("a rejected %s channel preserves the voice
       if (label === rejectedLane) throw new DOMException("Data channel IDs exhausted", "OperationError");
       return createDataChannel(label, options);
     });
+    if (connectionState === "disconnected") { pc.connectionState = connectionState; pc.onconnectionstatechange?.(); }
     const attempted = rejectedLane === "piik-room" ? ["piik-room"] : ["piik-room", "piik-file"];
     state.pairs[0].rooms.push("first");
     socket.receive({ type: "state", state });
@@ -10319,6 +10323,7 @@ test.each(["piik-room", "piik-file"])("a rejected %s channel preserves the voice
     expect(pc.close).not.toHaveBeenCalled();
     expect(session.getSnapshot().streams.get("voice")).toBe(voice);
 
+    if (connectionState === "disconnected") pc.connected();
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
@@ -15606,6 +15611,12 @@ test.each(["remote-description", "local-answer", "room-channel", "input-channel"
       expect(socket.sent).not.toContainEqual({ type: "link_state", pairId: "healthy", state: "failed" });
       expect(healthy.close).not.toHaveBeenCalled();
       expect(session.getSnapshot().streams.get("healthy-voice")).toBe(retained);
+      healthy.connectionState = "disconnected"; healthy.onconnectionstatechange?.();
+      socket.receive({ type: "state", state });
+      expect(healthy.close).not.toHaveBeenCalled();
+      expect(socket.sent).not.toContainEqual({ type: "link_state", pairId: "healthy", state: "failed" });
+      expect(session.getSnapshot().streams.get("healthy-voice")).toBe(retained);
+      healthy.connected();
       healthyInputs.pop();
     }
     const rejoinPlan = plan("rejoined");

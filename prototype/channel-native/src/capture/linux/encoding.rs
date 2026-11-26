@@ -6,14 +6,14 @@ use crate::capture::{
     frame_dropper::FrameDropper,
     qp, FrameTiming, Settings, VideoCodec, KEYFRAME_INTERVAL_FRAMES,
 };
-use crate::EncodedFrame;
+use crate::{media::clock::VIDEO_RTP_TICK_NS, EncodedFrame};
 use anyhow::{anyhow, bail, ensure, Context as _, Result};
 use futures_util::{SinkExt, StreamExt};
 use gst::{glib, prelude::*};
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tokio::sync::Notify;
 
@@ -659,9 +659,7 @@ async fn run(
                 if force && capture == last_capture {
                     time = clock.now()?;
                 }
-                const RTP_TICK: std::time::Duration =
-                    std::time::Duration::from_nanos(1_000_000_000_u64.div_ceil(90_000));
-                time = time.max(last_pts + RTP_TICK);
+                time = time.max(last_pts + Duration::from_nanos(VIDEO_RTP_TICK_NS));
             } else if time <= last_pts {
                 continue;
             }

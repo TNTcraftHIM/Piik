@@ -3,7 +3,7 @@ use super::{
     cadence::Cadence, frames::RawFrame, mf, software, CaptureClock, EncodingExecution, FrameTiming,
     Settings, VideoCodec,
 };
-use crate::EncodedFrame;
+use crate::{media::clock::VIDEO_RTP_TICK_NS, EncodedFrame};
 use anyhow::{anyhow, ensure, Result};
 use std::{
     collections::VecDeque,
@@ -147,8 +147,8 @@ impl Presentation {
         } else {
             capture
         };
-        const RTP_TICK: i64 = (10_000_000 + 90_000 - 1) / 90_000;
-        Ok(qpc.max(last_qpc + RTP_TICK))
+        const RTP_TICK_100NS: i64 = VIDEO_RTP_TICK_NS.div_ceil(100) as i64;
+        Ok(qpc.max(last_qpc + RTP_TICK_100NS))
     }
 
     pub fn submitted(&mut self, capture: i64, qpc: i64) {
