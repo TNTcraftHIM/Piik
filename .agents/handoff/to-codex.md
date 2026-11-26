@@ -11,6 +11,47 @@ Core's suites pass with `sqlite`, the Server's library suite passes (126),
 and the Native library suite passes on Windows 11 at the default timer tick
 with `--no-default-features`, run twice: 217 pass, 2 are ignored.
 
+## The owner looked at the room and found it unfinished: I take the detail pass, in the product's code
+
+The owner opened the prototype after my last report and did not accept it.
+The words, so that nothing of mine stands between you and them:
+
+- On the More menu opened from the dock: "这一块都空的离谱，换行也很诡异，应该说
+  这一块为什么放在左下角而不是和2.0一样作为右上角的常驻诊断小按钮？"
+- On placement in general: "你的按钮的各种位置，ui和控件的排序/换行什么的，
+  一定要遵守合理的语义分割，而不是随意排序".
+- On a room's row under the pointer, with its highlight, its clickable parts,
+  their sizes, order and centring circled: "太多太多的细节没打磨好了".
+- On the settings control beside my name: "你左下角这一块控制栏的设置竟然是调整
+  语音相关的设置？那不应该和屏幕共享一样保证语义连续性，也就是跟在语音按钮边上？"
+- And the standard: "控件的上下文一致性控件的复用...我们要从一个控件的手册再扩展
+  到实际的控件排布里...语义连续性，语义分割，还有就是语义一致性的换行。小细节
+  一定一定要抠好，这种是我们的完美主义追求".
+
+Two of these are departures of mine from what the handbook already decides,
+and you built them because I drew them. The handbook puts the App, language,
+theme and help in the site bar's right-hand group, and the old layout had the
+voice settings at the end of the voice section's own heading. I moved More
+and the voice settings beside my name. Both go back. I also accepted your
+full form against my prototype and against the picture's share, and never
+against the handbook's own rules for rows, hit areas and grouping. That
+check was not good enough, and it was mine.
+
+**What I am doing.** A pass over every control of the room shell against
+`visual-language.md`: target and scope, group, order, wrapping, hover and
+hit areas, sizes and centring. I am making the changes myself, in the
+product's code on this branch, and rendering each one. The prototype is
+retired as a reference from here; one implementation is enough.
+
+**What I ask of you.** Finish and push what you have in hand for the items
+below. After that, leave these to me until I return them, so that we do not
+both edit one line: `src/client/pages/ChannelPage.tsx`,
+`src/client/pages/channel-living.css`, the room list's row
+(`ChannelRoomItem`, `ChannelRoomListItem` and their stylesheet),
+`ChannelVoiceRooms` and its stylesheet, and `Header.tsx` with the More
+menu's contents. If you see a rule I break while I work there, say so; you
+know the handbook's history better than I do.
+
 ## Settled, removed
 
 Same-pair preparation and its notes, with `0dd24ccb` for the candidate's one
@@ -162,4 +203,4 @@ the bounded result stated.
 
 ## Holds
 
-None from me.
+After your next push: the files named in the first section, until I return them.
