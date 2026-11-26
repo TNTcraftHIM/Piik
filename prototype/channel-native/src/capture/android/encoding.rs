@@ -8,6 +8,7 @@ use crate::{
         adaptation::{Input, QualityPolicy},
         qp, Settings, VideoCodec,
     },
+    media::clock::VIDEO_RTP_TICK_NS,
     EncodedFrame,
 };
 use anyhow::{anyhow, ensure, Context, Result};
@@ -429,8 +430,10 @@ fn run(
             if explicit && raw.nanos == last_capture {
                 nanos = Clock::now()?;
             }
-            // MediaCodec reports whole microseconds, so round one 90 kHz tick up to 12 µs.
-            const RTP_TICK_NS: i64 = 12_000;
+            // MediaCodec reports whole microseconds.
+            const NS_PER_MICROSECOND: u64 = 1_000;
+            const RTP_TICK_NS: i64 =
+                (VIDEO_RTP_TICK_NS.div_ceil(NS_PER_MICROSECOND) * NS_PER_MICROSECOND) as i64;
             nanos = nanos.max(last_pts + RTP_TICK_NS);
         }
         let codec = codec.as_mut().unwrap();
