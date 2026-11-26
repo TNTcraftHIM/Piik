@@ -1376,6 +1376,29 @@ test.each(["unavailable", "rejected"])("%s peer construction keeps the site and 
   } finally { session.close(); }
 });
 
+test("a resumed site closes the selected room's interaction when admission was revoked offline", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    peer.live(message(1));
+    expect(interaction.getSnapshot().messages).toHaveLength(1);
+    const state = structuredClone(session.getSnapshot().state!);
+    const room = state.channel.rooms[0];
+    room.authorized = false;
+    room.reading = false;
+    room.participantSessionIds = [];
+    delete room.delivery;
+    socket.close();
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(session.getSnapshot().state?.channel.rooms[0].authorized).toBe(false);
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
+    expect(interaction.getSnapshot()).toMatchObject({ peerId: null, messages: [] });
+  } finally { session.close(); }
+});
+
 test("interaction readiness follows Domain read admission without waiting for a peer path", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
