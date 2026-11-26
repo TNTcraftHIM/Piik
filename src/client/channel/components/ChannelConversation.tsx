@@ -486,6 +486,17 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       setDeleteFailure({ scope: conversationScope, code: error instanceof Error ? error.message : "operation_failed" });
     });
   }, [conversationScope, onDeleteMessage, roomId]);
+  // A classic scrollbar takes its width from the log's content. A layout that lines the messages up with the
+  // composer needs that width, so the log publishes it.
+  useLayoutEffect(() => {
+    const node = log.current;
+    if (!node) return;
+    const measure = () => node.style.setProperty("--message-log-scrollbar", `${node.offsetWidth - node.clientWidth}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={t("conversation.roomChat")}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={event => {

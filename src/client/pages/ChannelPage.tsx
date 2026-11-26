@@ -76,7 +76,7 @@ export function ChannelPage() {
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
-export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange, previewOptions, livingHead = "columns", livingControls = "bar" }: {
+export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange, previewOptions, livingHead = "columns", livingControls = "bar", livingTone }: {
   channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
   layout?: RoomLayout; offerLayout?: boolean;
   onLayoutChange?: (value: InterfaceLayout) => void;
@@ -87,6 +87,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   /** Prototype: where my voice and sharing controls sit on a desktop. "bar" is the row along the foot of the
       room; "dock" stacks them under the rooms column, above my name. A phone always uses the bar. */
   livingControls?: "bar" | "dock";
+  /** Prototype: a study of the dark palette, from the preview only. */
+  livingTone?: string;
 }) {
   const { t, lang } = useCopy();
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const phone = living && workspaceWidth > 0 && workspaceWidth < 600;
   // Which companion sits beside the pictures: the conversation, the people of the site, or nothing. Local
   // presentation for this prototype, not saved. A phone or a narrow window starts with the picture and the couch alone.
-  const [panel, setPanel] = useState<"chat" | "people" | "none">(() => typeof window !== "undefined" && window.innerWidth < 1080 ? "none" : "chat");
+  const [panel, setPanel] = useState<"chat" | "people" | "none">(() => typeof window !== "undefined" && window.innerWidth >= 600 && window.innerWidth < 1080 ? "none" : "chat");
   const togglePanel = (kind: "chat" | "people") => setPanel(current => current === kind ? "none" : kind);
   // The stage's grid and focus switch is shown in the top bar, with the other view tools.
   const [viewHome, setViewHome] = useState<HTMLElement | null>(null);
@@ -546,7 +548,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       data-sidebars={living ? phone ? "phone" : "inline" : sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-rooms={living ? roomsRail ? "rail" : "list" : undefined} data-stage={living ? visibleScreens.length ? "pictures" : "empty" : undefined}
       data-chat={living ? livingChat : undefined} data-head={living ? livingHead : undefined}
-      data-controls={living ? phone ? "bar" : livingControls : undefined}
+      data-controls={living ? phone ? "bar" : livingControls : undefined} data-tone={living ? livingTone : undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>

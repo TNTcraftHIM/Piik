@@ -24,6 +24,11 @@
   --c3-navigation-size: var(--lv-rooms);
   --c3-companion-size: var(--lv-panel);
   --control-label-size: 14px;
+  /* A surface says whose a thing is. The site and my own controls are the frame; the room, and everything
+     in it, is lit. The conversation beside pictures is the room's too, one step aside. */
+  --lv-site: var(--wall);
+  --lv-room: var(--paper);
+  --lv-room-aside: color-mix(in srgb, var(--paper) 55%, var(--wall));
   /* Selection and pressed controls are a tonal surface, never the brightest shape on screen. */
   --control-selected: color-mix(in srgb, var(--ink) 10%, transparent);
   --control-selected-ink: var(--ink);
@@ -82,11 +87,11 @@
 .c3-living .c3-site-bar:not(:has(.c3-room-tools > :not(:empty, [hidden]))) .c3-global-tools.lr-top::before { content: none; }
 .c3-living .c3-global-tools .lr-header-controls { gap: 2px; }
 
-/* Header A, "columns": the site's cell is the head of the rooms column on the column's surface, and the room's
-   name and tools sit on the room's own lit surface. In the rail the cell holds the mark alone; the site's name
-   and menu come with the list. */
-.c3-shell.c3-living[data-head="columns"] > .c3-site-bar { background: var(--paper); }
-.c3-living[data-head="columns"] .c3-site-identity { background: var(--wall); border-inline-end: 1px solid var(--line); }
+/* Header A, "columns": the row is split where the site ends and the room begins. The site's cell is the head
+   of the rooms column on the site's surface; the room's name and tools are on the room's. In the rail the cell
+   holds the mark alone; the site's name and menu come with the list. */
+.c3-shell.c3-living[data-head="columns"] > .c3-site-bar { background: var(--lv-room); }
+.c3-living[data-head="columns"] .c3-site-identity { background: var(--lv-site); border-inline-end: 1px solid var(--line); }
 .c3-living[data-head="columns"][data-rooms="rail"]:not([data-pane="rooms"]) .c3-site-identity { display: flex; justify-content: center; padding: 0; }
 .c3-living[data-head="columns"][data-rooms="rail"]:not([data-pane="rooms"]) .c3-site-identity > :not(.c3-site-home) { display: none; }
 /* The list opened over the room: the cell widens with it and the room's header stays where it is. */
@@ -195,6 +200,9 @@
 .c3-living .c3-room-tool-entry > small { display: none; }
 /* The room's small window opens from the end of my row. */
 .c3-living .lr-pawn-name { font-size: 12px; }
+/* The mark keeps its place in the seat, right after the figure, so it follows the figure and not the seat's own box. */
+.c3-living .c3-couch-activity { position: relative; inset-block-end: 23px; inset-inline-start: calc(50% + 9px); justify-self: stretch; width: 100%; height: 0; min-height: 0; justify-content: flex-start; align-items: flex-end; pointer-events: none; }
+.c3-living .c3-couch-activity .c3-participant-activity { pointer-events: auto; padding: 2px 3px; border-radius: 999px; background: var(--wall); color: var(--ink); box-shadow: 0 0 0 2px var(--couch); }
 
 /* ---------- My controls: one shape, whichever place the layout gives them ---------- */
 .c3-shell.c3-living .c3-personal :is(.c3-room-slot, .c3-voice-dock, .c3-voice-controls, .c3-voice-destination) { display: contents; }
@@ -314,17 +322,19 @@
 .c3-shell.c3-living[data-controls="dock"] .c3-room-presence .c3-couch { padding-bottom: 14px; }
 
 /* ---------- Companions: the conversation beside pictures, or the people of the site ---------- */
-.c3-shell.c3-living.c3-living > :is(.c3-chat-panel, .c3-living-people) { grid-area: side; width: var(--lv-panel); justify-self: stretch; translate: none; min-height: 0; border-inline-start: 1px solid var(--line); background: var(--wall); }
+.c3-shell.c3-living.c3-living > :is(.c3-chat-panel, .c3-living-people) { grid-area: side; width: var(--lv-panel); justify-self: stretch; translate: none; min-height: 0; border-inline-start: 1px solid var(--line); background: var(--lv-site); }
+.c3-shell.c3-living.c3-living > .c3-chat-panel { background: var(--lv-room-aside); }
 .c3-shell.c3-living.c3-living > .c3-living-people { width: var(--lv-people); }
 .c3-shell.c3-living > .c3-living-people:not([hidden]) { display: flex; }
 .c3-living .c3-living-people > .c3-people-panel { flex: 1; min-width: 0; background: var(--wall); }
 .c3-living .c3-chat-panel .c3-chat-heading { display: none; }
-.c3-living .c3-message-content:not(:has(> .c3-room-start.is-empty)) { display: flex; flex-direction: column; justify-content: flex-end; }
 .c3-living[data-chat="main"] .c3-chat-panel .c3-room-start.is-empty { margin: auto; align-items: center; text-align: center; }
 .c3-living .c3-message-content-body { font-size: 16px; line-height: 1.5; }
 .c3-living:lang(zh) .c3-message-content-body, :lang(zh) .c3-living .c3-message-content-body { line-height: 1.6; }
 .c3-living .c3-message-meta strong { font-size: 16px; font-weight: 600; }
-.c3-living .c3-message { position: relative; width: auto; max-width: none; margin: 8px calc(-1 * var(--lv-inset)) 0; padding: 4px var(--lv-inset); }
+/* The log's end inset gives way to its own scrollbar, so the messages end where the composer ends. */
+.c3-living .c3-message-log { --lv-log-end: max(0px, calc(var(--lv-inset) - var(--message-log-scrollbar, 0px))); }
+.c3-living .c3-message { position: relative; width: auto; max-width: none; margin: 8px calc(-1 * var(--lv-log-end)) 0 calc(-1 * var(--lv-inset)); padding: 4px var(--lv-log-end) 4px var(--lv-inset); }
 .c3-living .c3-message.is-continuation { margin-top: 0; padding-inline-start: calc(var(--lv-inset) + 40px); }
 .c3-living .c3-message-date + .c3-message { margin-top: 10px; }
 .c3-living .c3-message:is(:hover, :focus-within, :has([aria-expanded="true"])) { background: color-mix(in srgb, var(--ink) 4%, transparent); }
@@ -340,15 +350,15 @@
 /* Beside pictures: messages to the panel's inset; the composer is the panel's part of my row. */
 .c3-living[data-chat="panel"] .c3-chat-panel .c3-conversation { padding: 0; gap: 0; }
 .c3-living[data-chat="panel"] .c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 0; }
-.c3-living[data-chat="panel"] .c3-chat-panel .c3-message-log { padding: 4px var(--lv-inset) 12px; }
-.c3-living[data-chat="panel"] .c3-chat-panel .c3-composer { box-sizing: border-box; min-height: var(--lv-band); justify-content: center; padding: 5px var(--lv-inset); border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--wall); }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-message-log { padding: 4px var(--lv-log-end) 12px var(--lv-inset); }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-composer { box-sizing: border-box; min-height: var(--lv-band); justify-content: center; padding: 5px var(--lv-inset); border: 0; border-radius: 0; background: transparent; }
 .c3-living[data-chat="panel"] .c3-chat-panel .c3-compose-input { box-sizing: border-box; align-items: center; gap: 2px; padding: 3px 6px 3px 2px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--paper); }
 .c3-living[data-chat="panel"] .c3-chat-panel .c3-composer:focus-within .c3-compose-input { border-color: var(--action); }
 /* Nobody shares: the conversation is the room. It uses the room's whole width and the room's inset. */
 .c3-shell.c3-living.c3-living[data-chat="main"] > .c3-chat-panel { grid-area: chat; display: flex; width: auto; translate: none; pointer-events: auto; border: 0; background: var(--paper); }
 .c3-living[data-chat="main"] .c3-chat-panel .c3-conversation { padding: 0; gap: 12px; }
 .c3-living[data-chat="main"] .c3-chat-panel .c3-conversation > :not(.c3-chat-heading, .c3-message-log) { margin-inline: var(--lv-inset); }
-.c3-living[data-chat="main"] .c3-chat-panel .c3-conversation > .c3-message-log { margin-inline: 0; padding: 4px var(--lv-inset) 0; }
+.c3-living[data-chat="main"] .c3-chat-panel .c3-conversation > .c3-message-log { margin-inline: 0; padding: 4px var(--lv-log-end) 0 var(--lv-inset); }
 
 /* ---------- Short windows: the couch at its natural size, still whole ---------- */
 @container channel-living (max-height: 720px) {
@@ -428,3 +438,9 @@
 /* The room-list drawer moves focus to its heading, as the workspace's narrow drawer does; the heading is
    a non-interactive focus target, so it carries no ring. */
 .c3-living #c3-room-list-heading:focus { outline: none; }
+
+/* ---------- Studies of the dark palette (preview only) ---------- */
+/* "deep": the frame goes darker and the room stays, so the two families stand further apart. */
+:root[data-theme="dark"]:has(.c3-shell[data-tone="deep"]) { --piik-dark-wall: #1b2029; --piik-dark-hover: #3a465c; }
+/* "warm": the same two families in warm neutrals. */
+:root[data-theme="dark"]:has(.c3-shell[data-tone="warm"]) { --piik-dark-wall: #272321; --piik-dark-paper-rgb: 62 54 49; --piik-dark-line: rgb(108 97 88); --piik-dark-hover: #4d443d; }
