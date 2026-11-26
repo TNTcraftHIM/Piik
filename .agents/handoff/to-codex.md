@@ -80,12 +80,46 @@ So neither item is deferred any longer:
   faces reads as "go in". It goes back to the row's leading edge, where your
   disclosure already is, and the faces are only a picture of who is there.
 
-The owner also said the side column's opening and closing "没做好，有割裂". I
-am working on that in the prototype and will send what it does and why.
-
 To go in parallel: you take the product entry and the retirement of the two
-old layouts, and the three small things above. I take these two details in
-the prototype today, then render your integration again.
+old layouts, and the three small things above. Both of the owner's details
+are done in the prototype at `eec6a554` (web suite 2,409), described next.
+
+## How side regions move, and where a room's people open: `eec6a554`
+
+**What was wrong, measured by frames.** The rooms pane changed in one frame.
+A panel beside the room stayed for 240 ms with a scrollbar appearing in it,
+and then vanished. The cause was mine: the layout kept the old layouts'
+`display ... allow-discrete` and cancelled their `translate`, so the delay
+remained and the travel did not. The scrollbar came from rules keyed on
+`data-chat="panel"` that stopped applying while the panel was still shown.
+
+**The rule, which is yours already**: "Panes travel along their own edge;
+media settles once beneath them." The room takes its final size the moment a
+side region changes, and the region moves over it. Nothing resizes frame by
+frame.
+
+- **The rooms pane has one animated length**, `--lv-shown`, a registered
+  `<length>` transitioned on the shell. It is the column's width, or the
+  list's while the list is opened over the room. The column, the site's cell
+  above it and my dock below it all follow that one value, so they are one
+  edge. Unregistered, it changes at once, which is the fallback.
+- **As a list** the pane keeps its full layout at the list's width and is
+  uncovered by a `clip-path` from that length, so nothing inside reflows.
+  **As a rail** the pane is drawn at that length while its content keeps the
+  rail's width, so its ground closes over the room and the marks do not move.
+- **The room's mark does not jump between the two.** The list's mark is
+  centred at 36 px, where the rail centres it.
+- **A panel beside the room** leaves the layout at once (absolute, still
+  placed by its grid area) and slides out; opened, it is in the layout at
+  once and slides in from `@starting-style`. Its styles are keyed on "not
+  the main conversation", so it keeps its form while it leaves.
+- Reduced motion sets `--motion-surface` to 0 and all of it is immediate.
+
+**A room's people.** The faces are a picture of who is there and nothing
+more: no control, no chevron. The way to the people is the row's existing
+`participantDisclosure` at its leading edge, 16 px wide, hidden in the
+rail. So the rule in the section below reads "the row's disclosure lists
+those people", and not "pressing the faces".
 
 ## The rooms column: the owner has answered
 
@@ -97,9 +131,10 @@ a plainer thing takes their place: "房间列表的展开可能又有必要了�
 
 - A room shows the faces of who is in it: up to four, or three and the count
   of the rest.
-- Pressing the faces lists those people under the room's row. It is the person
-  row (`ChannelUser`) with no activity and no playback control, closed until
-  asked for, and absent in the rail.
+- The row's disclosure, at its leading edge, lists those people under the row.
+  It is the person row (`ChannelUser`) with no activity and no playback
+  control, closed until asked for, and absent in the rail. The faces are not a
+  control.
 - In this layout `roomActivityPeople` and `ChannelRoomParticipants` have no
   consumer. The standard that records the activity roster is yours to amend
   with this decision. The people panel still shows every state.
