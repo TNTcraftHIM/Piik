@@ -511,6 +511,8 @@ pub async fn serve(
         .merge(bundles)
         .route("/", web::document(index.clone()))
         .route("/index.html", web::document(index))
+        .fallback_service(assets)
+        .layer(middleware::map_request(web::static_range))
         .route("/connect-discovery", get(discovery))
         .route("/health", get(health))
         .route("/rooms", get(upgrade))
@@ -542,7 +544,6 @@ pub async fn serve(
         .route("/api/client-launcher/owner-entry", post(hosted::owner_entry))
         .route("/api/client-launcher/site", post(approve))
         .route("/api/client-launcher/startup-site", post(startup))
-        .fallback_service(assets)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app.clone());

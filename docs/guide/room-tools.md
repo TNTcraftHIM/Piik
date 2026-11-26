@@ -7,9 +7,9 @@ English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 Choose a room you can enter from the sidebar to read chat, join voice, share your screen or watch a friend.
 The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. The site owner needs access to open a private room in Piik. The site operator can read the chat text and inline images the site forwards. A Server-hosted room also stores its records on the operator's machine.
 
-- **The couch** shows who is in the current room, including people who are just reading chat.
-- **Under a room name on the left**, you see people in voice, sharing, watching or transferring files, including anyone forwarding to others. The icons beside their names show what they are doing.
-- **The people list on the right** covers the whole site. It groups people into **This room**, **Online** and **Offline**. Select **More people** to see more offline members, or type `@` in chat to search by name.
+- **The couch** shows who is in the current room, including people who are just reading chat. Select a person to open their reaction palette. Their headset shows their voice state.
+- **Room activity**, under a room name on the left, lists people in voice, sharing, watching or transferring files. The icons beside their names show what they are doing.
+- **The people list on the right** in the full workspace covers the whole site. It groups people into **This room**, **Online** and **Offline**. Select **More people** to see more offline members, or type `@` in chat to search by name.
 
 Use **Edit profile** beside your name to change your nickname or picture.
 The same picture appears on your little person's body in chat, voice and the couch.
@@ -168,7 +168,7 @@ browser's site storage and are not sent to the room.
 
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
-The arrow beside a room folds or expands its voice participant list.
+The arrow beside a room folds or expands its **Room activity** list.
 Microphone and listening controls do not change the shared picture's sound.
 Room managers can change **Room voice bitrate** in voice settings.
 The microphone's green fill follows your voice level. Friends' microphone booms

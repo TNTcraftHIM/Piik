@@ -491,6 +491,8 @@ export const en: Record<CopyKey, string> = {
   "channel.user.avatar": "{name}'s avatar",
   "channel.voiceDock.voiceControls": "Voice controls",
   "channel.voiceDock.openOverlay": "Open voice overlay",
+  "channel.voiceDock.voiceRoomCount": "Joined voice rooms ({count})",
+  "channel.voiceDock.openRoomOverlay": "Open voice overlay for {name}",
   "channel.voiceDock.adjustOverlay": "Adjust voice overlay",
   "channel.voiceDock.pinOverlay": "Pin voice overlay",
   "channel.voiceDock.voiceJoined": "Voice joined",

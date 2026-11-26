@@ -1,4 +1,4 @@
-.c3-couch { width: 100%; min-width: 0; }
+.c3-couch { width: 100%; min-width: 0; --c3-couch-figure-width: 42px; --c3-couch-figure-height: 50px; }
 .c3-couch-width { min-width: 0; margin-inline: calc(var(--control-compact-size) / 2); }
 .c3-couch-scene { position: relative; height: 94px; max-width: 100%; margin: auto; }
 .c3-couch-bench { position: absolute; inset: 13px 0 0; pointer-events: none; }
@@ -9,25 +9,49 @@
 .c3-couch-guests::-webkit-scrollbar { display: none; }
 .c3-couch-seat { display: grid; flex: 0 0 var(--c3-couch-seat); min-width: 0; justify-items: center; align-content: start; scroll-snap-align: start; }
 .c3-couch-people > .c3-couch-seat { padding-block: 11px 6px; }
-.c3-couch-seat > .lr-comic-tip-wrap { min-width: 0; max-width: 100%; }
-.c3-couch-seat .lr-pawn { min-width: 44px; max-width: 100%; }
-.c3-couch-seat .lr-person { width: 42px; height: 50px; }
-.c3-couch-seat .lr-pawn-name { max-width: 100%; }
-.c3-couch-activity { display: flex; align-items: center; justify-content: center; min-height: 1em; gap: 4px; line-height: 1; }
+.c3-couch-seat > .lr-comic-tip-wrap { width: 100%; min-width: 0; }
+.c3-couch-seat .lr-pawn { width: 100%; min-width: 44px; min-height: 44px; }
+.c3-couch-figure { position: relative; }
+.c3-couch-figure .lr-person { display: block; width: var(--c3-couch-figure-width); height: var(--c3-couch-figure-height); }
+.c3-couch-seat .lr-pawn-name { max-width: 100%; margin-top: 9px; font-size: 12px; }
+.c3-couch-figure:has(.lr-person[data-avatar]) { --c3-couch-mark-offset: 8%; }
+.c3-couch-activity {
+  position: absolute;
+  inset-inline-end: max(-6px, calc((var(--c3-couch-figure-width) - var(--c3-couch-seat)) / 2));
+  inset-block-end: var(--c3-couch-mark-offset, 15%);
+  display: flex;
+  pointer-events: none;
+}
+.c3-couch-activity .c3-participant-activity {
+  gap: 1px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--couch);
+}
+.c3-couch-activity .lr-glyph { width: 12px; height: 12px; }
+.c3-couch-activity [data-viewing] { position: relative; }
+.c3-couch-activity [data-viewing] .lr-glyph + .lr-glyph {
+  position: absolute;
+  inset-inline-end: -2px;
+  inset-block-end: -2px;
+  width: 8px;
+  height: 8px;
+  background: var(--paper);
+  border-radius: 50%;
+}
+/* Give several marks room below the headset and collaboration glyph. */
+.c3-couch-activity:has(.c3-participant-activity > :nth-child(2)) { --c3-couch-mark-offset: -9px; }
 .c3-couch-browse { position: absolute; top: 50px; }
 .c3-couch-browse.is-previous { left: calc(var(--control-compact-size) / -2); }
 .c3-couch-browse.is-next { right: calc(var(--control-compact-size) / -2); }
-/* Presence keeps the same people and reaction anchors; scenery yields to work. */
-@container channel-shell (max-height: 680px) {
-  .c3-room-presence .c3-couch-scene:has(.c3-participant-status) { height: 68px; }
-  .c3-room-presence .c3-couch-scene { height: 58px; }
-  .c3-room-presence .c3-couch-bench { display: none; }
-  .c3-room-presence :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 0; }
-  .c3-room-presence .c3-couch-seat .lr-pawn { min-height: 44px; }
-  .c3-room-presence .c3-couch-seat .lr-person { width: 30px; height: 36px; }
-  .c3-room-presence .c3-couch-seat .lr-pawn-name { display: none; }
-  .c3-room-presence .c3-couch-browse { top: 0; }
-}
+.c3-couch[data-compact] { --c3-couch-figure-width: 36px; --c3-couch-figure-height: 42px; }
+.c3-couch[data-compact] .c3-couch-scene { height: 80px; }
+.c3-couch[data-compact] .c3-couch-bench { inset-block-start: 10px; }
+.c3-couch[data-compact] .c3-couch-bench > svg { transform: scaleY(.8); transform-origin: top; }
+.c3-couch[data-compact] :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 7px 5px; }
+.c3-couch[data-compact] .c3-couch-browse { top: 32px; }
 @media (prefers-reduced-motion: reduce) {
   .c3-couch-guests { scroll-behavior: auto; }
 }

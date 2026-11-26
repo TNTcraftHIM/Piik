@@ -565,12 +565,8 @@ export class ChannelAttachments {
     if (this.messageRemoved(key)) throw new Error("attachment_unavailable");
     if (this.sessionId && !this.rooms.some(room => room.id === key.roomId && room.authorized)) throw new Error("room_unavailable");
     if (inlineImage?.original) return inlineImageFile(inlineImage, attachment.name);
-    const source = this.sources.get(fileKeyString(key));
-    if (source) {
-      if (!sameContent(source.attachment, attachment)) { this.withdraw(source, true); throw new Error("attachment_unavailable"); }
-      return source.file;
-    }
-    const id = fileKeyString(key);
+    const id = fileKeyString(key), source = this.sources.get(id);
+    if (source && sameContent(source.attachment, attachment)) return source.file;
     // Runtime initialization is shared; cancellation only retires this wait.
     let cancel!: () => void;
     const cancelled = new Promise<never>((_, reject) => {
@@ -585,6 +581,7 @@ export class ChannelAttachments {
     const room = this.rooms.find(room => room.id === key.roomId);
     if (!this.current(runtime) || !room?.authorized) throw new Error("room_unavailable");
     if (!this.matchesPlan({ key, attachment })) throw new Error("attachment_unavailable");
+    if (source && room.available) this.withdraw(source, true);
     let entry = this.sinks.get(id);
     if (entry && !sameContent(entry.attachment, attachment)) {
       void this.stopSink(entry, new Error("attachment_unavailable"));

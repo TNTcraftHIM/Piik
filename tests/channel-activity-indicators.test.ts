@@ -92,12 +92,13 @@ test("compact couch keeps its pawn voice appearance without duplicating the voic
   const html = renderToStaticMarkup(createElement(ChannelCouch, {
     people: [{ userId: "owned-person", name: "A friend", voice: { microphone: true, deafened: true },
       sharing: true, viewing: "active", sendingFiles: true, receivingFiles: true }],
-    selfUserId: "owned-person", session: null,
+    selfUserId: "owned-person", session: null, compact: true,
   }));
   expect(html).toContain('class="lr-person-headset"');
   expect(html).toContain('data-voice="" data-deafened="true" data-microphone="true"');
-  expect(activityButtonGlyphs(html, "Sharing; Picture received; Sending and receiving files")).toEqual([
-    glyph("cast"), glyph("eye"), glyph("fileTransfer"),
-  ]);
-  expect(html).toContain('<span class="visually-hidden">Joined voice; Microphone on; Listening paused</span>');
+  expect(html.match(/<button\b/g)).toHaveLength(1);
+  expect(html).toContain('aria-label="A friend"');
+  expect(html).toContain('aria-description="Joined voice; Microphone on; Listening paused; Sharing; Picture received; Sending and receiving files"');
+  for (const icon of ["cast", "eye", "fileTransfer"] as const) expect(html).toContain(glyph(icon));
+  expect(html).not.toContain(glyph("headphonesOff"));
 });

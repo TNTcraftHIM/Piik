@@ -210,10 +210,12 @@ watching or a file transfer. Combine their Browser and App activities on that
 row. Give each activity a labelled icon. File arrows identify the selected
 sender and the person requesting a download, including while the path is
 being prepared. The attachment owns byte progress. Folding the list is local.
-The couch seats people present through chat or media. Its headset shows voice
-state. The site directory uses the same presence for its current-room group,
-then lists other online people and offline people. Background forwarding and
-cached copies belong to connection and file details.
+The couch seats people present through chat or media. Select a seated person
+to open their reaction palette. The headset shows voice state. Sharing,
+watching and file activity use the same indicators as the room activity list.
+In the full workspace, the site directory on the right uses the same presence
+for its current-room group, then lists other online people and offline people.
+Background forwarding and cached copies belong to connection and file details.
 The couch anchors the bottom of the central body, aligned with the personal area's
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.
@@ -795,10 +797,9 @@ participant identities. Keep the brand mascot distinct.
 Participant state belongs to the shared pawn: light headphones indicate joined
 room voice, resting around the neck when listening is paused. The microphone
 boom extends toward the mouth when open and folds up when muted, independently
-of listening. The toolbar's shared `mouse` glyph sits
-centred on the body for an approved remote-control participant, regardless of
-input device. These marks follow the existing membership and control grant;
-their positions do not assert speech, input activity or media-route readiness.
+of listening. These voice marks follow room membership, listening and
+microphone state. The [media status rules](./media-status.md#projection-rules)
+locate each share's remote-control grants and link to the published 2.x markers.
 Measured speech may tint the open microphone boom and tip with `--live`, using
 the same level scale as the toolbar microphone fill. Keep the headband, body,
 name and layout stable; missing measurements leave the ordinary appearance.

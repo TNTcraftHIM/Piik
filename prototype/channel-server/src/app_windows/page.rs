@@ -23,9 +23,11 @@ use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
         ICoreWebView2Deferral, ICoreWebView2Environment, ICoreWebView2NewWindowRequestedEventArgs,
         ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2_2,
-        COREWEBVIEW2_PERMISSION_STATE_DENY,
+        COREWEBVIEW2_PERMISSION_STATE_DENY, COREWEBVIEW2_PROCESS_FAILED_KIND,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
     },
-    NewWindowRequestedEventHandler, PermissionRequestedEventHandler,
+    NewWindowRequestedEventHandler, PermissionRequestedEventHandler, ProcessFailedEventHandler,
     WindowCloseRequestedEventHandler,
 };
 use windows_core::{Interface, PWSTR};
@@ -133,6 +135,7 @@ impl Drop for Popup {
     }
 }
 struct PageView {
+    process_failed_token: i64,
     popups: Rc<RefCell<VecDeque<Popup>>>,
     // Both WebViews drop before their native window.
     caption: caption::Caption,
@@ -180,6 +183,9 @@ impl PageView {
 
 impl Drop for PageView {
     fn drop(&mut self) {
+        unsafe {
+            let _ = self.view.webview().remove_ProcessFailed(self.process_failed_token);
+        }
         let pending = std::mem::take(&mut *self.popups.borrow_mut());
         drop(pending);
         self.media.borrow().retired.send_replace(true);
@@ -458,11 +464,22 @@ impl Pages {
         let Some((key, view)) = found else {
             return false;
         };
+        self.remove_view(key, view, "window_closed");
+        true
+    }
+    pub fn process_exited(&mut self, view: Uuid) {
+        let key = self.pages.iter()
+            .find_map(|(key, page)| page.views.borrow().contains_key(&view).then_some(*key));
+        if let Some(key) = key {
+            self.remove_view(key, view, "webview_process_exited");
+        }
+    }
+    fn remove_view(&mut self, key: Uuid, view: Uuid, reason: &'static str) {
         let page = self.pages.get_mut(&key).unwrap();
         if page.views.borrow().len() == 1
             || (page.selected.is_some() && page.selected_view() == view)
         {
-            self.retire_page(key, "window_closed");
+            self.retire_page(key, reason);
         } else {
             page.candidates
                 .retain(|_, candidate| candidate.view != view);
@@ -473,7 +490,6 @@ impl Pages {
             }
             page.candidates();
         }
-        true
     }
     pub fn navigate(&mut self, view: Uuid) {
         let Some(key) = self
@@ -1146,6 +1162,14 @@ fn allows_page_navigation(url: &str) -> bool {
     url == "about:blank" || page::valid_url(url)
 }
 
+fn process_ended_view(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> bool {
+    matches!(
+        kind,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+            | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+    )
+}
+
 fn page_view(
     builder: WebViewBuilder<'_>,
     key: Uuid,
@@ -1187,6 +1211,8 @@ fn page_view(
     let pending = popups.clone();
     let popup_events = events.clone();
     let window_id = window.id();
+    let failures = events.clone();
+    let mut process_failed_token = 0;
     unsafe {
         website_permissions(&view)?;
         view.webview().add_NewWindowRequested(
@@ -1226,8 +1252,22 @@ fn page_view(
             })),
             &mut Default::default(),
         )?;
+        view.webview().add_ProcessFailed(
+            &ProcessFailedEventHandler::create(Box::new(move |_, args| {
+                if let Some(args) = args {
+                    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+                    args.ProcessFailedKind(&mut kind)?;
+                    if process_ended_view(kind) {
+                        let _ = failures.send_event(ServiceEvent::PageProcessExited(key));
+                    }
+                }
+                Ok(())
+            })),
+            &mut process_failed_token,
+        )?;
     }
     Ok(PageView {
+        process_failed_token,
         popups,
         caption,
         view,
@@ -1261,6 +1301,22 @@ fn login_popup_can_start_blank_and_navigate_to_https() {
     assert!(allows_page_navigation("https://login.example/"));
     assert!(!allows_page_navigation("about:settings"));
     assert!(!page::valid_url("about:blank"));
+}
+
+#[cfg(test)]
+#[test]
+fn whole_webview_process_exits_retire_the_view() {
+    use webview2_com::Microsoft::Web::WebView2::Win32::*;
+    assert!(process_ended_view(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED));
+    assert!(process_ended_view(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED));
+    for kind in [
+        COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE,
+    ] {
+        assert!(!process_ended_view(kind));
+    }
 }
 
 #[cfg(test)]
@@ -1448,7 +1504,10 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
         assert!(!page.views.borrow()[&page.root].window.is_visible());
     }
 
-    assert!(pages.close_window(opener));
+    let opener_view = pages.pages.values().next().unwrap().root;
+    pages.process_exited(opener_view);
+    pages.process_exited(opener_view);
+    assert!(!pages.close_window(opener));
     assert!(
         !*retired.borrow(),
         "closing the opener retired the selected popup"

@@ -56,3 +56,7 @@
   .c3-room-manage { visibility: hidden; }
   .c3-room-item:is(:hover, :focus-within, [data-selected], [data-settings-open]) > .c3-room-manage { visibility: visible; }
 }
+
+.c3-room-list-item > .c3-room-item[data-compact] { display: flex; min-height: 0; }
+.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; flex-direction: column; justify-content: center; padding: 8px 4px; }
+.c3-room-count { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }

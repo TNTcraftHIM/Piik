@@ -69,7 +69,7 @@ export const ChannelPeople = memo(function ChannelPeople({ channel, roomId, acti
   const row = (user: User) => <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined}
     self={user.id === self?.id} owner={user.id === roomOwner} online={online.has(user.id)}
     roomActivity={activities.get(user.id)} voicePlayback={listeningUsers.has(user.id) ? channel : undefined} />;
-  return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading">
+  return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading" inert={!active || undefined}>
     <header><h2 id="c3-people-heading" tabIndex={-1}>{t("channel.people.users")}<span>{state?.channel.userCount ?? 0}</span></h2>
       <span className="c3-pane-back"><BackButton onClick={onBack} /></span>
     </header>

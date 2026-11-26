@@ -93,7 +93,7 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
       return;
     }
     const action = voiceToggleActions.find(action => matchesVoiceShortcut(bindings[action], binding));
-    if (!action) return;
+    if (!action || !roomId) return;
     // Windows can start delivering this chord before its registration reply reaches the page.
     if (background.pending || background.report?.[action] === "registered" || toggle(action)) event.preventDefault();
   });
@@ -106,14 +106,14 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     press.talk(false);
   });
   useEffect(() => {
-    if (!roomId || !surface) return;
+    if ((!roomId && !pushToTalk) || !surface) return;
     const owners = new Set([document, surface]);
     const keydown = (event: KeyboardEvent) => onShortcut(event);
     owners.forEach(owner => owner.addEventListener("keydown", keydown));
     return () => owners.forEach(owner => owner.removeEventListener("keydown", keydown));
-  }, [roomId, surface]);
+  }, [roomId, surface, pushToTalk]);
   useEffect(() => {
-    if (!roomId || !surface || !pushToTalk) return;
+    if (!surface || !pushToTalk) return;
     const owners = [...new Set([document, surface])];
     const keyup = (event: KeyboardEvent) => onRelease(event);
     const release = () => onRelease();

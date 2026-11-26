@@ -612,7 +612,6 @@ test.each(["in progress", "completed without retention"])("restore replaces a re
       await expect(old).resolves.toBe("AAA");
     }
     update("restored");
-    if (phase === "completed without retention") await expect(read(b)).rejects.toThrow("attachment_unavailable");
     const next = read(b), download = files.download(key, b);
     await vi.waitFor(() => expect(getFileHandle).toHaveBeenCalledTimes(2));
     if (phase === "in progress") await expect(old).rejects.toThrow("attachment_unavailable");

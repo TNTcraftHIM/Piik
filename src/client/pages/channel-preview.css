@@ -218,15 +218,15 @@
   .c3-personal .c3-voice-destination { grid-column: 1 / -1; grid-row: 2; padding-inline: 4px; }
   .c3-personal .c3-voice-destination small { display: none; }
   .c3-personal .c3-voice-controls { grid-column: 1 / -1; grid-row: 3; }
-  .c3-shell .c3-personal .c3-identity { display: flex; grid-column: 2; grid-row: 2; padding: 0; gap: 4px; }
-  .c3-shell .c3-personal:has(.c3-voice-dock) .c3-identity { grid-row: 1; }
+  .c3-shell:not([data-layout="living"]) .c3-personal .c3-identity { display: flex; grid-column: 2; grid-row: 2; padding: 0; gap: 4px; }
+  .c3-shell:not([data-layout="living"]) .c3-personal:has(.c3-voice-dock) .c3-identity { grid-row: 1; }
   .c3-personal .c3-identity > svg { width: 20px; height: 26px; }
   .c3-personal .c3-identity strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .c3-room-presence { flex-direction: row; justify-content: center; gap: 8px; padding-block: 4px; }
   @media (max-width: 700px) {
     .c3-personal .c3-voice-entry { grid-column: 1; }
     .c3-personal .c3-voice-destination { grid-column: 1 / -1; }
-    .c3-shell .c3-personal .c3-identity { grid-row: 1; }
+    .c3-shell:not([data-layout="living"]) .c3-personal .c3-identity { grid-row: 1; }
   }
 }
 @media (min-width: 701px) and (max-height: 700px) {
@@ -234,16 +234,16 @@
   .c3-sidebar { grid-row: 2 / 5; }
 }
 @media (max-height: 700px) {
-  .c3-shell:not([data-layout="quick"]):has(.c3-workspace.has-screens) { overflow-y: auto; }
-  .c3-shell:not([data-layout="quick"]) .c3-main-body:has(.c3-workspace.has-screens) {
+  .c3-shell[data-layout="workspace"]:has(.c3-workspace.has-screens) { overflow-y: auto; }
+  .c3-shell[data-layout="workspace"] .c3-main-body:has(.c3-workspace.has-screens) {
     min-height: calc(var(--c3-stage-picture-min) + 2 * var(--c3-compact-stage-padding));
   }
-  .c3-shell .c3-personal { grid-column: 1 / -1; grid-row: 5; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 12px; border-top: 1px solid var(--line); }
+  .c3-shell:not([data-layout="living"]) .c3-personal { grid-column: 1 / -1; grid-row: 5; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 12px; border-top: 1px solid var(--line); }
   .c3-personal .c3-voice-entry { flex: 0 1 min(240px, 25%); }
   .c3-personal .c3-voice-dock { display: flex; flex: 1 1 min-content; min-width: 0; gap: 8px; padding: 0; }
   .c3-personal .c3-voice-destination { flex-basis: 8ch; }
   .c3-personal .c3-voice-controls { width: auto; gap: 4px; }
-  .c3-shell .c3-personal .c3-identity { flex: 0 1 min(180px, 25%); order: -1; }
+  .c3-shell:not([data-layout="living"]) .c3-personal .c3-identity { flex: 0 1 min(180px, 25%); order: -1; }
 }
 @media (max-width: 1100px) {
   .c3-app { --c3-content-width: calc(100% - 24px); }
@@ -261,8 +261,8 @@
   .c3-sidebar, .c3-people-panel, .c3-chat-panel { border-inline: 0; }
 }
 /* Panes travel along their own edge; media settles once beneath them. */
-.c3-shell:not([data-layout="quick"]) .c3-main-body { isolation: isolate; }
-.c3-shell:not([data-layout="quick"]) > :is(.c3-sidebar, .c3-people-panel, .c3-chat-panel) {
+.c3-shell[data-layout="workspace"] .c3-main-body { isolation: isolate; }
+.c3-shell[data-layout="workspace"] > :is(.c3-sidebar, .c3-people-panel, .c3-chat-panel) {
   position: relative;
   z-index: 2;
   translate: 0;
@@ -270,14 +270,14 @@
 }
 .c3-shell[data-sidebars="inline"] > .c3-sidebar { width: var(--c3-navigation-size); }
 .c3-shell[data-sidebars="inline"] > :is(.c3-people-panel, .c3-chat-panel) { width: var(--c3-companion-size); justify-self: end; }
-.c3-shell:not([data-layout="quick"]):is([data-view="share"][data-sidebars="inline"], [data-sidebars="overlay"]:not([data-pane="rooms"])) > .c3-sidebar { translate: -100% 0; pointer-events: none; }
-.c3-shell:not([data-layout="quick"]):not([data-companion="people"]) > .c3-people-panel,
-.c3-shell:not([data-layout="quick"]):not([data-companion="chat"]) > .c3-chat-panel { translate: 100% 0; pointer-events: none; }
-.c3-shell:not([data-layout="quick"]) .c3-chat-panel .c3-conversation { transition: display var(--motion-surface) allow-discrete; }
+.c3-shell[data-layout="workspace"]:is([data-view="share"][data-sidebars="inline"], [data-sidebars="overlay"]:not([data-pane="rooms"])) > .c3-sidebar { translate: -100% 0; pointer-events: none; }
+.c3-shell[data-layout="workspace"]:not([data-companion="people"]) > .c3-people-panel,
+.c3-shell[data-layout="workspace"]:not([data-companion="chat"]) > .c3-chat-panel { translate: 100% 0; pointer-events: none; }
+.c3-shell[data-layout="workspace"] .c3-chat-panel .c3-conversation { transition: display var(--motion-surface) allow-discrete; }
 .c3-shell[data-sidebars="overlay"] .c3-main-body { transition: visibility var(--motion-surface); }
 @starting-style {
-  .c3-shell:not([data-layout="quick"]) > .c3-sidebar { translate: -100% 0; }
-  .c3-shell:not([data-layout="quick"]) > :is(.c3-people-panel, .c3-chat-panel) { translate: 100% 0; }
+  .c3-shell[data-layout="workspace"] > .c3-sidebar { translate: -100% 0; }
+  .c3-shell[data-layout="workspace"] > :is(.c3-people-panel, .c3-chat-panel) { translate: 100% 0; }
 }
 @media (max-width: 700px) {
   .c3-app { --c3-content-width: calc(100% - 16px); --c3-heading-height: 60px; padding-top: 8px; }
@@ -285,7 +285,7 @@
   .c3-shell[data-sidebars="overlay"] > :is(.c3-sidebar, .c3-site-bar, .c3-people-panel, .c3-personal, .c3-chat-panel, .c3-room-presence),
   .c3-shell[data-sidebars="overlay"] :is(.c3-room-heading, .c3-main-body) { grid-column: 1; }
   .c3-site-bar { padding-inline: 12px; column-gap: 4px; }
-  .c3-shell .c3-room-heading { grid-row: 2; padding-block: 6px; }
+  .c3-shell:not([data-layout="living"]) .c3-room-heading { grid-row: 2; padding-block: 6px; }
   .c3-shell[data-sidebars="overlay"] .c3-main-body { grid-row: 3; }
   .c3-shell[data-sidebars="overlay"][data-overview] .c3-main-body { grid-row: 3 / 5; }
   .c3-shell[data-sidebars="overlay"] > .c3-sidebar { grid-row: 3; }

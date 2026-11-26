@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ChannelRoomPage } from "./ChannelPage";
+import { ChannelRoomPage, type RoomLayout } from "./ChannelPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { Btn, Chip } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
@@ -14,7 +14,6 @@ import { HTMLVideoMedia, AppPageMedia, type WatchMedia, type WatchMediaState, ty
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import type { AppDiscovery } from "../native/discovery";
-import type { InterfaceLayout } from "../lib/room-preferences";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
@@ -66,9 +65,12 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     return requested.success ? requested.data : "ordinary";
   });
   const invitedRoom = new URLSearchParams(location.search).get("invite-preview") === "studio" ? "studio" : null;
-  const [layout, setLayout] = useState<InterfaceLayout>(new URLSearchParams(location.search).get("layout") === "quick" ? "quick" : "workspace");
+  const [layout, setLayout] = useState<RoomLayout>(() => {
+    const requested = new URLSearchParams(location.search).get("layout");
+    return requested === "quick" || requested === "living" ? requested : "workspace";
+  });
   const [offerLayout, setOfferLayout] = useState(firstUse);
-  const changeLayout = (value: InterfaceLayout) => { setLayout(value); setOfferLayout(false); };
+  const changeLayout = (value: RoomLayout) => { setLayout(value); setOfferLayout(false); };
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => firstUse || new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
@@ -480,6 +482,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
           <fieldset><legend>{zh ? "界面入口" : "Interface entry"}</legend><div className="c3-room-preview-tools">
+            <Chip title={zh ? "客厅布局" : "Living room layout"} selected={layout === "living"}
+              onClick={() => changeLayout(layout === "living" ? "workspace" : "living")}>{zh ? "客厅布局" : "Living room layout"}</Chip>
             <Btn icon="sidebar" quiet size="compact" cap={{ text: zh ? "首次使用提示" : "First-use suggestion" }}
               title={{ text: zh ? "首次使用提示" : "First-use suggestion" }} onClick={() => { optionsPanel.current?.hidePopover(); setRoomCount(0); setCreatedRooms([]); setCount(0); setSharingRoom(null); setSelected(""); setLayout("workspace"); setOfferLayout(true); }} />
             {rooms.some(room => room.id === "studio") && <Btn icon="link" quiet size="compact" cap={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }}

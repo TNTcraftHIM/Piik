@@ -161,7 +161,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     const verifyApproval = async (reported = false) => {
       if (!approval || approving || signal.aborted) return;
       approving = true;
-      const health = await native?.health({ signal, waitForPermission: Boolean(attempt.popup), port: Number(approval.port) }).catch(() => null);
+      const health = await native?.health({ signal, waitForPermission: Boolean(attempt.popup), port: Number(approval.port) }).catch(error => {
+        if (!signal.aborted && native?.isIncompatible(error)) finish("incompatible");
+        return null;
+      });
       if (signal.aborted) return;
       approving = false;
       if (health) {
