@@ -59,8 +59,10 @@ function PawnAdornment({ voice, collaboration, host, avatar }: PawnState & { ava
   </g>;
 }
 
-export function PawnSvg({ color, host, identity, voice, collaboration, avatar, centered }: PawnState & {
+export function PawnSvg({ color, host, identity, voice, collaboration, avatar, centered, seated }: PawnState & {
   color: string; identity?: string; avatar?: string; centered?: boolean;
+  /** Prototype: keep the figure and show a custom picture as its face, for a person drawn sitting. */
+  seated?: boolean;
 }) {
   const avatarClip = useId();
   const [failedAvatar, setFailedAvatar] = useState<string>();
@@ -74,14 +76,20 @@ export function PawnSvg({ color, host, identity, voice, collaboration, avatar, c
   // The standing figure and the square picture share a footline, but have different centres.
   const frameTop = centered && picture ? 5 : 0;
   return <svg ref={root} className="lr-person" viewBox={`0 ${frameTop} 48 56`} width="40" height="48"
-    aria-hidden="true" data-avatar={picture ? "" : undefined} data-motion={identity ? "" : undefined} style={motion ? {
+    aria-hidden="true" data-avatar={picture && !seated ? "" : undefined} data-face={picture && seated ? "" : undefined} data-motion={identity ? "" : undefined} style={motion ? {
       "--person-duration": `${motion.duration}ms`,
       "--person-lean": `${motion.lean}deg`,
       "--person-gaze-x": `${host ? 1.6 : motion.gaze}px`,
       "--person-gaze-y": host ? "-1.4px" : "0px",
     } as CSSProperties : undefined}>
     <g className="lr-reaction-body"><g className="lr-person-body" fill={color}>
-      {picture ? <>
+      {picture && seated ? <>
+        <PersonShape eyes={false} host={host} />
+        <defs><clipPath id={avatarClip}><circle cx="24" cy="13.5" r="9.5" /></clipPath></defs>
+        <circle cx="24" cy="13.5" r="10.5" />
+        <image key={picture} className="lr-person-avatar" href={picture} x="14.5" y="4" width="19" height="19"
+          preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} onError={() => setFailedAvatar(picture)} />
+      </> : picture ? <>
         <defs><clipPath id={avatarClip}>
           <rect x="7" y="16" width="34" height="34" rx="5" />
         </clipPath></defs>
@@ -90,7 +98,7 @@ export function PawnSvg({ color, host, identity, voice, collaboration, avatar, c
           preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} onError={() => setFailedAvatar(picture)} />
         {host && <HostMark x={18} y={frameTop} width={12} />}
       </> : <PersonShape host={host} />}
-      <PawnAdornment host={host} voice={voice} collaboration={collaboration} avatar={!!picture} />
+      <PawnAdornment host={host} voice={voice} collaboration={collaboration} avatar={!!picture && !seated} />
     </g></g>
   </svg>;
 }

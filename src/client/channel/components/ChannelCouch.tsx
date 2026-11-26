@@ -84,7 +84,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
     const voice = person.voice && personVoiceLabel(person.voice, copy);
     const inner = <>
-      <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
+      <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner} seated
         avatar={person.avatar} voice={person.voice} collaboration={person.collaboration} />
       <span className="lr-pawn-name">{person.name}</span>
     </>;
