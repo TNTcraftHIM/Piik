@@ -2978,6 +2978,38 @@ test("a reopened source list survives the retired reader's deadline", async () =
   } finally { session.close(); }
 });
 
+test("cancelling one native source picker during App admission leaves the other reader connected", async () => {
+  const { session } = await setup();
+  const approval = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" };
+  const firstReader = new AbortController(), nextReader = new AbortController();
+  const connecting = session.activateApp(approval).catch(error => error);
+  const app = ChannelSocket.current;
+  const first = session.nativeSources(firstReader.signal).catch(error => error);
+  const next = session.nativeSources(nextReader.signal).catch(error => error);
+  try {
+    await app.onopen?.();
+    const hello = app.sent.at(-1)!;
+    expect(hello.type).toBe("hello");
+    firstReader.abort();
+    expect(await first).toMatchObject({ name: "AbortError" });
+    expect(app.readyState).toBe(ChannelSocket.OPEN);
+    app.receive({ id: hello.id, result: null });
+    await expect(connecting).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    const catalog = { sources: [{ kind: "display", sourceId: "1", title: "Fixture display" }], codecs: ["h264"],
+      softwareEncodingCodecs: [], videoAdaptation: false, processAudio: false, processAudioExclusion: false,
+      systemAudio: false, captureBorderControl: false };
+    app.receive({ id: app.sent.at(-1)!.id, result: catalog });
+    expect(await next).toEqual(catalog);
+    expect(app.sent.map(command => command.type)).toEqual(["hello", "targets"]);
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally {
+    session.close();
+    await Promise.all([connecting, first, next]);
+  }
+});
+
 test("a silent source request times out and a late reply cannot replace its refresh", async () => {
   const completed = vi.fn();
   const operation = vi.spyOn(browserDiagnostics, "debugOperation").mockReturnValue(completed);

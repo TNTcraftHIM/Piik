@@ -278,6 +278,7 @@ export class ChannelApp {
   private requests = new Map<string, { command: AppCommand; pickerURL?: string; resolve(value: unknown): void; reject(error: Error): void }>();
   readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
+  private readyWaiters = 0;
   private authenticated = false;
   private readonly lifetime = new AbortController();
   private captures = new Map<string, { id: string; kind: "capture" | "external" }>();
@@ -520,17 +521,24 @@ export class ChannelApp {
 
   async waitReady(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    const abort = () => {
-      if (this.connected || this.lifetime.signal.aborted) return;
-      this.close(new DOMException("App connection cancelled", "AbortError"));
-      this.onClose();
-    };
-    signal?.addEventListener("abort", abort, { once: true });
+    this.readyWaiters++;
+    let abort: (() => void) | undefined;
     try {
-      await this.ready;
+      if (signal) await new Promise<void>((resolve, reject) => {
+        abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        void this.ready.then(resolve, reject);
+      });
+      else await this.ready;
       signal?.throwIfAborted();
     } finally {
-      signal?.removeEventListener("abort", abort);
+      if (abort) signal?.removeEventListener("abort", abort);
+      this.readyWaiters--;
+      // An in-flight admission remains useful while another caller is waiting.
+      if (signal?.aborted && this.readyWaiters === 0 && !this.connected && !this.lifetime.signal.aborted) {
+        this.close(new DOMException("App connection cancelled", "AbortError"));
+        this.onClose();
+      }
     }
   }
 
