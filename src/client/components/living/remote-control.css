@@ -25,10 +25,10 @@
 .lr-remote-policy-actions .lr-input { flex: 1; min-width: 0; }
 .lr-remote-policy-actions .lr-input input { min-width: 0; width: 100%; }
 .lr-remote-password p { display: flex; align-items: center; gap: 6px; color: var(--warn); margin: 8px auto 0; font-size: 12px; }
-.lr-remote-password p.is-bad { color: var(--danger); }
+.lr-remote-password p.is-bad { color: var(--danger-ink); }
 .lr-remote-password > * { max-width: 360px; margin-inline: auto; }
 .lr-remote-panel p { font-size: 12px; line-height: 1.5; margin: 0; }
-.lr-remote-panel p[role="alert"] { color: var(--danger); }
+.lr-remote-panel p[role="alert"] { color: var(--danger-ink); }
 .lr-remote-request p, .lr-remote-panel p[role="alert"] { display: flex; align-items: center; gap: 6px; }
 .lr-remote-request p > svg, .lr-remote-panel p[role="alert"] > svg { flex: none; }
 .lr-remote-request .lr-remote-request-details { flex-wrap: wrap; gap: 4px 12px; margin: 0; font-size: 12px; line-height: 1.5; }
@@ -117,7 +117,7 @@
 .lr-remote-text-field textarea { width: 100%; min-height: 96px; max-height: 30dvh; resize: vertical; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: 16px/1.5 var(--mono); tab-size: 4; }
 .lr-remote-text-field textarea::placeholder { color: var(--muted); font-family: var(--font); opacity: 1; }
 .lr-remote-text-actions { display: flex; justify-content: end; }
-.lr-remote-keyboard .lr-remote-text-entry p[role="alert"] { color: var(--danger); }
+.lr-remote-keyboard .lr-remote-text-entry p[role="alert"] { color: var(--danger-ink); }
 .lr-remote-text-entry .lr-btn { flex: none; }
 .lr-remote-keyboard .lr-remote-text-entry p { margin: 0; text-align: start; }
 :is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; }

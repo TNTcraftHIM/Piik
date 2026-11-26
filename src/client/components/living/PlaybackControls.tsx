@@ -278,8 +278,12 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
   if (!available) return null;
   return <span className={`lr-playback-more${detailed ? "" : " is-compact-only"}`}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
-    <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" aria-label={t("playback.more")}
+    <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" role="dialog" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
+      <header className="lr-viewer-settings-heading lr-playback-settings-heading">
+        <h3>{t("playback.more")}</h3>
+        <Btn icon="x" title="common.close" hint="hint-close" quiet size="compact" onClick={() => panel.current?.hidePopover()} />
+      </header>
       <PlaybackSettings {...settings} picture={settings} overlaySettings={overlaySettings} reconnect={reconnect} />
       {soundHelp && <a className="lr-btn is-quiet" href={soundHelp} target="_blank" rel="noopener noreferrer">{t("playback.soundHelp")}</a>}
     </div>
