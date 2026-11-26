@@ -1360,23 +1360,37 @@ test.each(["unavailable", "rejected"])("%s peer construction keeps the site and 
     expect(socket.sent).toContainEqual({ type: "link_state", pairId: "failed", state: "failed" });
     expect(warning).toHaveBeenCalledWith("Channel peer connection could not be created", failure === "rejected" ? error : expect.any(TypeError));
     expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
-    state.pairs = failure === "rejected" ? state.pairs.slice(1) : [];
-    const failures = warning.mock.calls.length;
     socket.receive({ type: "state", state });
-    socket.receive({ type: "state", state });
-    expect(warning).toHaveBeenCalledTimes(failures);
+    expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
+    expect(warning.mock.calls.filter(([message]) => message === "Channel peer connection could not be created"))
+      .toHaveLength(failure === "rejected" ? 1 : 2);
+    expect(socket.sent.filter(command => command.type === "link_state" && command.pairId === "failed"))
+      .toEqual([{ type: "link_state", pairId: "failed", state: "failed" }]);
 
     const sending = session.sendMessage("first", message(1).text);
     peer.reply(await peer.next(), { type: "confirmed", message: message(1), inserted: true });
     await sending;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
 
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
+    expect(resumed.sent.filter(command => command.type === "link_state" && command.pairId === "failed"))
+      .toEqual([{ type: "link_state", pairId: "failed", state: "failed" }]);
+    state.pairs = failure === "rejected" ? state.pairs.slice(1) : [];
+    const failures = warning.mock.calls.length;
+    resumed.receive({ type: "state", state });
+    resumed.receive({ type: "state", state });
+    expect(warning).toHaveBeenCalledTimes(failures);
+
     vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
     state.pairs = [{ id: "replacement", peerId: "host", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
-    socket.receive({ type: "state", state });
+    resumed.receive({ type: "state", state });
     RoomPeerConnection.instances.at(-1)!.connected();
-    expect(socket.sent).toContainEqual({ type: "link_state", pairId: "replacement", state: "connected" });
-    expect(ChannelSocket.current).toBe(socket);
+    expect(resumed.sent).toContainEqual({ type: "link_state", pairId: "replacement", state: "connected" });
+    expect(ChannelSocket.current).toBe(resumed);
   } finally { session.close(); }
 });
 

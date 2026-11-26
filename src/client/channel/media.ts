@@ -39,7 +39,8 @@ interface MediaInput {
 
 export class ChannelMedia {
   private screenBufferTargetMs: number | null = null;
-  private peers = new Map<string, Peer>();
+  // A null runtime records a failed acquisition for a still-admitted pair.
+  private peers = new Map<string, Peer | null>();
   private publications: ChannelSnapshot["publications"] = [];
   private subscriptions: ChannelSnapshot["subscriptions"] = [];
   private rooms: ChannelSnapshot["channel"]["rooms"] = [];
@@ -59,6 +60,10 @@ export class ChannelMedia {
     this.screenBufferTargetMs = buffering?.target ?? null;
   }
 
+  private *peerRuntimes(): IterableIterator<Peer> {
+    for (const peer of this.peers.values()) if (peer) yield peer;
+  }
+
   setScreenBufferTarget(target: number | null): void {
     this.screenBufferTargetMs = target;
     this.applyScreenBufferTarget();
@@ -66,7 +71,7 @@ export class ChannelMedia {
 
   private applyScreenBufferTarget(): void {
     let status: ScreenBufferStatus = null;
-    for (const peer of this.peers.values()) for (const [id, input] of peer.inputs) {
+    for (const peer of this.peerRuntimes()) for (const [id, input] of peer.inputs) {
       const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
       const publication = this.publications.find(publication => publication.id === publicationId);
       if (!publication) continue;
@@ -110,7 +115,7 @@ export class ChannelMedia {
     if (!local?.profile) throw new Error("capture_unavailable");
     const previous = local.profile;
     const current = () => this.local.get(id) === local;
-    const senders = (settings: QualityProfile) => [...this.peers.values()].flatMap(peer => peer.plan.outgoing
+    const senders = (settings: QualityProfile) => [...this.peerRuntimes()].flatMap(peer => peer.plan.outgoing
       .filter(flow => flow.publicationId === id && flow.inputFlowId === null)
       .map(flow => peer.transport.configureVideo(flow.id, settings)));
     try {
@@ -137,7 +142,7 @@ export class ChannelMedia {
     if (local.profile.maxAudioBitrate === bitrate) return;
     const previous = screenAudioBitrate(local.profile.maxAudioBitrate);
     const current = () => this.local.get(id) === local;
-    const senders = (value: number) => [...this.peers.values()].flatMap(peer => peer.plan.outgoing
+    const senders = (value: number) => [...this.peerRuntimes()].flatMap(peer => peer.plan.outgoing
       .filter(flow => flow.publicationId === id && flow.inputFlowId === null)
       .map(flow => peer.transport.configureAudio(flow.id, value)));
     try {
@@ -173,12 +178,15 @@ export class ChannelMedia {
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
         this.peers.delete(id);
-        this.recordAssignments(peer.plan);
-        released = this.closePeer(peer) || released;
+        if (peer) {
+          this.recordAssignments(peer.plan);
+          released = this.closePeer(peer) || released;
+        }
       }
     }
     for (const plan of state.pairs) {
       let peer = this.peers.get(plan.id);
+      if (peer === null) continue;
       if (!peer) {
         let transport: ChannelTransport;
         try {
@@ -225,6 +233,7 @@ export class ChannelMedia {
             },
           });
         } catch (error) {
+          this.peers.set(plan.id, null);
           console.warn("Channel peer connection could not be created", error);
           this.send({ type: "link_state", pairId: plan.id, state: "failed" });
           continue;
@@ -280,9 +289,9 @@ export class ChannelMedia {
   }
 
   resync(): void {
-    for (const peer of this.peers.values()) {
-      if (["failed", "closed"].includes(peer.transport.pc.connectionState)) {
-        this.send({ type: "link_state", pairId: peer.plan.id, state: "failed" });
+    for (const [pairId, peer] of this.peers) {
+      if (!peer || ["failed", "closed"].includes(peer.transport.pc.connectionState)) {
+        this.send({ type: "link_state", pairId, state: "failed" });
       } else {
         peer.roomDataReady.clear();
         if (peer.transport.pc.connectionState === "connected") this.reportConnected(peer);
@@ -298,7 +307,7 @@ export class ChannelMedia {
   }
 
   sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean, request?: string): Promise<void> {
-    const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId && peer.plan.rooms.length);
+    const peer = [...this.peerRuntimes()].find(peer => peer.plan.peerId === peerId && peer.plan.rooms.length);
     if (!peer) return Promise.reject(new Error("peer_data_unavailable"));
     return peer.transport.sendData(kind, data, allowed, request).catch(error => {
       // Retiring this exact pair already notified the delivery owner. A late
@@ -308,11 +317,11 @@ export class ChannelMedia {
   }
 
   cancelChunks(peerId: string, request: string): void {
-    for (const peer of this.peers.values()) if (peer.plan.peerId === peerId) peer.transport.cancelChunks(request);
+    for (const peer of this.peerRuntimes()) if (peer.plan.peerId === peerId) peer.transport.cancelChunks(request);
   }
 
   sendInput(peerId: string, frame: string): boolean {
-    const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId);
+    const peer = [...this.peerRuntimes()].find(peer => peer.plan.peerId === peerId);
     return peer?.transport.sendInput(frame) ?? false;
   }
 
@@ -426,7 +435,7 @@ export class ChannelMedia {
   }
 
   private selectedInput(publicationId: string): { peer: Peer; flowId: string; input: MediaInput } | null {
-    for (const peer of this.peers.values()) {
+    for (const peer of this.peerRuntimes()) {
       const flow = peer.plan.incoming.find(flow => flow.publicationId === publicationId && flow.selected);
       const input = flow && peer.inputs.get(flow.id);
       if (flow && input && !input.failed) return { peer, flowId: flow.id, input };
@@ -435,7 +444,7 @@ export class ChannelMedia {
   }
 
   screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation, onSelectedFailure?: (id: string) => void): void {
-    for (const peer of this.peers.values()) {
+    for (const peer of this.peerRuntimes()) {
       const flow = peer.plan.incoming.find(flow => flow.id === flowId);
       const input = peer.inputs.get(flowId);
       if (!flow || !input || input.stream !== stream || input.failed || !this.subscriptions.includes(flow.publicationId)
@@ -533,7 +542,7 @@ export class ChannelMedia {
       streams.set(publication.id, current.input.stream);
     }
     const outgoingByPeer = new Map<ChannelTransport, Map<string, OutgoingMedia>>();
-    for (const peer of this.peers.values()) {
+    for (const peer of this.peerRuntimes()) {
       const outgoing = new Map<string, OutgoingMedia>();
       for (const flow of peer.plan.outgoing) {
         const publication = this.publications.find(publication => publication.id === flow.publicationId);
@@ -543,7 +552,7 @@ export class ChannelMedia {
         const profile = settings && { ...settings, displaySource: publication.source?.kind === "screen" };
         let stream = local?.stream;
         let codec = local?.codec ?? VP8_ONLY_VIDEO_CODEC;
-        if (flow.inputFlowId !== null) for (const source of this.peers.values()) {
+        if (flow.inputFlowId !== null) for (const source of this.peerRuntimes()) {
           if (!source.plan.incoming.some(input => input.id === flow.inputFlowId && input.publicationId === flow.publicationId)) continue;
           const input = source.inputs.get(flow.inputFlowId);
           if (input && !input.failed) {
@@ -576,7 +585,7 @@ export class ChannelMedia {
     this.syncRelayMedia(relayMedia);
     const streamsChanged = streams.size !== this.streams.size || [...streams].some(([id, stream]) => this.streams.get(id) !== stream);
     const screenInputs = new Map<string, ChannelScreenInput[]>();
-    for (const peer of this.peers.values()) for (const flow of peer.plan.incoming) {
+    for (const peer of this.peerRuntimes()) for (const flow of peer.plan.incoming) {
       const publication = this.publications.find(publication => publication.id === flow.publicationId);
       if (publication?.kind !== "screen") continue;
       const input = peer.inputs.get(flow.id);
@@ -639,7 +648,7 @@ export class ChannelMedia {
       return flow.selected && publication && input?.ready && track && this.ownsInput(peer, flow.id, input)
         ? [{ flowId: flow.id, publication, input, track }] : [];
     });
-    const samples = await Promise.all([...this.peers.values()].map(async peer => {
+    const samples = await Promise.all([...this.peerRuntimes()].map(async peer => {
       const bindings = peer.transport.pc.connectionState === "connected" ? incoming(peer) : [];
       if (!bindings.length) return null;
       const stats = await peer.transport.pc.getStats().catch(() => null);
@@ -661,10 +670,10 @@ export class ChannelMedia {
   }
 
   async stats(): Promise<Array<{ pairId: string; peerId: string; reports: Record<string, unknown>[] }>> {
-    return Promise.all([...this.peers].map(async ([pairId, peer]) => {
+    return Promise.all([...this.peerRuntimes()].map(async peer => {
       const values: Record<string, unknown>[] = [];
       (await peer.transport.pc.getStats()).forEach(report => values.push(report));
-      return { pairId, peerId: peer.plan.peerId, reports: values };
+      return { pairId: peer.plan.id, peerId: peer.plan.peerId, reports: values };
     }));
   }
 
@@ -672,7 +681,7 @@ export class ChannelMedia {
     const inScope = (publication: ChannelSnapshot["publications"][number]) => publication.roomId === roomId
       && (publication.kind === "voice" || publicationId === undefined || publication.id === publicationId);
     const requested = new Set(this.publications.filter(inScope).map(publication => publication.id));
-    const samples = await Promise.allSettled([...this.peers.values()].map(async (peer): Promise<ChannelMediaMetric[]> => {
+    const samples = await Promise.allSettled([...this.peerRuntimes()].map(async (peer): Promise<ChannelMediaMetric[]> => {
       const current = () => this.peers.get(peer.plan.id) === peer
         && [...peer.plan.incoming, ...peer.plan.outgoing].some(flow => flow.selected && requested.has(flow.publicationId));
       if (!current()) return [];
@@ -730,7 +739,7 @@ export class ChannelMedia {
   }
 
   reset(): void {
-    for (const peer of this.peers.values()) this.closePeer(peer);
+    for (const peer of this.peerRuntimes()) this.closePeer(peer);
     this.peers.clear();
     this.videoPool.dispose();
     this.videoPool = new BrowserEncodingPool();
