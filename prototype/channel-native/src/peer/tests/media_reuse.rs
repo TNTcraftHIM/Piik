@@ -184,9 +184,9 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
         incoming: vec![],
         outgoing: vec![binding(first_flow)],
     };
-    driver.create_pair(&plan, None).await?;
+    driver.create_pair(&plan).await?;
     let pc = driver.pairs[&pair].pc.clone();
-    let (remote, mut remote_events) = endpoint(&other, pair, None).await?;
+    let (remote, mut remote_events) = endpoint(&other, pair).await?;
     let result = async {
         let (forward, reverse) = open(&pc, &remote, &mut remote_events).await?;
         let instance = pc.connection_metrics().await?.connection_id;
@@ -427,8 +427,8 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
 async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Result<()> {
     let runtime = Runtime::new(None);
     let other = Runtime::new(None);
-    let (pc, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
-    let (remote, _) = endpoint(&other, Uuid::new_v4(), None).await?;
+    let (pc, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
+    let (remote, _) = endpoint(&other, Uuid::new_v4()).await?;
     let result = async {
         let id = Uuid::new_v4();
         let (_, forward_writable, stream) = pc
@@ -622,7 +622,7 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
 #[tokio::test]
 async fn rejected_fixed_codec_reuses_inactive_media_after_the_answer() -> Result<()> {
     let runtime = Runtime::new(None);
-    let (pc, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (pc, _) = endpoint(&runtime, Uuid::new_v4()).await?;
     let mut remote = Rtc::builder()
         .clear_codecs()
         .enable_vp8(true)

@@ -189,19 +189,18 @@ impl RoomTurns {
                 output,
             });
         }
-        let mut replies = outcome.replies().map_err(anyhow::Error::msg)?;
-        if let Some(record) = replies.iter().find_map(|reply| reply.record.broadcast()) {
-            for reader in hosted.current_readers() {
-                if reader != address.recipient {
-                    replies.push(ConversationReply {
+        let (mut replies, broadcast) = outcome.delivery().map_err(anyhow::Error::msg)?;
+        if let Some(broadcast) = broadcast {
+            replies.extend(
+                conversation::other_readers(broadcast.address.recipient, hosted.current_readers())
+                    .map(|recipient| ConversationReply {
                         address: conversation::ConversationAddress {
-                            recipient: reader,
-                            ..address.clone()
+                            recipient,
+                            ..broadcast.address.clone()
                         },
-                        record: record.clone(),
-                    });
-                }
-            }
+                        record: broadcast.record.clone(),
+                    }),
+            );
         }
         for reply in replies {
             if reply.address.recipient == local && address.recipient != local {

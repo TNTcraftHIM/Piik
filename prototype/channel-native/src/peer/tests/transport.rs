@@ -81,6 +81,7 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
     let (commands, receiver) = mpsc::channel(1);
     drop(receiver); // Exercise Driver/Track queues without constructing a network engine.
     let pc = Transport {
+        turn_possible: false,
         shared_v4: None,
         pair,
         instance: Uuid::new_v4(),
@@ -335,6 +336,7 @@ async fn install_retirement_pair(
     let id = Uuid::new_v4();
     let instance = Uuid::new_v4();
     let pc = Transport {
+        turn_possible: false,
         shared_v4: None,
         pair: id,
         instance,
@@ -533,7 +535,7 @@ async fn aborted_runtime_closes_in_progress_turn_tls_setup() -> Result<()> {
     let (events, _events) = mpsc::channel(32);
     let (_, demand) = watch::channel(BandwidthDemand { minimum_bps: 0, desired_bps: None });
     let _pair = runtime.add(
-        Uuid::new_v4(), None, None, events, Arc::new(AtomicBool::new(false)),
+        Uuid::new_v4(), None, events, Arc::new(AtomicBool::new(false)),
         Arc::new(AtomicU8::new(0)), demand, Arc::new(Notify::new()), &[server],
     ).await?;
     let mut handshake = tokio::time::timeout(Duration::from_secs(5), async {
@@ -555,11 +557,11 @@ async fn aborted_runtimes_release_their_sockets_and_server_udp_lease() -> Result
     let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
     let leased = Runtime::new(Some(fixed.clone()));
     let ordinary = Runtime::new(None);
-    let prepared = std::net::UdpSocket::bind("127.0.0.1:0")?;
-    let prepared_address = prepared.local_addr()?;
-    // Pairs hold command senders, so neither pump ends on its own.
-    let (_leased_pair, _) = endpoint(&leased, Uuid::new_v4(), None).await?;
-    let (_prepared_pair, _) = endpoint(&ordinary, Uuid::new_v4(), Some(prepared)).await?;
+    let id = Uuid::new_v4();
+    let [(winner, prepared_address), _unused] = crate::peer::preparation::loopback_winners(id).await?;
+    let (_leased_pair, _) = endpoint(&leased, Uuid::new_v4()).await?;
+    let (pair, _) = endpoint(&ordinary, id).await?;
+    ensure!(pair.adopt(winner).await?);
     for mut aborted in [leased, ordinary] {
         aborted.task.abort();
         ensure!((&mut aborted.task).await.is_err_and(|error| error.is_cancelled()));
@@ -575,12 +577,11 @@ async fn aborted_runtimes_release_their_sockets_and_server_udp_lease() -> Result
     .context("aborted pump left its reader holding the prepared socket")?;
 
     let successor = Runtime::new(Some(fixed));
-    let remote = Runtime::new(None);
-    let (server, _) = endpoint(&successor, Uuid::new_v4(), None)
+    let remote = Runtime::ipv4_loopback();
+    let (server, _) = endpoint(&successor, Uuid::new_v4())
         .await
         .context("successor runtime did not acquire the released lease")?;
-    let loopback = Some(std::net::UdpSocket::bind("127.0.0.1:0")?);
-    let (client, mut events) = endpoint(&remote, Uuid::new_v4(), loopback).await?;
+    let (client, mut events) = endpoint(&remote, Uuid::new_v4()).await?;
     let (sent, received) = open(&server, &client, &mut events).await?;
     exchange(&sent, &received, "successor-out").await?;
     exchange(&received, &sent, "successor-in").await?;
@@ -596,20 +597,12 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
     use crate::peer::tests::support::{endpoint, exchange, open};
     let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
     let server = Runtime::new(Some(fixed.clone()));
-    let remote = Runtime::new(None);
-    let (first, mut first_events) = endpoint(&server, Uuid::new_v4(), None).await?;
-    let (first_peer, mut first_peer_events) = endpoint(
-        &remote,
-        Uuid::new_v4(),
-        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-    )
+    let remote = Runtime::ipv4_loopback();
+    let (first, mut first_events) = endpoint(&server, Uuid::new_v4()).await?;
+    let (first_peer, mut first_peer_events) = endpoint(&remote, Uuid::new_v4())
     .await?;
-    let (second, _) = endpoint(&server, Uuid::new_v4(), None).await?;
-    let (second_peer, mut second_peer_events) = endpoint(
-        &remote,
-        Uuid::new_v4(),
-        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-    )
+    let (second, _) = endpoint(&server, Uuid::new_v4()).await?;
+    let (second_peer, mut second_peer_events) = endpoint(&remote, Uuid::new_v4())
     .await?;
     let (first_send, first_receive) = open(&first, &first_peer, &mut first_peer_events)
         .await
@@ -767,10 +760,10 @@ async fn fixed_udp_selects_each_bound_address_and_preserves_wildcard_sending() -
         let selected = SocketAddr::from((ip, fixed.sockets[0].local_addr()?.port()));
         let server = Runtime::new(Some(fixed));
         let remote = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.3:0".parse()?, None)])?));
-        let (sender, mut candidates) = endpoint(&server, Uuid::new_v4(), None).await?;
+        let (sender, mut candidates) = endpoint(&server, Uuid::new_v4()).await?;
         #[cfg(not(target_os = "android"))]
         assert!(sender.call(|e| Ok(e.host_refresh.is_none())).await?);
-        let (receiver, mut events) = endpoint(&remote, Uuid::new_v4(), None).await?;
+        let (receiver, mut events) = endpoint(&remote, Uuid::new_v4()).await?;
         let candidates: Vec<_> = std::iter::from_fn(|| candidates.try_recv().ok())
             .filter_map(|event| match event {
                 Event::Candidate(_, candidate, _) => Some(candidate),
@@ -917,8 +910,8 @@ async fn negotiated_profiles_map_actual_au_codec_on_one_sender() -> Result<()> {
     let high = codec(&profiles.params()[1]).rtp_codec;
     let left = Runtime::new(None).with_codecs(profiles.clone());
     let right = Runtime::new(None).with_codecs(profiles);
-    let (tx, _) = endpoint(&left, Uuid::new_v4(), None).await?;
-    let (rx, mut events) = endpoint(&right, Uuid::new_v4(), None).await?;
+    let (tx, _) = endpoint(&left, Uuid::new_v4()).await?;
+    let (rx, mut events) = endpoint(&right, Uuid::new_v4()).await?;
     let result = async {
         let id = Uuid::new_v4();
         let (_, writable, _) = tx
@@ -1019,8 +1012,8 @@ async fn restricted_profile_confirmation_retains_alternatives_but_rejects_wrong_
     let high = codec(&h264_profiles(&[0x64001f]).params()[0]).rtp_codec;
     let left = Runtime::new(None).with_codecs(transport_codecs(false, true));
     let right = Runtime::new(None).with_codecs(transport_codecs(false, false));
-    let (tx, _) = endpoint(&left, Uuid::new_v4(), None).await?;
-    let (rx, _) = endpoint(&right, Uuid::new_v4(), None).await?;
+    let (tx, _) = endpoint(&left, Uuid::new_v4()).await?;
+    let (rx, _) = endpoint(&right, Uuid::new_v4()).await?;
     let result = async {
         let id = Uuid::new_v4();
         tx.add_output(
@@ -1087,13 +1080,12 @@ async fn local_input_delivers_media_without_offered_candidates() -> Result<()> {
 async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> Result<()> {
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
     use futures_util::{stream::FuturesUnordered, StreamExt};
-    let sender_runtime = Runtime::new(None);
+    let sender_runtime = Runtime::ipv4_loopback();
     // Local ingest must not consume or advertise the room server's shared UDP.
     let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
     let shared_address = fixed.sockets[0].local_addr()?;
     let receiver_runtime = Runtime::new(Some(fixed));
-    let prepared = std::net::UdpSocket::bind("127.0.0.1:0")?;
-    let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4(), Some(prepared)).await?;
+    let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4()).await?;
     let video = Uuid::new_v4();
     let audio = Uuid::new_v4();
     let (mut feedback, video_writable, _) = sender
@@ -1228,12 +1220,8 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
 #[tokio::test]
 async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
     use crate::peer::tests::support::{endpoint, h264};
-    let runtime = Runtime::new(None);
-    let (sender, _) = endpoint(
-        &runtime,
-        Uuid::new_v4(),
-        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-    )
+    let runtime = Runtime::ipv4_loopback();
+    let (sender, _) = endpoint(&runtime, Uuid::new_v4())
     .await?;
     sender
         .add_output(
@@ -1330,7 +1318,7 @@ async fn nat64_lookup_waits_for_both_families_and_retires_at_nomination() -> Res
     use netwatch::interfaces::{IpNet, Ipv6AddrFlags};
     let runtime = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?));
     for has_ipv6 in [false, true] {
-        let (peer, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let (peer, _) = endpoint(&runtime, Uuid::new_v4()).await?;
         let cancelled = peer
             .call(move |e| {
                 e.nat64 = Some(nat64::Bootstrap::new(has_ipv6));
@@ -1397,7 +1385,7 @@ async fn nat64_lookup_waits_for_both_families_and_retires_at_nomination() -> Res
 async fn nominated_ice_path_retires_refresh_before_dtls() -> Result<()> {
     use crate::peer::tests::support::endpoint;
     let runtime = Runtime::new(None);
-    let (pc, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (pc, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let before: SocketAddr = "[2001:db8::1]:42000".parse()?;
     let late: SocketAddr = "[2001:db8::2]:42000".parse()?;
     pc.call(move |e| {
@@ -1484,7 +1472,7 @@ fn interface_state_changes_only_admit_usable_ipv6_addresses() -> Result<()> {
 #[tokio::test]
 async fn metrics_keep_sdk_sample_clock_and_discard_retired_mid_events() -> Result<()> {
     let runtime = Runtime::new(None);
-    let (pc, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (pc, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4()).await?;
     let output = Uuid::new_v4();
     pc.add_output(
         output,
@@ -1598,8 +1586,8 @@ async fn room_transport_offer_distinguishes_no_change_pending_and_retired() -> R
 
     let runtime = Runtime::new(None);
     let id = Uuid::new_v4();
-    let (left, _left_events) = endpoint(&runtime, id, None).await?;
-    let (right, _right_events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (left, _left_events) = endpoint(&runtime, id).await?;
+    let (right, _right_events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let result = async {
         ensure!(!left.offer().await?);
         let _channel = left.create_channel("first").await?;
@@ -1619,7 +1607,7 @@ async fn room_transport_offer_distinguishes_no_change_pending_and_retired() -> R
         ensure!(left.stable().await);
 
         left.close().await?;
-        let (replacement, _replacement_events) = endpoint(&runtime, id, None).await?;
+        let (replacement, _replacement_events) = endpoint(&runtime, id).await?;
         let error = left.offer().await.unwrap_err();
         ensure!(error.to_string() == "transport retired", "{error}");
         ensure!(!left.stable().await);
@@ -1636,8 +1624,8 @@ async fn room_transport_offer_distinguishes_no_change_pending_and_retired() -> R
 #[tokio::test]
 async fn native_opus_offer_and_answer_request_stereo_receive() -> Result<()> {
     let runtime = Runtime::new(None);
-    let (left, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
-    let (right, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (left, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4()).await?;
+    let (right, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4()).await?;
     let result = async {
         let (_feedback, _writable, _) = left
             .add_output(
@@ -1687,8 +1675,8 @@ async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Res
     use crate::peer::tests::support::{endpoint, message, open};
 
     let runtime = Runtime::new(None);
-    let (left, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
-    let (right, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (left, _) = endpoint(&runtime, Uuid::new_v4()).await?;
+    let (right, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let (old, _) = open(&left, &right, &mut events).await?;
     let next = left.create_channel("piik-room").await?;
     if left.offer().await? {
@@ -1801,16 +1789,141 @@ async fn initial_candidate_overflow_retires_only_its_pair() -> Result<()> {
     let (events, mut received) = mpsc::channel(1);
     f.driver.events = events;
     f.driver.events.try_send(Event::Negotiate(plan.id)).unwrap();
-    f.driver.create_pair(&plan, None).await?;
+    f.driver.create_pair(&plan).await?;
     let missed = plan.id;
     received.try_recv()?;
     plan.id = Uuid::new_v4();
     plan.peer_id = Uuid::new_v4();
-    f.driver.create_pair(&plan, None).await?;
+    f.driver.create_pair(&plan).await?;
     assert!(matches!(received.try_recv()?, Event::Candidate(id, _, None) if id == plan.id));
     f.driver.deadlines().await;
     assert!(!f.driver.pairs.contains_key(&missed));
     assert!(f.driver.pairs.contains_key(&plan.id));
     f.close().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_ice_adopts_prepared_path_on_original_pair() -> Result<()> {
+    use crate::peer::{preparation::loopback_winners, tests::{driver, support::exchange}, ChannelEvent, Deadline};
+    use piik_channel_core::wire::{PairInfo, UdpPreparation};
+
+    fn plan(id: Uuid, peer_id: Uuid) -> PairInfo {
+        PairInfo { id, peer_id, rooms: vec![], outgoing: vec![], incoming: vec![],
+            can_receive_video_layers: false, udp_preparation: Some(UdpPreparation::Available) }
+    }
+    async fn identity(t: &Transport) -> Result<(Uuid, Uuid, usize, String, String, String)> {
+        t.call(|e| {
+            let rtc = &e.rtc as *const Rtc as usize;
+            let api = e.rtc.direct_api();
+            let cred = api.local_ice_credentials();
+            Ok((e.handle.pair, e.handle.instance, rtc, cred.ufrag, cred.pass,
+                api.local_dtls_fingerprint().to_string()))
+        }).await
+    }
+    fn sink_sdp(sdp: String, sink: SocketAddr) -> Result<String> {
+        let mut output = String::new();
+        let mut changed = 0;
+        for line in sdp.lines() {
+            if let Some(c) = line.strip_prefix("a=candidate:") {
+                let mut fields: Vec<_> = c.split_ascii_whitespace().map(String::from).collect();
+                fields[4] = "::1".into();
+                fields[5] = sink.port().to_string();
+                output += &format!("a=candidate:{}\r\n",fields.join(" "));
+                changed += 1;
+            } else {
+                output += line;
+                output += "\r\n";
+            }
+        }
+        ensure!(changed >= 1);
+        Ok(output)
+    }
+    async fn selected(t: &Transport, l: SocketAddr, r: SocketAddr) -> Result<()> {
+        tokio::time::timeout(Duration::from_secs(6), async {
+            loop {
+                if t.call(move |e| Ok(e.peer_stats.as_ref().and_then(|s| s.selected_candidate_pair.as_ref())
+                    .is_some_and(|s| s.local.addr == l && s.remote.addr == r))).await? { return Ok(()) }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        }).await?
+    }
+
+    for ordinary_first in [false, true] {
+        let (mut l, _le, _lc, _ls) = driver();
+        let (mut r, mut events, _rc, _rs) = driver();
+        l.transport.test_binds = Some(&["[::1]:0"]);
+        r.transport.test_binds = Some(&["[::1]:0"]);
+        let id = Uuid::new_v4();
+        l.create_pair(&plan(id, Uuid::new_v4())).await?;
+        r.create_pair(&plan(id, Uuid::new_v4())).await?;
+        let a = l.pairs[&id].pc.clone();
+        let b = r.pairs[&id].pc.clone();
+        let expiry = |d: &crate::peer::Driver| d.pairs[&id].deadline.map(Deadline::expires);
+        let deadlines = (expiry(&l), expiry(&r));
+        ensure!(deadlines.0.is_some() && deadlines.1.is_some());
+        let silent = std::net::UdpSocket::bind("[::1]:0")?;
+        let local = a.create_channel("piik-room").await?;
+        a.offer().await?;
+        let (k, s) = a.local_description().await?;
+        let [(wa, la), (wb, lb)] = loopback_winners(id).await?;
+        let mut remote_winner = Some(wb);
+        if !ordinary_first {
+            ensure!(b.adopt(remote_winner.take().unwrap()).await?);
+            ensure!(b.call(|engine| Ok(engine.prepared_remote.is_some())).await?);
+        }
+        b.accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? }).await?;
+        let (k, s) = b.local_description().await?;
+        a.accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? }).await?;
+        let identities = (identity(&a).await?, identity(&b).await?);
+        ensure!(std::net::UdpSocket::bind(la).is_err() && std::net::UdpSocket::bind(lb).is_err());
+        let mut local_winner = Some(wa);
+        if !ordinary_first {
+            let wa = local_winner.take().unwrap();
+            ensure!(!a.call(|e| Ok(e.rtc.has_send_consent())).await?);
+            ensure!(!b.call(|e| Ok(e.rtc.has_send_consent())).await?);
+            ensure!(a.adopt(wa).await?);
+        }
+        let remote = tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(event) = events.recv().await {
+                if let Event::Channel(_, channel) = event {return Ok(channel)}
+            }
+            Err(anyhow!("channel closed"))
+        }).await??;
+        for chan in [&local, &remote] {
+            ensure!(matches!(tokio::time::timeout(Duration::from_secs(5), chan.poll()).await?, Some(ChannelEvent::Open)));
+        }
+        if let (Some(wa), Some(wb)) = (local_winner, remote_winner) {
+            ensure!(a.call(|e| Ok(e.rtc.has_send_consent())).await?);
+            ensure!(!a.adopt(wa).await? && !b.adopt(wb).await?);
+            let _released = (std::net::UdpSocket::bind(la)?, std::net::UdpSocket::bind(lb)?);
+        } else {
+            selected(&a,la,lb).await?;
+            selected(&b,lb,la).await?;
+        }
+        ensure!(identities == (identity(&a).await?, identity(&b).await?));
+        for (handle, expected) in [(&a,identities.1.5.clone()),(&b,identities.0.5.clone())] {
+            ensure!(handle.call(move |e| Ok(e.rtc.direct_api().remote_dtls_fingerprint()
+                .is_some_and(|fp| fp.to_string()==expected))).await?, "peer certificate differs from original");
+        }
+        ensure!(deadlines == (expiry(&l),expiry(&r)));
+        exchange(&local,&remote,"left").await?;
+        exchange(&remote,&local,"right").await?;
+        let [(stale, addr), (peer_unused,_)] = loopback_winners(id).await?;
+        drop(peer_unused);
+        a.close().await?;
+        l.pairs.remove(&id);
+        l.create_pair(&plan(id,Uuid::new_v4())).await?;
+        let replacement = l.pairs[&id].pc.clone();
+        ensure!(replacement.instance != a.instance);
+        ensure!(!a.adopt(stale).await?);
+        let _released = std::net::UdpSocket::bind(addr)?;
+        ensure!(replacement.call(|e| Ok(e.sockets.len()==1 && e.rtc.is_alive())).await?);
+        replacement.close().await?;
+        b.close().await?;
+        let _released = (std::net::UdpSocket::bind(la)?, std::net::UdpSocket::bind(lb)?);
+        l.transport.close().await;
+        r.transport.close().await;
+    }
     Ok(())
 }

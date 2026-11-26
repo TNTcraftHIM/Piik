@@ -61,6 +61,7 @@ pub(crate) enum MappingKind {
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PreparationOutcome {
+    Superseded,
     Succeeded,
     Failed,
     TimedOut,
@@ -101,10 +102,7 @@ pub(crate) enum RtcPairEvent {
     PreparationFinished {
         outcome: PreparationOutcome,
     },
-    OrdinaryFallback,
-    TransportCreated {
-        prepared: bool,
-    },
+    TransportCreated,
     PairSetupFailed,
     RetirementStarted {
         reason: RetirementReason,
@@ -527,7 +525,7 @@ mod tests {
                 outcome: PreparationOutcome::TimedOut,
             },
         );
-        recorder.rtc_pair(first, RtcPairEvent::OrdinaryFallback);
+        recorder.rtc_pair(first, RtcPairEvent::TransportCreated);
         recorder.rtc_pair(
             first,
             RtcPairEvent::GatewayProbe {
@@ -595,7 +593,7 @@ mod tests {
         );
         assert_eq!(details[1]["event"]["count"], 256);
         assert_eq!(details[2]["event"]["outcome"], "timed_out");
-        assert_eq!(details[3]["event"]["stage"], "ordinary_fallback");
+        assert_eq!(details[3]["event"]["stage"], "transport_created");
         assert_eq!(
             details[4]["event"],
             serde_json::json!({"stage":"gateway_probe","upnp":false,"pcp":false,"nat_pmp":true})

@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 52;
+pub const CHANNEL_PROTOCOL: u8 = 54;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -660,7 +660,6 @@ impl Signal {
 #[serde(rename_all = "snake_case")]
 pub enum UdpPreparation {
     Available,
-    Required,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -957,6 +956,7 @@ pub struct SessionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct PairInfo {
     pub id: Uuid,
+    // Core authorizes bounded UDP preparation on this pair's existing RTC.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub udp_preparation: Option<UdpPreparation>,
     pub peer_id: Uuid,

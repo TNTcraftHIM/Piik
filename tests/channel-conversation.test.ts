@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import * as hosting from "../src/client/channel/hosting";
-import type { HostedRoom } from "../prototype/channel-browser/src/hosting-contract";
+import type { HostedRoom, PeerDelivery } from "../prototype/channel-browser/src/hosting-contract";
 import type { ChannelSnapshot, ConversationReply, SignedConversationPacket } from "../src/client/channel/protocol";
 import { readFile } from "node:fs/promises";
 
@@ -25,10 +25,11 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
   const snapshot = { type: "message" as const, messageId: "message", messageSeq: 1, revision: 1, counts: { heart: 1 } };
   let record: ConversationReply["record"] = { type: "interaction_ready", serverTime: 1000, reactionIds: ["heart"], publicationReactions: [] };
   let broadcast: ConversationReply["record"] | null = null;
-  const host = { currentReaders: vi.fn(() => ["source", "second", "third"]),
+  const host = { broadcastRecipients: vi.fn(async () => ["second", "third"]),
     dispatchPeer: vi.fn(async (packet: SignedConversationPacket) => {
       const { command: _command, ...request } = JSON.parse(packet.payload);
-      return [{ ...request, sender: "host", recipient: "source", record }];
+      const reply = { ...request, sender: "host", recipient: "source", record };
+      return { replies: [reply], broadcast: broadcast && { ...reply, record: broadcast } };
     }),
   } as unknown as HostedRoom;
   const sign = vi.fn((sender: string, payload: string) => JSON.stringify({ sender, payload, signature: [1] }));
@@ -36,7 +37,6 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
     createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign, free: vi.fn() }),
     verify_conversation: (json: string) => JSON.stringify(JSON.parse(JSON.parse(json).payload)),
     encode_control: (json: string) => new TextEncoder().encode(json), decode_control: (bytes: Uint8Array) => new TextDecoder().decode(bytes),
-    conversation_broadcast: () => JSON.stringify(broadcast),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }), host: () => host,
     send: packet => { sent.push(packet); }, file: vi.fn(), reply: vi.fn() });
@@ -47,10 +47,14 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
   try {
     await receive({ type: "interaction_ready" });
     expect(sent.map(packet => JSON.parse(packet.payload).recipient)).toEqual(["source"]);
-    expect(host.currentReaders).not.toHaveBeenCalled();
+    expect(host.broadcastRecipients).not.toHaveBeenCalled();
     sent.length = 0;
     record = broadcast = { type: "reaction", nonce: 1, event, snapshot };
     const click = { type: "react", nonce: 1, target: event.target, reaction: "heart" };
+    vi.mocked(host.broadcastRecipients).mockImplementationOnce(async () => {
+      expect(sent.map(packet => JSON.parse(packet.payload).recipient)).toEqual(["source"]);
+      return ["second", "third"];
+    });
     await receive(click);
     const replies = sent.map(packet => JSON.parse(packet.payload) as ConversationReply);
     expect(replies.map(reply => reply.recipient).sort()).toEqual(["second", "source", "third"]);
@@ -63,11 +67,11 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
     broadcast = null;
     await receive(click);
     expect(sent.map(packet => JSON.parse(packet.payload).record)).toEqual([record]);
-    expect(host.currentReaders).toHaveBeenCalledTimes(1);
+    expect(host.broadcastRecipients).toHaveBeenCalledExactlyOnceWith("source");
 
     record = broadcast = { type: "reaction", nonce: 2, event, snapshot };
     sent.length = 0;
-    vi.mocked(host.currentReaders).mockRejectedValueOnce(new Error("readers unavailable"));
+    vi.mocked(host.broadcastRecipients).mockRejectedValueOnce(new Error("readers unavailable"));
     await expect(receive({ ...click, nonce: 2 })).rejects.toThrow("readers unavailable");
     expect(sent.map(packet => JSON.parse(packet.payload))).toEqual([
       expect.objectContaining({ recipient: "source", requestId: "original-id", record }),
@@ -86,7 +90,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
   const requests: SignedConversationPacket[] = [], replies: SignedConversationPacket[] = [], received = vi.fn();
   const dispatchPeer = vi.fn(async (packet: SignedConversationPacket) => {
     const { command: _command, ...address } = JSON.parse(packet.payload);
-    return [{ ...address, sender: host, recipient: sender, record: { type: "history_page", messages: [], hasMore: false, oldestSeq: null, before: null } }];
+    return { replies: [{ ...address, sender: host, recipient: sender, record: { type: "history_page", messages: [], hasMore: false, oldestSeq: null, before: null } }], broadcast: null };
   });
   const roomHost = { dispatchPeer } as unknown as HostedRoom;
   const reader = new ChannelConversation({ context: () => ({ sessionId: sender, state, connected: true }),
@@ -158,18 +162,17 @@ test("retiring a room during a conversation commit does not read or broadcast fr
   const state = conversationState("host", "source", "binding", "domain");
   const record: ConversationReply["record"] = { type: "reaction", nonce: 1,
     event: { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message", messageSeq: 1, messageId: "message" } }, snapshot: null };
-  let finish!: (replies: ConversationReply[]) => void;
-  const committed = new Promise<ConversationReply[]>(resolve => { finish = resolve; });
+  let finish!: (delivery: PeerDelivery) => void;
+  const committed = new Promise<PeerDelivery>(resolve => { finish = resolve; });
   let began!: () => void;
   const committing = new Promise<void>(resolve => { began = resolve; });
-  const currentReaders = vi.fn(() => { throw new Error("released room"); });
-  const host = { dispatchPeer: vi.fn(() => { began(); return committed; }), currentReaders } as unknown as HostedRoom;
+  const broadcastRecipients = vi.fn(() => { throw new Error("released room"); });
+  const host = { dispatchPeer: vi.fn(() => { began(); return committed; }), broadcastRecipients } as unknown as HostedRoom;
   let hosted: HostedRoom | undefined = host;
   const send = vi.fn();
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign: vi.fn(), free: vi.fn() }),
     verify_conversation: (json: string) => JSON.stringify(JSON.parse(JSON.parse(json).payload)),
-    conversation_broadcast: () => JSON.stringify(record),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }),
     host: () => hosted, send, file: vi.fn(), reply: vi.fn() });
@@ -180,9 +183,10 @@ test("retiring a room during a conversation commit does not read or broadcast fr
       command: { type: "react", nonce: 1, target: record.event!.target, reaction: "heart" } }) });
     await committing;
     hosted = undefined;
-    finish([{ ...address, sender: "host", recipient: "source", record }]);
+    const reply = { ...address, sender: "host", recipient: "source", record };
+    finish({ replies: [reply], broadcast: reply });
     await expect(received).resolves.toBeUndefined();
-    expect(currentReaders).not.toHaveBeenCalled();
+    expect(broadcastRecipients).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   } finally { conversation.close(); }
 });

@@ -4,7 +4,7 @@ mod support;
 use piik_channel_core::{
     conversation::{ConversationCommand, ConversationResult},
     history::HistoryResult,
-    wire::{Event, PairInfo, RoomAccess},
+    wire::{AudienceState, Event, PairInfo, RoomAccess},
     AttachmentDescriptor,
 };
 use serde_json::{json, Value};
@@ -608,6 +608,27 @@ fn required_physical_repair_renews_only_retired_transport() {
             viewer,
             json!({"type":"subscribe", "publicationId":publication, "enabled":true}),
         );
+        let published_state = |state: &piik_channel_core::wire::Snapshot| {
+            state
+                .publications
+                .iter()
+                .find(|p| p.id == publication)
+                .unwrap()
+                .audience
+                .iter()
+                .find(|viewer| viewer.session_id == receiver)
+                .unwrap()
+                .state
+        };
+        let no_failed_delivery = |effects: piik_channel_core::Effects| {
+            for (target, event) in effects.events {
+                if target == viewer {
+                    if let Event::State { state } = event {
+                        assert_ne!(published_state(&state), AudienceState::Failed);
+                    }
+                }
+            }
+        };
         let old = pair(&network, viewer, source);
         connect(&mut network, [host, viewer], old.id);
         let old_flow = pair(&network, viewer, source).incoming[0].id;
@@ -616,16 +637,18 @@ fn required_physical_repair_renews_only_retired_transport() {
             viewer,
             json!({"type":"flow_state", "pairId":old.id, "flowId":old_flow, "state":"decoded"}),
         );
-        network.command_at(
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Active);
+        no_failed_delivery(network.command_at(
             viewer,
             json!({"type":"link_state","pairId":old.id,"state":"failed"}),
             200,
-        );
+        ));
         assert!(network
             .state(viewer)
             .pairs
             .iter()
             .all(|edge| edge.id != old.id));
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Preparing);
         assert!(network.authority.expire(5_199).events.is_empty());
         let wake = network.authority.expire(5_200);
         assert!(wake.events.iter().any(|(_, event)| matches!(event,
@@ -635,7 +658,7 @@ fn required_physical_repair_renews_only_retired_transport() {
             network.authority.expire(5_200).events.is_empty(),
             "physical retry is admitted once without a room wake"
         );
-        network.deliver(wake);
+        no_failed_delivery(network.deliver(wake));
         assert!(
             physical_pair(&network, viewer, source).is_some(),
             "active demand retries after cooldown on the existing signaling sockets"
@@ -643,6 +666,7 @@ fn required_physical_repair_renews_only_retired_transport() {
         let restored = pair(&network, viewer, source);
         assert_ne!(restored.id, old.id);
         assert!(restored.incoming.is_empty());
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Preparing);
         assert!(network.state(viewer).subscriptions.contains(&publication));
         assert!(network
             .state(viewer)
@@ -671,12 +695,13 @@ fn required_physical_repair_renews_only_retired_transport() {
             assert_eq!(pair(&network, viewer, source).id, restored.id);
         }
         for connection in [host, viewer] {
-            network.command_at(
+            no_failed_delivery(network.command_at(
                 connection,
                 json!({"type":"link_state","pairId":restored.id,"state":"connected"}),
                 5_202,
-            );
+            ));
         }
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Preparing);
         let flow = pair(&network, viewer, source).incoming[0].id;
         assert_ne!(flow, old_flow);
         network.command_at(
@@ -684,6 +709,7 @@ fn required_physical_repair_renews_only_retired_transport() {
             json!({"type":"flow_state", "pairId":restored.id, "flowId":flow, "state":"decoded"}),
             5_203,
         );
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Active);
         assert!(network.authority.expire(30_000).events.is_empty());
         assert_eq!(pair(&network, viewer, source).id, restored.id);
     }
@@ -3549,7 +3575,7 @@ fn prepare_capable_join(network: &mut RoomNetwork, connection: Uuid) -> (Uuid, S
         .unwrap()
 }
 #[test]
-fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_room_expiry() {
+fn coordinated_udp_preparation_preserves_the_pair_and_room_expiry() {
     use piik_channel_core::{host::HostAction, wire::Request};
     let mut network = preparation_network(preparation_ice());
     let host = Uuid::new_v4();
@@ -3604,32 +3630,9 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
         host,
         json!({"type":"host_output","roomId":room,"output":projection}),
     );
-    let effects = network.authority.handle(
-        viewer,
-        Request::parse(
-            &json!({"type":"link_state","pairId":original.id,"state":"failed"}).to_string(),
-        )
-        .unwrap(),
-        101,
-    );
-    assert!(
-        !effects
-            .events
-            .iter()
-            .any(|(_, event)| matches!(event, Event::HostInput { .. })),
-        "prepared replacement is not a RoomHost route failure"
-    );
-    network.deliver(effects);
-    let prepared = pair(&network, viewer, host_session);
-    assert!(prepared.can_receive_video_layers);
-    assert_ne!(prepared.id, original.id);
-    assert_eq!(
-        prepared.udp_preparation,
-        Some(piik_channel_core::wire::UdpPreparation::Required)
-    );
-    assert_eq!(prepared.rooms, original.rooms);
-    assert_eq!(prepared.incoming, original.incoming);
-    assert_eq!(prepared.outgoing, original.outgoing);
+    let effects = network.command_at(viewer, json!({"type":"signal","pairId":original.id,"payload":{"udp":{"type":"ready"}}}),101);
+    assert!(effects.events.iter().any(|(_, e)| matches!(e, Event::Signal { pair_id, .. } if *pair_id == original.id)));
+    assert_eq!(pair(&network, viewer, host_session).id, original.id);
     assert!(
         serde_json::to_value(&network.state(viewer).sessions)
             .unwrap()
@@ -3638,15 +3641,6 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
             .iter()
             .all(|s| s.get("canPrepareUdp").is_none() && s.get("canReceiveVideoLayers").is_none()),
         "runtime capability is not public roster data"
-    );
-    let stale = network.command_at(
-        viewer,
-        json!({"type":"signal","pairId":original.id,"payload":{"resync":true}}),
-        102,
-    );
-    assert!(
-        stale.events.is_empty(),
-        "retired signaling cannot reach or fail the prepared replacement"
     );
     let input = network
         .authority
@@ -3677,7 +3671,7 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
     let effects = network.authority.handle(
         viewer,
         Request::parse(
-            &json!({"type":"link_state","pairId":prepared.id,"state":"failed"}).to_string(),
+            &json!({"type":"link_state","pairId":original.id,"state":"failed"}).to_string(),
         )
         .unwrap(),
         103,
@@ -3688,12 +3682,8 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
         .state(viewer)
         .pairs
         .iter()
-        .any(|p| p.id == prepared.id));
-    assert!(network
-        .state(viewer)
-        .pairs
-        .iter()
-        .all(|p| p.udp_preparation != Some(piik_channel_core::wire::UdpPreparation::Required)));
+        .any(|p| p.id == original.id));
+
     // The unchanged expiry remains authoritative for the unrelated room flow.
     let expired = network.authority.expire(deadline);
     assert!(expired.events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::RouteWake))));
@@ -4595,14 +4585,13 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
                 host,
                 json!({"type":"link_state","pairId":original.id,"state":"connected"}),
             );
-            // Connected is a transport fact; the ordinary opportunity is gone.
-            // A later snapshot, rather than another connection attempt, shows it.
+            // Grant follows capability even when a TURN connection is established.
             command(
                 &mut network,
                 host,
                 json!({"type":"set_profile","avatar":null,"name":"Connected Native"}),
             );
-            assert_eq!(pair(&network, host, viewer_session).udp_preparation, None);
+            assert_eq!(pair(&network, host, viewer_session).udp_preparation, original.udp_preparation);
         } else {
             // Resume onto a client without this runtime capability. The same Session
             // and existing pair remain, but the previous client's claim cannot survive.
@@ -4622,11 +4611,6 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
         );
         network.deliver(effects);
         assert!(!network.state(host).pairs.iter().any(|p| p.id == failed_id));
-        assert!(network
-            .state(host)
-            .pairs
-            .iter()
-            .all(|p| p.udp_preparation != Some(piik_channel_core::wire::UdpPreparation::Required)));
     }
 }
 
@@ -4675,19 +4659,12 @@ fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
             viewer,
             json!({"type":"link_state","pairId":original.id,"state":"failed"}),
         );
-        assert_eq!(
-            network
-                .state(viewer)
-                .pairs
-                .iter()
-                .any(|pair| pair.udp_preparation == Some(UdpPreparation::Required)),
-            configured
-        );
+        assert!(!network.state(viewer).pairs.iter().any(|pair| pair.id == original.id));
     }
 }
 
 #[test]
-fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles() {
+fn coordinated_udp_signals_use_the_current_pair_and_fixed_endpoint_roles() {
     let mut network = preparation_network(preparation_ice());
     let host = Uuid::new_v4();
     let viewer = Uuid::new_v4();
@@ -4703,20 +4680,6 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
     let original = pair(&network, viewer, host_session);
     let observation = json!({"kind":"sequential","address":"203.0.113.5","port":42000,"step":2});
     let offer = json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":observation}});
-    let rejected = network.command(
-        initiator,
-        json!({"type":"signal","pairId":original.id,"payload":offer}),
-    );
-    assert!(rejected
-        .events
-        .iter()
-        .any(|(_, event)| matches!(event,Event::Error{code,..} if code=="invalid_signal")));
-    command(
-        &mut network,
-        viewer,
-        json!({"type":"link_state","pairId":original.id,"state":"failed"}),
-    );
-    let prepared = pair(&network, viewer, host_session);
     let answer = json!({"udp":{"type":"answer","observation":observation}});
     for (from, payload, accepted) in [
         (initiator, offer.clone(), true),
@@ -4777,11 +4740,11 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
     ] {
         let result = network.command(
             from,
-            json!({"type":"signal","pairId":prepared.id,"payload":payload}),
+            json!({"type":"signal","pairId":original.id,"payload":payload}),
         );
         assert_eq!(
             result.events.iter().any(|(to, event)| *to != from
-                && matches!(event,Event::Signal{pair_id,..} if *pair_id==prepared.id)),
+                && matches!(event,Event::Signal{pair_id,..} if *pair_id==original.id)),
             accepted
         );
         assert_eq!(

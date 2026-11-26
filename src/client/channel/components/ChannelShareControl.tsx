@@ -1,10 +1,11 @@
+import { createPortal } from "react-dom";
 import { WatchEmbedPreview } from "./WatchEmbedPreview";
 import { canMoveWatchEmbed, watchEmbed } from "../watch-embed-source";
 import { directWatchFormat } from "../../../shared/watch-format";
 import { WatchIndexedTrackPicker, WatchMpdSourcePicker } from "./WatchIndexedTrackPicker";
 import { indexedMediaSelection } from "../watch-indexed-source";
 import type { NativePageIndexedSelection, NativePageMpdSelection } from "../../native/wire";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CaptureSourcePicker, RenderEndpointSelect, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { LiveAudioExclusion } from "../../components/living/AudioExclusionSelect";
@@ -93,8 +94,8 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
 }
 
 /** The picker closes before a start runs and this control can unmount with it, so a mounted owner supplies startAction. */
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, variant, disabled, openRequested, onPickerRequestHandled, onWatch, startAction }: {
-  channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; variant?: "split"; disabled: boolean;
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, variant, publicationActions, compactCaption, disabled, openRequested, onPickerRequestHandled, onWatch, startAction }: {
+  channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; variant?: "split"; publicationActions?: ReactNode; compactCaption?: boolean; disabled: boolean;
   openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(): void;
   startAction: ReturnType<typeof useSettingsAction>;
 }) {
@@ -225,6 +226,32 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     close();
     void startAction.run(signal => operation(() => signal.aborted), onSuccess);
   };
+  const inlineActions = useRef<HTMLSpanElement>(null), panelActions = useRef<HTMLDivElement>(null);
+  const [actionsHost, setActionsHost] = useState<HTMLSpanElement | null>(null);
+  const hasPublicationActions = !!publicationActions;
+  useLayoutEffect(() => {
+    if (!hasPublicationActions || !inlineActions.current) return;
+    const host = inlineActions.current.ownerDocument.createElement("span");
+    host.className = "c3-share-live-actions";
+    inlineActions.current.append(host);
+    setActionsHost(host);
+    return () => host.remove();
+  }, [hasPublicationActions, sharing?.id]);
+  useLayoutEffect(() => {
+    const target = compactCaption && !captureRequest && !cancellable ? panelActions.current : inlineActions.current;
+    if (!actionsHost || !target || actionsHost.parentElement === target) return;
+    // Finish the open settings or picker at its original anchor. The portal keeps
+    // the controls and any remote-input draft mounted when their home changes.
+    if (settingsOpen || open) return;
+    const place = () => {
+      if (actionsHost.parentElement === target || actionsHost.querySelector(":popover-open")) return;
+      if ("moveBefore" in target) target.moveBefore(actionsHost, null);
+      else (target as HTMLElement).append(actionsHost);
+    };
+    place();
+    actionsHost.addEventListener("toggle", place, true);
+    return () => actionsHost.removeEventListener("toggle", place, true);
+  }, [actionsHost, compactCaption, captureRequest, cancellable, settingsOpen, open]);
   if (publicationId && !sharing) return null;
   const hasSettings = !watching || !!sharing || pageWatch;
   const split = variant === "split" && hasSettings && !captureRequest && !cancellable;
@@ -245,14 +272,16 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         trigger.current?.ownerDocument.defaultView?.requestAnimationFrame(() => trigger.current?.querySelector<HTMLButtonElement>("button")?.focus());
       }); }} />}
   </span>;
+  const settingsUnavailable = !!(disabled || busy || qualityPending);
   const settingsControl = hasSettings && <span ref={settingsTrigger} className="c3-share-control">
     <Btn icon={split ? "chevron" : "sliders"} title={{ text: settingsTitle }} cap={compact || split ? undefined : { text: settingsLabel }}
       className={split ? "is-split-more" + tonal : undefined} hint="hint-quality" size="compact" quiet={!split} tone={split ? actionTone : undefined}
-      disabled={disabled || busy} busy={qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
+      disabled={!hasPublicationActions && (disabled || busy)} busy={!hasPublicationActions && qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
   </span>;
-  return <><span className="c3-share-feedback"><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
+  return <>{actionsHost && createPortal(<>{sourceControl}{publicationActions}</>, actionsHost)}
+    <span className="c3-share-feedback" data-publication-actions={hasPublicationActions || undefined}><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
     {variant === "split" ? <span className={split ? "lr-btn-split" : "c3-share-unpaired"}>{sourceControl}{settingsControl}</span>
-      : <>{sourceControl}{settingsControl}</>}
+      : <>{hasPublicationActions ? <span ref={inlineActions} className="c3-share-inline-actions" /> : sourceControl}{settingsControl}</>}
     {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
       quiet onClick={() => setExternalOpen(true)} />}
     </span>
@@ -268,6 +297,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         <ChannelAction icon="x" iconOnly quiet textTooltip label={t("room.action.close")}
           onClick={() => settingsPanel.current?.hidePopover()} /></header>
       <div className="c3-quality-body">
+      {hasPublicationActions && <div ref={panelActions} className="c3-share-publication-actions" role="group" aria-label={t("host.shareControls")} />}
+      <div className="c3-share-settings-content" inert={!!hasPublicationActions && settingsUnavailable}>
       {watching ? settingsOpen && <WatchForwardSettings channel={channel} activityId={watching.id} disabled={disabled} /> : <>
       <p className="c3-quality-description">{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
         : t("screen.shareSettingsNext")}</p>
@@ -320,6 +351,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});
             else setQuality({ ...quality, maxAudioBitrate: bitrate });
           }} /></>} />}</>}
+      </div>
       </div>
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"

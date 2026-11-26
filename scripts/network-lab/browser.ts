@@ -116,9 +116,9 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'recover
     result.phase = 'viewer playing'; await f.playing(viewerBrowser, publication);
     if (prepared && relay) {
       result.preparedNativePairs = relay.records.filter(row => row.event?.type === 'plan')
-        .flatMap(row => row.event.pairs).filter((pair: any) => pair.peerId === hostEndpoint && pair.preparation === 'required'
+        .flatMap(row => row.event.pairs).filter((pair: any) => pair.peerId === hostEndpoint && pair.preparation === 'available'
           && pair.incoming.some((flow: any) => flow.publicationId === publication && flow.selected));
-      assert(result.preparedNativePairs.length, 'Selected publication must cross the prepared Native pair');
+      assert(result.preparedNativePairs.length, 'Selected publication must cross the preparation-capable Native pair');
       assert(relay.records.some(row => row.event?.type === 'native-signal' && row.event.udp === 'complete'
         && result.preparedNativePairs.some((pair: any) => pair.id === row.event.pairId)), 'Matching Native pair must complete preparation');
       result.probeBoundary = 'Native transit follows real voice and selected publication demand';

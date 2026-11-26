@@ -98,14 +98,10 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
     Ok((frames, receiver, source))
 }
 async fn scenario() -> Result<serde_json::Value> {
-    let a_socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
-    let a_addr = a_socket.local_addr()?;
-    let b_socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
-    let b_addr = b_socket.local_addr()?;
-    let a_runtime = Runtime::new(None);
-    let b_runtime = Runtime::new(None);
-    let (a, mut a_events) = endpoint(&a_runtime, Uuid::new_v4(), Some(a_socket)).await?;
-    let (b, mut b_events) = endpoint(&b_runtime, Uuid::new_v4(), Some(b_socket)).await?;
+    let (a_runtime, a_addr) = Runtime::fixed_loopback()?;
+    let (b_runtime, b_addr) = Runtime::fixed_loopback()?;
+    let (a, mut a_events) = endpoint(&a_runtime, Uuid::new_v4()).await?;
+    let (b, mut b_events) = endpoint(&b_runtime, Uuid::new_v4()).await?;
     let proxy = UdpSocket::bind("127.0.0.1:0").await?;
     let proxy_addr = proxy.local_addr()?;
     let armed = Arc::new(AtomicBool::new(false));

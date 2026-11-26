@@ -61,6 +61,27 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+test("a viewer follows YouTube buffering and recovery before its next clock tick", async () => {
+  vi.useFakeTimers();
+  const { media, sdk } = await setup();
+  const player = new WatchPlayer("room", false, media, () => {});
+  try {
+    await player.ready();
+    const now = performance.now();
+    player.calibrate(now, now, now);
+    player.update({ timeline: "media", position: 0, paused: false, rate: 1, anchorTime: now });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(false);
+    sdk.state = 3;
+    sdk.fire("onStateChange", sdk.state);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(true);
+    sdk.playVideo();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.waitingForPicture).toBe(false);
+  } finally { player.close(); }
+});
+
 test("a shared YouTube seek can buffer beyond ten seconds without blocking a newer host seek", async () => {
   vi.useFakeTimers();
   const { media, sdk } = await setup();

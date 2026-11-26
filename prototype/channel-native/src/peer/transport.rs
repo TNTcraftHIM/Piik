@@ -121,6 +121,7 @@ enum Command {
     ),
     SharedMapped(Weak<UdpIo>, Option<Candidate>),
     TurnReady(Uuid, Uuid),
+    Adopt(Uuid, Uuid, super::preparation::Prepared, oneshot::Sender<Result<bool>>),
     Run(Uuid, Uuid, Action),
     Remove(Uuid, Uuid, oneshot::Sender<()>),
     Stop,
@@ -168,13 +169,16 @@ pub(crate) struct Runtime {
     #[cfg(not(target_os = "android"))]
     interfaces: tokio::sync::OnceCell<netwatch::netmon::Monitor>,
     #[cfg(test)]
+    test_binds: Option<&'static [&'static str]>,
+    #[cfg(test)]
     test_codecs: Option<str0m::format::CodecConfig>,
 }
 #[derive(Clone)]
 pub(crate) struct Transport {
     shared_v4: Option<Weak<UdpIo>>,
     pub(super) pair: Uuid,
-    instance: Uuid,
+    pub(super) turn_possible: bool,
+    pub(super) instance: Uuid,
     tx: mpsc::Sender<Command>,
 }
 pub(crate) struct AcceptedInput {
@@ -462,6 +466,7 @@ pub(crate) struct Engine {
     pending: Option<SdpPendingOffer>,
     local: Option<(String, String)>,
     remote: bool,
+    prepared_remote: Option<Candidate>,
     remote_media: HashMap<Mid, (String, String, Option<Uuid>)>,
     linear_enabled: bool,
     bandwidth: watch::Sender<Estimate>,
@@ -587,6 +592,29 @@ impl Runtime {
                             }
                             engine.drain();
                         },
+                        Some(Command::Adopt(id, instance, prepared, done)) => {
+                            let result = (|| {
+                                let Some(engine) = engines.get_mut(&id)
+                                    .filter(|engine| engine.handle.instance == instance) else { return Ok(false) };
+                                if !engine.rtc.is_alive() || (!engine.handle.turn_possible && engine.rtc.has_send_consent()) {
+                                    return Ok(false);
+                                }
+                                let (socket, target) = prepared.commit(id)?;
+                                socket.set_nonblocking(true)?;
+                                let socket = Arc::new(UdpIo::new(UdpSocket::from_std(socket)?)?);
+                                let local = Candidate::host(socket.local_addr()?, "udp")?;
+                                let remote = Candidate::host(target.into(), "udp")?;
+                                // The pump cannot poll ICE between admission and reader installation.
+                                if engine.rtc.add_local_candidate(local).is_none() { return Ok(false); }
+                                engine.sockets.push(socket.clone());
+                                add_reader(&mut sockets, socket, Some((id, instance)), network.clone());
+                                if engine.remote { engine.rtc.add_remote_candidate(remote); }
+                                else { engine.prepared_remote = Some(remote); }
+                                engine.drain();
+                                Ok(true)
+                            })();
+                            let _ = done.send(result);
+                        }
                         Some(Command::Run(id,instance,action))=>if let Some(engine)=engines.get_mut(&id).filter(|e|e.handle.instance==instance) { action(engine);engine.drain(); },
                         Some(Command::Remove(id,instance,done))=> {
                             if engines.get(&id).is_some_and(|e|e.handle.instance==instance){if let Some(mut engine)=engines.remove(&id){
@@ -662,9 +690,25 @@ impl Runtime {
             #[cfg(not(target_os = "android"))]
             interfaces: tokio::sync::OnceCell::new(),
             #[cfg(test)]
+            test_binds: None,
+            #[cfg(test)]
             test_codecs: None,
         }
     }
+    #[cfg(test)]
+    pub(in crate::peer) fn fixed_loopback() -> Result<(Self, SocketAddr)> {
+        let service = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+        let address = service.sockets[0].local_addr()?;
+        Ok((Self::new(Some(service)), address))
+    }
+
+    #[cfg(test)]
+    pub(in crate::peer) fn ipv4_loopback() -> Self {
+        let mut runtime = Self::new(None);
+        runtime.test_binds = Some(&["127.0.0.1:0"]);
+        runtime
+    }
+
     #[cfg(test)]
     pub fn with_codecs(mut self, codecs: str0m::format::CodecConfig) -> Self {
         self.test_codecs = Some(codecs);
@@ -673,7 +717,6 @@ impl Runtime {
     pub async fn add(
         &self,
         pair: Uuid,
-        prepared: Option<std::net::UdpSocket>,
         preparation: Option<piik_channel_core::wire::UdpPreparation>,
         events: mpsc::Sender<Event>,
         overflow: Arc<AtomicBool>,
@@ -684,7 +727,6 @@ impl Runtime {
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
         self.add_engine(
             pair,
-            prepared,
             preparation,
             EventTarget::Peer(events),
             overflow,
@@ -711,7 +753,6 @@ impl Runtime {
         let (transport, _) = self
             .add_engine(
                 Uuid::new_v4(),
-                None,
                 None,
                 EventTarget::Local { tracks, ended },
                 Arc::new(AtomicBool::new(false)),
@@ -780,7 +821,6 @@ impl Runtime {
     async fn add_engine(
         &self,
         pair: Uuid,
-        prepared: Option<std::net::UdpSocket>,
         preparation: Option<piik_channel_core::wire::UdpPreparation>,
         events: EventTarget,
         overflow: Arc<AtomicBool>,
@@ -790,10 +830,9 @@ impl Runtime {
         ice: &[IceServer],
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
         let stats_origin = Instant::now();
-        let using_prepared = prepared.is_some();
         let local_input = events.local();
         let linear =
-            preparation.is_none() && !local_input && self.fixed.is_none() && prepared.is_none();
+            preparation.is_none() && !local_input && self.fixed.is_none();
         let mut shared_v4 = None;
         let mut sockets = vec![];
         if local_input {
@@ -805,17 +844,13 @@ impl Runtime {
                 Err(error) => eprintln!("Native local input interface candidate unavailable: {error}"),
             }
         } else if let Some(fixed) = &self.fixed {
-            ensure!(
-                prepared.is_none(),
-                "fixed UDP cannot consume prepared socket"
-            );
             sockets = fixed.sockets.clone();
-        } else if let Some(socket) = prepared {
-            socket.set_nonblocking(true)?;
-            sockets.push(Arc::new(UdpIo::new(UdpSocket::from_std(socket)?)?));
         }
         if !local_input && self.fixed.is_none() {
-            for bind in ["0.0.0.0:0", "[::]:0"] {
+            let binds = &["0.0.0.0:0", "[::]:0"][..];
+            #[cfg(test)]
+            let binds = self.test_binds.unwrap_or(binds);
+            for &bind in binds {
                 if sockets.iter().any(|s| {
                     s.local_addr()
                         .is_ok_and(|a| a.is_ipv4() == bind.starts_with('0'))
@@ -824,7 +859,6 @@ impl Runtime {
                 }
                 if bind == "0.0.0.0:0"
                     && preparation == Some(piik_channel_core::wire::UdpPreparation::Available)
-                    && !using_prepared
                 {
                     let mut current = self.shared_v4.lock().await;
                     let socket = match current.upgrade() {
@@ -846,7 +880,9 @@ impl Runtime {
                 }
             }
         }
+        let urls = discovery::urls(ice);
         let handle = Transport {
+            turn_possible: urls.iter().any(|url| url.is_turn),
             pair,
             shared_v4,
             instance: Uuid::new_v4(),
@@ -957,7 +993,6 @@ impl Runtime {
             }
         }
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
-        let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
         #[cfg(not(target_os = "android"))]
         let can_refresh_ipv6 = refresh.is_some();
@@ -1009,6 +1044,7 @@ impl Runtime {
             pending: None,
             local: None,
             remote: false,
+            prepared_remote: None,
             remote_media: HashMap::new(),
             linear_enabled: linear,
             bandwidth,
@@ -1051,9 +1087,7 @@ impl Runtime {
         if !local_input {
             rtc_pair(
                 pair,
-                RtcPairEvent::TransportCreated {
-                    prepared: using_prepared,
-                },
+                RtcPairEvent::TransportCreated,
             );
         }
         Ok((handle, rx))
@@ -1346,6 +1380,7 @@ impl Transport {
             e.remote_media = remote_media;
             e.prune_stats();
             e.remote = true;
+            if let Some(candidate) = e.prepared_remote.take() { e.rtc.add_remote_candidate(candidate); }
             e.outputs.retain(|_, out| {
                 !out.retired
                     || out
@@ -1417,6 +1452,13 @@ impl Transport {
         })
         .await
     }
+    pub(super) async fn adopt(&self, prepared: super::preparation::Prepared) -> Result<bool> {
+        let (done, ack) = oneshot::channel();
+        self.tx.send(Command::Adopt(self.pair, self.instance, prepared, done)).await
+            .map_err(|_| anyhow!("transport closed"))?;
+        ack.await?
+    }
+
     #[cfg(test)]
     pub async fn add_candidate(&self, candidate: String) -> Result<()> {
         self.add_signaled_candidate(piik_channel_core::wire::Candidate {

@@ -481,42 +481,42 @@ it("keeps return-to-source reachable for a healthy main player only while it ret
 
 
 it.each([
-  { awaitingRoute: true, deliveryFailed: false, paused: false, label: "screen.waitingRoute" },
-  { awaitingRoute: false, deliveryFailed: false, paused: false, label: "screen.connectingPicture" },
-  { awaitingRoute: true, deliveryFailed: true, paused: false, label: "screen.deliveryRetry" },
-  { awaitingRoute: true, deliveryFailed: true, paused: true, label: "host.pauseNotice" },
-] as const)("shows $label for a subscribed screen without a playable stream", ({ awaitingRoute, deliveryFailed, paused, label }) => {
+  { waitingForInput: true, deliveryFailed: false, paused: false, label: "screen.waitingPicture" },
+  { waitingForInput: false, deliveryFailed: false, paused: false, label: "screen.connectingPicture" },
+  { waitingForInput: true, deliveryFailed: true, paused: false, label: "screen.deliveryRetry" },
+  { waitingForInput: true, deliveryFailed: true, paused: true, label: "host.pauseNotice" },
+] as const)("shows $label for a subscribed screen without a playable stream", ({ waitingForInput, deliveryFailed, paused, label }) => {
   setCopy({ lang: "en" });
   const html = renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()],
     sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
       source: { kind: "screen", name: "Owned picture" }, title: null, owned: false, localSource: false,
-      subscribed: true, paused, audience: [], awaitingRoute, deliveryFailed }],
+      subscribed: true, paused, audience: [], waitingForInput, deliveryFailed }],
     focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
     onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
   }));
   expect(html).toContain('data-publication-id="picture"');
   expect(html.includes('data-failed="true"')).toBe(deliveryFailed && !paused);
   expect(html).toContain(t("en", label));
-  expect(html.includes('aria-label="' + t("en", "screen.retryPicture") + '"')).toBe(!paused && (deliveryFailed || !awaitingRoute));
+  expect(html.includes('aria-label="' + t("en", "screen.retryPicture") + '"')).toBe(!paused && (deliveryFailed || !waitingForInput));
   expect(html).not.toContain(t("en", "channel.previewPage.reconnecting"));
 });
 
-it("offers picture help and stopping, but no retry, while a watched screen has no route yet", () => {
+it("offers picture help and stopping, but no retry, while a watched screen waits for an input", () => {
   setCopy({ lang: "en" });
-  const render = (awaitingRoute: boolean) => renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()],
+  const render = (waitingForInput: boolean) => renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()],
     sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
       source: { kind: "screen", name: null }, title: null, owned: false, localSource: false,
-      subscribed: true, paused: false, audience: [], awaitingRoute, deliveryFailed: false }],
+      subscribed: true, paused: false, audience: [], waitingForInput, deliveryFailed: false }],
     focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
     onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
   }));
-  const unrouted = render(true);
-  expect(unrouted).toContain(t("en", "screen.waitingRoute"));
-  expect(unrouted).not.toContain('data-failed="true"');
-  expect(unrouted).toContain('aria-label="' + t("en", "screen.pictureHelp") + '"');
-  expect(unrouted).not.toContain('aria-label="' + t("en", "screen.retryPicture") + '"');
-  expect(unrouted).toContain('aria-label="Stop watching Shared screen"');
+  const waiting = render(true);
+  expect(waiting).toContain(t("en", "screen.waitingPicture"));
+  expect(waiting).not.toContain('data-failed="true"');
+  expect(waiting).toContain('aria-label="' + t("en", "screen.pictureHelp") + '"');
+  expect(waiting).not.toContain('aria-label="' + t("en", "screen.retryPicture") + '"');
+  expect(waiting).toContain('aria-label="Stop watching Shared screen"');
   const connecting = render(false);
   expect(connecting).toContain(t("en", "screen.connectingPicture"));
-  expect(connecting).not.toContain(t("en", "screen.waitingRoute"));
+  expect(connecting).not.toContain(t("en", "screen.waitingPicture"));
 });

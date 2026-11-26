@@ -345,11 +345,23 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     : mobilePane === "people" || mobilePane === "chat");
   const inlineChatOpen = companionVisible && companionPane === "chat";
   const chatAside = inlineChatOpen && (hasPictures || minimal);
+  const chatPanel = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const panel = chatPanel.current;
+    if (!phone || !chatAside || !panel) return;
+    // The phone chat shares a row with free height. Retain that height while it slides out of the grid.
+    const rememberHeight = () => panel.style.setProperty("--chat-panel-height", panel.offsetHeight + "px");
+    rememberHeight();
+    const observer = new ResizeObserver(rememberHeight);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [phone, chatAside]);
   const mainChatOpen = living && !minimal && !hasPictures && !overview && !roomToolOpen && !(phone && roomListOpen);
   const toggleCompanion = (kind: Exclude<Companion, "none">) =>
     setCompanionChoice(livingCompanion === kind ? "none" : kind);
   const conversationHidden = room?.authorized === false || (!roomToolOpen && (living ? theaterVisible || !(mainChatOpen || chatAside) : layout === "quick" || theaterVisible
     || (visibleScreens.length > 0 ? !inlineChatOpen : !sidebarsInline && mobilePane !== "room")));
+  const visibleCompanion = !companionVisible ? "none" : companionPane === "people" ? "people" : (!living || chatAside) ? "chat" : "none";
   const setConversationPopout = channel.setConversationPopout;
   useLayoutEffect(() => {
     const popout = roomToolOpen && !conversationHidden && toolSurface.document !== document ? toolSurface.document : null;
@@ -602,7 +614,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     <main ref={workspaceElement} className="c3-shell" data-app-shell data-layout={layout} data-pane={mobilePane} data-view={living ? undefined : sharingView ? "share" : "workspace"}
       data-sidebars={living ? phone ? "phone" : roomListRail ? "rail" : "list" : sidebarsInline ? "inline" : "overlay"}
       data-minimal={minimal || undefined} data-main-chat={mainChatOpen && room?.authorized || undefined} data-room-list-open={roomListOpen || undefined} data-overview={overview || undefined}
-      data-companion={companionVisible && (!living || companionPane === "people" || chatAside) ? companionPane : "none"}>
+      data-companion={visibleCompanion}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
         <div className="c3-site-name">{self && self.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
@@ -718,16 +730,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
               openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} /></div>
           </StageTv></div>}
-          <ChannelStage roomLayout={living} layoutHome={living && !phone ? stageLayoutHome : undefined} theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
+          <ChannelStage roomLayout={living ? visibleCompanion : undefined} layoutHome={living && !phone ? stageLayoutHome : undefined} theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
             avatar: userProfile(state, channel.profiles, publication.userId)?.avatar ?? undefined,
             audience: state ? screenAudience(state, publication, channel.profiles) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
-            shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
+            shareControls: channel.ownedScreens.has(publication.id) ? (publicationActions: ReactNode, compactCaption: boolean) => <ChannelShareControl channel={channel} publicationActions={publicationActions} compactCaption={compactCaption}
               roomId={publication.roomId} publicationId={publication.id} onWatch={() => setWatchRoomId(publication.roomId)} compact
-              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} />,
+              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} /> : undefined,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: screenDeliveryFailed(publication, sessionId),
@@ -736,7 +748,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
             deliveryScope: JSON.stringify([roomId, sessionId, publication.sessionId,
               rooms.find(value => value.id === publication.roomId)?.delivery?.bindingId]),
-            awaitingRoute: connected && !channel.localScreens.has(publication.id) && !channel.ownedScreens.has(publication.id)
+            waitingForInput: connected && !channel.localScreens.has(publication.id) && !channel.ownedScreens.has(publication.id)
               && state?.subscriptions.includes(publication.id) && !selectedInputs.has(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
@@ -775,7 +787,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           muted={(myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true) || (channel.voicePlaybackByUser.get(publication.userId)?.muted ?? false)}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>
-      <div className="c3-chat-panel" inert={living && !(chatAside || mainChatOpen) || undefined}><div ref={sideConversationHome} className="c3-room-slot" /></div>
+      <div ref={chatPanel} className="c3-chat-panel" inert={living && !(chatAside || mainChatOpen) || undefined}><div ref={sideConversationHome} className="c3-room-slot" /></div>
       {layout !== "quick" && <ChannelPeople channel={channel} roomId={roomId} active={companionVisible && companionPane === "people"} onBack={living ? () => setCompanionChoice("none") : returnToRoom} />}
       <div className="c3-room-presence" data-empty={!room?.authorized || undefined} inert={phone && roomListOpen || undefined}>
         <div ref={couchSlot} className="c3-room-slot" />

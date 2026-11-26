@@ -57,8 +57,8 @@ impl Reader for Source {
 async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> Result<()> {
     use support::{endpoint, open};
     let runtime = transport::Runtime::new(None);
-    let (left, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
-    let (right, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (left, _) = endpoint(&runtime, Uuid::new_v4()).await?;
+    let (right, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let (control, remote_control) = open(&left, &right, &mut events).await?;
     let bulk = left.create_channel("piik-file").await?;
     if left.offer().await? {

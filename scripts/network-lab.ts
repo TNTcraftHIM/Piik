@@ -14,7 +14,7 @@ import { media } from "./network-lab/browser";
 
 const cases = {
   ordinary: "preserve NAT: Browser → real Native room → Browser; history/file/audio/decoded video",
-  prepared: "sequential NAT: Core-required preparation → connected Native room-host pair",
+  prepared: "sequential NAT: authorized preparation on the connected Native room-host pair",
   recovery: "active Native transit: 50s UDP loss + remap → new physical pair and decoded media within 30s",
   media: "calibrated prepared Native transit: decoded media, 50s UDP loss and recovery through Native root → Native probe",
   "browser-relay": "Browser source → Native room → Browser relay → decoded viewer; 50s UDP loss and recovery",

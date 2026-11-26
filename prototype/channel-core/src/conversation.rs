@@ -506,26 +506,45 @@ pub struct ConversationOutcome {
     pub result: Result<ConversationResult, &'static str>,
 }
 impl ConversationOutcome {
+    pub fn delivery(
+        self,
+    ) -> Result<(Vec<ConversationReply>, Option<ConversationReply>), &'static str> {
+        let replies = self.replies()?;
+        let broadcast = replies.iter().find_map(|reply| {
+            reply.record.broadcast().map(|record| ConversationReply {
+                address: reply.address.clone(),
+                record,
+            })
+        });
+        Ok((replies, broadcast))
+    }
+
     pub fn replies(self) -> Result<Vec<ConversationReply>, &'static str> {
         let mut replies = self.address.replies(self.result)?;
         if !self.removal_recipients.is_empty() {
             let confirmation = replies[0].clone();
             replies.extend(
-                self.removal_recipients
-                    .into_iter()
-                    .filter(|id| *id != confirmation.address.recipient)
-                    .map(|recipient| ConversationReply {
+                other_readers(confirmation.address.recipient, self.removal_recipients).map(
+                    |recipient| ConversationReply {
                         address: ConversationAddress {
                             recipient,
                             ..confirmation.address.clone()
                         },
                         record: confirmation.record.clone(),
-                    }),
+                    },
+                ),
             );
         }
         Ok(replies)
     }
 }
+// The requester's direct reply already carries the outcome.
+pub fn other_readers(requester: Uuid, readers: Vec<Uuid>) -> impl Iterator<Item = Uuid> {
+    readers
+        .into_iter()
+        .filter(move |reader| *reader != requester)
+}
+
 impl ConversationAddress {
     pub fn replies(
         &self,

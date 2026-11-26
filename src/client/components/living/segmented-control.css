@@ -31,6 +31,13 @@
   transition: transform var(--motion-control) ease-out;
   pointer-events: none;
 }
+/* The room's view controls use tonal selection. Keyboard focus keeps its separate indicator. */
+[data-layout="living"] .c3-monitor-layout .lr-toggle {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+[data-layout="living"] .c3-monitor-layout .lr-toggle::before { box-shadow: none; }
 .lr-lang::before { width: var(--selection-item-size); }
 .lr-toggle.is-wrapping {
   display: grid;

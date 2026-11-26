@@ -1,5 +1,5 @@
 import init, { attachment_result, backup_message_reply, create_room_policy, HistoryPage, history_page_size, message_retry_key, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, ForwardingBudget, WatchDelivery, file_availability_limit, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current } from "../pkg/piik_channel_browser.js";
+export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, ForwardingBudget, WatchDelivery, file_availability_limit, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, decode_control, encode_control, verify_conversation, route_input, input_binding_current } from "../pkg/piik_channel_browser.js";
 let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> {
   return initialization ??= init().then(() => {}, error => {
@@ -9,7 +9,7 @@ export function initializeRuntime(): Promise<void> {
 }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
 import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
-import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostedRoom } from "./hosting-contract";
+import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostedRoom, type PeerDelivery } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
@@ -263,7 +263,9 @@ export class BrowserRoomHost implements HostedRoom {
 
   get roomId(): string { return this.room.room_id(); }
   summary(): Promise<RoomSummary> { return this.enqueue(() => JSON.parse(this.room.summary())); }
-  currentReaders(): Promise<string[]> { return this.enqueue(() => JSON.parse(this.room.current_readers())); }
+  broadcastRecipients(requester: string): Promise<string[]> {
+    return this.enqueue(() => JSON.parse(this.room.broadcast_recipients(requester)));
+  }
 
   /** Capture persisted policy and complete history at one IndexedDB commit. */
   snapshot(signal?: AbortSignal): Promise<BrowserRoomSnapshot> {
@@ -392,7 +394,7 @@ export class BrowserRoomHost implements HostedRoom {
     });
   }
 
-  dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<ConversationReply[]> {
+  dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<PeerDelivery> {
     return this.enqueue(async () => {
       if (!this.bindingId) throw new Error("stale_room_host");
       const prepared: { address: ConversationAddress; work: { Ok: ConversationWork } | { Err: string } } = JSON.parse(this.room.prepare_peer(JSON.stringify(packet), BigInt(now)));
@@ -409,10 +411,10 @@ export class BrowserRoomHost implements HostedRoom {
       } catch (error) {
         result = { Err: roomErrorCode(error) };
       }
-      const outcome: { replies: ConversationReply[]; projectionUpdate: unknown } = JSON.parse(
+      const { replies, broadcast, projectionUpdate }: PeerDelivery & { projectionUpdate: unknown } = JSON.parse(
         this.room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
-      if (outcome.projectionUpdate) publish?.(outcome.projectionUpdate);
-      return outcome.replies;
+      if (projectionUpdate) publish?.(projectionUpdate);
+      return { replies, broadcast };
     });
   }
 

@@ -6,13 +6,6 @@ use support::{endpoint, exchange, open};
 fn available(address: SocketAddr) -> bool {
     std::net::UdpSocket::bind(address).is_ok()
 }
-async fn add(
-    runtime: &Runtime,
-    pair: Uuid,
-    prepared: Option<(std::net::UdpSocket, std::net::SocketAddrV4)>,
-) -> Result<(Transport, mpsc::Receiver<Event>)> {
-    endpoint(runtime, pair, prepared.map(|(socket, _)| socket)).await
-}
 fn local_candidates(sdp: &str) -> Result<Vec<str0m::Candidate>> {
     sdp.lines()
         .filter_map(|line| line.strip_prefix("a=candidate:"))
@@ -22,7 +15,7 @@ fn local_candidates(sdp: &str) -> Result<Vec<str0m::Candidate>> {
         .collect()
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
+async fn fixed_and_ordinary_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     let reserved = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
     let port = reserved.local_addr()?.port();
     drop(reserved);
@@ -41,45 +34,24 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     );
     let server = Runtime::new(Some(service.clone()));
 
-    // Adopt this exact socket. Its only owner after transfer is the real pump.
-    let prepared = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
-    let prepared_address = prepared.local_addr()?;
-    let client4 = Runtime::new(None);
+    let client4 = Runtime::ipv4_loopback();
     let v6_service = ServerUdp::bind(&[(SocketAddr::from((Ipv6Addr::LOCALHOST, 0)), None)])?;
     let client6 = Runtime::new(Some(v6_service.clone()));
     let pair4 = Uuid::new_v4();
     let pair6 = Uuid::new_v4();
-    let (server4, _) = add(&server, pair4, None).await?;
-    let SocketAddr::V4(target) = fixed4 else {
-        unreachable!()
-    };
-    let signal = crate::peer::prepared_candidate(target)?;
-    assert_eq!(signal.sdp_mid.as_deref(), Some(""));
-    assert_eq!(signal.sdp_m_line_index, Some(0));
-    assert_eq!(signal.username_fragment, None);
-    let candidate = signal.candidate.unwrap();
-    let target_candidate = str0m::Candidate::from_sdp_string(&candidate)?;
-    ensure!(
-        target_candidate.addr() == fixed4
-            && target_candidate.kind() == str0m::CandidateKind::Host
-            && target_candidate.proto() == str0m::net::Protocol::Udp,
-        "prepared target changed identity"
-    );
-    let (remote4, mut events4) = add(&client4, pair4, Some((prepared, target))).await?;
+    let (server4, _) = endpoint(&server, pair4).await?;
+    let (remote4, mut events4) = endpoint(&client4, pair4).await?;
     let announced: Vec<_> = std::iter::from_fn(|| events4.try_recv().ok())
         .filter_map(|event| match event {
             Event::Candidate(_, candidate, None) => Some(candidate),
             _ => None,
         })
         .collect();
-    let (server6, _) = add(&server, pair6, None).await?;
-    let (remote6, mut events6) = add(&client6, pair6, None).await?;
+    let (server6, _) = endpoint(&server, pair6).await?;
+    let (remote6, mut events6) = endpoint(&client6, pair6).await?;
     let (left4, right4) = open(&server4, &remote4, &mut events4)
         .await
-        .context("prepared IPv4 pair")?;
-    // Match Driver's post-accept remote-candidate application. The tuple's target
-    // must never become this adopted socket's local advertised mapping.
-    remote4.add_candidate(candidate).await?;
+        .context("ordinary IPv4 pair")?;
     let (_, sdp) = remote4.local_description().await?;
     let addresses = local_candidates(&sdp)?;
     ensure!(
@@ -95,39 +67,8 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
             }),
         "announced host candidate differs from the SDK's registered candidate"
     );
-    ensure!(
-        addresses.iter().any(|c| c.addr() == prepared_address),
-        "prepared socket missing from local SDP"
-    );
-    ensure!(
-        addresses.iter().all(|c| c.addr() != fixed4),
-        "peer target advertised as local mapping"
-    );
-    // Compare actual ordinary discovery: this machine may have no usable IPv6
-    // interface after loopback and unscoped link-local addresses are excluded.
-    let (ordinary, _) = add(&client4, Uuid::new_v4(), None).await?;
-    ordinary.create_channel("ordinary-candidates").await?;
-    ordinary.offer().await?;
-    let (_, ordinary_sdp) = ordinary.local_description().await?;
-    let ordinary_addresses = local_candidates(&ordinary_sdp)?;
-    let ipv6 = |candidates: &[str0m::Candidate]| {
-        candidates
-            .iter()
-            .filter(|candidate| candidate.addr().is_ipv6())
-            .map(|candidate| candidate.addr().ip())
-            .collect::<HashSet<_>>()
-    };
-    ensure!(
-        ipv6(&addresses) == ipv6(&ordinary_addresses),
-        "prepared IPv4 socket suppressed ordinary IPv6 candidates"
-    );
-    ensure!(
-        ordinary_addresses
-            .iter()
-            .all(|candidate| !candidate.addr().ip().is_loopback()),
-        "wildcard discovery advertised a loopback interface"
-    );
-    ordinary.close().await?;
+    let client_address = addresses.iter().find(|c| c.addr().is_ipv4()).context("missing IPv4 address")?.addr();
+    ensure!(client_address != fixed4);
     let (left6, right6) = open(&server6, &remote6, &mut events6)
         .await
         .context("shared fixed IPv6 pair")?;
@@ -140,15 +81,15 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
         exchange(send, receive, tag).await?;
     }
     ensure!(
-        !available(fixed4) && !available(fixed6) && !available(prepared_address),
+        !available(fixed4) && !available(fixed6) && !available(client_address),
         "live transport did not own its required port"
     );
 
     server4.close().await?;
     remote4.close().await?;
     ensure!(
-        available(prepared_address),
-        "prepared pair close failed to join its reader/release exact socket"
+        available(client_address),
+        "ordinary pair close failed to join its reader/release exact socket"
     );
     ensure!(
         !available(fixed4) && !available(fixed6),
@@ -196,8 +137,8 @@ async fn invalid_candidates_do_not_retire_an_established_channel() -> Result<()>
     let left = Runtime::new(Some(fixed));
     let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
     let right = Runtime::new(Some(fixed));
-    let (a, _) = endpoint(&left, Uuid::new_v4(), None).await?;
-    let (b, mut events) = endpoint(&right, Uuid::new_v4(), None).await?;
+    let (a, _) = endpoint(&left, Uuid::new_v4()).await?;
+    let (b, mut events) = endpoint(&right, Uuid::new_v4()).await?;
     let (sent, received) = open(&a, &b, &mut events).await?;
     ensure!(a.add_candidate("not-a-candidate".into()).await.is_err());
     a.add_signaled_candidate(piik_channel_core::wire::Candidate {

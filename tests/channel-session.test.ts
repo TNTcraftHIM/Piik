@@ -4472,11 +4472,23 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const requestedProfile = { ...QUALITY_PROFILES["1080p60"], degradationPreference: "maintain-framerate" as const };
     expect(session.setScreenQuality(publicationId, requestedProfile)).toBe(changingQuality);
     expect(session.screenQuality(publicationId)?.applied).toEqual(originalProfile);
+    const muting = session.setSourceAudio(publicationId, { muted: true });
+    const muteCommand = app.sent.at(-1)!;
+    expect(muteCommand).toMatchObject({ type: "capture_audio_settings", settings: { gain: 0 } });
     app.receive({ id: firstChange.id, result: null });
     await vi.waitFor(() => expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(2));
     expect(app.sent.at(-1)).toMatchObject({ type: "capture_video_settings", publicationId, captureId,
       settings: { width: 1920, height: 1080, fps: 60, bitrate: requestedProfile.maxBitrate, degradationPreference: requestedProfile.degradationPreference } });
     app.receive({ id: app.sent.at(-1)!.id, result: null }); await changingQuality;
+    const sendAfterQuality = vi.spyOn(app, "send").mockImplementationOnce(data => {
+      const command = JSON.parse(data);
+      queueMicrotask(() => app.receive({ id: command.id, result: null }));
+    });
+    app.receive({ id: muteCommand.id, error: "audio_unavailable" });
+    await expect(muting).rejects.toThrow("audio_unavailable");
+    expect(sendAfterQuality).not.toHaveBeenCalled();
+    sendAfterQuality.mockRestore();
+    expect(session.sourceAudio(publicationId)?.muted).toBe(false);
     const liveProfile = session.screenQuality(publicationId)!.applied;
     expect(liveProfile).toMatchObject(requestedProfile);
     expect(session.getSnapshot().quality).toEqual(liveProfile);
@@ -13201,6 +13213,28 @@ test('a late MPD inspection cannot replace a newer page selection catalog', asyn
     expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate: next.candidate, catalog: next.catalog }]);
     expect(app.sent.filter(c => c.type === 'page_close').map(c => c.pageId)).toEqual([pageId]);
     expect(socket.sent.some(c => c.type === 'start_watch')).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each([true, false])('MPD inspection settles against the refreshed manifest list (retained %s)', async retained => {
+  const first = mpdSelectionFixture(), other = mpdSelectionFixture();
+  let candidates = [first.candidate];
+  const { session, page, candidateId } = await websiteSourceSelection(async () => ({
+    choices: [], indexedCandidates: [], mpdCandidates: candidates, byteSource: null,
+  }));
+  let finish!: (catalog: typeof first.catalog) => void;
+  vi.spyOn(page, 'inspectMpd').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  try {
+    await session.selectWatchPage('first', candidateId);
+    const inspecting = session.inspectWatchMpdSource('first', first.candidate.id, new AbortController().signal);
+    candidates = retained ? [first.candidate, other.candidate] : [other.candidate];
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(session.watchPage('first')?.watchSources?.mpd.map(value => value.candidate)).toEqual(candidates));
+    finish(first.catalog);
+    if (retained) {
+      await inspecting;
+      expect(session.watchPage('first')?.watchSources?.mpd[0].catalog).toEqual(first.catalog);
+    } else await expect(inspecting).rejects.toThrow('watch_page_unavailable');
   } finally { session.close(); }
 });
 

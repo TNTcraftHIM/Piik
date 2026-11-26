@@ -176,6 +176,7 @@ fn replaced_pair(media_failure_first: bool) {
             .unwrap()
             .incoming
             .is_empty());
+        assert_eq!(net.failed_screens(viewer), [publication]);
     }
     command(
         &mut net,
@@ -184,6 +185,7 @@ fn replaced_pair(media_failure_first: bool) {
         6100,
     );
     assert!(pair(&net, viewer, source_session).is_none());
+    assert_eq!(net.failed_screens(viewer).contains(&publication), media_failure_first);
     let resumed = command(
         &mut net,
         next_viewer,
@@ -253,12 +255,14 @@ fn replaced_pair(media_failure_first: bool) {
             || (p.second == source_session && p.first == viewer_session))));
     assert_eq!(topology.screen.unwrap().edges.len(), 1);
     let flow = pair(&net, next_viewer, source_session).unwrap().incoming[0];
+    assert_eq!(net.failed_screens(next_viewer).contains(&publication), media_failure_first);
     command(
         &mut net,
         next_viewer,
         json!({"type":"flow_state", "pairId":authenticated,"flowId":flow.id,"state":"decoded"}),
         6204,
     );
+    assert!(!net.failed_screens(next_viewer).contains(&publication));
     let after_old_deadline = net.authority.expire(11100);
     net.deliver(after_old_deadline);
     assert_eq!(

@@ -27,8 +27,8 @@ async fn keyframe_feedback_preserves_rid_and_shared_siblings() -> Result<()> {
     let left = Runtime::new(None);
     let right = Runtime::new(None);
     let pair = Uuid::new_v4();
-    let (tx, _) = crate::peer::tests::support::endpoint(&left, pair, None).await?;
-    let (rx, mut events) = crate::peer::tests::support::endpoint(&right, pair, None).await?;
+    let (tx, _) = crate::peer::tests::support::endpoint(&left, pair).await?;
+    let (rx, mut events) = crate::peer::tests::support::endpoint(&right, pair).await?;
     let now = Instant::now();
     let time = SourceTime::local(now, SystemInstant::now(now));
     let q = Video::new(time.clone(), Arc::new(Notify::new()));

@@ -9,7 +9,7 @@ use crate::media::{
 use rtc_shared::time::SystemInstant;
 
 async fn add(runtime: &Runtime, pair: Uuid) -> Result<(Transport, mpsc::Receiver<Event>)> {
-    crate::peer::tests::support::endpoint(runtime, pair, None).await
+    crate::peer::tests::support::endpoint(runtime, pair).await
 }
 
 fn format() -> RtpCodec {

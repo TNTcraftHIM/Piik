@@ -536,9 +536,8 @@ mod tests {
     async fn unsupported_sps_fact_precedes_both_ready_and_ended_completions() -> Result<()> {
         for ended_first in [false, true] {
             let (mut driver, mut events, _commands, _stop) = crate::peer::tests::driver();
-            let sender_runtime = transport::Runtime::new(None);
-            let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4(),
-                Some(std::net::UdpSocket::bind("127.0.0.1:0")?)).await?;
+            let sender_runtime = transport::Runtime::ipv4_loopback();
+            let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4()).await?;
             let video = Uuid::new_v4();
             let (_, writable, _) = sender.add_output(video, h264(), MediaKind::Video, "obs".into(), vec![]).await?;
             sender.offer().await?;
@@ -592,12 +591,8 @@ mod tests {
     #[tokio::test]
     async fn cancelled_external_preparation_joins_without_stopping_its_successor() -> Result<()> {
         let (mut driver, mut events, mut commands, _stop) = crate::peer::tests::driver();
-        let sender_runtime = transport::Runtime::new(None);
-        let (sender, _events) = endpoint(
-            &sender_runtime,
-            Uuid::new_v4(),
-            Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-        )
+        let sender_runtime = transport::Runtime::ipv4_loopback();
+        let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4())
         .await?;
         sender
             .add_output(
@@ -665,12 +660,8 @@ mod tests {
         let (mut driver, mut events, _commands, _stop) = crate::peer::tests::driver();
         let (sources, mut received) = mpsc::channel(16);
         driver.ready_sources = sources;
-        let sender_runtime = transport::Runtime::new(None);
-        let (sender, _events) = endpoint(
-            &sender_runtime,
-            Uuid::new_v4(),
-            Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-        )
+        let sender_runtime = transport::Runtime::ipv4_loopback();
+        let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4())
         .await?;
         let video = Uuid::new_v4();
         let audio = Uuid::new_v4();

@@ -150,7 +150,7 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
 async fn ice_observations_do_not_admit_a_transport_before_dtls() -> Result<()> {
     use crate::peer::tests::support::endpoint;
     let runtime = Runtime::new(None);
-    let (pc, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (pc, _) = endpoint(&runtime, Uuid::new_v4()).await?;
     let result = pc
         .call(|engine| {
             ensure!(engine.state.load(Ordering::Acquire) == PeerState::New as u8);
@@ -179,18 +179,10 @@ async fn queued_input_is_discarded_at_the_serialized_disconnected_write_boundary
     use crate::data::{DataLink, Lane, Message, MessageScope};
     use crate::peer::tests::support::{endpoint, message, open};
     use piik_channel_core::input::{InputBinding, InputHop};
-    let runtime = Runtime::new(None);
-    let (left, _) = endpoint(
-        &runtime,
-        Uuid::new_v4(),
-        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-    )
+    let runtime = Runtime::ipv4_loopback();
+    let (left, _) = endpoint(&runtime, Uuid::new_v4())
     .await?;
-    let (right, mut events) = endpoint(
-        &runtime,
-        Uuid::new_v4(),
-        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
-    )
+    let (right, mut events) = endpoint(&runtime, Uuid::new_v4())
     .await?;
     let (channel, remote) = open(&left, &right, &mut events).await?;
     let state = left.call(|engine| Ok(engine.state.clone())).await?;
@@ -326,9 +318,9 @@ async fn consent_expiry_retires_established_transport_while_ice_checks_an_altern
 #[tokio::test]
 async fn healthy_ice_restart_keeps_the_established_transport_while_consent_is_retained() -> Result<()> {
     use crate::peer::tests::support::{endpoint, exchange, open};
-    let runtime = Runtime::new(None);
-    let (left, _) = endpoint(&runtime, Uuid::new_v4(), Some(std::net::UdpSocket::bind("127.0.0.1:0")?)).await?;
-    let (right, mut events) = endpoint(&runtime, Uuid::new_v4(), Some(std::net::UdpSocket::bind("127.0.0.1:0")?)).await?;
+    let runtime = Runtime::ipv4_loopback();
+    let (left, _) = endpoint(&runtime, Uuid::new_v4()).await?;
+    let (right, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let (send, receive) = open(&left, &right, &mut events).await?;
     let result = async {
         exchange(&send, &receive, "before restart").await?;
