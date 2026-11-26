@@ -382,7 +382,7 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
           const help = diagnosis && canSubscribe && !waiting && !source.pending && !source.hidden;
           const publishingActions = !waiting && source.owned && <>
             {source.sourceAudio && <SourceSound sound={source.sourceAudio} title={title} />}
-            {microphone && <VoiceMicrophoneButton active={microphone.enabled}
+            {microphone && <VoiceMicrophoneButton draw="voice-microphone" active={microphone.enabled}
               quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
               disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
               hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}

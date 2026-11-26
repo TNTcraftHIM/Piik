@@ -1,7 +1,9 @@
 import { useId, useRef, useState, type CSSProperties } from "react";
+import { Tooltip } from "../../components/living/Tooltip";
 import { Btn } from "../../components/living/primitives";
 import { PawnSvg } from "../../components/living/Pawn";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
+import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { ChannelIdentityImageInput } from "./ChannelIdentity";
 import { MAX_USER_NAME_UNITS, type ProfileUpdate } from "../protocol";
@@ -9,7 +11,8 @@ import { channelErrorPresentation } from "../error-presentation";
 import { useSettingsAction } from "./ChannelSettingsDialog";
 import "./channel-profile-editor.css";
 
-export function ChannelProfileEditor({ name, avatar, color, disabled, profileReady, busy, onSave }: {
+export function ChannelProfileEditor({ name, avatar, color, disabled, profileReady, busy, onSave, userId, triggerStyle }: {
+  userId: string; triggerStyle: "name" | "pencil" | "pawn";
   name: string; avatar: string | null; color: string; disabled: boolean; profileReady: boolean; busy: boolean;
   onSave(profile: ProfileUpdate): Promise<void>;
 }) {
@@ -26,8 +29,15 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
   const editable = !disabled && profileReady && !busy;
   const { message } = channelErrorPresentation(error, t);
   return <>
-    <span ref={trigger} className="c3-profile-editor"><Btn icon="pencil" title={{ text: t("channel.profileEditor.editProfile") }}
-      hint="hint-rename" size="dense" quiet disabled={disabled} popoverTarget={id} controls={id} expanded={open} />
+    <span ref={trigger} className="c3-profile-editor">
+      <Tooltip kind="hint-rename" text={t("channel.profileEditor.editProfile")} disabled={open}>
+        <button type="button" className={"lr-btn is-dense is-quiet c3-profile-" + triggerStyle} disabled={disabled}
+          aria-label={triggerStyle === "name" ? undefined : t("channel.profileEditor.editProfile")} aria-haspopup="dialog"
+          popoverTarget={id} aria-controls={id} aria-expanded={open}>
+          {triggerStyle === "name" ? <strong>{name}</strong> : triggerStyle === "pawn"
+            ? <PawnSvg centered color={color} identity={userId} avatar={avatar ?? undefined} /> : <Glyph name="pencil" />}
+        </button>
+      </Tooltip>
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("channel.profileEditor.editProfile")}
       className="lr-anchored-card c3-name-popover" onBeforeToggle={event => {

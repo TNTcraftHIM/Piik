@@ -27,7 +27,6 @@ type VoiceDockProps = {
   browsingRoomId: string;
   density?: VoiceRoomDensity;
   directRoomId?: string;
-  labelled?: boolean;
 };
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
@@ -98,7 +97,7 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
       <ChannelVoiceRooms key={props.density} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
         onBrowse={onBrowse} renderingBySpeaker={renderingBySpeaker} shortcuts={shortcuts}
         shortcutRoomId={joined.length === 1 ? activity?.roomId : undefined} density={props.density}
-        directRoomId={props.directRoomId} toolsHome={setToolsHome} labelled={props.labelled} />
+        directRoomId={props.directRoomId} toolsHome={setToolsHome} />
       {mutedNotice}
     </div>
     <ChannelVoiceSettings channel={channel} available={inputAvailable} shortcuts={shortcuts}

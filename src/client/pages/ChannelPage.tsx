@@ -400,7 +400,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
   // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
   // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
-  const visibleWatches = watches.filter(activity => activity.roomId === roomId && mobilePane === "room"
+  const visibleWatches = watches.filter(activity => activity.roomId === roomId && !(phone && roomListOpen)
     && (!theaterVisible || activity.id === focusedScreen));
   const sourceAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]), [
     ...publications.map(publication => ({ id: `picture:${publication.id}` })), ...visibleWatches.map(activity => ({ id: `watch:${activity.id}` })),
@@ -468,8 +468,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     <ChannelForwardingSettings channel={channel} />
     {previewOptions}
   </>;
-  const chatToggle = state && !overview && !roomToolOpen && (hasPictures || minimal) && room?.authorized && <Btn id="c3-chat-trigger" icon="chat" title="conversation.chat" size="compact" quiet textTooltip
-        pressed={!conversationHidden} controls="c3-chat" onClick={() => toggleCompanion("chat")} />;
+  const chatToggle = state && !overview && !roomToolOpen && (hasPictures || minimal) && room?.authorized && <Btn id="c3-chat-trigger" icon="chat" title="conversation.chat" size="compact" quiet={!chatInBar} className={chatInBar ? "is-tonal" : undefined}
+        textTooltip pressed={!conversationHidden} controls="c3-chat" onClick={() => toggleCompanion("chat")} />;
   const connections = room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />;
   const standingTools = <div className="c3-standing-room-tools" hidden={phone && roomListOpen}>
     {/* A phone's header keeps the room's name, so the room's window opens from beside the couch it lifts out. */}
@@ -498,9 +498,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const stopOwnShare = ownShare ? () => run(channel.stopScreen(ownShare.id))
     : ownWatch ? () => run(channel.stopWatch(ownWatch.id)) : undefined;
   const ownShareId = ownShare?.id ?? ownWatch?.id;
-  const identity = self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
-      <Tooltip className="c3-identity-name" overflow={{ text: self.name, selector: "strong" }}><strong>{self.name}</strong></Tooltip>
-      <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
+  const identity = self && <div className="c3-identity">
+      {(bar || !roomListCompact) && <PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />}
+      {!minimal && <div className="c3-identity-copy"><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>}
+      <ChannelProfileEditor triggerStyle={minimal ? "name" : !bar && roomListCompact ? "pawn" : "pencil"} key={self.id}
+        userId={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
         busy={busy("profile")} onSave={channel.updateProfile} />
     </div>;
   // Who I am ends my dock and begins my bar, and in each it is tabbed where it is seen.
@@ -741,8 +743,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
             onSend={channel.sendMessage} onDiscardSend={channel.discardMessageRetry} floating={roomToolOpen} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
-            {joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
-          </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} labelled={minimal && !phone} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
+            {joinVoice && <>{!bar && <div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>}{joinVoice}</>}
+          </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
             renderingBySpeaker={renderingBySpeaker} onBrowse={id => { setVoiceFocus(id); selectRoom(id); }} /></>} />
       </div>
       {personal}

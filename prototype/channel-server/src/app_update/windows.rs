@@ -250,15 +250,11 @@ impl DownloadWorkspace {
         &self.path
     }
 
-    fn transfer(&mut self, record: PathBuf) -> Result<()> {
+    fn transfer(mut self, record: PathBuf) -> Result<()> {
         // The App holds its data-directory lock and retired the previous handoff.
         fs::rename(self.record.as_ref().unwrap(), &record)?;
-        self.record = Some(record);
-        Ok(())
-    }
-
-    fn keep(mut self) {
         self.record = None;
+        Ok(())
     }
 }
 
@@ -294,7 +290,14 @@ fn retire_previous(installation: &Installation) -> Result<()> {
         }
         Err(error) => return Err(error.into()),
     }
-    let plan: Plan = read_json(&record.workspace.join("plan.json"))?;
+    // A directory handle or process exit can interrupt the last remove_dir.
+    if fs::read_dir(&record.workspace)?.next().is_none() {
+        fs::remove_dir(&record.workspace)?;
+        fs::remove_file(record_path)?;
+        return Ok(());
+    }
+    let plan_path = record.workspace.join("plan.json");
+    let plan: Plan = read_json(&plan_path)?;
     ensure!(
         plan.schema == 1
             && record.operation == plan.operation
@@ -324,12 +327,24 @@ fn retire_previous(installation: &Installation) -> Result<()> {
     }
     // Do not follow a junction or clean an old program directory to which the
     // user added files after updating. A mismatched record stays recoverable.
-    package::entries(&record.workspace)?;
+    let entries = package::entries(&record.workspace)?;
     let previous = record.workspace.join("previous");
     if previous.exists() {
-        plan.layout.check(&previous)?;
+        plan.layout.check_remaining(&previous)?;
     }
-    fs::remove_dir_all(&record.workspace)?;
+    // Keep the plan available for validation until all payloads are gone.
+    for entry in entries.into_iter().rev() {
+        if entry.path == "plan.json" {
+            continue;
+        }
+        let path = record.workspace.join(entry.path);
+        match entry.kind {
+            package::EntryKind::File => fs::remove_file(path)?,
+            package::EntryKind::Directory => fs::remove_dir(path)?,
+        }
+    }
+    fs::remove_file(plan_path)?;
+    fs::remove_dir(&record.workspace)?;
     fs::remove_file(record_path)?;
     Ok(())
 }
@@ -337,8 +352,8 @@ fn retire_previous(installation: &Installation) -> Result<()> {
 pub(super) async fn handoff(
     options: &Options,
     installation: &Installation,
-    mut prepared: Prepared,
-    mut closing: tokio::sync::watch::Receiver<bool>,
+    prepared: Prepared,
+    closing: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
     ensure!(!*closing.borrow(), "App is closing");
     options.layout.check(&installation.root)?;
@@ -375,13 +390,27 @@ pub(super) async fn handoff(
     prepared
         .directory
         .transfer(installation.data_root.join(RECORD))?;
+    launch_helper(options, &workspace, closing)
+        .await
+        .inspect_err(|_| {
+            if let Err(error) = retire_previous(installation) {
+                log::warn!(target: "piik.update", "Remove failed update workspace: {error:#}");
+            }
+        })
+}
+
+async fn launch_helper(
+    options: &Options,
+    workspace: &Path,
+    mut closing: tokio::sync::watch::Receiver<bool>,
+) -> Result<()> {
     fs::copy(&options.executable, workspace.join(HELPER))?;
 
     let mut command = tokio::process::Command::new(workspace.join(HELPER));
     command
         .arg("--apply-update")
         .arg(workspace.join("plan.json"))
-        .current_dir(&workspace)
+        .current_dir(workspace)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -412,10 +441,7 @@ pub(super) async fn handoff(
     }
     .await;
     match launch {
-        Ok(()) => {
-            prepared.directory.keep();
-            Ok(())
-        }
+        Ok(()) => Ok(()),
         Err(error) => {
             // Before APPLY this helper has no permission to replace anything.
             // Reap it before its workspace is removed; never terminate the App.
@@ -687,13 +713,67 @@ mod tests {
 
         fs::create_dir(&workspace).unwrap();
         write_new(&marker, &record).unwrap();
+        let unknown = workspace.join("personal.txt");
+        fs::write(&unknown, "personal data").unwrap();
         assert!(retire_previous(&installation).is_err());
         assert!(marker.exists());
+        assert!(unknown.is_file());
+        fs::remove_file(unknown).unwrap();
         write_new(&workspace.join("plan.json"), &plan).unwrap();
         retire_previous(&installation).unwrap();
         assert!(!workspace.exists());
         assert!(!marker.exists());
     }
+    #[test]
+    fn retire_partly_removed_previous_after_file_unlock() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (dir, plan, prepared) = fixture();
+        let installation = Installation {
+            root: plan.root.clone(),
+            data_root: plan.data_root.clone(),
+            working_directory: dir.path().into(),
+        };
+        let workspace = download_workspace(&installation, plan.operation).unwrap();
+        fs::rename(prepared, &workspace).unwrap();
+        let marker = installation.data_root.join(RECORD);
+        write_new(
+            &marker,
+            &Record {
+                operation: plan.operation,
+                workspace: workspace.clone(),
+            },
+        )
+        .unwrap();
+        write_new(&workspace.join("plan.json"), &plan).unwrap();
+        let previous = workspace.join("previous");
+        fs::rename(workspace.join("incoming"), &previous).unwrap();
+        let lock = File::options()
+            .read(true)
+            .share_mode(3)
+            .open(previous.join("piik-app.exe"))
+            .unwrap();
+        assert_eq!(
+            retire_previous(&installation)
+                .unwrap_err()
+                .downcast_ref::<std::io::Error>()
+                .unwrap()
+                .raw_os_error(),
+            Some(32)
+        );
+        assert!(!previous.join("version.txt").exists());
+        assert!(plan.layout.check(&previous).is_err());
+        drop(lock);
+        let unknown = previous.join("personal.txt");
+        fs::write(&unknown, "personal data").unwrap();
+        assert!(retire_previous(&installation).is_err());
+        assert!(previous.join("piik-app.exe").is_file());
+        assert!(unknown.is_file());
+        fs::remove_file(unknown).unwrap();
+        retire_previous(&installation).unwrap();
+        assert!(!marker.exists());
+        assert!(!workspace.exists());
+    }
+
     #[test]
     fn replacement_failure_restores_old_files_before_a_new_process_exists() {
         use std::os::windows::fs::OpenOptionsExt;

@@ -14,7 +14,7 @@ import { channelErrorPresentation } from "../src/client/channel/error-presentati
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
 import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";
-import { resolveVoiceDockControls } from "../src/client/channel/voice-dock-controls";
+import { resolveRoomVoiceControls } from "../src/client/channel/voice-dock-controls";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
 import * as indexedSource from "../src/client/channel/watch-indexed-source";
@@ -2353,11 +2353,9 @@ test("mute and leave supersede a pending unmute without activating a late microp
     const opening = session.setMuted("first", false);
     const openingAborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
     expect(session.getSnapshot().pending.has("voice:first")).toBe(true);
-    const controls = resolveVoiceDockControls({
-      ...session.getSnapshot(), voiceMicrophonePending: session.voiceMicrophonePending, canUnmute: session.canUnmute,
-      setMuted: session.setMuted, setDeafened: session.setDeafened,
-    }, "first");
-    expect(controls.activity?.muted).toBe(true);
+    const member = session.getSnapshot().state!.voice.find(value => value.roomId === "first")!;
+    expect(member.muted).toBe(true);
+    const controls = resolveRoomVoiceControls(session, member);
     expect(controls.microphonePending).toBe(true);
     expect(controls.microphoneDisabled).toBe(false);
     await session.setDeafened("first", true);
@@ -2472,10 +2470,11 @@ test.each(["unmute", "join"])("voice shortcut cancels pending permission on %s b
     await join("first");
     if (entry === "unmute") await session.joinVoice("second", true);
     const opening = entry === "unmute" ? session.setMuted("second", false) : session.joinVoice("second");
-    const aborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
+    const finished = entry === "join" ? expect(opening).resolves.toBeUndefined() : expect(opening).rejects.toMatchObject({ name: "AbortError" });
     expect(session.voiceMicrophonePending("second")).toBe(true);
     expect(session.toggleVoiceShortcut("microphone")).toBe(true);
-    await aborted;
+    await finished;
+    expect(active("listening")).toEqual(["first", "second"]);
     expect(contexts[0].close).toHaveBeenCalled();
     grant(remoteStream("late", [late]));
     await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
@@ -2483,8 +2482,8 @@ test.each(["unmute", "join"])("voice shortcut cancels pending permission on %s b
   } finally { session.close(); }
 });
 
-test("focused voice dock cancels the first join while microphone permission is pending", async () => {
-  const { session, socket } = await shortcutRooms();
+test("focused voice dock mutes the first join while microphone permission is pending", async () => {
+  const { session, socket } = await setup(3, false);
   const contexts = microphoneMixer([]);
   let grant!: (stream: MediaStream) => void;
   vi.stubGlobal("navigator", { platform: "Win32", mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
@@ -2510,17 +2509,20 @@ test("focused voice dock cancels the first join while microphone permission is p
   try {
     await act(async () => root.render(createElement(Dock)));
     expect(press()).toBe(false);
-    let joining!: Promise<unknown>;
-    await act(async () => { joining = session.joinVoice("first").catch(error => error); });
+    let joining!: Promise<void>;
+    await act(async () => { joining = session.joinVoice("first"); });
     expect(session.getSnapshot().state?.voice).toEqual([]);
-    await act(async () => { expect(press()).toBe(true); await joining; });
-    expect(await joining).toMatchObject({ name: "AbortError" });
+    await act(async () => { expect(press()).toBe(true); });
+    const join = socket.sent.at(-1)!;
+    expect(join).toMatchObject({ type: "voice", roomId: "first", joined: true, muted: true, deafened: false });
+    socket.receive({ type: "ack", requestId: join.requestId });
+    await act(async () => { await joining; });
     expect(contexts[0].close).toHaveBeenCalled();
     const late = remoteTrack("audio");
     grant(remoteStream("late", [late]));
     await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
-    expect(socket.sent.some(command => command.type === "publish" || command.type === "voice" && command.joined)).toBe(false);
-    expect(press()).toBe(false);
+    expect(socket.sent.filter(command => command.type === "voice")).toEqual([join]);
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
   } finally { await act(async () => root.unmount()); session.close(); }
 });
 
@@ -15133,7 +15135,7 @@ test("last voice leave retires an unresolved microphone request before a late pe
 });
 
 
-test("leaving one pending voice room preserves a sibling's shared microphone request", async () => {
+test.each(["leave", "revoke"])("%s ends one pending room's join before its sibling's shared permission settles", async end => {
   const { session, socket } = await setup(3, false);
   const clone = remoteStream("second-voice", [remoteTrack("audio")]);
   const abandoned = remoteStream("left-voice", [remoteTrack("audio")]);
@@ -15144,16 +15146,25 @@ test("leaving one pending voice room preserves a sibling's shared microphone req
   const first = session.joinVoice("first").catch(error => error);
   const second = session.joinVoice("second");
   try {
-    await session.leaveVoice("first");
+    if (end === "leave") await session.leaveVoice("first");
+    else {
+      const state = structuredClone(session.getSnapshot().state!);
+      state.channel.rooms.find(room => room.id === "first")!.authorized = false;
+      socket.receive({ type: "state", state });
+    }
+    expect(await first).toMatchObject({ name: "AbortError" });
+    expect(session.voiceBusy("first")).toBe(false);
+    expect(session.voiceBusy("second")).toBe(true);
     expect(getUserMedia).toHaveBeenCalledOnce();
     expect(contexts[0].close).not.toHaveBeenCalled();
     grant(remoteStream("shared-raw", [raw]));
-    expect(await first).toMatchObject({ name: "AbortError" });
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "second", joined: true }));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await second;
+    expect(socket.sent.filter(command => command.type === "voice" && command.joined).map(command => command.roomId)).toEqual(["second"]);
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
     expect(raw.stop).not.toHaveBeenCalled();
     expect(contexts[0].close).not.toHaveBeenCalled();
     const leave = session.leaveVoice("second");

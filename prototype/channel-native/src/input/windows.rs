@@ -167,14 +167,8 @@ impl System {
                 };
                 ensure!(width > 1 && height > 1, "input_desktop_unavailable");
                 vec![mouse(MOUSEINPUT {
-                    dx: (((f64::from(bounds.left - left) + x * f64::from(bounds.width - 1))
-                        * 65535.0
-                        / f64::from(width - 1))
-                    .clamp(0.0, 65535.0)) as i32,
-                    dy: (((f64::from(bounds.top - top) + y * f64::from(bounds.height - 1))
-                        * 65535.0
-                        / f64::from(height - 1))
-                    .clamp(0.0, 65535.0)) as i32,
+                    dx: absolute_mouse_coordinate(*x, bounds.left, bounds.width, left, width),
+                    dy: absolute_mouse_coordinate(*y, bounds.top, bounds.height, top, height),
                     dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     ..Default::default()
                 })]
@@ -257,6 +251,23 @@ impl System {
     }
 }
 
+// Select the source pixel under the Viewer point, then center the integer Win32
+// codes assigned to that pixel by the virtual desktop.
+fn absolute_mouse_coordinate(
+    position: f64,
+    start: i32,
+    extent: i32,
+    origin: i32,
+    size: i32,
+) -> i32 {
+    let local = (((position + f64::EPSILON) * f64::from(extent)) as i64).min(i64::from(extent) - 1);
+    let width = i64::from(size);
+    let pixel = (i64::from(start) - i64::from(origin) + local).clamp(0, width - 1);
+    let first = (pixel * 65536 + width - 1) / width;
+    let last = ((pixel + 1) * 65536 - 1) / width;
+    ((first + last) / 2) as i32
+}
+
 fn mouse(mi: MOUSEINPUT) -> INPUT {
     INPUT {
         r#type: INPUT_MOUSE,
@@ -306,5 +317,22 @@ impl Shortcut {
     pub(super) fn notify_test(&self) -> Result<()> {
         self._hotkeys.notify_test(0)?;
         Ok(())
+    }
+}
+
+#[test]
+fn absolute_move_uses_picture_pixel_on_negative_monitor() {
+    for (position, extent, pixel) in [
+        (0.0, 1024, 0),
+        (0.99 / 1024.0, 1024, 0),
+        (1.0 / 1024.0, 1024, 1),
+        (1.01 / 1024.0, 1024, 1),
+        (511.99 / 1024.0, 1024, 511),
+        (1.0, 1024, 1023),
+        // Actual picturePoint output for source pixel 2 on a 1920-wide image.
+        (0.001041666666666663, 1920, 2),
+    ] {
+        let code = absolute_mouse_coordinate(position, -1600, extent, -1920, 4480);
+        assert_eq!(i64::from(code) * 4480 / 65536 - 320, pixel);
     }
 }

@@ -2,7 +2,7 @@ import { BackButton, Btn } from "../../components/living/primitives";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import type { ChannelUser as User } from "../protocol";
-import { listeningVoicePublications, roomPresentUserIds, roomActivityPeople, userProfile } from "../presentation";
+import { listeningVoicePublications, onlineUserIds, roomPresentUserIds, roomActivityPeople, userProfile } from "../presentation";
 import { ChannelUser } from "./ChannelUser";
 import { memo, useEffect, useRef, useState } from "react";
 
@@ -49,7 +49,7 @@ export const ChannelPeople = memo(function ChannelPeople({ channel, roomId, acti
     if (active) setDirectory(previous => state?.users.every(user => previous.ids.includes(user.id)) ? previous
       : { ...previous, ids: [...new Set([...previous.ids, ...(state?.users.map(user => user.id) ?? [])])] });
   }, [active, state?.users]);
-  const online = new Set(state?.sessions.filter(session => session.online).map(session => session.userId));
+  const online = onlineUserIds(state);
   const inRoom = state ? roomPresentUserIds(state, roomId) : new Set<string>();
   const groups: { label: string; users: User[] }[] = [
     { label: t("channel.people.thisRoom"), users: [] },

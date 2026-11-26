@@ -191,8 +191,10 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   state.sessions.find(session => session.id === "route-peer")!.online = false;
   expect(renderPeople()).toContain('class="c3-user" data-user-id="self"');
   expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="route"');
+  expect(roomPeople(state, room.id).map(({ userId, online }) => [userId, online])).toEqual([["self", true], ["chat", true]]);
   state.sessions.find(session => session.id === "self-page")!.online = false;
   expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="self"');
+  expect(roomPeople(state, room.id).map(({ userId, online }) => [userId, online])).toEqual([["self", false], ["chat", true]]);
   room.fileActivity = [];
   expect(activities().map(user => user.id)).toEqual(["self"]);
   expect(render()).toContain(say("room.item.showParticipants", { count: "2" }));

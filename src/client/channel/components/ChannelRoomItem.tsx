@@ -40,7 +40,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         aria-describedby={[unread && unreadId, !room.available && offlineId, activityLabel && activityId].filter(Boolean).join(" ") || undefined}
         aria-current={selected ? "page" : undefined} onClick={onSelect}>
         <ChannelIdentityMark icon={room.icon} picture={selected ? room.picture : undefined} size={21} />
-        {!compact && <strong>{room.name}</strong>}
+        {compact ? peopleFaces : <strong>{room.name}</strong>}
         {!compact && <span className="c3-room-activity" aria-hidden="true">
           {room.access === "private" && <Glyph name="lock" size={13} />}
           {!room.available && <span>{offlineLabel}</span>}
@@ -50,7 +50,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         </span>}
       </button>
     </Tooltip>
-    {peopleFaces}
+    {!compact && peopleFaces}
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
     {!room.available && <span id={offlineId} className="visually-hidden">{offlineLabel}</span>}
     {activityLabel && <span id={activityId} className="visually-hidden">{activityLabel}</span>}

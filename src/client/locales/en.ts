@@ -1188,6 +1188,8 @@ export const en: Record<CopyKey, string> = {
   "voice.undeafen": "Resume listening",
   "voice.deafenHint": "Pause room voice playback for you. Your microphone and forwarding continue.",
   "voice.undeafenHint": "Resume room voice playback without changing your microphone.",
+  "voice.leave.short": "Leave",
+  "voice.listening.short": "Listen",
   "voice.leave": "Leave voice",
   "voice.microphoneOn": "Turn on microphone",
   "voice.microphoneOff": "Turn off microphone",

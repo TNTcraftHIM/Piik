@@ -13,6 +13,7 @@ type VoiceTransmission = RoomPreferences["voiceTransmission"];
 
 /** This endpoint's voice in one room: what it asked for, and the publication carrying it. */
 interface VoiceIntent {
+  cancelInputWait?: () => void;
   publicationId: string | null;
   muted: boolean;
   deafened: boolean;
@@ -108,7 +109,7 @@ export class VoiceParticipation {
     this.rooms.set(roomId, intent);
     let supplied = listenOnly ? undefined : providedStream;
     try {
-      const microphone = !listenOnly && !supplied ? await this.getMicrophone() : undefined;
+      const microphone = !listenOnly && !supplied ? await this.waitForMicrophone(intent) : undefined;
       if (this.rooms.get(roomId) !== intent) throw new DOMException("Voice left", "AbortError");
       await this.session.request({ type: "voice", roomId, joined: true, muted: intent.muted, deafened: intent.deafened });
       if (this.rooms.get(roomId) !== intent) throw new DOMException("Voice left", "AbortError");
@@ -150,6 +151,7 @@ export class VoiceParticipation {
   };
 
   private forgetRoom(roomId: string): void {
+    this.rooms.get(roomId)?.cancelInputWait?.();
     this.rooms.delete(roomId);
     this.lastOn.microphone.delete(roomId);
     this.lastOn.listening.delete(roomId);
@@ -164,13 +166,10 @@ export class VoiceParticipation {
     const closing = [...this.rooms.keys()].filter(roomId => on.has(roomId) || action === "microphone" && this.microphonePending(roomId));
     const set = action === "microphone" ? this.setMuted : this.setDeafened;
     if (closing.length) {
-      for (const roomId of closing) {
-        // Cancel an unjoined room's request before it can announce participation.
-        const operation = members.some(member => member.roomId === roomId) ? set(roomId, true) : this.leave(roomId);
-        void operation.catch(() => {});
-      }
-      // The writes above refresh synchronously. Remember the whole press, ahead of any replies.
-      if (on.size) this.lastOn[action] = on;
+      // Apply the entire press before projecting which rooms are still on.
+      for (const roomId of closing) this.setLocalControl(this.rooms.get(roomId)!, action, true);
+      this.refresh();
+      for (const roomId of closing) void this.sync(roomId).catch(() => {});
       return true;
     }
     const joined = [...this.rooms.keys()].filter(roomId => members.some(member => member.roomId === roomId));
@@ -210,17 +209,28 @@ export class VoiceParticipation {
     return levels;
   };
 
+  private setLocalControl(intent: VoiceIntent, action: VoiceToggleAction, off: boolean): MediaStream | undefined {
+    if (action === "listening") {
+      intent.deafened = off;
+      return;
+    }
+    intent.muted = off;
+    if (off) intent.cancelInputWait?.();
+    const stream = intent.publicationId ? this.session.local.get(intent.publicationId)?.stream : undefined;
+    stream?.getAudioTracks().forEach(track => { track.enabled = !off; });
+    return stream;
+  }
+
   setMuted = (roomId: string, muted: boolean): Promise<void> => {
     const intent = this.rooms.get(roomId);
     if (!intent) return Promise.resolve();
     if (!muted && !this.canUnmute(roomId)) return Promise.reject(new Error("capture_unavailable"));
-    intent.muted = muted;
-    const stream = intent.publicationId ? this.session.local.get(intent.publicationId)?.stream : undefined;
-    stream?.getAudioTracks().forEach(track => { track.enabled = !muted; });
+    const stream = this.setLocalControl(intent, "microphone", muted);
     this.refresh();
     if (!muted && !stream) return this.session.action(roomKey(roomId), async () => {
       try {
-        const microphone = await this.getMicrophone();
+        const microphone = await this.waitForMicrophone(intent);
+        if (!microphone) throw new DOMException("Microphone cancelled", "AbortError");
         if (this.rooms.get(roomId) !== intent || intent.muted) return;
         const capture = microphone.stream.clone();
         const id = intent.publicationId = crypto.randomUUID();
@@ -244,7 +254,7 @@ export class VoiceParticipation {
   setDeafened = (roomId: string, deafened: boolean): Promise<void> => {
     const intent = this.rooms.get(roomId);
     if (!intent) return Promise.resolve();
-    intent.deafened = deafened;
+    this.setLocalControl(intent, "listening", deafened);
     this.refresh();
     return this.sync(roomId);
   };
@@ -307,7 +317,7 @@ export class VoiceParticipation {
       const { publicationId } = intent;
       const stream = publicationId ? this.session.local.get(publicationId)?.stream : undefined;
       if (member && stream) stream.getAudioTracks().forEach(track => { track.enabled = !intent.muted; });
-      if (!member && !this.busy(roomId)) {
+      if (!state.channel.rooms.some(room => room.id === roomId && room.authorized) || !member && !this.busy(roomId)) {
         this.forgetRoom(roomId);
         if (publicationId) this.session.retire(publicationId);
       }
@@ -387,6 +397,7 @@ export class VoiceParticipation {
     const { sessionId, connection } = this.session.view();
     // Listening can change while an unmute is still waiting for capture or publication.
     const member = this.session.snapshot()?.voice.find(value => value.roomId === roomId && value.sessionId === sessionId);
+    if (intent?.cancelInputWait && !member) return Promise.resolve(); // The joining room will send its current controls.
     const muted = !intent || intent.muted || (!this.session.local.get(intent.publicationId ?? "")?.admitted && (member?.muted ?? true));
     const command = { type: "voice" as const, roomId, joined: !!intent, muted, deafened: intent?.deafened ?? false };
     if (connection !== "connected") return Promise.resolve();
@@ -417,6 +428,13 @@ export class VoiceParticipation {
     if ([...this.rooms.values()].some(intent => intent.publicationId)) return;
     this.microphone?.close();
     this.microphone = null;
+  }
+
+  /** Each room can stop waiting for a shared permission prompt when its input intent ends. */
+  private async waitForMicrophone(intent: VoiceIntent): Promise<MicrophoneInput | undefined> {
+    const cancelled = new Promise<undefined>(resolve => { intent.cancelInputWait = () => resolve(undefined); });
+    try { return await Promise.race([this.getMicrophone(), cancelled]); }
+    finally { delete intent.cancelInputWait; }
   }
 
   private async getMicrophone(): Promise<MicrophoneInput> {

@@ -665,6 +665,17 @@ test.each(["incompatible_protocol", "admission failed: incompatible_protocol"])(
   expect(Socket.current.readyState).toBe(3);
 });
 
+test("hello without an explicit result leaves App control disconnected", async () => {
+  vi.stubGlobal("WebSocket", Socket);
+  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+    token: "test-token", port: 8793 }, "site", "user", "credential", "Me", () => {}, () => {});
+  Socket.current.onopen?.();
+  Socket.current.receive({ id: Socket.current.sent[0].id });
+  await expect(app.ready).rejects.toThrow("invalid_app_response");
+  expect(app.connected).toBe(false);
+  expect(Socket.current.readyState).toBe(3);
+});
+
 test("socket close and its pending hello rejection retire the App link once", async () => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();

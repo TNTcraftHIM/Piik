@@ -168,8 +168,8 @@ describe("push-to-talk shortcut", () => {
 describe("microphone mode settings", () => {
   const settings = (mode: "open" | "push" | "activity", talk: VoiceShortcutBinding | null, captured = false) => {
     const channel = {
-      voiceBusy: () => false, sessionId: "me", pending: new Set(), microphones: async () => [], microphoneLevel: () => undefined,
-      state: { channel: { rooms: [] }, publications: captured ? [{ kind: "voice", sessionId: "me" }] : [] },
+      voiceBusy: () => false, sessionId: "me", listeningVolume: 1, microphones: async () => [], microphoneLevel: () => undefined,
+      state: { publications: captured ? [{ kind: "voice", sessionId: "me" }] : [] },
       voiceTransmission: { mode, activationThreshold: -45 }, voiceInput: { deviceId: "", volume: 1, voiceProcessing: true },
     } as unknown as ChannelController;
     const shortcuts = {
@@ -178,7 +178,7 @@ describe("microphone mode settings", () => {
       background: { available: false, enabled: false, enable: vi.fn(), report: undefined, error: undefined, pending: false, recordReady: true },
     } as ReturnType<typeof useVoiceShortcuts>;
     setCopy({ lang: "en" });
-    return renderToStaticMarkup(createElement(ChannelVoiceSettingsForm, { channel, roomId: "room", available: true, shortcuts }));
+    return renderToStaticMarkup(createElement(ChannelVoiceSettingsForm, { channel, available: true, shortcuts }));
   };
   const talkRow = t("en", "voice.shortcuts.edit", { action: t("en", "voice.mode.push"), shortcut: "Ctrl + Shift + V" });
 

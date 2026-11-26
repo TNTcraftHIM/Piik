@@ -217,6 +217,11 @@ export function roomVoicePeople(state: ChannelSnapshot, roomId: string, levels: 
   return people;
 }
 
+/** A person is online while any of their sessions is online. */
+export function onlineUserIds(state: ChannelSnapshot | null) {
+  return new Set(state?.sessions.filter(session => session.online).map(session => session.userId));
+}
+
 /** Room membership persists through signaling recovery when media participation does. */
 export function roomPresentUserIds(state: ChannelSnapshot, roomId: string, activity = roomActivities(state, roomId)) {
   const sessions = new Set(state.channel.rooms.find(room => room.id === roomId)?.participantSessionIds);
@@ -232,8 +237,10 @@ export function roomPeople(state: ChannelSnapshot, roomId: string, profiles: Rea
   if (!room) return [];
   const activity = roomActivities(state, roomId, local);
   const users = roomPresentUserIds(state, roomId, activity);
+  const online = onlineUserIds(state);
   return state.users.filter(user => users.has(user.id)).map(user => ({
     userId: user.id, name: user.name, avatar: profileAvatar(user, profiles.get(user.id)) ?? undefined, owner: user.id === (room.creatorId ?? state.channel.ownerId),
+    online: online.has(user.id),
     ...(activity.get(user.id) ?? idleActivity()),
   }));
 }

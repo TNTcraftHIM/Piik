@@ -85,9 +85,8 @@
 }
 
 /* In the rail a room is its mark over the same picture of who is in it, and the whole item selects it. */
-.c3-room-list-item > .c3-room-item[data-compact] { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 6px; }
-.c3-room-item[data-compact] > .c3-room-label { flex: none; align-self: stretch; margin: 0; display: block; }
-.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; justify-content: center; padding: 0; }
-.c3-room-item[data-compact] > .c3-room-faces { padding: 0; min-height: 15px; }
-.c3-room-item[data-compact] > .c3-room-faces > .lr-person { width: 12px; height: 15px; }
-.c3-room-item[data-compact] > .c3-room-faces > .lr-person + .lr-person { margin-inline-start: -4px; }
+.c3-room-list-item > .c3-room-item[data-compact] { display: flex; padding: 0; }
+.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 4px 6px; }
+.c3-room-item[data-compact] .c3-room-faces { padding: 0; min-height: 15px; }
+.c3-room-item[data-compact] .c3-room-faces > .lr-person { width: 12px; height: 15px; }
+.c3-room-item[data-compact] .c3-room-faces > .lr-person + .lr-person { margin-inline-start: -4px; }

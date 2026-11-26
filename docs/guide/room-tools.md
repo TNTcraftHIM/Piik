@@ -167,7 +167,7 @@ browser's site storage and are not sent to the room.
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
 Microphone and listening controls do not change the shared picture's sound.
-Room managers can change **Room voice bitrate** in voice settings.
+Room managers can change **Room voice bitrate** in the room's settings.
 The microphone's green fill follows your voice level. Friends' microphone booms
 light up as their voices arrive; an unfolded boom by itself means the microphone is on.
 
@@ -180,6 +180,7 @@ conversation or stopping a picture does not leave those voice rooms.
 On macOS, use **Command** instead of Ctrl. With several voice rooms joined,
 the key turns off the microphones or listening that are on; press again to
 restore them. Use a room's own buttons to change only that room.
+Muting during the microphone prompt continues joining with listening only.
 Change or clear a binding in **Voice settings → Keyboard shortcuts**;
 press Esc to cancel recording. Page shortcuts work while Piik or its room tool
 has focus. Text entry and remote keyboard control take priority.

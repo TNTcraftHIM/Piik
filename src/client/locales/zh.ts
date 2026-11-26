@@ -1186,6 +1186,8 @@ export const zh = {
   "voice.undeafen": "恢复收听",
   "voice.deafenHint": "仅暂停你这里的语音播放，麦克风与转发继续。",
   "voice.undeafenHint": "恢复房间语音收听，不改变麦克风状态。",
+  "voice.leave.short": "退出",
+  "voice.listening.short": "收听",
   "voice.leave": "退出语音",
   "voice.microphoneOn": "打开麦克风",
   "voice.microphoneOff": "关闭麦克风",
