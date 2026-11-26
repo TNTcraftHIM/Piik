@@ -1018,6 +1018,9 @@ Unselected hover uses `--control-hover`. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.
 Gold upholstery, illustration and badge artwork retain their own palettes.
 
+The site and personal controls sit on the frame, the room is lit, and
+conversation beside the pictures sits on the room's aside surface.
+
 The App terminal keeps its user's terminal background and palette. A compact
 mascot/title block identifies the App and build; state, addresses and available
 shortcut keys form separate reading levels. Use terminal-theme blue for links

@@ -162,6 +162,14 @@ fn watch_validation_and_source_retirement_are_bounded() {
     let source: piik_channel_core::wire::WatchSource =
         serde_json::from_value(webpage.clone()).unwrap();
     assert_eq!(serde_json::to_value(source).unwrap(), webpage);
+    let opaque = json!({"kind":"website"});
+    let source: piik_channel_core::wire::WatchSource = serde_json::from_value(opaque.clone()).unwrap();
+    assert_eq!(serde_json::to_value(source).unwrap(), opaque);
+    for field in ["url", "mediaUrl"] {
+        let mut nullable = opaque.clone();
+        nullable[field] = Value::Null;
+        assert!(serde_json::from_value::<piik_channel_core::wire::WatchSource>(nullable).is_err());
+    }
     let mut value = start(&room, id);
     value["playback"]["rate"] = json!(0);
     error(net.command(owner, value), "invalid_watch_playback");
@@ -185,6 +193,38 @@ fn watch_validation_and_source_retirement_are_bounded() {
         json!({"type":"host_stop","roomId":room,"bindingId":binding}),
     );
     assert!(net.state(owner).watch_activities.is_empty());
+}
+#[test]
+fn opaque_website_bytes_do_not_require_an_original_page_locator() {
+    let (mut net, owner, viewer, room) = setup();
+    let provider = Uuid::new_v4();
+    let session = net.command(provider, json!({"type":"join","name":"App","ownerKey":"owner"}))
+        .events.into_iter().find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id), _ => None,
+        }).unwrap();
+    let id = Uuid::new_v4();
+    let source = json!({"sessionId":session,"resourceId":Uuid::new_v4(),"format":"dash"});
+    let mut command = start(&room, id);
+    command["source"] = json!({"kind":"website"});
+    command["byteSource"] = source.clone();
+    ready(net.command_at(owner, command, 2000), 2000);
+    ready(net.command_at(viewer, json!({"type":"join_watch","roomId":room,"id":id,"mode":"peer"}), 3000), 3000);
+    assert_eq!(serde_json::to_value(&net.state(viewer).watch_activities[0].source).unwrap(), json!({"kind":"website"}));
+    assert_eq!(serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(), source);
+    assert_eq!(net.state(viewer).watch_subscriptions[0].mode, piik_channel_core::wire::WatchMode::Peer);
+    let pair = net.state(viewer).pairs.iter().find(|pair| pair.peer_id == session).unwrap().id;
+    for peer in [provider, viewer] {
+        net.command_at(peer, json!({"type":"link_state","pairId":pair,"state":"connected"}), 3000);
+    }
+    assert_eq!(net.state(viewer).watch_bytes[0].upstream, Some(session));
+    let withdraw = json!({"type":"set_watch_byte_source","roomId":room,"id":id,"byteSource":null});
+    error(net.command(viewer, withdraw.clone()), "not_watch_owner");
+    net.command(owner, withdraw);
+    assert!(net.state(viewer).watch_bytes.is_empty());
+    assert!(net.state(viewer).watch_activities[0].byte_source.is_none());
+    assert_eq!(net.state(viewer).watch_subscriptions[0].id, id);
+    net.command(owner, json!({"type":"set_watch_byte_source","roomId":room,"id":id,"byteSource":source}));
+    assert_eq!(net.state(viewer).watch_bytes[0].upstream, Some(session));
 }
 
 #[test]

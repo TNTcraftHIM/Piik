@@ -88,24 +88,24 @@ export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publis
 
 /** Prepare the main player without transferring the selected page's lifetime. */
 async function prepareMainPlayback(page: AppPage, media: HTMLVideoMedia, signal: AbortSignal, candidateId?: string): Promise<void> {
-  try {
-    await media.ready(signal);
-    const main = await media.read();
-    const state = main.live ? undefined : await page.read(candidateId);
-    signal.throwIfAborted();
-    await media.patch({ ...(state && { position: state.position, rate: state.rate }), paused: true });
-    signal.throwIfAborted();
-    // The main player starts after room confirmation; avoid overlapping original-page sound.
-    if (!candidateId) await page.patch({ paused: true });
-    signal.throwIfAborted();
-  } catch (error) { media.close(); throw error; }
+  await media.ready(signal);
+  const main = await media.read();
+  const state = main.live ? undefined : await page.read(candidateId);
+  signal.throwIfAborted();
+  await media.patch({ ...(state && { position: state.position, rate: state.rate }), paused: true });
+  signal.throwIfAborted();
+  // The main player starts after room confirmation; avoid overlapping original-page sound.
+  if (!candidateId) await page.patch({ paused: true });
+  signal.throwIfAborted();
 }
 
 export async function preparePortableWatchMedia(page: AppPage, url: string, signal: AbortSignal,
   format?: WatchFormat, candidateId?: string): Promise<HTMLVideoMedia> {
   const media = new HTMLVideoMedia(url, format);
-  await prepareMainPlayback(page, media, signal, candidateId);
-  return media;
+  try {
+    await prepareMainPlayback(page, media, signal, candidateId);
+    return media;
+  } catch (error) { media.close(); throw error; }
 }
 
 function pagePlayback(page: AppPage, byteSource: WatchByteSource, timeline?: WatchTimeline): HTMLVideoMedia {
@@ -117,9 +117,14 @@ export async function preparePageSuppliedWatchMedia(page: AppPage, byteSource: W
   signal: AbortSignal, candidateId?: string): Promise<PageSuppliedMedia> {
   signal.throwIfAborted();
   const media = pagePlayback(page, byteSource);
-  try { await prepareMainPlayback(page, media, signal, candidateId); }
-  catch (error) { await page.stopMedia(candidateId).catch(() => {}); throw error; }
-  return new PageSuppliedMedia(page, media, byteSource);
+  try {
+    await prepareMainPlayback(page, media, signal, candidateId);
+    return new PageSuppliedMedia(page, media, byteSource, page.hold());
+  } catch (error) {
+    media.close();
+    await page.stopMedia(candidateId).catch(() => {});
+    throw error;
+  }
 }
 
 /** One main playback owner; the selected page retains only resource access and retirement. */
@@ -127,21 +132,19 @@ export class PageSuppliedMedia implements WatchMedia {
   readonly presentation;
   private closed = false;
   private readonly unlisten: () => void;
-  constructor(readonly page: AppPage, private readonly media: HTMLVideoMedia, readonly retainedByteSource: WatchByteSource, private ownsPage = true) {
+  constructor(readonly page: AppPage, private readonly media: HTMLVideoMedia, readonly retainedByteSource: WatchByteSource,
+    private releasePage: (() => void) | null = () => page.close()) {
     this.presentation = media.presentation;
     // Original play/pause/seek events are deliberately not room playback events.
     this.unlisten = page.listen(event => { if (event === "closed") this.close(); });
   }
   audioAvailable(): boolean | undefined { return this.media.audioAvailable(); }
   retryCandidate(timeline: WatchTimeline): PageSuppliedMedia {
-    return new PageSuppliedMedia(this.page, pagePlayback(this.page, this.retainedByteSource, timeline), this.retainedByteSource, false);
+    return new PageSuppliedMedia(this.page, pagePlayback(this.page, this.retainedByteSource, timeline), this.retainedByteSource, null);
   }
-  private pageLease?: () => void;
-  usePageLease(release: () => void): void { this.pageLease = release; this.ownsPage = false; }
   transferPageTo(next: PageSuppliedMedia): void {
-    if (this.pageLease) { next.usePageLease(this.pageLease); this.pageLease = undefined; return; }
-    this.ownsPage = false;
-    next.ownsPage = true;
+    next.releasePage = this.releasePage;
+    this.releasePage = null;
   }
   read(): Promise<WatchMediaState> { return this.media.read(); }
   patch(value: WatchMediaPatch): Promise<void> { return this.media.patch(value); }
@@ -154,6 +157,6 @@ export class PageSuppliedMedia implements WatchMedia {
     this.closed = true;
     this.unlisten();
     this.media.close();
-    if (this.pageLease) this.pageLease(); else if (this.ownsPage) this.page.close();
+    this.releasePage?.();
   }
 }

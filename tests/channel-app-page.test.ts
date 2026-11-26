@@ -6,6 +6,8 @@ import { APP_PROTOCOL, ChannelApp, channelAppDiscovery } from "../src/client/cha
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
 import { AppPageMedia, waitForWatchMedia } from "../src/client/channel/watch-media";
+import { AppPage } from "../src/client/channel/app-link";
+import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { observeWatchSources } from "../src/client/channel/watch-page-media";
 
 class Socket {
@@ -179,6 +181,9 @@ test("page readiness rechecks events delivered before an older read reply", asyn
   let ready: Promise<void> | undefined;
   try {
     const page = await openPage(app, socket);
+    const candidateId = crypto.randomUUID();
+    socket.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [{ id: candidateId, pageURL: page.url, title: "Video", url: null, duration: 60 }] });
+    const selecting = page.select(candidateId); socket.reply({ ...state, readyState: 0 }); await selecting;
     ready = waitForWatchMedia(page, cancel.signal);
     void ready.catch(() => {});
     let settled = false;
@@ -186,8 +191,8 @@ test("page readiness rechecks events delivered before an older read reply", asyn
     const oldRead = socket.sent.at(-1)!;
     expect(oldRead.type).toBe("page_read");
     // Native can drain later samples before sending an already-captured read snapshot.
-    socket.receive({ type: "page_sample", pageId: page.id, event: "loadeddata" });
-    socket.receive({ type: "page_sample", pageId: page.id, event: "playing" });
+    socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "loadeddata" });
+    socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "playing" });
     expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(1);
     socket.receive({ id: oldRead.id, result: { ...state, readyState: 1 } });
     await vi.advanceTimersByTimeAsync(0);
@@ -197,11 +202,11 @@ test("page readiness rechecks events delivered before an older read reply", asyn
     await vi.advanceTimersByTimeAsync(30000);
     expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(2);
     expect(settled).toBe(false);
-    socket.receive({ type: "page_sample", pageId: page.id, event: "loadeddata" });
+    socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "loadeddata" });
     expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(3);
     socket.reply(state);
     await ready;
-    socket.receive({ type: "page_sample", pageId: page.id, event: "playing" });
+    socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "playing" });
     await vi.advanceTimersByTimeAsync(0);
     expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(3);
     expect(app.connected).toBe(true);
@@ -213,17 +218,20 @@ test.each(["abort", "close", "read error", "media error"] as const)("page readin
   vi.useFakeTimers();
   const { app, socket } = await setup(), cancel = new AbortController();
   try {
-    const page = await openPage(app, socket), ready = waitForWatchMedia(page, cancel.signal);
+    const page = await openPage(app, socket), candidateId = crypto.randomUUID();
+    socket.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [{ id: candidateId, pageURL: page.url, title: "Video", url: null, duration: 60 }] });
+    const selecting = page.select(candidateId); socket.reply({ ...state, readyState: 0 }); await selecting;
+    const ready = waitForWatchMedia(page, cancel.signal);
     const rejected = outcome === "abort" ? expect(ready).rejects.toMatchObject({ name: "AbortError" })
       : expect(ready).rejects.toThrow(outcome === "read error" ? "page_player_timeout" : "watch_media_failed");
     const oldRead = socket.sent.at(-1)!;
-    socket.receive({ type: "page_sample", pageId: page.id, event: "loadeddata" });
+    socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "loadeddata" });
     if (outcome === "abort") cancel.abort();
     else if (outcome === "close") {
       socket.receive({ type: "page_closed", pageId: page.id });
       socket.reply(null);
     } else if (outcome === "read error") socket.receive({ id: oldRead.id, error: "page_player_timeout" });
-    else socket.receive({ type: "page_sample", pageId: page.id, event: "error" });
+    else socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "error" });
     // A ready result cannot override cancellation, closure or an observed failure.
     socket.receive({ id: oldRead.id, result: state });
     await rejected;
@@ -431,7 +439,7 @@ test("App webpage selection has its own candidates and closes pending reads with
     socket.reply({ pageId });
     const page = await preparing;
     const candidateId = crypto.randomUUID();
-    socket.receive({ type: "page_candidates", pageId, url: "https://video.test/page", candidates: [{ id: candidateId, title: "Episode", url: null, duration: null }] });
+    socket.receive({ type: "page_candidates", pageId, url: "https://video.test/page", candidates: [{ pageURL: "https://video.test/page", id: candidateId, title: "Episode", url: null, duration: null }] });
     expect(page.candidates).toHaveLength(1);
     const selecting = page.select(candidateId); socket.reply(state); await selecting;
     const reading = page.read();
@@ -448,7 +456,7 @@ test("page candidate descriptions can grow during another App request", async ()
   const { app, socket } = await setup();
   try {
     const page = await openPage(app, socket);
-    const candidate = { id: crypto.randomUUID(), title: "Episode", url: null, duration: 60 };
+    const candidate = { id: crypto.randomUUID(), pageURL: null, title: "Episode", url: null, duration: 60 };
     const capacity = app.relayCapacity();
     socket.receive({ type: "page_candidates", pageId: page.id, url: "https://video.test/page",
       title: "Upcoming episodes", candidates: [{ ...candidate, language: "en" }] });
@@ -464,7 +472,7 @@ test.each([undefined, -1])("invalid required candidate duration (%s) retires the
   try {
     const page = await openPage(app, socket);
     socket.receive({ type: "page_candidates", pageId: page.id, url: "https://video.test/page",
-      candidates: [{ id: crypto.randomUUID(), title: "Episode", url: null, duration }] });
+      candidates: [{ pageURL: "https://video.test/page", id: crypto.randomUUID(), title: "Episode", url: null, duration }] });
     expect(app.connected).toBe(false);
   } finally { app.close(); }
 });
@@ -669,17 +677,16 @@ test("socket close and its pending hello rejection retire the App link once", as
   expect(closed).toHaveBeenCalledOnce();
 });
 
-test("cancelling a pending control intent rejects its dependent callers but preserves ready control", async () => {
+test("cancelling the only pending readiness caller retires admission but preserves ready control", async () => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();
   const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
   const attempt = new AbortController();
   const cancelled = expect(app.waitReady(attempt.signal)).rejects.toMatchObject({ name: "AbortError" });
-  const dependent = expect(app.waitReady()).rejects.toMatchObject({ name: "AbortError" });
   Socket.current.onopen?.();
   attempt.abort();
-  await Promise.all([cancelled, dependent]);
+  await cancelled;
   expect(Socket.current.readyState).toBe(3);
   expect(closed).toHaveBeenCalledOnce();
 
@@ -690,4 +697,92 @@ test("cancelling a pending control intent rejects its dependent callers but pres
     readyAttempt.abort();
     expect(ready.connected).toBe(true);
   } finally { ready.close(); }
+});
+
+test('original-page selection retirement keeps the App and a newer pending candidate alive', async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), first = crypto.randomUUID(), next = crypto.randomUUID();
+    socket.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [first, next].map(id => ({ pageURL: page.url, id, title: 'Video', url: null, duration: 60 })) });
+    const selecting = page.select(first, true); socket.reply(state); await selecting;
+    const current = new AppPageMedia(page), candidate = new AppPageMedia(page, next, page.hold());
+    await Promise.all([current.opening, candidate.opening]);
+    const currentEvents = vi.fn(), nextEvents = vi.fn(); current.listen(currentEvents); candidate.listen(nextEvents);
+    socket.receive({ type: 'page_selection_lost', pageId: page.id, candidateId: first });
+    expect(page.selectedCandidateId).toBeUndefined();
+    expect(currentEvents).toHaveBeenCalledExactlyOnceWith('source-unavailable');
+    expect(nextEvents).not.toHaveBeenCalled();
+    expect(app.connected).toBe(true);
+    expect(socket.sent.some(command => command.type === 'page_close')).toBe(false);
+    const switching = page.select(next, true); socket.reply(state); await switching;
+    socket.receive({ type: 'page_selection_lost', pageId: page.id, candidateId: first });
+    expect(page.selectedCandidateId).toBe(next);
+    expect(nextEvents).not.toHaveBeenCalled();
+    candidate.close(); current.close();
+  } finally { app.close(); }
+});
+
+test('selection loss before a queued selection reply cannot restore the retired candidate', async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), candidateId = crypto.randomUUID();
+    socket.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [{ pageURL: page.url, id: candidateId, title: 'Video', url: null, duration: 60 }] });
+    const selecting = page.select(candidateId, true);
+    const rejected = expect(selecting).rejects.toThrow('watch_source_unavailable');
+    const reply = socket.sent.at(-1)!;
+    socket.receive({ type: 'page_selection_lost', pageId: page.id, candidateId });
+    socket.receive({ id: reply.id, result: state });
+    await rejected;
+    expect(page.selectedCandidateId).toBeUndefined();
+    expect(app.connected).toBe(true);
+    expect(socket.sent.some(command => command.type === 'page_close')).toBe(false);
+  } finally { app.close(); }
+});
+
+test.each(['ready', 'loading', 'removed'] as const)('prepared page candidate owns only its own media events (%s)', async phase => {
+  const a = crypto.randomUUID(), b = crypto.randomUUID();
+  const states = { a: { ...state, duration: 60, readyState: 4 }, b: { ...state, duration: 60, readyState: phase === 'ready' ? 4 : 1 } };
+  const page = new AppPage(crypto.randomUUID(), 'https://video.test/a', async command => command.candidateId === b ? states.b : states.a, vi.fn(), vi.fn());
+  const candidates = [{ id: a, pageURL: page.url, title: 'A', url: null, duration: 60 },
+    { id: b, pageURL: 'https://video.test/b', title: 'B', url: null, duration: 60 }];
+  page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates });
+  await page.select(a, true);
+  const incumbent = new AppPageMedia(page), incumbentEvents = vi.fn();
+  incumbent.listen(incumbentEvents);
+  const media = new AppPageMedia(page, b, page.hold());
+  const player = new WatchPlayer('room', true, media, vi.fn()), published = vi.fn(async (_value: unknown) => {});
+  try {
+    await Promise.all([incumbent.opening, media.opening]);
+    page.receive({ type: 'page_sample', pageId: page.id, candidateId: a, event: 'waiting' });
+    page.receive({ type: 'page_blocked', pageId: page.id, candidateId: a });
+    expect(incumbentEvents.mock.calls.map(([event]) => event)).toEqual(['waiting', 'blocked']);
+    expect(player.blocked).toBe(false);
+    let settled = false;
+    const ready = player.ready().then(() => { settled = true; });
+    if (phase === 'removed') {
+      const rejected = expect(ready).rejects.toThrow('watch_source_unavailable');
+      page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [candidates[0]] });
+      await rejected;
+      expect(page.selectedCandidateId).toBe(a);
+      expect(incumbentEvents).toHaveBeenCalledTimes(2);
+      return;
+    }
+    if (phase === 'loading') {
+      await Promise.resolve(); await Promise.resolve();
+      expect(settled).toBe(false);
+      states.b.readyState = 4;
+      page.receive({ type: 'page_sample', pageId: page.id, candidateId: b, event: 'loadeddata' });
+    }
+    await ready;
+    player.calibrate(performance.now(), performance.now());
+    await page.select(b, true);
+    player.activate(published);
+    await player.publish(true);
+    expect(published.mock.lastCall?.[0]).toMatchObject({ paused: false, position: state.position });
+    const receivedA = incumbentEvents.mock.calls.length;
+    page.receive({ type: 'page_sample', pageId: page.id, candidateId: b, event: 'waiting' });
+    await player.serialize(async () => {});
+    expect(published.mock.lastCall?.[0]).toMatchObject({ paused: true });
+    expect(incumbentEvents).toHaveBeenCalledTimes(receivedA);
+  } finally { player.close(); incumbent.close(); page.close(); }
 });

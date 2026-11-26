@@ -34,7 +34,7 @@ export function youtubeStartSeconds(raw: string): number | undefined {
 export function youtubeEmbedURL(id: string): string { return `https://www.youtube.com/embed/${id}`; }
 
 /** A Native-selected /watch page does not establish its selected video's identity. */
-export function youtubeSourceId(source: { kind: string; url: string }): string | null {
-  const id = source.kind === "website" ? youtubeVideoId(source.url) : null;
+export function youtubeSourceId(source: { kind: string; url?: string }): string | null {
+  const id = source.kind === "website" && source.url ? youtubeVideoId(source.url) : null;
   return id && source.url === youtubeEmbedURL(id) ? id : null;
 }

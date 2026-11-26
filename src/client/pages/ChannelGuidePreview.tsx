@@ -1,5 +1,5 @@
 import sampleThumbnail from "../../../public/favicon.png?url&inline";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { z } from "zod";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
@@ -267,7 +267,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
 }
 
 /** Guide images use these production controls with local sample props. */
-export function ChannelGuidePreview() {
+export function ChannelGuidePreview({ shareVariant }: { shareVariant?: ComponentProps<typeof ChannelShareControl>["variant"] }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const { channel, roomName, notice, received, onSend } = useChannelGuideSample({ showSampleAttachment: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -278,16 +278,16 @@ export function ChannelGuidePreview() {
   const watchChannel: ChannelController = {
     ...channel, pagePlayer: true, watchPage: () => watchPage,
     prepareWatchPage: async (_roomId, url) => setWatchPage({ pageId: crypto.randomUUID(), url, candidates: [
-      { id: "10000000-0000-4000-8000-000000000001", title: zh ? "山径漫步完整版" : "Mountain trail walk — full film",
+      { id: "10000000-0000-4000-8000-000000000001", pageURL: url, title: zh ? "山径漫步完整版" : "Mountain trail walk — full film",
         url: "https://media.example/films/mountain-trail.mp4", duration: 1480 },
-      { id: "10000000-0000-4000-8000-000000000002", title: zh ? "幕后花絮" : "Behind the scenes",
+      { id: "10000000-0000-4000-8000-000000000002", pageURL: url, title: zh ? "幕后花絮" : "Behind the scenes",
         url: null, duration: 206 },
     ] }),
     selectWatchPage: async (_roomId, candidateId, _activityId, _reportError, mode) => {
       const candidate = watchPage?.candidates.find(item => item.id === candidateId);
       if (!watchPage || !candidate) throw new Error("watch_page_unavailable");
       if (mode === "original-page" || (candidate.url && mode !== "choose-source")) { received(); return true; }
-      setWatchPage({ ...watchPage, watchSources: { choices: [
+      setWatchPage({ ...watchPage, watchSources: { candidateId, choices: [
         { id: "20000000-0000-4000-8000-000000000001", name: candidate.title, format: "file",
           displayURL: candidate.url ?? "https://media.example/films/behind-the-scenes.mp4" },
         { id: "20000000-0000-4000-8000-000000000002", name: zh ? "自适应高清播放列表" : "Adaptive HD playback",
@@ -314,7 +314,7 @@ export function ChannelGuidePreview() {
       <header className="c3-guide-heading"><div className="c3-guide-title"><ChannelIdentityMark icon="couch" /><strong>{roomName}</strong>
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
-        <ChannelShareControl channel={channel} roomId="friday" disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
+        <ChannelShareControl channel={channel} roomId="friday" variant={shareVariant} disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
       <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}

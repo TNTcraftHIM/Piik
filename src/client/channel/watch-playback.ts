@@ -5,6 +5,7 @@ const mediaFailure = (error?: unknown): string => error instanceof Error && erro
 const HAVE_CURRENT_DATA = 2;
 const HAVE_FUTURE_DATA = 3;
 const unsupportedRate = Symbol("unsupported playback rate");
+const retiredSource = Symbol("selected source retired");
 
 export function watchPosition(playback: WatchPlayback, now: number): number {
   return playback.position + (playback.paused ? 0 : Math.max(0, now - playback.anchorTime) / 1000 * playback.rate);
@@ -17,8 +18,9 @@ export class WatchPlayer {
   mode: WatchMode | null = null;
   blockedReason: "autoplay" | "local-seek" | null = null;
   get blocked(): boolean { return this.blockedReason !== null; }
-  private failure: string | typeof unsupportedRate | null = null;
-  get error(): string | null { return this.failure === unsupportedRate ? "watch_media_unsupported" : this.failure; }
+  private failure: string | typeof unsupportedRate | typeof retiredSource | null = null;
+  get error(): string | null { return this.failure === unsupportedRate ? "watch_media_unsupported"
+    : this.failure === retiredSource ? "watch_source_unavailable" : this.failure; }
   set error(value: string | null) { this.failure = value; }
   private localState: WatchMediaState | null = null;
   get mediaState(): Readonly<WatchMediaState> | null { return this.localState; }
@@ -60,6 +62,7 @@ export class WatchPlayer {
     private changed: () => void, private closed: () => void = () => {}) {
     this.unlisten = media.listen(event => {
       if (event === "closed") { this.close(); this.closed(); return; }
+      if (event === "source-unavailable") { this.sourceUnavailable(); return; }
       if (event === "error") void this.mediaError();
       if (event === "playing") {
         if (this.blockedReason === "autoplay") this.blockedReason = null;
@@ -82,9 +85,7 @@ export class WatchPlayer {
         this.ownerWaiting = true;
       } else if (event === "playing" || event === "pause" || event === "ended") this.ownerWaiting = false;
       if (["waiting", "play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
-        void this.publish(event === "playing").catch(() => {
-          if (!this.signal.aborted) { this.error = "watch_update_failed"; this.changed(); }
-        });
+        void this.publish(event === "playing").catch(() => this.failMedia(new Error("watch_update_failed")));
     });
     this.timer = setInterval(() => { void this.align(); }, 1000);
   }
@@ -99,11 +100,22 @@ export class WatchPlayer {
     await this.media.read().then(() => this.failMedia(), error => this.failMedia(error));
   }
   private failMedia(error?: unknown): void {
-    if (this.signal.aborted) return;
+    if (this.signal.aborted || this.failure === retiredSource) return;
     const failure = mediaFailure(error);
     if (this.failure === failure) return;
     this.error = failure;
     this.changed();
+  }
+  private sourceUnavailable(): void {
+    if (this.signal.aborted || this.failure === retiredSource) return;
+    const state = this.localState;
+    if (state) {
+      const elapsed = state.paused || state.ended || this.ownerWaiting ? 0 : (performance.now() - this.observedAt) / 1000 * state.rate;
+      this.observe({ ...state, position: Math.min(state.position + elapsed, state.duration ?? Infinity), paused: true, readyState: 0, buffered: [] });
+    }
+    this.failure = retiredSource;
+    this.changed();
+    if (this.owner && state) void this.publish(true).catch(() => {});
   }
   private listening?: Pick<HTMLVideoElement, "volume" | "muted">;
   inheritListening(previous?: WatchPlayer): void {
@@ -134,7 +146,9 @@ export class WatchPlayer {
   }
   async sample(): Promise<WatchPlayback> {
     if (this.offset === null) throw new Error("watch_clock_unavailable");
-    const start = performance.now(), state = await this.media.read(), end = performance.now();
+    const start = performance.now(), observed = this.failure === retiredSource && this.localState
+      ? this.localState : await this.media.read(), end = performance.now();
+    const state = this.failure === retiredSource && this.localState ? this.localState : observed;
     if (this.signal.aborted) throw new Error("watch_retired");
     this.observe(state);
     return { timeline: state.live ? "program" : "media", position: state.position, paused: state.paused || this.ownerWaiting || state.ended, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
@@ -176,7 +190,7 @@ export class WatchPlayer {
   }
   private align(force = false, explicit = false): Promise<boolean> {
     // Viewers can align from metadata; creators still prove readiness before publication.
-    if (this.signal.aborted || this.owner && !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve(false);
+    if (this.signal.aborted || this.failure === retiredSource || this.owner && !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve(false);
     this.alignmentRequest = {
       force: force || this.alignmentRequest?.force || false,
       explicit: explicit || this.alignmentRequest?.explicit || false,
@@ -202,6 +216,7 @@ export class WatchPlayer {
   }
   private async alignCurrent(force: boolean, explicit: boolean): Promise<boolean> {
     const state = await this.media.read(), now = performance.now();
+    if (this.failure === retiredSource) return false;
     const previous = this.localState, previousAt = this.observedAt;
     this.observe(state); this.observedAt = now;
     if (this.owner) {

@@ -1,4 +1,4 @@
-import { canWatchInBrowser } from "../channel/watch-embed-source";
+import { canWatchInBrowser, originalWatchURL } from "../channel/watch-embed-source";
 import { roomAvailabilityGroups, useRoomOrder } from "../channel/room-order";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { HeaderControls, LedStrip } from "../components/living/Header";
@@ -407,20 +407,21 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     void import("../channel/watch-hls").then(({ Hls }) => { if (current) setHlsSupported(Hls.isSupported()); }, () => {});
     return () => { current = false; };
   }, [inspectHls]);
-  function watchTitle(url: string) { const source = new URL(url); return source.host + source.pathname; };
+  function watchTitle(url?: string) { if (!url) return t("watch.video"); const source = new URL(url); return source.host + source.pathname; };
   const watchSources: WatchStageSource[] = stageWatches.map(activity => {
     const player = channel.watchPlayers.get(activity.id);
     const browserSource = canWatchInBrowser(activity.source, player);
+    const originalPage = originalWatchURL(activity.source);
     const owned = ownsWatch(activity.id);
     const subscription = state?.watchSubscriptions.find(value => value.id === activity.id);
     const available = connected && !!rooms.find(room => room.id === activity.roomId)?.available;
     return {
       kind: "watch", id: activity.id, roomId: activity.roomId, predecessor: activity.predecessor, pictureAdmitted: rooms.some(room => room.id === activity.roomId && room.authorized), userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
-      website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => channel.focusWatch(activity.id),
-      originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
+      website: activity.source.kind === "website", originalPageAvailable: !!originalPage && activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => channel.focusWatch(activity.id),
+      originalPageUnavailable: originalPage && activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
         ? t("watch.pageUnsupported") : undefined,
       browserSource,
-      onAppWatch: !owned && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.appConnected && channel.pagePlayer && player?.presentation.kind !== "external" ? () => {
+      onAppWatch: originalPage && !owned && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.appConnected && channel.pagePlayer ? () => {
         showSource(activity.roomId, activity.id);
         setAppWatchId(activity.id);
       } : undefined,

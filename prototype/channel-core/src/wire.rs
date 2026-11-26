@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 51;
+pub const CHANNEL_PROTOCOL: u8 = 52;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1270,20 +1270,21 @@ pub enum WatchSource {
         url: String,
     },
     Website {
-        url: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional_watch_url")]
+        url: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional_watch_url")]
         media_url: Option<String>,
     },
+}
+fn optional_watch_url<'de, D: serde::Deserializer<'de>>(value: D) -> Result<Option<String>, D::Error> {
+    String::deserialize(value).map(Some)
 }
 impl WatchSource {
     pub(crate) fn validate(&self) -> Result<(), &'static str> {
         match self {
             Self::Media { url } => validate_watch_url(url),
             Self::Website { url, media_url } => {
-                validate_watch_url(url)?;
-                if let Some(media_url) = media_url {
-                    validate_watch_url(media_url)?;
-                }
+                for url in url.iter().chain(media_url) { validate_watch_url(url)?; }
                 Ok(())
             }
         }

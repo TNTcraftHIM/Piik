@@ -145,8 +145,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     : { supported: false, ready: false, active: false, nativeActive: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
   const receivingSettings = receiving && (receiving.peerAvailable || receiving.mode === "peer" || surface.kind === "external" && receiving.browserSource) ? receiving : undefined;
-  const openOriginal = !owned && website && originalPageAvailable && surface.kind !== "external" ? onAppWatch : undefined;
-  const settingsOriginal = !player.error && openOriginal;
+  const openOriginal = !owned && website && originalPageAvailable ? onAppWatch : undefined;
+  const settingsOriginal = !player.error && surface.kind !== "external" && openOriginal;
   const localControls = !!player.video || !!receivingSettings || !!settingsOriginal || owned && !embedded;
   const hasControls = localControls || !embedded && !thumbnail && !!mediaState;
   const failure = channelErrorPresentation(player.error, t,
@@ -257,7 +257,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           disabled={disabled || retryPending} busy={retryPending} onClick={onResume} />}
         {owned && player.media.page && !returnToSource && <Btn icon="window" title={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"}
           cap={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
-        {!owned && website && surface.kind !== "external" && !returnToSource && (openOriginal
+        {!owned && website && !returnToSource && (openOriginal
           ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={openOriginal} />
           : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
             ? <small>{originalPageUnavailable}</small> : originalPageAvailable && <small>{t("watch.connectApp")}</small>))}

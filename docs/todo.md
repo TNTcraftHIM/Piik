@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-25
+Last reviewed: 2026-11-26
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -18,11 +18,15 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
-  interaction lifetime, operation feedback and the remaining Stage operations.
-  Source operations and three share-setting loops still belong to Session;
-  resource selection, promotion and retirement belong to each room's Stage.
+  interaction lifetime, operation feedback and the remaining capture, embed
+  and source-setting operations. Review their acquisition and release at the
+  actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
+- [ ] **Room layout integration.** Complete visual acceptance of the shared
+  frame, room and aside surfaces and paired controls, then implement the chosen
+  shell with the shared component owners. Keep existing layout retirement on
+  hold until the owner's workspace/screen-centred replacement decision.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
@@ -32,6 +36,10 @@ the feedback period; they do not delay that delivery.
   while its room remains available. Set the progress budget and recovery scope
   before adding a deadline; compare the existing fresh-binding handshake with
   connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
+- [ ] **Native room execution.** Give each room an independent serial work
+  owner over bounded shared execution. Preserve same-room order, storage locks,
+  rebinding and shutdown; compare optimized carrier behavior before adopting
+  additional concurrency.
 - [ ] **Host synchronization under concurrent admission.** Measure actual writer
   draining and atomic first-Join admission at the supported room scale. Preserve
   ordered host inputs, current bindings and revision order. Keep reader capacity
@@ -54,11 +62,11 @@ the feedback period; they do not delay that delivery.
   then state the accepted behaviour in the
   [media standard](./standards/media-quality.md). The published line states a
   rule; 3.0 has the code path and no accepted description.
-- [ ] **Webpage source selection and watching continuity.** Reduce the steps
-  to choose and replace a webpage video. Keep existing viewers' surfaces during
-  replacement or temporary source absence, release old media and permissions,
-  and end retained viewing on explicit exit. Complete matching-package checks
-  for same-page candidates and reconnection across consecutive source replacements.
+- [ ] **Webpage source selection and watching continuity.** Complete
+  matching-package GUI checks for document navigation, popup selection,
+  consecutive source replacements and a viewer reselecting its local video.
+  Verify retained viewing, retired media grants and window-group closure through
+  the actual Native windows; keep member-site field acceptance separate.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.

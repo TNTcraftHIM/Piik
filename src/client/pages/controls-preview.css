@@ -5,6 +5,18 @@
 .cp-catalog-scope summary { color: var(--ink); cursor: pointer; }
 .cp-catalog-scope a { color: var(--ink); text-underline-offset: 3px; }
 .cp-catalog-scope code { overflow-wrap: anywhere; }
+.cp-surface-samples > figure {
+  align-self: stretch;
+  min-width: 100px;
+  min-height: 96px;
+  align-content: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.cp-surface-frame { background: var(--surface-frame); }
+.cp-surface-room { background: var(--surface-room); }
+.cp-surface-aside { background: var(--surface-room-aside); }
 .cp-control-sample { display: grid; justify-items: center; align-content: start; gap: 10px; margin: 0 6px 0 0; }
 .cp-control-sample figcaption { color: var(--muted); font-size: 12px; }
 .cp-keyboard { max-width: 780px; margin-inline: auto; }

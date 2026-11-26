@@ -17,7 +17,7 @@ export function sharedWatchEmbed(source: Pick<WatchSource, "kind" | "url">) {
   return peertube ? { provider: "peertube" as const, id: peertube } : null;
 }
 
-export function originalWatchURL(source: Pick<WatchSource, "kind" | "url">): string {
+export function originalWatchURL(source: Pick<WatchSource, "kind" | "url">): string | undefined {
   const embed = sharedWatchEmbed(source);
   if (!embed) return source.url;
   return embed.provider === "youtube" ? `https://www.youtube.com/watch?v=${embed.id}`

@@ -93,8 +93,8 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
 }
 
 /** The picker closes before a start runs and this control can unmount with it, so a mounted owner supplies startAction. */
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerRequestHandled, onWatch, startAction }: {
-  channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, variant, disabled, openRequested, onPickerRequestHandled, onWatch, startAction }: {
+  channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; variant?: "split"; disabled: boolean;
   openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(): void;
   startAction: ReturnType<typeof useSettingsAction>;
 }) {
@@ -226,25 +226,33 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     void startAction.run(signal => operation(() => signal.aborted), onSuccess);
   };
   if (publicationId && !sharing) return null;
+  const hasSettings = !watching || !!sharing || pageWatch;
+  const split = variant === "split" && hasSettings && !captureRequest && !cancellable;
+  const actionTone = sharing || watching ? undefined : "primary";
+  const tonal = split && !actionTone ? " is-tonal" : "";
+  const sourceControl = <span ref={trigger} className="c3-share-control">
+    {captureRequest ? <span className="c3-app-confirmation">
+        <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
+          onClick={() => activateNativePicker(captureRequest.activationURL)} />
+      </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }}
+      className={split ? "is-split-main" + tonal : undefined} size="compact" tone={actionTone} quiet={!split && compact}
+      hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
+      disabled={!canOpenSourcePicker} busy={sourcePending} expanded={open}
+      hasPopup="dialog" controls={id} popoverTarget={id} />}
+    {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
+      cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
+      onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}).finally(() => {
+        trigger.current?.ownerDocument.defaultView?.requestAnimationFrame(() => trigger.current?.querySelector<HTMLButtonElement>("button")?.focus());
+      }); }} />}
+  </span>;
+  const settingsControl = hasSettings && <span ref={settingsTrigger} className="c3-share-control">
+    <Btn icon={split ? "chevron" : "sliders"} title={{ text: settingsTitle }} cap={compact || split ? undefined : { text: settingsLabel }}
+      className={split ? "is-split-more" + tonal : undefined} hint="hint-quality" size="compact" quiet={!split} tone={split ? actionTone : undefined}
+      disabled={disabled || busy} busy={qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
+  </span>;
   return <><span className="c3-share-feedback"><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
-    <span ref={trigger} className="c3-share-control">
-      {captureRequest ? <span className="c3-app-confirmation">
-          <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
-            onClick={() => activateNativePicker(captureRequest.activationURL)} />
-        </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
-        hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
-        disabled={!canOpenSourcePicker} busy={sourcePending} expanded={open}
-        hasPopup="dialog" controls={id} popoverTarget={id} />}
-      {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
-        cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
-        onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}).finally(() => {
-          trigger.current?.ownerDocument.defaultView?.requestAnimationFrame(() => trigger.current?.querySelector<HTMLButtonElement>("button")?.focus());
-        }); }} />}
-    </span>
-    {(!watching || sharing || pageWatch) && <span ref={settingsTrigger} className="c3-share-control">
-      <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
-        disabled={disabled || busy} busy={qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
-    </span>}
+    {variant === "split" ? <span className={split ? "lr-btn-split" : "c3-share-unpaired"}>{sourceControl}{settingsControl}</span>
+      : <>{sourceControl}{settingsControl}</>}
     {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
       quiet onClick={() => setExternalOpen(true)} />}
     </span>
@@ -419,6 +427,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const appPageAvailable = channel.appConnected && channel.pagePlayer;
   const openPage = appPageAvailable && !portableEmbed && !directFile;
   const pageSources = !activityId ? page?.watchSources : undefined;
+  const originalPageAvailable = !!page?.candidates.find(candidate => candidate.id === pageSources?.candidateId)?.pageURL;
   const allChoicesOriginFirst = !!pageSources?.choices.length && pageSources.choices.every(directForwardMediaURL);
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
   const pageInstruction = useRef<HTMLParagraphElement>(null);
@@ -480,11 +489,11 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         {pageSources.mpd.length > 0 && <WatchMpdSourcePicker choices={pageSources.mpd} busy={busy} mainPlayback
           onInspect={(choiceId, signal) => run(() => channel.inspectWatchMpdSource(roomId, choiceId, signal))}
           onConfirm={selected => { void run(() => channel.selectWatchMpdSource(roomId, selected, false), onClose); }} />}
-        <div className="c3-watch-source-choice c3-watch-source-alternative lr-embedded-actions">
+        {originalPageAvailable && <div className="c3-watch-source-choice c3-watch-source-alternative lr-embedded-actions">
           <Btn icon="globe" quiet size="compact" title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
             onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
           <p>{t("watch.browserSource.originalHelp")}</p>
-        </div>
+        </div>}
       </> : page.candidates.length ? <>
         <div className="lr-source-picker-list c3-watch-source-list" data-text-list>
           {page.candidates.map((candidate, index) => {
@@ -493,14 +502,14 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
               <CaptureSourceCard title={name} action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })}
                 icon="play" disabled={busy}
                 onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false, activityId ? undefined : "choose-source"), committed => { if (committed) onClose(); }); }} />
-              {!activityId && <div className="c3-share-title-actions lr-embedded-actions">
+              {!activityId && candidate.pageURL && <div className="c3-share-title-actions lr-embedded-actions">
                 <Btn icon="globe" quiet size="compact" title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
                   onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "original-page"), onClose); }} />
               </div>}
             </div>;
           })}
         </div>
-        {!activityId && <p>{t("watch.browserSource.originalHelp")}</p>}
+        {!activityId && page.candidates.some(candidate => candidate.pageURL) && <p>{t("watch.browserSource.originalHelp")}</p>}
       </> : <div className="lr-source-picker-status" role="status">{busy && <BrandLoader />}<span>{t("watch.waitForVideo")}</span></div>}
       <div className="c3-share-title-actions">
         <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void windowAction.run(() => channel.focusWatchPage(roomId, activityId)); }} />

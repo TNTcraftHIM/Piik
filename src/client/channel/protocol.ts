@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 51;
+export const CHANNEL_PROTOCOL = 52;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -100,7 +100,7 @@ const watchURLSchema = z.string().url().max(MAX_WATCH_URL_LENGTH).refine(value =
 });
 export const watchSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("media"), url: watchURLSchema }).strict(),
-  z.object({ kind: z.literal("website"), url: watchURLSchema, mediaUrl: watchURLSchema.optional() }).strict(),
+  z.object({ kind: z.literal("website"), url: watchURLSchema.optional(), mediaUrl: watchURLSchema.optional() }).strict(),
 ]);
 export type WatchSource = z.infer<typeof watchSourceSchema>;
 export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: watchFormatSchema }).strict();
