@@ -3,7 +3,7 @@
 //! It asks a few public STUN servers which address they see, from two sockets and then from more
 //! when the answers differ, and prints a report to copy. It sends nothing else anywhere, and the
 //! report shows only half of the public address unless `--full` is given.
-use piik_nat::mapping::{measured, Allocator, Model, PortSet, Sample};
+use piik_nat::mapping::{measured, Allocator, Cursor, Model, PortSet, Sample};
 use piik_nat::stun;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
@@ -57,8 +57,7 @@ impl Survey {
 fn send(socket: &UdpSocket, observer: SocketAddrV4) -> Option<[u8; 12]> {
     let mut transaction = [0; 12];
     for chunk in transaction.chunks_mut(8) {
-        // The standard library's hasher is keyed from the system's randomness.
-        chunk.copy_from_slice(&RandomState::new().build_hasher().finish().to_ne_bytes()[..chunk.len()]);
+        chunk.copy_from_slice(&random().to_ne_bytes()[..chunk.len()]);
     }
     socket.send_to(&stun::request(transaction), observer).ok()?;
     Some(transaction)
@@ -77,6 +76,31 @@ fn receive(socket: &UdpSocket, observer: SocketAddrV4, transaction: [u8; 12]) ->
         }
     }
     None
+}
+
+/// A random number from the standard library's hasher, which is keyed from the system's randomness.
+fn random() -> u64 {
+    RandomState::new().build_hasher().finish()
+}
+
+/// The numbers below `count` in a random order.
+fn shuffled(count: usize) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..count).collect();
+    for index in (1..count).rev() {
+        order.swap(index, (random() % (index as u64 + 1)) as usize);
+    }
+    order
+}
+
+/// The new mappings a survey saw on one public address, in the order they were made.
+fn allocations_on(samples: &[Sample], address: &Ipv4Addr) -> Vec<(u32, u16)> {
+    let mut allocations: Vec<(u32, u16)> = Vec::new();
+    for sample in samples.iter().filter(|sample| sample.mapped.ip() == address) {
+        if !allocations.iter().any(|&(_, port)| port == sample.mapped.port()) {
+            allocations.push((sample.sent_ms, sample.mapped.port()));
+        }
+    }
+    allocations
 }
 
 /// The address this machine would send from toward `target`; no packet is sent to learn it.
@@ -114,8 +138,8 @@ fn main() {
     if addresses.len() < 2 {
         return println!("Fewer than two STUN servers answered ({}). UDP may be blocked on this network.", observers.len());
     }
-    for (_, address) in &observers {
-        survey.ask(&second, second_number, *address);
+    for index in shuffled(observers.len()) {
+        survey.ask(&second, second_number, observers[index].1);
     }
     let dependent = !matches!(Model::read(&survey.samples), Ok(Model { allocator: Allocator::Point { .. }, .. }));
     // Whether the mapping follows the destination's port: the same socket, the same address, two ports.
@@ -129,12 +153,14 @@ fn main() {
     let mut brackets = Vec::new();
     let mut burst = Vec::new();
     if dependent {
-        for index in 0..EXTRA_MAPPINGS {
+        for _ in 0..EXTRA_MAPPINGS {
             if let Some((socket, number)) = survey.socket() {
-                survey.ask(&socket, number, observers[index % observers.len()].1);
+                survey.ask(&socket, number, observers[(random() % observers.len() as u64) as usize].1);
             }
         }
-        if let Ok(Model { allocator: Allocator::Counter { step, .. }, .. }) = Model::read(&survey.samples) {
+        let public = *survey.samples[0].mapped.ip();
+        if let Allocator::Cursors(cursors) = Allocator::of(&allocations_on(&survey.samples, &public)) {
+            let step = cursors[0].step;
             // A mapping made between two observations, all three sent without waiting.
             for _ in 0..BRACKETS {
                 let sockets: Vec<UdpSocket> = (0..3).filter_map(|_| survey.socket().map(|(socket, _)| socket)).collect();
@@ -158,6 +184,15 @@ fn main() {
         }
     }
     report(&survey, &observers, first_number, second_number, by_port, &brackets, &burst, full);
+}
+
+/// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
+fn cursors_line(cursors: &[Cursor]) -> String {
+    let each: Vec<String> = cursors
+        .iter()
+        .map(|cursor| format!("{} step {} x{} ({:.1}/s)", cursor.last, cursor.step, cursor.landings, f64::from(cursor.foreign_per_ks) / 1000.0))
+        .collect();
+    format!("CURSORS. {} counter(s), next mapping one step past one of: {}", cursors.len(), each.join(", "))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -191,16 +226,14 @@ fn report(
     println!("public address: {}", shown(public));
     match &model {
         Err(unusable) => println!("model: unusable ({unusable:?})"),
-        Ok(model) => match model.allocator {
+        Ok(model) => match model.allocator.clone() {
             Allocator::Point { port } => {
                 let preserved = [first, second].iter().all(|number| {
                     survey.samples.iter().filter(|sample| sample.socket == *number).all(|sample| sample.mapped.port() == survey.local_ports[usize::from(*number)])
                 });
                 println!("model: POINT. One mapping per socket whatever the destination (port {port}); local port kept: {}", if preserved { "yes" } else { "no" });
             }
-            Allocator::Counter { last, step, foreign_per_ks, .. } => println!(
-                "model: COUNTER. Step {step}, last port {last}, other traffic about {:.1} mappings a second", f64::from(foreign_per_ks) / 1000.0
-            ),
+            Allocator::Cursors(ref cursors) => println!("model: {}", cursors_line(cursors)),
             Allocator::Set(PortSet::Span { low, high }) => println!("model: SET. Ports seen between {low} and {high} ({} ports)", u32::from(high) - u32::from(low) + 1),
             Allocator::Set(set @ PortSet::Shared { offset, length, psid }) => {
                 println!("model: PORT SET (RFC 7597). Offset {offset}, length {length}, identifier {psid}: {} ports", set.size())
@@ -228,13 +261,12 @@ fn report(
     if addresses.len() > 1 {
         println!("public addresses seen: {}", addresses.len());
         for address in &addresses {
-            let mut allocations: Vec<(u32, u16)> = Vec::new();
-            for sample in survey.samples.iter().filter(|sample| sample.mapped.ip() == address) {
-                if !allocations.iter().any(|&(_, port)| port == sample.mapped.port()) {
-                    allocations.push((sample.sent_ms, sample.mapped.port()));
-                }
-            }
-            println!("  {} {}: {} mappings, {:?}", letter(address), shown(*address), allocations.len(), Allocator::of(&allocations));
+            let allocations = allocations_on(&survey.samples, address);
+            let read = match Allocator::of(&allocations) {
+                Allocator::Cursors(cursors) => cursors_line(&cursors),
+                other => format!("{other:?}"),
+            };
+            println!("  {} {}: {} mappings, {read}", letter(address), shown(*address), allocations.len());
         }
     }
     println!("samples (socket, observer, ms, address, mapped port, local port):");
