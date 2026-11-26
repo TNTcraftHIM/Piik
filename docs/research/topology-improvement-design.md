@@ -283,9 +283,19 @@ All waiting viewers completed, and both arms stayed within four concurrent
 attempts. W reclaimed V's new fourth-slot trial after 239 ms; that crossing was
 later allocated twice more before succeeding. Existing streams kept their
 identity, but maximum presentation gaps varied, so unchanged continuity is not
-established. These are single paired runs on one Windows host with controlled
-UDP bridges. Reverse order, independent networks and fourth-slot competition
-with ordinary standby remain unmeasured. The production policy is unchanged.
+established.
+
+A reverse-order pair ran the conditional arm first and let W request before V.
+V reached its first frame in 18.914 s serially and 4.453 s conditionally; W took
+3.405 s and 3.768 s. Total waiting fell from 22.319 s to 8.221 s, with three
+versus four demand-started attempts and the same peak of four. Both existing
+streams remained selected; their maximum frame gaps were 396/486 ms versus
+416/521 ms. This also disabled standby and used the existing instrumented
+Server with the current Web entry.
+
+These are single paired runs on one Windows host with controlled UDP bridges.
+Independent networks and fourth-slot competition with ordinary standby remain
+unmeasured. The production policy is unchanged.
 
 ## Voice Fan-out Measured
 

@@ -75,7 +75,8 @@ from users' networks remain open. [Website and field checks](./todo.md)
 | Bilibili ordinary video | A matched Windows App and unlinked Browser played 1080p AV1/AAC without login. Pause, unbuffered backward seek and forwarding off/on passed. The viewer could continue from cached bytes. |
 | Bilibili original webpage | Two beta.39 Windows Apps followed pause and seek on a public sample and retired playback when the source closed. The reported unexpected exit and member-only original-page case remain open. |
 | Bilibili authorized member video | The sharer and an unlinked Browser without site login played past the preview limit, paused and sought forward. Protected tracks were excluded. Member-specific backward seeking remains open. |
-| YouTube | Independent Browsers exercised ordinary-video playback, pause, seek, source transfer and retirement in the official player. Shorts coverage includes pause, resume and retirement. Ads, account/region restrictions, live and physical mobile use remain open. |
+| YouTube | Independent Browsers exercised ordinary-video playback, pause, seek and resume through room signaling in the official player, plus source transfer and retirement. Shorts coverage includes pause, resume and retirement. Ads, account/region restrictions, live and physical mobile use remain open. |
+| PeerTube | Independent desktop Browsers followed play, pause, seek and resume through room signaling in the official player. The public sample fetched media directly from its provider; private instances and physical mobile use remain open. |
 | girigirilove | A region-unavailable redirect prevented access to the supplied player. |
 
 ## Device Evidence Boundary
