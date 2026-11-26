@@ -255,9 +255,9 @@ engine as one more candidate pair. The SDK's own nomination does the rest.
   pair where it has just failed.
 
 So a hard pair waits 5 s to learn what it could have started learning at once,
-and then establishes a connection twice. The constants allow 5 + 5 + 20 s
-before a hopeless pair is reported. The lab measured 23.6 s to media on the
-sequential profile.
+and then establishes a connection twice. The core ends a hopeless pair 20 s
+after the grant, about 25 s after it began. The lab measured 23.6 s to media
+on the sequential profile.
 
 ### What changes
 
