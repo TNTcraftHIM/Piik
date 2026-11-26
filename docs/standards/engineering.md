@@ -268,6 +268,10 @@ the observation or decision that would settle it.
   separate even when their numbers match; straightforward local arithmetic needs
   no ceremonial constants. Follow
   [ES.45](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Res-magic).
+- Time-sensitive work carries its due instant. Pace a sequence from its previous
+  scheduled instant so late wakes do not compound drift. Select a platform wait
+  against the measured timing need; a requested sleep duration is not a guarantee
+  about when the thread or async task will run.
 - Keep simple logic at its call site. Extract a helper for actual reuse, a
   substantial boundary, or a distinct concept whose name makes the caller clearer.
   In longer orchestration, keep the main flow readable and move substantial

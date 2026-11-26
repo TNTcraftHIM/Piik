@@ -3,6 +3,7 @@
 pub mod backup;
 pub mod capture;
 mod data;
+mod deadline;
 pub mod diagnostics;
 mod file;
 pub mod hosted_room;
