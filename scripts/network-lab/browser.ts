@@ -225,7 +225,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'recover
       cpuPressure: existsSync('/proc/pressure/cpu') ? command('cat', ['/proc/pressure/cpu']) : null,
       processes: await Promise.allSettled(network.namespaces.map(async namespace => {
         const pids = command('ip', ['netns', 'pids', namespace]).split(/\s+/).filter(Boolean);
-        return { namespace, pids, status: pids.length ? command('ps', ['-p', pids.join(','), '-o', 'pid,ppid,stat,pcpu,rss,etime,comm']) : '' };
+        return { namespace, pids, status: pids.length ? command('ps', ['-o', 'pid,ppid,stat,rss,etime,comm']).split('\n').filter(line => pids.includes(line.trim().split(/\s+/)[0]!)).join('\n') : '' };
       })),
       cdp: await Promise.allSettled([...cdp].map(async ([index, url]) => ({ index,
         // Standard CDP, independently of an agent command or awaited page Promise.

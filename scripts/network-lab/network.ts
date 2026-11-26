@@ -65,6 +65,7 @@ export class LabNetwork {
     this.exec(this.wan, "ip", ["link", "add", "internet", "type", "bridge"]);
     this.exec(this.wan, "ip", ["addr", "add", `${SITE_IP}/24`, "dev", "internet"]);
     this.exec(this.wan, "ip", ["addr", "add", "198.51.100.2/24", "dev", "internet"]);
+    this.exec(this.wan, "ip", ["addr", "add", "198.51.100.3/24", "dev", "internet"]);
     this.exec(this.wan, "ip", ["link", "set", "internet", "up"]);
     if (ipv6) this.exec(this.wan, "ip", ["-6", "addr", "add", `${SITE_IPV6}/64`, "dev", "internet", "nodad"]);
     for (const [index, mode] of modes.entries()) {
