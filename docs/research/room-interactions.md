@@ -339,7 +339,8 @@ tool. Ctrl+Shift+M toggles the microphone across this endpoint's joined rooms.
 When any microphones are on, the key mutes them together and cancels pending opens.
 A press while input opens are pending cancels those input waits. A requested
 room join continues with listening only; leaving or losing admission cancels
-that room's participation. Once all are off,
+that room's participation. A join still waiting for microphone permission ends
+when its room binding is lost. Once all are off,
 the key restores the rooms in which microphones were last actually on. If
 none of those rooms remain, it tries the current member room the user most
 recently chose to join, in request order. Local

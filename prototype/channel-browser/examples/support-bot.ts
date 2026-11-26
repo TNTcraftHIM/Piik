@@ -28,7 +28,7 @@ export function attachSupportBot(participant: Conversation, report: (error: unkn
         return;
       }
       await participant.chat([
-        '### Sharing support',
+        'Sharing support',
         '',
         'Reply with your Piik version, source type and the step that failed.',
         '',

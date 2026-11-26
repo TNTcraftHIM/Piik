@@ -19,10 +19,11 @@ type VoiceSettingsProps = {
   channel: ChannelController; available: boolean; shortcuts: ReturnType<typeof useVoiceShortcuts>;
 };
 
-export function ChannelVoiceSettings({ triggerDocument, renderTrigger, onClose, ...props }: VoiceSettingsProps & {
-  triggerDocument?: Document; renderTrigger?: (trigger: ReactNode) => ReactNode; onClose?: () => void;
+export function ChannelVoiceSettings({ triggerDocument, renderTrigger, ...props }: VoiceSettingsProps & {
+  triggerDocument?: Document; renderTrigger?: (trigger: ReactNode) => ReactNode;
 }) {
   const { t } = useCopy();
+  const triggerId = useId();
   const surface = useSurfaceDocument();
   const [openDocument, setOpenDocument] = useState<Document | null>(null);
   useEffect(() => {
@@ -31,7 +32,7 @@ export function ChannelVoiceSettings({ triggerDocument, renderTrigger, onClose, 
     view?.addEventListener("pagehide", close);
     return () => view?.removeEventListener("pagehide", close);
   }, [openDocument]);
-  const trigger = <Btn icon="sliders" title="voice.settings" hint="hint-advanced" quiet size="compact"
+  const trigger = <Btn id={triggerId} icon="sliders" title="voice.settings" hint="hint-advanced" quiet size="compact"
     hasPopup="dialog" expanded={!!openDocument} onClick={() => setOpenDocument(triggerDocument ?? surface)} />;
   return <>
     {renderTrigger ? renderTrigger(trigger) : trigger}
@@ -39,7 +40,10 @@ export function ChannelVoiceSettings({ triggerDocument, renderTrigger, onClose, 
       <ChannelSettingsDialog title={t("voice.settings")} compact dismissOnBackdrop onClose={() => {
         setOpenDocument(null);
         openDocument.defaultView?.requestAnimationFrame(() => {
-          if (openDocument.activeElement === openDocument.body) onClose?.();
+          // A layout change can replace the button that the browser would restore.
+          if (openDocument.activeElement !== openDocument.body) return;
+          const currentTrigger = openDocument.getElementById(triggerId);
+          if (currentTrigger?.getClientRects().length) currentTrigger.focus({ preventScroll: true });
         });
       }}>
         <ChannelVoiceSettingsForm {...props} />

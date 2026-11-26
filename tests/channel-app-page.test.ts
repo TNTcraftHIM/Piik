@@ -471,9 +471,12 @@ test.each([undefined, -1])("invalid required candidate duration (%s) retires the
   const { app, socket } = await setup();
   try {
     const page = await openPage(app, socket);
+    const rejected = expect(app.relayCapacity()).rejects.toThrow("app_disconnected");
     socket.receive({ type: "page_candidates", pageId: page.id, url: "https://video.test/page",
       candidates: [{ pageURL: "https://video.test/page", id: crypto.randomUUID(), title: "Episode", url: null, duration }] });
+    await rejected;
     expect(app.connected).toBe(false);
+    expect(socket.readyState).toBe(3);
   } finally { app.close(); }
 });
 test("cancelling prepare retires the page and ignores its late confirmation", async () => {
@@ -665,12 +668,42 @@ test.each(["incompatible_protocol", "admission failed: incompatible_protocol"])(
   expect(Socket.current.readyState).toBe(3);
 });
 
-test("hello without an explicit result leaves App control disconnected", async () => {
+test.each([
+  { name: "no outcome", reply: {} },
+  { name: "both outcomes", reply: { result: null, error: "app_failed" } },
+  { name: "empty error", reply: { error: "" } },
+  { name: "non-string error", reply: { error: 42 } },
+  { name: "stray type", reply: { type: "unexpected", result: null } },
+])("a correlated App reply with $name rejects only its request", async ({ reply }) => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const focus = page.focus();
+    const id = socket.sent.at(-1)!.id;
+    const reading = page.read();
+    socket.receive({ id, ...reply });
+    socket.reply(state);
+    await Promise.all([
+      expect(focus).rejects.toThrow("invalid_app_response"),
+      expect(reading).resolves.toEqual(state),
+    ]);
+
+    expect(app.connected).toBe(true);
+    const retry = page.focus();
+    socket.reply(null);
+    await expect(retry).resolves.toBeUndefined();
+  } finally { app.close(); }
+});
+
+test.each([
+  { name: "no outcome", reply: {} },
+  { name: "a non-null result", reply: { result: {} } },
+])("hello with $name leaves App control disconnected", async ({ reply }) => {
   vi.stubGlobal("WebSocket", Socket);
   const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", () => {}, () => {});
   Socket.current.onopen?.();
-  Socket.current.receive({ id: Socket.current.sent[0].id });
+  Socket.current.receive({ id: Socket.current.sent[0].id, ...reply });
   await expect(app.ready).rejects.toThrow("invalid_app_response");
   expect(app.connected).toBe(false);
   expect(Socket.current.readyState).toBe(3);

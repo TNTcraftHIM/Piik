@@ -485,7 +485,8 @@ a portable App moves. Installation transfers the record to the existing helper
 handoff. A cleanup failure stays with the update operation; it does not stop the App.
 Retirement keeps the plan until its listed payloads are gone. An interrupted
 cleanup may leave a subset of the old program's recorded layout; installation
-still requires a complete layout. Additional files remain protected.
+still requires a complete layout. Additional files in the old program's
+`previous` directory remain protected.
 
 The integrated Windows updater verified Node signatures with Rust `ring`, streamed
 the selected complete package, and performed replacement through the product

@@ -10332,10 +10332,11 @@ test.each(["piik-room", "piik-file"])("a rejected %s channel preserves the voice
   } finally { session.close(); }
 });
 
-test("connected media keeps its PC when the room data channel exceeds the existing preparation deadline", async () => {
+test("a late physical connection leaves the room data channel its own preparation window", async () => {
   vi.useFakeTimers();
   const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
+    vi.advanceTimersByTime(19000);
     pc.connected();
     vi.advanceTimersByTime(19999);
     expect(sent.some(command => command.type === "room_data_state")).toBe(false);
@@ -10347,6 +10348,61 @@ test("connected media keeps its PC when the room data channel exceeds the existi
     vi.advanceTimersByTime(20000);
     expect(sent.filter(command => command.type === "room_data_state")).toHaveLength(1);
   } finally { media.reset(); session.close(); }
+});
+
+test("the room data deadline during a transient disconnect preserves voice on the same pair", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = await setup();
+  vi.useFakeTimers();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const peerId = "a-voice", pairId = "pair", publicationId = "voice", flowId = "voice-flow";
+    state.publications = [{ audience: [], id: publicationId, roomId: "first", sessionId: peerId, userId: "other", kind: "voice", paused: false }];
+    const pair = { id: pairId, peerId, canReceiveVideoLayers: false, rooms: [] as string[],
+      incoming: [{ id: flowId, publicationId, selected: true, inputFlowId: null }], outgoing: [] };
+    state.pairs = [pair];
+    const project = () => socket.receive({ type: "state", state });
+    project();
+    const [pc] = RoomPeerConnection.instances;
+    const audio = remoteTrack("audio"), voice = remoteStream("voice-stream", [audio]);
+    pc.connected();
+    socket.receive({ type: "signal", pairId, fromSessionId: peerId, payload: {
+      exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "voice offer" }, tracks: [{ flowId, streamId: voice.id }],
+    } });
+    await vi.advanceTimersByTimeAsync(2000);
+    pc.ontrack?.({ streams: [voice] });
+    expect(session.getSnapshot().streams.get(publicationId)).toBe(voice);
+
+    pair.rooms = ["first"];
+    project();
+    const disconnect = () => { pc.connectionState = "disconnected"; pc.onconnectionstatechange?.(); };
+    vi.advanceTimersByTime(10000);
+    disconnect();
+    pc.connected();
+    project();
+    vi.advanceTimersByTime(9999);
+    disconnect();
+    const roomData = () => socket.sent.filter(command => command.type === "room_data_state");
+    const failure = { type: "room_data_state", pairId, roomId: "first", ready: false };
+    expect(roomData()).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(roomData()).toEqual([failure]);
+    expect(socket.sent).not.toContainEqual({ type: "link_state", pairId, state: "failed" });
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(voice.getAudioTracks()).toEqual([audio]);
+    expect(session.getSnapshot().streams.get(publicationId)).toBe(voice);
+
+    pc.connected();
+    project();
+    expect(roomData()).toEqual([failure]);
+    expect(RoomPeerConnection.instances).toEqual([pc]);
+    expect(socket.sent.filter(command => command.type === "link_state").at(-1)).toEqual({ type: "link_state", pairId, state: "connected" });
+    expect(session.getSnapshot().streams.get(publicationId)).toBe(voice);
+    pc.connectionState = "failed"; pc.onconnectionstatechange?.();
+    expect(socket.sent).toContainEqual({ type: "link_state", pairId, state: "failed" });
+    expect(pc.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
 });
 
 test("a base deadline settles missing-channel sends while polite screen media stays connected", async () => {

@@ -91,6 +91,7 @@ impl ForwardingBudget {
         let increased = self
             .previous_limit
             .is_some_and(|old| limit.is_none_or(|value| value > old));
+        let lowering = limit.is_some_and(|new| self.previous_limit.is_none_or(|old| new < old));
         self.previous_limit = limit;
         let kinds: BTreeMap<_, _> = snapshot
             .publications
@@ -106,11 +107,16 @@ impl ForwardingBudget {
             })
             .collect();
         let mut requested = BTreeSet::new();
+        let mut selected = BTreeSet::new();
         for pair in &snapshot.pairs {
             for flow in &pair.outgoing {
                 if flow.input_flow_id.is_some() && !flow.presentation {
                     if let Some(kind) = kinds.get(&flow.publication_id) {
-                        requested.insert((*kind, pair.peer_id));
+                        let slot = (*kind, pair.peer_id);
+                        requested.insert(slot);
+                        if lowering && flow.selected {
+                            selected.insert(slot);
+                        }
                     }
                 }
             }
@@ -156,7 +162,7 @@ impl ForwardingBudget {
                 true
             }
         });
-        self.reconcile(limit, requested);
+        self.reconcile(limit, requested, &selected);
         let admitted = &self.admitted;
         let mut refused = BTreeSet::new();
         for pair in &mut snapshot.pairs {
@@ -230,6 +236,7 @@ impl ForwardingBudget {
         &mut self,
         limit: Option<u8>,
         requested: BTreeSet<(ForwardingKind, Uuid)>,
+        selected: &BTreeSet<(ForwardingKind, Uuid)>,
     ) {
         let Some(limit) = limit else {
             self.admitted = requested;
@@ -237,13 +244,14 @@ impl ForwardingBudget {
         };
         let mut next = BTreeSet::new();
         let mut counts = BTreeMap::new();
-        for slot in requested
+        // On shrink, keep admitted peers carrying a selected leg ahead of preparation-only peers.
+        for slot in selected
             .intersection(&self.admitted)
+            .chain(requested.intersection(&self.admitted))
             .chain(requested.difference(&self.admitted))
         {
             let count = counts.entry(slot.0).or_insert(0usize);
-            if *count < usize::from(limit) {
-                next.insert(*slot);
+            if *count < usize::from(limit) && next.insert(*slot) {
                 *count += 1;
             }
         }
@@ -374,6 +382,56 @@ mod tests {
         assert!(budget.apply(Some(1), id(1), &mut raw).is_empty());
     }
     #[test]
+    fn lowering_limit_keeps_selected_screen_forwarding_on_a_shared_pair() {
+        use crate::wire::{FlowBinding, PairInfo, PublicationInfo};
+        let id = Uuid::from_u128;
+        for (selected_peer, preparing_peer) in [(id(9), id(8)), (id(8), id(9))] {
+            let mut snapshot = crate::channel::Channel::new("owner".into(), vec![]).snapshot(id(1));
+            let publication = |n, kind| PublicationInfo {
+                id: id(n), session_id: id(2), user_id: id(2), room_id: "r".into(),
+                kind, screen: None, paused: false, audience: vec![], video_settings: None,
+            };
+            snapshot.publications = vec![
+                publication(10, Kind::Screen), publication(11, Kind::Screen),
+                publication(12, Kind::Voice),
+            ];
+            let flow = |n, publication, selected| FlowBinding {
+                id: id(n), publication_id: id(publication), input_flow_id: Some(id(publication + 100)),
+                selected, presentation: false,
+            };
+            let selected = flow(20, 10, true);
+            let shared_preparation = flow(21, 11, false);
+            let competing = flow(22, 10, false);
+            let voice = flow(23, 12, true);
+            let pair = |n, peer_id, outgoing| PairInfo {
+                id: id(n), peer_id, outgoing, rooms: vec!["r".into()], incoming: vec![],
+                udp_preparation: None, can_receive_video_layers: false,
+            };
+            snapshot.pairs = vec![
+                pair(30, selected_peer, vec![selected, shared_preparation]),
+                pair(31, preparing_peer, vec![competing, voice]),
+            ];
+            snapshot.files.push(crate::file_room::FilePlan {
+                author_id: id(2), room_id: "r".into(), message_seq: 1, source_id: Some(id(2)),
+                upstream: Some(id(2)), downstream: vec![preparing_peer], receiving: false,
+                attachment: crate::attachment::AttachmentDescriptor {
+                    id: id(40), name: "fixture".into(), size: 1,
+                    media_type: "application/octet-stream".into(), sha256: "0".repeat(64),
+                },
+            });
+
+            let mut budget = ForwardingBudget::default();
+            assert!(budget.apply(Some(2), id(1), &mut snapshot).is_empty());
+            let commands = budget.apply(Some(1), id(1), &mut snapshot);
+            assert_eq!(snapshot.pairs[0].outgoing, [selected, shared_preparation]);
+            assert_eq!(snapshot.pairs[1].outgoing, [voice]);
+            assert_eq!(snapshot.files[0].downstream, [preparing_peer]);
+            assert!(matches!(commands.as_slice(),
+                [Command::FlowState {pair_id, flow_id, state: FlowState::Failed}]
+                if *pair_id == id(31) && *flow_id == competing.id));
+        }
+    }
+    #[test]
     fn competing_rooms_keep_one_slot_per_peer_and_kind() {
         use ForwardingKind::*;
         let x = Uuid::from_u128(2);
@@ -381,18 +439,19 @@ mod tests {
         let mut budget = ForwardingBudget::default();
         let mut rooms = vec![(Screen, x), (Screen, x), (Voice, y), (File, y)];
         let initial = rooms.iter().copied().collect();
-        budget.reconcile(Some(1), initial);
+        let selected = BTreeSet::new();
+        budget.reconcile(Some(1), initial, &selected);
         assert_eq!(budget.admitted, [(Screen, x), (Voice, y), (File, y)].into());
         rooms.push((Screen, y));
         rooms.remove(0);
-        budget.reconcile(Some(1), rooms.iter().copied().collect());
+        budget.reconcile(Some(1), rooms.iter().copied().collect(), &selected);
         assert!(!budget.admitted.contains(&(Screen, y)));
         rooms.remove(0);
-        budget.reconcile(Some(1), rooms.iter().copied().collect());
+        budget.reconcile(Some(1), rooms.iter().copied().collect(), &selected);
         assert!(budget.admitted.contains(&(Screen, y)));
-        budget.reconcile(Some(0), rooms.iter().copied().collect());
+        budget.reconcile(Some(0), rooms.iter().copied().collect(), &selected);
         assert!(budget.admitted.is_empty());
-        budget.reconcile(None, rooms.iter().copied().collect());
+        budget.reconcile(None, rooms.iter().copied().collect(), &selected);
         assert_eq!(budget.admitted, rooms.into_iter().collect());
     }
 }

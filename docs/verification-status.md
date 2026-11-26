@@ -37,6 +37,9 @@ static package checks; device behavior was not inferred from that build.
   The original credential restored the same identity, room and confirmed row.
   Actual Domain v1 and room v11 SQLite samples passed their integrity checks;
   this used synthetic local data and two orderly process exits.
+  A separate two-Browser control reopened both pages on their original origin.
+  The IndexedDB writer restored its history under a new live binding; the reader
+  retained its identity and read position, then fetched the confirmed rows anew.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts

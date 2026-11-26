@@ -199,9 +199,10 @@ assigned by the room planner within its existing limits. Off (`0`) withdraws
 third-party business forwarding. A positive value limits distinct downstream peers
 for **each kind**. The baseline accounts for the peers of a Browser page or
 App runtime across the rooms it serves. When the user lowers this limit, the
-runtime immediately stops excess forwarding for each kind. Off stops all
-third-party forwarding immediately. Affected rooms seek a new path for their
-waiting receivers.
+runtime immediately stops excess forwarding for each kind. Among its admitted
+media peers, it retains those carrying a selected path before peers carrying
+only preparation paths. Off stops all third-party forwarding immediately.
+Affected rooms seek a new path for their waiting receivers.
 Changes are sent through the existing room capacity command for each current
 binding. A rejected update can be retried on the next projection; reconnecting
 does not preserve an unconfirmed write. This contribution cap does not limit
