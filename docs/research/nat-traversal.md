@@ -129,6 +129,27 @@ one port from the pool peer. In a separate withdrawal at pool readiness, the
 reader stayed alive as its namespace UDP socket count fell from 256 to zero.
 One natural trial cannot estimate a field success rate.
 
+A 2026-11-25 control compared 512 and 1,024 targets against 64 identical seeded
+kernel SNAT/APDF mappings, with 256 pool sockets, a 2 ms absolute schedule and
+one five-second lifetime. The larger search added eight mutual checks (55 to 63)
+without losing a previous hit. Mean IPv4/UDP traffic rose from 54.3 to 56.5 kB;
+the no-hit pair totals were 80 and 120 KiB. These are controlled mapping results,
+not a public-network success estimate.
+
+The actual Rust preparation and ICE path then ran eight prespecified attempts
+with fresh, unpaired random mappings. An actual hit at target 586 completed ICE
+and a DataChannel. Two controls per budget delivered changing decoded video and
+advancing audio on the retained prepared connection. Forced no-hit controls sent
+exactly 512 or 1,024 distinct search checks, kept the pool at 256 sockets, and
+ended at about 5,002 ms. The existing concurrency, winning-socket and withdrawal
+checks passed. The first four browser attempts retained their failed fixture
+dependency outcomes; they are not counted as decoded-media successes.
+
+This supports the 1,024-target budget without extending preparation time or
+adding sockets. A survey that has already consumed three seconds can leave room
+for only about 745 checks, so the target budget is a ceiling, not a promise to
+send all of them. Parallel survey remains a separate comparison.
+
 The frozen source archive had SHA-256
 `4371aafbe865676fe30d5cee7d21af781720a3ce664129c3d4c6cc4204ebdda2`
 and pinned str0m at `2d0d6eaaf4d19d7530588f695cd631eedf42acf5`.

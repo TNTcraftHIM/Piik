@@ -35,7 +35,7 @@ const CHECK_PACKET_BUDGET: usize = 64;
 const RANDOM_PORTS: usize = 256;
 // The searching side spends its requests on distinct ports: a repeated target
 // adds no coverage, and coverage is what the hit probability depends on.
-const RANDOM_TARGETS: usize = RANDOM_PORTS * 2;
+const RANDOM_TARGETS: usize = RANDOM_PORTS * 4;
 const RANDOM_REQUEST_BUDGET: usize = RANDOM_TARGETS + 8;
 const RANDOM_REPLY_BUDGET: usize = 16;
 // The mean spacing of a schedule, not a sleep per packet: a timer that wakes on a
