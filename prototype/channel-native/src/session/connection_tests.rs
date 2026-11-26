@@ -147,6 +147,10 @@ async fn reader_services_ping_while_business_has_not_consumed_its_frame() {
 
 fn connection_session(url: String) -> Session {
     Session {
+        release_error: None,
+        ingress: signaling_budget(),
+        turn: None,
+        local_slots: None,
         forwarding_limit: None,
         service_admission: None,
         config: Config {
@@ -247,7 +251,7 @@ async fn stalled_handshake_releases_expired_session_before_late_join() {
         session: previous,
         room: RoomTurns {
             local: previous,
-            rooms: BTreeMap::new(),
+            rooms: BTreeMap::new().into(),
             signer: session.signer.clone(),
             snapshot: watch::channel(None).0,
         },
@@ -332,7 +336,7 @@ async fn unsupported_software_execution_rejects_before_room_or_capture_effects()
         session: previous,
         room: RoomTurns {
             local: previous,
-            rooms: BTreeMap::new(),
+            rooms: BTreeMap::new().into(),
             signer: session.signer.clone(),
             snapshot: watch::channel(None).0,
         },

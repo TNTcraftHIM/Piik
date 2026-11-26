@@ -261,6 +261,10 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
     let signer = Arc::new(SessionSigner::from_seed([1; 32]));
     let (commands, received) = mpsc::channel(64);
     Session {
+        release_error: None,
+        ingress: signaling_budget(),
+        turn: None,
+        local_slots: None,
         forwarding_limit: None,
         service_admission: None,
         config: Config {
@@ -278,7 +282,11 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
             session: core.session,
             room: RoomTurns {
                 local: core.session,
-                rooms: std::mem::take(&mut core.hosts),
+                rooms: Rooms::with_execution(
+                    std::mem::take(&mut core.hosts),
+                    Arc::new(tokio::sync::Semaphore::new(2)),
+                    2,
+                ),
                 signer: signer.clone(),
                 snapshot: watch::channel(Some(state)).0,
             },
@@ -412,10 +420,6 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
     let second = incoming.recv().await.unwrap();
     let (qtx, mut queue) = mpsc::channel(2);
     qtx.send(first).await.map_err(|_| anyhow!("queue closed"))?;
-    qtx.send(second)
-        .await
-        .map_err(|_| anyhow!("queue closed"))?;
-    drop(qtx);
     let mut blocked = RecordedSink {
         block_after: Some(1),
         ..Default::default()
@@ -446,6 +450,11 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
             &mut stopping,
         ));
         tokio::select! {_=notice.notified()=>{},result=&mut work=>anyhow::bail!("business ended before blocked HostOutput: {result:?}"),_=time::sleep(Duration::from_secs(2))=>anyhow::bail!("HostOutput did not reach blocked writer")};
+        // The second room arrives after Session has entered the blocked wire write.
+        qtx.send(second)
+            .await
+            .map_err(|_| anyhow!("queue closed"))?;
+
         ensure!(core.stored_name(1)? == "Committed but carrier blocked");
         ensure!(core.stored_name(2)? == "Owned room 2");
         stop.send(()).unwrap();
@@ -464,5 +473,67 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
     let persisted = core.stored_name(1)?;
     ensure!(persisted == "Committed but carrier blocked");
     ensure!(core.stored_name(2)? == "Owned room 2");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_release_finishes_sibling_storage_and_returns_first_error() -> Result<()> {
+    let mut core = CoreBurst::new()?;
+    let state = core
+        .recovery()?
+        .into_iter()
+        .find_map(|event| match event {
+            Event::Welcome { state, .. } => Some(state),
+            _ => None,
+        })
+        .context("missing Welcome")?;
+    let mut native = session(&mut core, state);
+    let rooms = &mut native.live.as_mut().unwrap().room.rooms;
+    let (entered, started) = oneshot::channel();
+    let (resume, wait) = std::sync::mpsc::channel();
+    let (settled, receipt) = oneshot::channel();
+
+    rooms.post(&core.room_ids[1], true, false, move |host| {
+        let _ = entered.send(());
+        wait.recv_timeout(Duration::from_secs(4))?;
+        host.as_mut().context("missing sibling")?.delete_data()?;
+        Ok(Box::new(move |_, _| {
+            let _ = settled.send(());
+            Ok(vec![])
+        }))
+    })?;
+    started.await?;
+    let id = core.room_ids[0].clone();
+    let path = core.paths[&id].clone();
+    let creator = core.user;
+    rooms.post(&core.room_ids[0], true, false, move |_| {
+        HostedRoom::open(&path, &id, creator)?;
+        anyhow::bail!("opened a file with an active room writer")
+    })?;
+    // Only the other room can publish a result while the sibling is held.
+    time::timeout(Duration::from_secs(2), async {
+        while rooms.finished.is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await?;
+    {
+        let mut closing = Box::pin(native.release());
+        ensure!(futures_util::poll!(&mut closing).is_pending());
+    }
+    resume.send(())?;
+    let error = time::timeout(Duration::from_secs(3), native.release())
+        .await?
+        .unwrap_err();
+    ensure!(error.is::<RoomStorageInUse>());
+    receipt.await?;
+    ensure!(native.live.is_none());
+    for id in &core.room_ids[..2] {
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(core.paths[id].with_added_extension("lock"))?;
+        crate::hosted_room::try_lock_file(&lock)?;
+    }
     Ok(())
 }

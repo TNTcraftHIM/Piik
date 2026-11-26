@@ -23,10 +23,12 @@ the feedback period; they do not delay that delivery.
   actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Room layout integration.** Complete the shared shell's integrated
-  visual acceptance. Set the multi-room shortcut and speaking-overlay targets
-  before enabling them across rooms. Keep the product entry and existing layout
-  retirement on hold until the owner's workspace/screen-centred replacement decision.
+- [ ] **Room layout integration.** Match the chosen dock, typography and picture
+  composition with the shared component owners, then complete integrated visual
+  acceptance. Resolve removal of the room activity roster with the owner before
+  changing its established responsibility. Set the multi-room shortcut and
+  speaking-overlay targets before enabling them across rooms. Keep the product
+  entry and existing layout retirement on hold until the owner's replacement decision.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
@@ -36,10 +38,6 @@ the feedback period; they do not delay that delivery.
   while its room remains available. Set the progress budget and recovery scope
   before adding a deadline; compare the existing fresh-binding handshake with
   connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
-- [ ] **Native room execution.** Give each room an independent serial work
-  owner over bounded shared execution. Preserve same-room order, storage locks,
-  rebinding and shutdown; compare optimized carrier behavior before adopting
-  additional concurrency.
 - [ ] **Native preparation test under load.** If the completed-success refusal
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a

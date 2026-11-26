@@ -6715,7 +6715,7 @@ test("retained source content and availability follow the current authenticated 
   const key = { roomId: "first", messageSeq: 1, attachmentId: id }, changedKey = { ...key, messageSeq: 2, attachmentId: changedId };
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, file, attachment }, { key: changedKey, file, attachment: { ...attachment, id: changedId } }]);
   const remove = vi.spyOn(FileStore.prototype, "remove").mockResolvedValue();
-  const { session, socket } = await setup();
+  const { session, socket, peer } = await setup();
   try {
     await vi.waitFor(() => expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, available: true })));
     await expect(session.attachments.content(key, { ...attachment, sha256: attachment.sha256.toUpperCase() }, new AbortController().signal)).resolves.toBe(file);
@@ -6723,10 +6723,14 @@ test("retained source content and availability follow the current authenticated 
     const state = structuredClone(session.getSnapshot().state!);
     state.files = [{ ...changedKey, authorId: crypto.randomUUID(), attachment: { ...attachment, id: changedId, size: file.size + 1 }, sourceId: "endpoint", upstream: null, downstream: [], receiving: false }];
     socket.receive({ type: "state", state });
-    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, sha256: attachment.sha256, available: false }));
+    await expect(session.attachments.content(key, attachment, new AbortController().signal)).resolves.toBe(file);
+    expect(socket.sent).not.toContainEqual(expect.objectContaining({ type: "file_offer", ...key, available: false }));
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, sha256: attachment.sha256, available: false }));
-    expect(remove).toHaveBeenCalledWith(key, attachment);
+    expect(remove).not.toHaveBeenCalledWith(key, attachment);
     expect(remove).toHaveBeenCalledWith(changedKey, { ...attachment, id: changedId });
+    await peer.history([{ ...message(1), attachments: [{ ...attachment, sha256: "b".repeat(64) }] }]);
+    expect(session.attachments.originalAvailability(key, attachment, false)).toBeUndefined();
+    await expect(session.attachments.content(key, attachment, new AbortController().signal)).rejects.toThrow("attachment_unavailable");
   } finally { session.close(); }
 });
 

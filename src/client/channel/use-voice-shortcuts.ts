@@ -113,7 +113,7 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     return () => owners.forEach(owner => owner.removeEventListener("keydown", keydown));
   }, [roomId, surface, pushToTalk]);
   useEffect(() => {
-    if (!surface || !pushToTalk) return;
+    if (!surface || !talk) return;
     const owners = [...new Set([document, surface])];
     const keyup = (event: KeyboardEvent) => onRelease(event);
     const release = () => onRelease();
@@ -124,7 +124,7 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
       inactive.forEach(stop => stop());
       release();
     };
-  }, [roomId, surface, pushToTalk]);
+  }, [surface, talk]);
   return { bindings, mac, save, reset: () => save(voiceShortcutDefaults(mac)), recording, setRecording, background,
     talking: pushToTalk && talking };
 }

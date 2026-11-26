@@ -80,7 +80,8 @@ export class ChannelAttachments {
     private sendData: (peer: string, kind: "control" | "chunk", data: string | Uint8Array, allowed: () => boolean, request?: string) => Promise<void>,
     private messageRemoved: (key: Pick<ChannelFileKey, "roomId" | "messageSeq">) => boolean = () => false,
     private cancelChunks?: (peer: string, request: string) => void,
-    private observationLimit: () => number = () => 0) {}
+    private observationLimit: () => number = () => 0,
+    private confirmedMessage?: (key: ChannelFileKey) => ChannelMessage | undefined) {}
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   status = (key: ChannelFileKey, attachment?: ChannelAttachment) => {
@@ -93,7 +94,7 @@ export class ChannelAttachments {
   observe(key: ChannelFileKey): () => void { return this.availability.observe(key); }
 
   originalAvailability(key: ChannelFileKey, attachment: ChannelAttachment, inlineOriginal: boolean): boolean | undefined {
-    if (this.messageRemoved(key)) return undefined;
+    if (this.messageRemoved(key) || !this.matchesRead(key, attachment)) return undefined;
     const room = this.rooms.find(room => room.id === key.roomId);
     if (room && !room.authorized) return undefined;
     const id = fileKeyString(key), source = this.sources.get(id);
@@ -513,7 +514,15 @@ export class ChannelAttachments {
       }
     }).catch(() => {});
   }
+  private matchesRead(key: ChannelFileKey, attachment: ChannelAttachment): boolean {
+    if (!this.matchesPlan({ key, attachment })) return false;
+    const message = this.confirmedMessage?.(key);
+    if (message) return message.attachments.some(file => file.id === key.attachmentId && sameContent(file, attachment));
+    const id = fileKeyString(key), local = this.sources.get(id) ?? this.sinks.get(id);
+    return !local || sameContent(local.attachment, attachment);
+  }
   download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: ImageRendition, surface?: Element): Promise<void> {
+    if (!this.matchesRead(key, attachment)) return Promise.reject(new Error("attachment_unavailable"));
     const id = fileKeyString(key), previous = this.downloads.get(id), store = this.store, scope = this.scope;
     const cacheRevision = scope ? this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision : undefined;
     if (previous && sameContent(previous.attachment, attachment) && !previous.controller.signal.aborted
@@ -564,6 +573,7 @@ export class ChannelAttachments {
     signal.throwIfAborted();
     if (this.messageRemoved(key)) throw new Error("attachment_unavailable");
     if (this.sessionId && !this.rooms.some(room => room.id === key.roomId && room.authorized)) throw new Error("room_unavailable");
+    if (!this.matchesRead(key, attachment)) throw new Error("attachment_unavailable");
     if (inlineImage?.original) return inlineImageFile(inlineImage, attachment.name);
     const id = fileKeyString(key), source = this.sources.get(id);
     if (source && sameContent(source.attachment, attachment)) return source.file;
@@ -580,7 +590,7 @@ export class ChannelAttachments {
     if (this.messageRemoved(key)) throw new Error("attachment_unavailable");
     const room = this.rooms.find(room => room.id === key.roomId);
     if (!this.current(runtime) || !room?.authorized) throw new Error("room_unavailable");
-    if (!this.matchesPlan({ key, attachment })) throw new Error("attachment_unavailable");
+    if (!this.matchesRead(key, attachment)) throw new Error("attachment_unavailable");
     if (source && room.available) this.withdraw(source, true);
     let entry = this.sinks.get(id);
     if (entry && !sameContent(entry.attachment, attachment)) {

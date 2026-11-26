@@ -202,6 +202,15 @@ serializes room operations through the transaction's
 not an individual write's success. Failure ends that operation without advancing
 the confirmed order or blocking the next command.
 
+Native keeps each open room in its own FIFO task, which owns the SQLite writer
+and file lock from opening through replacement and retirement. Room turns share
+a bounded blocking pool; its process-wide capacity follows available CPU
+parallelism, with at least two turns so one room waiting on storage can leave
+another room able to progress. Session owns registration replies and the socket.
+It settles committed local work after disconnect, discards obsolete wire replies,
+and joins retiring tasks before reopening the same room. Shutdown preserves the
+first error while finishing started work and releasing resources.
+
 Participants synchronize from the room writer through the existing domain
 WebSocket. No peer connection is needed to read or send conversation. The domain
 forwards the authenticated response; it does not confirm it.
