@@ -33,7 +33,7 @@ pub(crate) const HEALTH_MARKER: &str = "piik-channel-prototype";
 
 #[derive(Clone)]
 struct Client {
-    events: mpsc::Sender<Event>,
+    events: crate::outbox::Sender,
     close: watch::Sender<bool>,
 }
 
@@ -504,7 +504,7 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
         }
     };
     let connection = Uuid::new_v4();
-    let (events, mut queue) = mpsc::channel(64);
+    let (events, mut queue) = crate::outbox::channel(64);
     let (close, mut closing) = watch::channel(false);
     let close_writer = close.clone();
     {
@@ -532,7 +532,7 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
                 tokio::select! {
                     _ = closing.changed() => {
                         let _ = tokio::time::timeout(Duration::from_secs(5), async {
-                            while let Ok(item) = queue.try_recv() {
+                            while let Some(item) = queue.try_recv() {
                                 if !send(&mut writer, &item, &mut images).await { break; }
                             }
                         }).await;
@@ -957,7 +957,7 @@ mod tests {
             .save_header(&authority)
             .unwrap();
         let connection = Uuid::new_v4();
-        let (events, mut receiver) = mpsc::channel(64);
+        let (events, mut receiver) = crate::outbox::channel(64);
         let mut hub = Hub {
             _directory_owner: None,
             authority,
@@ -980,9 +980,9 @@ mod tests {
             }
             Request::parse(&value.to_string()).unwrap()
         };
-        let drain = |receiver: &mut mpsc::Receiver<Event>| {
+        let drain = |receiver: &mut crate::outbox::Receiver| {
             let mut events = Vec::new();
-            while let Ok(event) = receiver.try_recv() {
+            while let Some(event) = receiver.try_recv() {
                 events.push(event);
             }
             events

@@ -1120,6 +1120,41 @@ pub enum Event {
     },
 }
 
+/// What a recipient's event is about. Events of one subject keep their order.
+/// Subjects are independent: a recipient reads its own view of the site and,
+/// when it hosts rooms, one input stream for each of them.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Subject {
+    View,
+    Room(String),
+}
+
+impl Event {
+    pub fn subject(&self) -> Subject {
+        match self {
+            Event::HostBound { room_id, .. } | Event::HostInput { room_id, .. } => {
+                Subject::Room(room_id.clone())
+            }
+            _ => Subject::View,
+        }
+    }
+
+    /// Whether this event only states the latest value of its subject, so that
+    /// a newer one makes an unsent older one redundant. A snapshot is the whole
+    /// view, and a synchronizing input is the whole of what a room host is told:
+    /// both carry everything and ask for nothing. Every other event is an edge
+    /// and is delivered once, in order.
+    pub fn is_level(&self) -> bool {
+        match self {
+            Event::State { .. } => true,
+            Event::HostInput { input, .. } => {
+                matches!(input.action, crate::host::HostAction::Sync)
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "id", rename_all = "snake_case")]
 pub enum ViewSource {

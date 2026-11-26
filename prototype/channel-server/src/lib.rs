@@ -6,6 +6,7 @@ pub mod app_macos;
 pub mod app_windows;
 mod backup;
 pub mod domain;
+mod outbox;
 pub mod web;
 
 use domain::Domain;
