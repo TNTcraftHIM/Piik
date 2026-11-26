@@ -2618,6 +2618,7 @@ export class ChannelSession {
     if (!selection || !media) throw new Error("watch_source_unavailable");
     await media.ready(selection.controller.signal);
     await media.patch({ paused: true });
+    selection.controller.signal.throwIfAborted();
     await this.commitWatch(roomId, { kind: "website", url: media.sourceURL }, media, selection);
   }, reportError);
   startWatch = (roomId: string, rawURL: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
@@ -2903,6 +2904,7 @@ export class ChannelSession {
     const id = crypto.randomUUID();
     const player = this.makeWatchPlayer(id, roomId, true, media);
     const candidate = { player, stopping: false };
+    selection.watchCandidate = candidate;
     let committed = false;
     let startSocket: WebSocket | null = null;
     try {
@@ -2910,7 +2912,6 @@ export class ChannelSession {
       const initial = await media.read();
       if (!current()) throw new DOMException("Cancelled", "AbortError");
       this.stage(player.roomId).useWatch(id, player);
-      selection.watchCandidate = candidate;
       selection.committing = true;
       this.patch({});
       const start = performance.now();

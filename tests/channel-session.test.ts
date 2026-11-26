@@ -13756,6 +13756,114 @@ test('cancelling indexed preparation closes its page and prevents late preparati
   } finally { session.close(); }
 });
 
+test.each(["read failure", "cancel read", "cancel pause", "presentation"] as const)(
+  "watch creator transfers the embed preview through %s", async outcome => {
+    const { session, socket } = await setup(1000, false);
+    const { peerTubeOrigin } = await import("../src/client/channel/watch-peertube-source");
+    const uuid = "3a82b2ed-b8b3-468a-a27f-d83ad37625ca", url = peerTubeOrigin + "/videos/embed/" + uuid;
+    const window = Object.assign(new EventTarget(), { setTimeout });
+    const element = Object.assign(new EventTarget(), { isConnected: true, append: vi.fn(), remove: vi.fn() });
+    const frame = { contentWindow: { postMessage: vi.fn() }, setAttribute: vi.fn(), remove: vi.fn(), src: "" };
+    const video = new WatchTestVideo();
+    vi.stubGlobal("window", window);
+    vi.stubGlobal("document", { documentElement: { moveBefore() {} },
+      createElement: (tag: string) => tag === "div" ? element : tag === "iframe" ? frame : video });
+    vi.stubGlobal("fetch", async () => Response.json({ uuid, privacy: { id: 1 }, isLive: false }));
+    const packet = (body: object) => window.dispatchEvent(Object.assign(new Event("message"), {
+      origin: peerTubeOrigin, source: frame.contentWindow, data: JSON.stringify(body),
+    }));
+    const confirmStart = async (count: number) => {
+      await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(count));
+      const start = socket.sent.findLast(command => command.type === "start_watch")!;
+      socket.receive({ type: "room_reply", roomId: "first", requestId: start.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+      await vi.waitFor(() => expect(socket.sent.some(command => command.type === "update_watch" && command.id === start.id)).toBe(true));
+      const update = socket.sent.findLast(command => command.type === "update_watch" && command.id === start.id)!;
+      socket.receive({ type: "room_reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
+      return String(start.id);
+    };
+    try {
+      const initial = session.startWatch("first", "https://fixture.test/incumbent.mp4");
+      const incumbentId = await confirmStart(1);
+      await initial;
+      const incumbent = session.getSnapshot().watchPlayers.get(incumbentId)!;
+      await session.prepareWatchEmbed("first", url);
+      const media = session.watchEmbed("first")!, surface = media.presentation!;
+      if (surface.kind !== "embed") throw new Error("Expected embed preview");
+      surface.setVisible(true);
+      await vi.waitFor(() => expect(element.append).toHaveBeenCalledWith(frame));
+      const scope = new URL(frame.src).searchParams.get("scope");
+      let playing = true, readsAfterPause = 0;
+      let requestSnapshot!: () => void;
+      const snapshotRequested = new Promise<void>(resolve => { requestSnapshot = resolve; });
+      const results: Record<string, unknown> = { getPlaybackRates: [1], getCurrentTime: 10, getPlaybackRate: 1 };
+      frame.contentWindow.postMessage.mockImplementation((raw: string) => {
+        const { id, method: scopedMethod } = JSON.parse(raw);
+        const method = scopedMethod.split("::")[1];
+        if (method === "pause") playing = false;
+        // After pause, readiness and alignment sample the player before the commit snapshot.
+        if (method === "getCurrentTime" && !playing && ++readsAfterPause === 3) {
+          requestSnapshot();
+          if (outcome === "cancel read") return;
+          if (outcome === "read failure") { packet({ id, error: true }); return; }
+        }
+        packet({ id, result: method === "isPlaying" ? playing : results[method] });
+      });
+      packet({ method: scope + "::ready", params: true });
+      packet({ method: scope + "::playbackStatusUpdate", params: { playbackState: "playing", position: 10, duration: 60 } });
+      await media.ready(new AbortController().signal);
+      const close = vi.spyOn(media, "close");
+      let returnPause!: () => void, requestPause!: () => void;
+      const pauseReturned = new Promise<void>(resolve => { returnPause = resolve; });
+      const pauseRequested = new Promise<void>(resolve => { requestPause = resolve; });
+      if (outcome === "cancel pause") {
+        const patch = media.patch.bind(media);
+        vi.spyOn(media, "patch").mockImplementationOnce(async value => {
+          await patch(value);
+          requestPause();
+          await pauseReturned;
+        });
+      }
+      const confirm = session.confirmWatchEmbed("first", false);
+      if (outcome === "presentation") {
+        const id = await confirmStart(2);
+        expect(session.sourceSelectionCommitting("first")).toBe(true);
+        expect(session.watchEmbed("first")).toBe(media);
+        const player = session.getSnapshot().watchPlayers.get(id)!;
+        expect(player.presentation).toBe(surface);
+        surface.mounted();
+        await confirm;
+        expect(session.watchEmbed("first")).toBeUndefined();
+        expect(player.signal.aborted).toBe(false);
+        expect(close).not.toHaveBeenCalled();
+        expect(element.append).toHaveBeenCalledOnce();
+        const stopping = session.stopWatch(id);
+        const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
+        expect(stop.id).toBe(id);
+        socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
+        await stopping;
+      } else {
+        const rejected = outcome === "read failure" ? expect(confirm).rejects.toThrow("watch_media_failed")
+          : expect(confirm).rejects.toMatchObject({ name: "AbortError" });
+        if (outcome === "cancel read") {
+          await snapshotRequested;
+          await session.cancelScreenSelection("first");
+        } else if (outcome === "cancel pause") {
+          await pauseRequested;
+          await session.cancelScreenSelection("first");
+          returnPause();
+        }
+        await rejected;
+        expect(session.watchEmbed("first")).toBeUndefined();
+        expect(session.getSnapshot().watchPlayers.get(incumbentId)).toBe(incumbent);
+        expect(incumbent.signal.aborted).toBe(false);
+        expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(1);
+      }
+      expect(close).toHaveBeenCalledOnce();
+      expect(element.remove).toHaveBeenCalledOnce();
+    } finally { session.close(); }
+  },
+);
+
 test.each([true, false])("App to browser embed handoff with moveBefore support %s", async supportsMove => {
   const { session, socket } = await setup(1000, false);
   const id = "embed-handoff", url = "https://www.youtube.com/embed/M7lc1UVf-VE";
@@ -16754,4 +16862,92 @@ test('an App viewer follows a locator-free successor through its byte grant and 
     const leaving = session.leaveWatch(next.id); confirmWatchJoinOrLeave(socket); await leaving;
     expect(session.getSnapshot().watchPlayers.has(next.id)).toBe(false);
   } finally { session.close(); }
+});
+
+
+test.each(['while disconnected', 'before withdrawal confirmation'] as const)('original-page loss %s is reconciled as revoked and paused after Domain recovery', async timing => {
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
+  let actual: typeof source | null = null, now = 100;
+  const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: actual }));
+  const app = (session as unknown as { app: appLink.ChannelApp }).app;
+  Object.assign(app, { connected: true, pagePlayer: true });
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  commit.mockRestore();
+  const respond = request.getMockImplementation()!;
+  request.mockImplementation(command => command.type === 'page_read' || command.type === 'page_select'
+    ? Promise.resolve({ position: 10, paused: false, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] }) : respond(command));
+  const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation(async () => { actual = source; return source; });
+  const ack = (connection: ChannelSocket, command: Record<string, unknown>, result: object = { type: 'done' }) =>
+    connection.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result });
+  try {
+    const starting = session.selectWatchPage('first', candidateId, undefined, false, 'original-page');
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    ack(socket, start, { type: 'watch_ready', serverTime: 1000 });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const initial = socket.sent.findLast(command => command.type === 'update_watch')!;
+    ack(socket, initial); await starting;
+    const base = structuredClone(session.getSnapshot().state!);
+    base.sessions.push({ ...base.sessions[0], id: source.sessionId });
+    const activity = { id: String(start.id), roomId: 'first', sessionId: 'endpoint', userId: 'self', viewerSessionIds: ['viewer'], source: start.source, playback: initial.playback };
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [activity] } });
+    const enabling = session.setWatchByteSource(activity.id, crypto.randomUUID());
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(true));
+    const enabled = socket.sent.findLast(command => command.type === 'set_watch_byte_source')!;
+    expect(enabled.byteSource).toEqual(source);
+    ack(socket, enabled); await enabling;
+    const stale = { ...base, watchActivities: [{ ...activity, byteSource: source }] };
+    socket.receive({ type: 'state', state: stale });
+    const player = session.getSnapshot().watchPlayers.get(activity.id)!;
+    const beforeLoss = socket.sent.length;
+    if (timing === 'while disconnected') socket.close();
+    now = 2500;
+    // Native revokes its source independently before notifying the Web page.
+    actual = null;
+    page.receive({ type: 'page_selection_lost', pageId: page.id, candidateId });
+    if (timing === 'before withdrawal confirmation') {
+      await vi.waitFor(() => expect(socket.sent.slice(beforeLoss).some(command => command.type === 'set_watch_byte_source' && command.byteSource === null)).toBe(true));
+      socket.close();
+    }
+    await player.serialize(async () => {});
+    const frozen = player.mediaState!.position;
+    expect(frozen).toBe(12.4);
+    expect(player.mediaState).toMatchObject({ paused: true, readyState: 0 });
+    expect(player.error).toBe('watch_source_unavailable');
+    expect(player.signal.aborted).toBe(false);
+    expect(page.selectedCandidateId).toBeUndefined();
+    expect(app.connected).toBe(true);
+    expect(session.getSnapshot().connection).toBe('reconnecting');
+    expect(session.getSnapshot().state?.watchActivities[0].byteSource).toEqual(source);
+    if (timing === 'while disconnected') expect(socket.sent.slice(beforeLoss).some(command => command.type === 'set_watch_byte_source')).toBe(false);
+    const reads = request.mock.calls.filter(([command]) => command.type === 'page_read' || command.type === 'page_media_sources').length;
+    now = 10500;
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state: stale });
+    const rejoin = resumed.sent.findLast(command => command.type === 'join_watch')!;
+    expect(rejoin).toMatchObject({ id: activity.id, mode: 'direct' });
+    ack(resumed, rejoin, { type: 'watch_ready', serverTime: 6000 });
+    await vi.waitFor(() => expect(resumed.sent.some(command => command.type === 'set_watch_byte_source')).toBe(true));
+    const withdraw = resumed.sent.findLast(command => command.type === 'set_watch_byte_source')!;
+    expect(withdraw).toMatchObject({ id: activity.id, byteSource: null });
+    expect(resumed.sent.some(command => command.type === 'update_watch')).toBe(false);
+    ack(resumed, withdraw);
+    await vi.waitFor(() => expect(resumed.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const paused = resumed.sent.findLast(command => command.type === 'update_watch')!;
+    expect(paused.playback).toMatchObject({ position: frozen, paused: true, rate: 1 });
+    ack(resumed, paused);
+    resumed.receive({ type: 'state', state: { ...base, watchActivities: [{ ...activity, playback: paused.playback }] } });
+    await player.serialize(async () => {});
+    expect(session.getSnapshot().watchPlayers.get(activity.id)).toBe(player);
+    expect(session.getSnapshot().state?.watchActivities[0]).toMatchObject({ playback: { position: frozen, paused: true } });
+    expect(session.getSnapshot().state?.watchActivities[0].byteSource).toBeUndefined();
+    expect(player.error).toBe('watch_source_unavailable');
+    expect(request.mock.calls.filter(([command]) => command.type === 'page_read' || command.type === 'page_media_sources')).toHaveLength(reads);
+    expect(resumed.sent.filter(command => command.type === 'set_watch_byte_source').map(command => command.byteSource)).toEqual([null]);
+    expect(resumed.sent.some(command => command.type === 'start_watch' || command.type === 'stop_watch')).toBe(false);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+  expect(dispose).toHaveBeenCalledOnce();
 });
