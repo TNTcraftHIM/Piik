@@ -41,7 +41,11 @@
   min-height: 0;
 }
 .c3-monitor-grid[data-fitted].is-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow: visible; scrollbar-gutter: auto; }
-.c3-monitor-grid[data-fitted] > .c3-monitor-tile { place-self: center; width: var(--stage-picture-width); border: 0; }
+.c3-monitor-grid[data-fitted] > .c3-monitor-tile { place-self: center; width: var(--stage-picture-width); border: 0; box-shadow: 0 0 0 1px var(--line); }
+/* Keep the source actions on one line; a narrow caption already scrolls horizontally. */
+.c3-monitor-grid[data-fitted] .c3-monitor-tile-actions { flex: none; }
+.c3-monitor-grid[data-fitted] .c3-monitor-source-info { min-width: min-content; }
+.c3-monitor-grid[data-fitted] .c3-monitor-social { min-width: max-content; }
 .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) {
   flex: none;
   min-height: 0;

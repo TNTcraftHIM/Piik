@@ -5,9 +5,6 @@
   --room-inset: 16px;
   --room-companion: 320px;
   --room-rail: 72px;
-  --control-label-size: 14px;
-  --control-selected: color-mix(in srgb, var(--ink) 10%, transparent);
-  --control-selected-ink: var(--ink);
   font-size: 14px;
   background: var(--surface-room);
   position: relative;
@@ -58,10 +55,10 @@
   padding: 0 0 0 var(--room-inset);
 }
 [data-layout="living"] .c3-room-name { gap: 8px; }
+[data-layout="living"] .c3-room-name > .c3-room-invitation-entry { padding-inline-start: 0; border-inline-start: 0; }
 [data-layout="living"] .c3-room-name h2 { font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
 [data-layout="living"] .c3-room-toolbar { gap: 0; }
-[data-layout="living"] .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; padding: 2px; border: 1px solid var(--line); background: transparent; box-shadow: none; font-size: 12px; }
-[data-layout="living"] .c3-monitor-layout > .lr-toggle::before { inset-block: 2px; left: 2px; width: calc((100% - 4px) / var(--lr-segments)); border: 0; box-shadow: none; }
+[data-layout="living"] .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; }
 [data-layout="living"] .c3-room-actions:empty, .c3-living-stage-view:empty { display: none; }
 .c3-living-app { display: flex; align-self: center; align-items: center; flex: none; padding-inline: 8px; border-inline-start: 1px solid var(--line); }
 
@@ -140,8 +137,8 @@
 [data-layout="living"] :is(.c3-chat-panel, .c3-workspace) .c3-chat-heading { display: none; }
 [data-layout="living"] .c3-identity > .lr-header-controls { flex: none; }
 .c3-living-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
-[data-layout="living"][data-sidebars="list"] .c3-living-actions :is(.c3-share-actions, .lr-btn-split, .is-split-main) { width: 100%; }
-[data-layout="living"][data-sidebars="list"] .lr-btn-split > .c3-share-control:first-child { flex: 1; }
+[data-layout="living"][data-sidebars="list"]:not([data-minimal]) .c3-living-actions .lr-btn-split { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
+[data-layout="living"][data-sidebars="list"]:not([data-minimal]) .c3-living-actions .c3-share-actions { width: 100%; }
 .c3-living-actions .c3-voice-entry { padding: 0; }
 [data-layout="living"] .c3-living-voice-preferences:empty { display: none; }
 [data-layout="living"][data-sidebars="rail"][data-room-list-open] > .c3-personal { width: var(--room-list); z-index: 3; }
@@ -153,9 +150,8 @@
 [data-layout="living"][data-companion="people"] { --room-companion: 280px; }
 [data-layout="living"] .c3-room-item[data-selected] { position: relative; box-shadow: none; }
 [data-layout="living"] .c3-room-item[data-selected]::before { content: ""; position: absolute; inset-inline-start: 0; height: 18px; width: 3px; border-radius: 2px; top: calc(50% - 9px); background: var(--primary); pointer-events: none; }
-[data-layout="living"] .lr-btn.is-on { border-color: transparent; box-shadow: none; }
-[data-layout="living"] :is(.c3-voice-room-name > button, .c3-room-link strong, .c3-monitor-source strong,.lr-btn .lr-cap, .c3-room-start p) { font-size: 14px; }
-[data-layout="living"] :is(.c3-room-activity, .c3-room-activity > span, .c3-section-label, .c3-voice-room-info small, .c3-people-panel h2 > span, .c3-rooms > h3, .c3-room-participants-label, .c3-you, .c3-person-copy small, .c3-message-meta time, .c3-message-date,.lr-pawn-name) { font-size: 12px; }
+[data-layout="living"] :is(.c3-attachment-file strong, .c3-voice-entry strong, .c3-voice-room-name > button, .c3-room-link strong, .c3-monitor-source strong, .c3-room-start p) { font-size: 14px; }
+[data-layout="living"] :is(.c3-attachment small, .c3-voice-entry small, .c3-room-activity, .c3-room-activity > span, .c3-section-label, .c3-voice-room-info small, .c3-people-panel h2 > span, .c3-rooms > h3, .c3-room-participants-label, .c3-you, .c3-person-copy small, .c3-message-meta time, .c3-message-date,.lr-pawn-name) { font-size: 12px; }
 [data-layout="living"] :is(.c3-message-content-body, .c3-message-meta strong, .c3-person strong) { font-size: 16px; }
 [data-layout="living"] .c3-message { position: relative; width: auto; margin-top: 8px; padding-block: 4px; }
 [data-layout="living"] .c3-message.is-continuation { margin-top: 0; }
@@ -204,7 +200,6 @@
 [data-layout="living"][data-sidebars="phone"] .c3-room-name { gap: 4px; flex-basis: 0; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-name h2 { font-size: 16px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-name > .c3-identity-mark { display: none; }
-[data-layout="living"][data-sidebars="phone"] .c3-room-name > .c3-room-invitation-entry { padding: 0; border: 0; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-tools { gap: 0; }
 [data-layout="living"][data-sidebars="phone"] .c3-pane-navigation { display: inline-flex; }
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-name > :not(.c3-pane-navigation),
@@ -290,4 +285,29 @@
   .c3-shell[data-sidebars="phone"] > .c3-sidebar { opacity: 0; translate: -12px 0; }
   .c3-shell[data-layout="living"] > :is(.c3-chat-panel, .c3-people-panel) { opacity: 0; translate: 12px 0; }
   .c3-shell[data-layout="living"][data-sidebars="phone"] > :is(.c3-chat-panel, .c3-people-panel) { translate: 0 8px; }
+}
+
+/* Both living forms use the same room tools. The fixed group stays at the trailing edge. */
+[data-layout="living"] .c3-standing-room-tools:not([hidden]) { display: flex; align-items: center; gap: 2px; }
+[data-layout="living"] :is(.c3-living-app, .c3-global-tools) { display: flex; flex: none; align-items: center; gap: 2px; }
+[data-layout="living"] .c3-global-tools { padding-inline-start: 4px; border-inline-start: 1px solid var(--line); }
+[data-layout="living"] .c3-living-tv { flex: 1; min-height: 0; display: grid; place-items: center; padding: var(--room-inset); }
+[data-layout="living"] .c3-living-tv .lr-tv { width: min(100%, 880px); max-height: 100%; }
+[data-layout="living"] .c3-living-tv p { max-width: 28em; text-align: center; text-wrap: balance; }
+
+.c3-shell[data-minimal]:not([data-sidebars="phone"]) {
+  --room-nav: 0px;
+  grid-template-rows: var(--living-top-size, 48px) minmax(0, 1fr) auto auto;
+  grid-template-areas: "top top top" "rooms stage side" "rooms couch side" "self self side";
+}
+[data-minimal]:not([data-sidebars="phone"]) .c3-pane-navigation { display: inline-flex; }
+[data-minimal]:not([data-sidebars="phone"]):not([data-room-list-open]) .c3-site-identity { display: none; }
+[data-minimal][data-room-list-open]:not([data-sidebars="phone"]) > .c3-sidebar { width: var(--room-list); z-index: 3; }
+.c3-shell[data-minimal]:not([data-sidebars="phone"]) > .c3-personal { position: relative; flex-direction: row; align-items: center; justify-content: center; min-height: 64px; border-inline-end: 0; padding: 6px var(--room-inset); }
+[data-minimal]:not([data-sidebars="phone"]) .c3-identity { position: absolute; inset-inline-start: var(--room-inset); }
+[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { flex-direction: row; align-items: center; }
+
+@media (max-width: 360px) {
+  [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-name { flex-basis: 100%; }
+  [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { order: 0; flex: 1; padding-inline-end: 0; }
 }
