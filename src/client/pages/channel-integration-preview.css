@@ -19,5 +19,5 @@
 .c3-integration-value { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; min-width: 0; }
 .c3-integration-value > label { flex: 1 1 22ch; }
 .c3-integration-value label { font-size: 12px; }
-.c3-integration-value small { width: 100%; color: var(--danger); }
+.c3-integration-value small { width: 100%; color: var(--danger-ink); }
 @media (max-width: 650px) { .c3-integration-main { padding: 16px; } .c3-integration-cards { grid-template-columns: minmax(0, 1fr); } }

@@ -23,8 +23,8 @@ the feedback period; they do not delay that delivery.
   resource selection, promotion and retirement belong to each room's Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Native optional-flow acceptance.** Complete capture-enabled admission
-  with the actual encoder worker and presented playback. Reuse the
+- [ ] **Native optional-flow acceptance.** Complete presented playback and
+  physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
   keep cross-flow allocation separate from SDK congestion control and frame admission.
 - [ ] **Room-writer progress.** Bound unanswered host work at the binding owner.
@@ -279,9 +279,8 @@ the feedback period; they do not delay that delivery.
 - [ ] **Room record fan-out.** Share broadcast eligibility and recipient
   expansion through the conversation outcome. Keep the Browser's current-binding
   check and the Native request processor's local-session filter in their adapters.
-- [ ] **App configuration ownership.** Move owner-seed initialization into the
-  Domain before removing the App copy; retain consent scope and cache namespaces.
-  Consolidate startup environment reads where their meanings and lifetimes match.
+- [ ] **App configuration ownership.** Consolidate startup environment reads
+  where their meanings and lifetimes match, retaining consent scope and cache namespaces.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.

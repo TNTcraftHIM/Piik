@@ -15,5 +15,5 @@
 .c3-identity-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .c3-identity-upload-actions { display: contents; }
 .c3-room-picture-label { margin: 12px 0 0; font-size: 13px; }
-.c3-identity-error { margin: 5px 0 0; color: var(--danger); font-size: 11px; }
+.c3-identity-error { margin: 5px 0 0; color: var(--danger-ink); font-size: 11px; }
 .c3-identity-image-preview { flex: none; width: 88px; height: 88px; object-fit: cover; border-radius: var(--c3-inset-radius); }

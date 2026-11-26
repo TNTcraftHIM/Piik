@@ -1564,8 +1564,9 @@ impl RoomHost {
         now: u64,
     ) -> Result<crate::conversation::PreparedConversation, &'static str> {
         use crate::conversation::{
-            verify, ConversationCommand, ConversationRecord, ConversationRequest, ConversationWork,
-            PreparedConversation, ReactionSnapshot, ReactionTarget, INTERACTION_REACTIONS,
+            verify, ConversationAddress, ConversationCommand, ConversationRecord,
+            ConversationRequest, ConversationWork, PreparedConversation, ReactionSnapshot,
+            ReactionTarget, INTERACTION_REACTIONS,
         };
         if self.pending.is_some() {
             return Err("room_operation_pending");
@@ -1575,15 +1576,24 @@ impl RoomHost {
             .endpoints
             .get(&packet.sender)
             .ok_or("session_expired")?;
-        let request: ConversationRequest = verify(packet, endpoint.signing_key)?;
-        if request.address.sender != packet.sender
-            || request.address.recipient != authority.host_session_id
-            || request.address.binding_id != authority.binding_id
-            || request.address.room_id != self.room.policy().id
-            || !crate::wire::valid_id(&request.address.request_id)
+        let address: ConversationAddress = verify(packet, endpoint.signing_key)?;
+        if address.sender != packet.sender
+            || address.recipient != authority.host_session_id
+            || address.binding_id != authority.binding_id
+            || address.room_id != self.room.policy().id
+            || !crate::wire::valid_id(&address.request_id)
         {
             return Err("invalid_conversation_scope");
         }
+        let request: ConversationRequest = match serde_json::from_str(&packet.payload) {
+            Ok(request) => request,
+            Err(_) => {
+                return Ok(PreparedConversation {
+                    address,
+                    work: Err("invalid_conversation"),
+                });
+            }
+        };
         let actor = endpoint.member.user_id;
         let moderator = self.room.policy().manages(actor) || actor == authority.channel_owner_id;
         let work = match request.command {

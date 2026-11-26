@@ -18,7 +18,7 @@ test("room settings give the reason a room could not open here in place of offli
     hidden: false, voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, reading: false, capabilities: { attachments: true } } as ChannelRoom;
   const settings = (roomOpenFailures: ChannelController["roomOpenFailures"]) => renderToStaticMarkup(createElement(ChannelRoomSettingsDialog, {
     channel: { connection: "connected", pending: new Set(), profiles: new Map(), messagesByRoom: {}, roomOpenFailures,
-      state: { channel: { rooms: [room] }, users: [] } } as unknown as ChannelController, room, onClose() {},
+      state: { channel: { rooms: [room] }, users: [] } } as unknown as ChannelController, room, onClose() {}, onDelete: async () => {},
   }));
   const offline = t("en", "room.settings.offlineManager");
   expect(settings(new Map())).toContain(offline);

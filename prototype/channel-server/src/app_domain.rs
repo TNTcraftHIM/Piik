@@ -236,12 +236,12 @@ async fn run(
 ) -> Result<(), Failure> {
     let routes =
         web::frontend(&app.config.assets).map_err(|error| Failure::new("configuration", error))?;
-    let identity = app
+    let namespace = app
         .registry
         .lock()
         .await
         .sites
-        .local_identity()
+        .local_namespace()
         .map_err(|error| Failure::new("configuration", error))?;
     let saved_port = app
         .registry
@@ -315,7 +315,7 @@ async fn run(
     .to_owned();
     let domain = Domain::open(
         &app.config.data_root.join("domain"),
-        &identity.owner,
+        None,
         origin.clone(),
         Some(invitation.clone()),
         ice_servers,
@@ -344,7 +344,7 @@ async fn run(
         eprintln!("Local invitation entry: {}", certificate.origin);
         eprintln!("Certificate SHA-256: {}", certificate.sha256_fingerprint);
     }
-    let permission = Arc::new(Permission::new(identity.namespace));
+    let permission = Arc::new(Permission::new(namespace));
     {
         let mut registry = app.registry.lock().await;
         // A successful retry can change how the same auto-started site is hosted.
@@ -777,7 +777,7 @@ mod tests {
         let http = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let target = format!("http://{}/#piik-client=1", http.local_addr().unwrap());
         let data = tempfile::tempdir().unwrap();
-        let domain = Domain::open(data.path(), "test-owner", format!("http://{}", http.local_addr().unwrap()), None, vec![]).unwrap();
+        let domain = Domain::open(data.path(), Some("test-owner"), format!("http://{}", http.local_addr().unwrap()), None, vec![]).unwrap();
         let https = web::LanHttps::bind(Ipv4Addr::LOCALHOST.into(), 0)
             .await
             .unwrap();

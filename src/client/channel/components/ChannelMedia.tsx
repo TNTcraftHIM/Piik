@@ -7,7 +7,7 @@ import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
 import { AudioVolumeControl } from "../../components/living/AudioVolumeControl";
-import { PlaybackSettings, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
+import { PlaybackSettings, PlaybackSettingsHeading, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { debugEvent } from "../../lib/debug";
@@ -26,6 +26,7 @@ import type { VideoFit, VideoRotation, VideoSize } from "../../media/video-geome
 import type { ChannelActions, ChannelScreenInput } from "../types";
 import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
+import { useLayerHistory } from "../../ui/layer-history";
 import { Glyph } from "../../ui/icons";
 import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
@@ -65,9 +66,13 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
   const { t } = useCopy();
   const directSelected = receiving?.mode === "direct" && !originalPage;
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  useLayerHistory(panel, open);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
-  return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} />
-    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}>
+  return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} controls={id} expanded={open} />
+    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
+      <PlaybackSettingsHeading onClose={() => panel.current?.hidePopover()} />
       {audio && <div className="c3-watch-volume lr-audio-settings"><AudioVolumeControl {...audio} /></div>}
       {playback ? <label className="c3-watch-rate"><span>{t("watch.rate")}</span>
         <select className="lr-select" aria-label={t("watch.rate")} value={playback.rate} disabled={playback.disabled}
@@ -88,7 +93,7 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
 }
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, retryPending, automaticPlayback = true, nativeStage = false }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, retryPending, automaticPlayback = true, nativeStage = false, actionFeedback }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
@@ -97,6 +102,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   retryPending?: boolean;
   automaticPlayback?: boolean;
   nativeStage?: boolean;
+  actionFeedback?: ReactNode;
 }) {
   const { lang, t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
@@ -161,7 +167,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       if (player.video) { player.video.volume = volume; player.video.muted = false; }
     },
   } : undefined;
-  const visibility = usePlaybackControlsVisibility(videoRef, controls, thumbnail || player.blocked || !!player.error);
+  const visibility = usePlaybackControlsVisibility(videoRef, controls, thumbnail || player.blocked || !!player.error || !!actionFeedback);
   useLayoutEffect(() => {
     if (surface.kind === "external") return;
     const element = surface.element, target = slot.current;
@@ -261,7 +267,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </>}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon={localSeek ? "refresh" : "play"} title={resumeLabel} cap={resumeLabel} onClick={onResume} /></div>}
-    {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
+    {(hasControls || actionFeedback) && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
+      {actionFeedback}
       {showTimeline && <div className="c3-watch-timeline">
         {owned ? <input className="lr-range" type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
           style={{ "--range-fill": `${100 * (position - seekStart) / (seekEnd - seekStart)}%` } as CSSProperties}
@@ -392,7 +399,7 @@ function readStickPositions() {
   return readRoomPreferences().stickPositions;
 }
 
-/** A failed watch or picture retry stays with its picture until the next attempt, a started picture or dismissal. */
+/** A failed picture operation stays with its picture until its owner clears it or it is dismissed. */
 export function PictureFailure({ error, onDismiss }: { error: string; onDismiss?(): void }) {
   return <div className="c3-picture-failure">
     <ChannelSettingsError error={error} />
@@ -431,6 +438,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const pictureId = useId();
   const pictureTrigger = useRef<HTMLSpanElement>(null), picturePanel = useRef<HTMLDivElement>(null);
   const [pictureOpen, setPictureOpen] = useState(false);
+  useLayerHistory(picturePanel, pictureOpen);
   const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
@@ -641,6 +649,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
         className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
           if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
         }}>
+        <PlaybackSettingsHeading onClose={() => picturePanel.current?.hidePopover()} />
         {pictureOpen && <PlaybackSettings buffering={!owned && !localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },

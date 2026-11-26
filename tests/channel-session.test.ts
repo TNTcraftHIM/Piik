@@ -189,6 +189,45 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
+test.each(["latest", "message"] as const)("leaving a room retires a %s read still awaiting browse admission", async kind => {
+  const { session, socket, peer } = await setup(1000, false);
+  try {
+    const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    const reading = (kind === "latest" ? session.loadLatestHistory("first") : session.loadMessage("first", 1))
+      .then(() => "completed", error => error);
+    session.browse("second");
+    const second = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: second.requestId });
+    const current = await peer.next();
+    expect(current).toMatchObject({ type: "history", roomId: "second" });
+    peer.page(current, [message(2)], false, 2);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
+
+    socket.receive({ type: "ack", requestId: first.requestId });
+    await vi.waitFor(() => expect(peer.sent.some(request => request.roomId === "first")
+      || !session.getSnapshot().pending.has("history:first")).toBe(true));
+    const stale = peer.sent.find(request => request.roomId === "first");
+    if (stale) peer.page(stale, [message(1)], false, 1);
+    expect(await reading).toMatchObject({ name: "AbortError" });
+    expect(peer.sent.map(request => request.roomId)).toEqual(["second"]);
+    expect(session.getSnapshot().messagesByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().messagesByRoom.second).toEqual([message(2)]);
+    expect(session.getSnapshot().error).toBeNull();
+
+    session.browse("first");
+    const reopened = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    expect(reopened.requestId).not.toBe(first.requestId);
+    socket.receive({ type: "ack", requestId: first.requestId });
+    expect(peer.sent).toHaveLength(1);
+    socket.receive({ type: "ack", requestId: reopened.requestId });
+    const fresh = await peer.next();
+    expect(fresh).toMatchObject({ type: "history", roomId: "first" });
+    peer.page(fresh, [message(3)], false, 3);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3)]);
+  } finally { session.close(); }
+});
+
 test("writer-confirmed moderation removes messages, quotations and transfers for both readers", async () => {
   const moderator = await setup();
   const reader = await setup();
@@ -5622,6 +5661,20 @@ test("a rejected deletion identifies its room after the settings surface closes"
     socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "forbidden" });
     await rejected;
     expect(session.getSnapshot()).toMatchObject({ error: "forbidden", errorRoomId: "first" });
+  } finally { session.close(); }
+});
+
+test("a live deletion caller owns an unconfirmed data removal after the directory entry disappears", async () => {
+  const { session, socket } = await setup();
+  try {
+    const surface = new AbortController();
+    const deleting = session.deleteRoom("first", true, surface.signal);
+    const request = socket.sent.at(-1)!;
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, rooms: state.channel.rooms.filter(room => room.id !== "first") } } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "deleted", dataRemoved: false } });
+    await expect(deleting).resolves.toEqual({ dataRemoved: false });
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
@@ -13766,10 +13819,12 @@ test.each(['select', 'select-ack-first', 'cancel'] as const)('an unselected view
 test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquired webpage after the App reference changes', async role => {
   const { session, socket, page, request, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const activityId = role === 'viewer' ? 'website-viewer' : undefined;
+  let pageId = page.id;
   try {
     if (activityId) {
       await session.cancelScreenSelection('first');
       const viewerPage = new appLink.AppPage(crypto.randomUUID(), page.url, request, dispose, () => {});
+      pageId = viewerPage.id;
       vi.mocked((session as unknown as { connectApp(): Promise<appLink.ChannelApp> }).connectApp).mockResolvedValue({
         preparePage: async () => viewerPage,
       } as unknown as appLink.ChannelApp);
@@ -13780,6 +13835,7 @@ test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquir
       }] } });
       await session.prepareWatchPage('first', page.url, activityId);
     }
+    expect(session.watchPage('first', activityId)?.pageId).toBe(pageId);
     (session as unknown as { app: appLink.ChannelApp }).app = { stopCaptures: vi.fn(), close: vi.fn() } as unknown as appLink.ChannelApp;
     await session.focusWatchPage('first', activityId);
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_focus' }), expect.any(AbortSignal));

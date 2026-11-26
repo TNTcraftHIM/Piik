@@ -14,9 +14,10 @@ keeps working with a newer site within a major version, and that forward
 upgrades preserve durable authority. The private implementation currently has
 these boundaries:
 
-- `Join` requires the protocol number to match the current wire version
-  (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
-  reader accepts additions; no rule says which additions a reader may ignore.
+- Channel joins and local App discovery each require their current wire
+  identifier (`prototype/channel-core/src/lib.rs`,
+  `src/client/channel/app-link.ts`). Capture descriptions accept additions;
+  selected capture results remain strict.
 - The Browser's pending request validates its terminal result
   (`src/client/channel/session.ts`). Unknown or mismatched outcomes reject that
   operation. The first published reader must retain this boundary when an
@@ -46,10 +47,15 @@ these boundaries:
    state. History uses one signed, bounded page containing messages and their
    reaction snapshots. A released client that reads an unknown outcome as success
    cannot be corrected from the domain.
-3. **Storage.** The first public format of each store is recorded as release
-   fixtures. A concrete transactional upgrade is added when a format actually
-   changes, and a store newer than the code is refused, with no general
-   migration framework. Every later upgrade starts from the released format.
+3. **Storage.** The baseline covers Domain and room stores, portable archives,
+   App settings, and Browser identity and read-position records. Retain inputs
+   produced by the released writers. Compatible upgrades preserve authority,
+   approved-origin scopes, data namespaces, identity credentials and valid
+   configuration. Missing or malformed optional local preferences may use
+   defaults; they never replace saved identity or restore authority. Add a
+   concrete transactional upgrade only when a representation changes, and
+   refuse a newer store before modification. No general migration framework
+   is required.
 4. **Restored history.** A restore gives the room's history a new lineage that
    invalidates old read positions, and a normal restart keeps them. A position
    a released reader saved without a lineage cannot later be told apart from
@@ -60,6 +66,18 @@ these boundaries:
    confirmed. Persistent storage guards against eviction and is requested at
    explicit hosting, not on every reconnect. A confirmed message that was lost
    cannot be recovered by a later version.
+
+### First public baseline
+
+At the first public release, the owner selects the matched App, Web and Server
+revision. Its retained readers and writer-produced storage fixtures define the
+baseline protected by [versioning](../standards/versioning.md).
+
+Compatible releases keep the baseline protocol identifiers. Older Apps with
+newer Sites, newer Apps with older Sites, and older room writers with newer
+channels keep their established commands and results. A new command, result kind
+or automatic-selection output is sent only after the receiving peer selects
+support through the existing feature owner.
 
 ### Deferred until a consumer needs it
 

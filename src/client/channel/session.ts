@@ -1321,7 +1321,7 @@ export class ChannelSession {
     for (const id of this.view.interactionsByRoom.keys()) if (!keep.has(id)) this.closeInteraction(id);
     for (const [id] of this.readings) if (!keep.has(id)) {
       this.closeInteraction(id); this.readings.delete(id);
-      for (const [requestId, request] of this.requests) if (request.roomId === id && (this.histories.get(id)?.hasPage(requestId) || request.seekAfter !== undefined)) {
+      for (const [requestId, request] of this.requests) if (request.roomId === id && (request.kind === "browse" || this.histories.get(id)?.hasPage(requestId) || request.seekAfter !== undefined)) {
         this.retireRequest(requestId);
         request.reject(new DOMException("Read cancelled", "AbortError"));
       }
@@ -2167,8 +2167,8 @@ export class ChannelSession {
       throw failure;
     }
     if (this.roomId === roomId) this.browse("");
-    // The directory projection can close Room settings before the deletion result arrives.
-    if (deleteData && !dataRemoved && this.socket === socket) this.patch({ error: "room_data_removal_unconfirmed", errorRoomId: roomId });
+    if (deleteData && !dataRemoved && this.socket === socket && (!localResult || localResult.aborted))
+      this.patch({ error: "room_data_removal_unconfirmed", errorRoomId: roomId });
     return { dataRemoved };
   }, false);
 
@@ -2654,7 +2654,7 @@ export class ChannelSession {
   watchPage = (roomId: string, activityId?: string): ReturnType<ChannelActions["watchPage"]> => {
     if (activityId) {
       const media = this.pendingWatchPlayer(activityId)?.media, page = media?.page;
-      return page instanceof AppPage ? { url: page.url, candidates: page.candidates, activityId } : undefined;
+      return page instanceof AppPage ? { pageId: page.id, url: page.url, candidates: page.candidates, activityId } : undefined;
     }
     const selection = this.stages.get(roomId)?.sourceSelection, page = selection?.page;
     return page ? { pageId: page.id, url: page.url, candidates: page.candidates, watchSources: selection?.watchSources } : undefined;

@@ -47,6 +47,7 @@ export class ViewerAudio {
   private nativeVolume: number;
   private nativeMuted: boolean;
   private readonly releaseDebug: () => void;
+  private readonly releaseOutput: () => void;
 
   constructor(
     private readonly video: HTMLMediaElement,
@@ -60,6 +61,7 @@ export class ViewerAudio {
     this.muted = video.muted;
     this.nativeVolume = video.volume;
     this.nativeMuted = video.muted;
+    this.releaseOutput = playbackOutput.subscribe(this.sync);
     this.releaseDebug = registerDebugCollector("audio-playback", () => {
       if (this.track) debugTrack(this.track, { role: "audio-playback-input" });
       debugEvent("audio", "playback-graph", { trackId: this.track?.id ?? null,
@@ -158,6 +160,7 @@ export class ViewerAudio {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.releaseOutput();
     this.detachElement();
     this.releaseDebug();
     this.video.removeEventListener("play", this.onPlay);
@@ -188,7 +191,9 @@ export class ViewerAudio {
   private readonly sync = (): void => {
     if (this.disposed) return;
     const output = this.detachContext ?? this.voiceContext?.output;
-    const boosted = !output?.getWaiting() && this.context?.state === "running" && this.source !== null;
+    const nativeReady = !this.detachElement.getWaiting() && !playbackOutput.failedFor(this.video);
+    const boosted = !output?.getWaiting() && !playbackOutput.failedFor(this.context)
+      && this.context?.state === "running" && this.source !== null;
     if (this.gain) {
       this.gain.gain.value =
         boosted && !this.muted && !this.video.paused && !this.video.ended
@@ -196,12 +201,12 @@ export class ViewerAudio {
           : 0;
     }
     this.video.volume = Math.min(this.level, 1);
-    this.video.muted = this.detachElement.getWaiting() || this.muted || this.level === 0 || boosted;
+    this.video.muted = !nativeReady || this.muted || this.level === 0 || boosted;
     // iPhone may ignore volume writes; echoes must match actual native state,
     // while the requested listening level stays owned by the gain graph.
     this.nativeVolume = this.video.volume;
     this.nativeMuted = this.video.muted;
-    this.onOutputReady?.(boosted || !this.detachElement.getWaiting());
+    this.onOutputReady?.(boosted || nativeReady);
   };
 
   private readonly onPlay = (): void => {

@@ -71,7 +71,8 @@ impl Endpoint {
 #[test]
 fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
     let folder = std::env::temp_dir().join(format!("piik-domain-keys-{}", Uuid::new_v4()));
-    let open = |owner| Domain::open(&folder, owner, "http://localhost".into(), None, vec![]);
+    let open = |owner| Domain::open(&folder, Some(owner), "http://localhost".into(), None, vec![]);
+    assert!(open("").err().unwrap().to_string().contains("local owner bootstrap key"));
     let domain = open("saved-owner").unwrap();
     let identity = domain.identity();
     drop(domain);
@@ -88,7 +89,7 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
     drop(domain);
     let contender = Domain::open_with_options(
         &folder,
-        "saved-owner",
+        Some("saved-owner"),
         "http://localhost".into(),
         None,
         vec![],
@@ -153,7 +154,7 @@ fn previous_domain_sqlite_format_is_rejected_without_modification() {
     old.save(&serde_json::to_value(authority.export_backup()).unwrap()).unwrap();
     drop(old);
     let original = std::fs::read(&path).unwrap();
-    let result = Domain::open(directory.path(), "new-owner", "http://localhost".into(), None, vec![]);
+    let result = Domain::open(directory.path(), Some("new-owner"), "http://localhost".into(), None, vec![]);
     assert!(result.err().unwrap().to_string().contains("unsupported_storage_version"));
     assert_eq!(std::fs::read(path).unwrap(), original);
 }
@@ -163,7 +164,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
     let folder = tempfile::tempdir().unwrap();
     let domain = Domain::open(
         folder.path(),
-        "owner",
+        Some("owner"),
         "http://localhost".into(),
         None,
         vec![],
@@ -240,7 +241,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
     }
     drop(domain);
     let reopened =
-        Domain::open(folder.path(), "", "http://localhost".into(), None, vec![]).unwrap();
+        Domain::open(folder.path(), Some(""), "http://localhost".into(), None, vec![]).unwrap();
     let mut hub = reopened.hub.lock().unwrap();
     let mut owner = Endpoint::join(&mut hub, "owner");
     assert_eq!(owner.user, user);
@@ -672,7 +673,7 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
     let folder = tempfile::tempdir().unwrap();
     let domain = Domain::open(
         folder.path(),
-        "owner",
+        Some("owner"),
         "http://localhost".into(),
         None,
         vec![],
@@ -763,7 +764,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         RoomState, StoredRoomHost,
     };
     let folder = std::env::temp_dir().join(format!("piik-room-commit-{}", Uuid::new_v4()));
-    let state = Domain::open(&folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let state = Domain::open(&folder, Some("owner"), "http://localhost".into(), None, vec![]).unwrap();
     std::fs::create_dir_all(folder.join("rooms")).unwrap();
     let mut hub = state.hub.lock().unwrap();
     let mut sender = Endpoint::join(&mut hub, "owner");
@@ -1044,7 +1045,7 @@ async fn start_server(
 ) {
     let state = Domain::open_with_options(
         folder,
-        "owner",
+        Some("owner"),
         "http://localhost".into(),
         None,
         vec![],
@@ -1093,7 +1094,7 @@ async fn wildcard_listeners_host_native_rooms_and_retire_on_stop() {
         let folder = tempfile::tempdir().unwrap();
         let domain = Domain::open(
             folder.path(),
-            "owner",
+            Some("owner"),
             "http://localhost".into(),
             None,
             vec![],
@@ -1177,7 +1178,7 @@ async fn http_and_https_share_a_domain_and_release_both_listeners_on_stop() {
     );
     let state = Domain::open(
         &folder,
-        "owner",
+        Some("owner"),
         "http://localhost".into(),
         Some(invitation.clone()),
         vec![],
@@ -1278,10 +1279,10 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
     let primary = "http://localhost";
     let invitation = "https://invite.example";
     let owner = Uuid::new_v4().to_string();
-    assert!(Domain::open(&folder, &owner, format!("{primary}/path"), None, vec![]).is_err());
+    assert!(Domain::open(&folder, Some(&owner), format!("{primary}/path"), None, vec![]).is_err());
     assert!(Domain::open(
         &folder,
-        &owner,
+        Some(&owner),
         primary.into(),
         Some("https://user@invite.example".into()),
         vec![]
@@ -1293,7 +1294,7 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
     );
     let state = Domain::open(
         &folder,
-        &owner,
+        Some(&owner),
         primary.into(),
         Some(invitation.into()),
         vec![],
@@ -1378,7 +1379,7 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
         .unwrap();
     drop(sockets);
     drop(hub);
-    let restored = Domain::open(&folder, &owner, primary.into(), None, vec![]).unwrap();
+    let restored = Domain::open(&folder, Some(&owner), primary.into(), None, vec![]).unwrap();
     assert_eq!(restored.identity().0, identity);
     {
         let mut hub = restored.hub.lock().unwrap();
@@ -1784,7 +1785,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
     assert!(saved.policy().access == RoomAccess::Private);
     assert!(saved.policy().grants.contains(&guest_user));
     drop(saved);
-    let restored = Domain::open(&folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let restored = Domain::open(&folder, Some("owner"), "http://localhost".into(), None, vec![]).unwrap();
     assert_eq!(
         restored.hub.lock().unwrap().authority.owner_name(),
         Some("Owner renamed")
@@ -1899,7 +1900,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     drop(
         Domain::open_with_options(
             folder.path(),
-            "owner",
+            Some("owner"),
             "http://localhost".into(),
             None,
             vec![],
@@ -2285,7 +2286,7 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
         let folder = tempfile::tempdir().unwrap();
         let domain = Domain::open(
             folder.path(),
-            "owner",
+            Some("owner"),
             "http://localhost".into(),
             None,
             vec![],
@@ -3011,7 +3012,7 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
     drop(
         Domain::open_with_options(
             folder.path(),
-            "owner",
+            Some("owner"),
             "http://localhost".into(),
             None,
             vec![],
@@ -3245,7 +3246,7 @@ async fn owner_room_backup_rejects_busy_restore_before_reading_upload() {
     use axum::{body::{Body, Bytes}, extract::State, http::{header, HeaderMap, StatusCode}};
     use std::sync::atomic::{AtomicBool, Ordering};
     let folder = tempfile::tempdir().unwrap();
-    let domain = Domain::open(folder.path(), "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let domain = Domain::open(folder.path(), Some("owner"), "http://localhost".into(), None, vec![]).unwrap();
     let mut headers = HeaderMap::new();
     let (commands, _writer) = mpsc::channel(1);
     {
@@ -3276,7 +3277,7 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
 
     let folder = tempfile::tempdir().unwrap();
     let domain = Domain::open_with_options(
-        folder.path(), "owner", "http://localhost".into(), None, vec![],
+        folder.path(), Some("owner"), "http://localhost".into(), None, vec![],
         RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
     ).unwrap();
     let (writer, mut commands) = mpsc::channel(1);
@@ -3365,7 +3366,7 @@ async fn room_writer_work_does_not_spend_the_socket_read_timeout() {
 
     let folder = tempfile::tempdir().unwrap();
     let domain = Domain::open_with_options(
-        folder.path(), "owner", "http://localhost".into(), None, vec![],
+        folder.path(), Some("owner"), "http://localhost".into(), None, vec![],
         RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
     ).unwrap();
     let (writer, mut commands) = mpsc::channel(1);
@@ -3439,7 +3440,7 @@ async fn buffered_room_registrations_drain_with_one_runtime_worker() {
     use piik_channel_core::{host::RoomSummary, wire::RoomAccess};
 
     let folder = tempfile::tempdir().unwrap();
-    let domain = Domain::open(folder.path(), "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let domain = Domain::open(folder.path(), Some("owner"), "http://localhost".into(), None, vec![]).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (stop, stopped) = oneshot::channel();

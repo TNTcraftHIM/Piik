@@ -87,6 +87,14 @@ export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSett
   </section>;
 }
 
+export function PlaybackSettingsHeading({ onClose }: { onClose(): void }) {
+  const { t } = useCopy();
+  return <header className="lr-viewer-settings-heading lr-playback-settings-heading">
+    <h3>{t("playback.more")}</h3>
+    <Btn icon="x" title="common.close" quiet size="compact" textTooltip onClick={onClose} />
+  </header>;
+}
+
 // Local display and connection intent; media and routing keep their owners.
 export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVolunteer, buffering, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "remoteTouch" | "route" | "relayVolunteer" | "buffering"> & {
   picture?: PlaybackSettingsProps;

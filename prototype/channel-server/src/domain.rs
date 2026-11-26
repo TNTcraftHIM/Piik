@@ -592,7 +592,7 @@ fn now() -> u64 {
 impl Domain {
     pub fn open(
         directory: &Path,
-        owner_seed: &str,
+        owner_seed: Option<&str>,
         origin: String,
         invitation_origin: Option<String>,
         ice_servers: Vec<serde_json::Value>,
@@ -608,11 +608,11 @@ impl Domain {
         )
     }
 
-    /// Seed channel settings on first startup. Without a Server mode, only
-    /// lightweight channels supported by App can be opened.
+    /// Seed channel settings on first startup, generating a local key when none
+    /// is supplied. Without a Server mode, only lightweight channels can be opened.
     pub fn open_with_options(
         directory: &Path,
-        owner_seed: &str,
+        owner_seed: Option<&str>,
         origin: String,
         invitation_origin: Option<String>,
         ice_servers: Vec<serde_json::Value>,
@@ -658,7 +658,10 @@ impl Domain {
                     .map_err(anyhow::Error::msg)?
             }
             None => {
-                let mut authority = Authority::new(owner_seed.into(), ice_servers.clone())
+                let owner_key = owner_seed
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| Uuid::new_v4().to_string());
+                let mut authority = Authority::new(owner_key, ice_servers.clone())
                     .map_err(anyhow::Error::msg)
                     .context("A new site requires its local owner bootstrap key")?;
                 authority.set_room_creation_policy(initial_policy);
@@ -897,9 +900,16 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn owner_launch_tickets_are_independent_single_use_and_end_on_restore() {
+    fn generated_owner_key_persists_and_launch_tickets_follow_restore() {
         let directory = tempfile::tempdir().unwrap();
-        let domain = Domain::open(directory.path(), "seed", "http://127.0.0.1:8787".into(), None, vec![]).unwrap();
+        let domain = Domain::open(directory.path(), None, "http://127.0.0.1:8787".into(), None, vec![]).unwrap();
+        let owner_key = domain.owner_key();
+        assert!(Uuid::parse_str(&owner_key).is_ok());
+        let identity = domain.identity();
+        drop(domain);
+        let domain = Domain::open(directory.path(), None, "http://127.0.0.1:8787".into(), None, vec![]).unwrap();
+        assert_eq!(domain.identity(), identity);
+        assert_eq!(domain.owner_key(), owner_key);
         let redeem = |ticket: &str| {
             let mut join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":ticket,
                 "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
@@ -911,18 +921,18 @@ mod tests {
         let first = domain.launch_ticket().unwrap();
         let second = domain.launch_ticket().unwrap();
         assert_ne!(first, second);
-        assert_eq!(redeem(&first), "seed");
+        assert_eq!(redeem(&first), owner_key);
         assert_eq!(redeem(&first), first);
-        assert_eq!(redeem(&second), "seed");
+        assert_eq!(redeem(&second), owner_key);
 
         let expired = domain.launch_ticket().unwrap();
         domain.hub.lock().unwrap().launch_tickets.insert(expired.clone(), Instant::now());
         assert_eq!(redeem(&expired), expired);
 
         let pending = domain.launch_ticket().unwrap();
-        let (credential, backup) = {
+        let (credential, mut backup) = {
             let mut hub = domain.hub.lock().unwrap();
-            let join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":"seed",
+            let join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":owner_key,
                 "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
             let effects = hub.authority.handle(Uuid::new_v4(), join, 0);
             let credential = effects.events.into_iter().find_map(|(_, event)| match event {
@@ -930,8 +940,14 @@ mod tests {
             }).unwrap();
             (credential, hub.authority.export_backup())
         };
+        backup.owner_key = "restored-owner".into();
         domain.restore(backup, &credential).unwrap();
         assert_eq!(redeem(&pending), pending);
+        assert_eq!(redeem(&domain.launch_ticket().unwrap()), "restored-owner");
+        drop(domain);
+        let domain = Domain::open(directory.path(), None, "http://127.0.0.1:8787".into(), None, vec![]).unwrap();
+        assert_eq!(domain.identity(), identity);
+        assert_eq!(domain.owner_key(), "restored-owner");
     }
 
     #[test]

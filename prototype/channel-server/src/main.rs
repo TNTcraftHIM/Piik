@@ -143,7 +143,7 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     let udp = ServerUdp::bind(&bindings)?;
     let state = Domain::open_with_options(
         &directory,
-        &owner,
+        Some(&owner),
         origin.clone(),
         invitation_origin,
         ice_servers,

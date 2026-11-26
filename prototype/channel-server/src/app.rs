@@ -3847,7 +3847,7 @@ mod lifecycle_tests {
         let lan = web::LanHttps::bind("127.0.0.1".parse().unwrap(), 0).await.unwrap();
         let lan_origin = lan.origin().to_owned();
         let domain = crate::domain::Domain::open(
-            &directory.path().join("domain"), "owner", site_origin.clone(), Some(lan_origin.clone()), vec![],
+            &directory.path().join("domain"), Some("owner"), site_origin.clone(), Some(lan_origin.clone()), vec![],
         ).unwrap();
         let site = tokio::spawn(domain.serve_with_https(site_listener, Some(lan), Router::new(), std::future::pending()));
         let mut sites = sites::Sites::open(directory.path()).unwrap();

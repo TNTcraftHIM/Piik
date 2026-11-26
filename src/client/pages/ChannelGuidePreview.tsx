@@ -273,10 +273,11 @@ export function ChannelGuidePreview() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const shareStart = useSettingsAction();
+  const roomRemoval = useSettingsAction();
   const [watchPage, setWatchPage] = useState<ReturnType<ChannelController["watchPage"]>>();
   const watchChannel: ChannelController = {
     ...channel, pagePlayer: true, watchPage: () => watchPage,
-    prepareWatchPage: async (_roomId, url) => setWatchPage({ url, candidates: [
+    prepareWatchPage: async (_roomId, url) => setWatchPage({ pageId: crypto.randomUUID(), url, candidates: [
       { id: "10000000-0000-4000-8000-000000000001", title: zh ? "山径漫步完整版" : "Mountain trail walk — full film",
         url: "https://media.example/films/mountain-trail.mp4", duration: 1480 },
       { id: "10000000-0000-4000-8000-000000000002", title: zh ? "幕后花絮" : "Behind the scenes",
@@ -321,7 +322,11 @@ export function ChannelGuidePreview() {
       <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />
       </div>
     </div>
-    {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)} />}
+    {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)}
+      deleteError={roomRemoval.error} onDelete={deleteData => roomRemoval.run(async signal => {
+        const result = await channel.deleteRoom("friday", deleteData, signal);
+        if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
+      }, () => setSettingsOpen(false))} />}
     {watchOpen && <WatchSourceDialog channel={watchChannel} roomId="friday" onClose={() => { setWatchPage(undefined); setWatchOpen(false); }} />}
     <p role="status">{notice}</p>
   </section>;
