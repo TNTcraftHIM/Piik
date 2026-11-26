@@ -505,6 +505,9 @@
 .c3-living .c3-living-tv .c3-quick-start p { margin: 0; max-width: 28em; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; text-wrap: balance; }
 .c3-living[data-form="minimal"] .c3-workspace:not(.has-screens) > .c3-monitor { display: none; }
 
+/* A card opened from my dock starts on the dock's own content edge, inside the frame, and not at the window's. */
+.c3-living[data-controls="dock"] .c3-personal :is(.lr-anchored-card, .lr-floating-surface) { margin-inline-start: 25px; }
+
 /* ---------- One control language wherever the layout reaches, what opens over it included ---------- */
 /* A card, a menu or a dialog opened from this layout is part of it. Its controls are the layout's flat tonal
    shapes, its selection is tonal, and every raised surface has one radius. Type inside those surfaces is
