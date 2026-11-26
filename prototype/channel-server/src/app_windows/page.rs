@@ -887,7 +887,7 @@ impl Pages {
             }
             view.media.clone()
         };
-        retire_changed_candidate(&mut media.borrow_mut(), &mut page.candidates, page.selected, message.frame, &message.event);
+        retire_changed_candidate(&mut media.borrow_mut(), &page.candidates, message.frame, &message.event);
         match message.event {
             PageEvent::Resources { urls } => {
                 let changed = media
@@ -1045,26 +1045,19 @@ fn candidate_descriptions(candidates: &BTreeMap<Uuid, Candidate>, page_urls: &BT
 
 fn retire_changed_candidate(
     media: &mut media::Media,
-    candidates: &mut BTreeMap<Uuid, Candidate>,
-    selected: Option<Uuid>,
+    candidates: &BTreeMap<Uuid, Candidate>,
     frame: Uuid,
     event: &PageEvent,
 ) {
     let Some(id) = media.pending_candidate() else { return };
-    let Some(candidate) = candidates.get_mut(&id).filter(|candidate| candidate.frame == frame) else { return };
-    let source = &mut candidate.source;
+    let Some(candidate) = candidates.get(&id).filter(|candidate| candidate.frame == frame) else { return };
+    let source = &candidate.source;
     let changed = match event {
         PageEvent::Candidates { candidates, removed } if candidates.len() <= MAX_PAGE_CANDIDATES && removed.len() <= MAX_PAGE_CANDIDATES =>
             removed.contains(&source.media) || candidates.iter().any(|next| next.media == source.media &&
                 next.resource.len() <= MAX_CANDIDATE_RESOURCE_BYTES && source.replaces_resource(next.revision, &next.resource)),
-        PageEvent::Sample { media, resource, revision, .. } if *media == source.media && resource.len() <= MAX_CANDIDATE_RESOURCE_BYTES => {
-            let changed = source.replaces_resource(*revision, resource);
-            if selected != Some(id) {
-                source.revision = *revision;
-                source.resource.clone_from(resource);
-            }
-            changed
-        }
+        PageEvent::Sample { media, resource, revision, .. } if *media == source.media && resource.len() <= MAX_CANDIDATE_RESOURCE_BYTES =>
+            source.replaces_resource(*revision, resource),
         _ => false,
     };
     if changed { media.cancel_candidate(id); }
@@ -1630,7 +1623,7 @@ mod candidate_tests {
     #[test]
     fn staged_candidate_reader_follows_resource_and_element_lifetime() {
         let (id, element, frame) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
-        let mut candidates = BTreeMap::from([(id, Candidate {
+        let candidates = BTreeMap::from([(id, Candidate {
             view: Uuid::new_v4(), frame, ancestors: vec![], source: report(element, "first"),
         })]);
         let mut media = media::Media::default();
@@ -1643,9 +1636,9 @@ mod candidate_tests {
         ] {
             media.candidate_sources(id, frame, "first");
             let pending = media.candidate_lifetime(id).unwrap();
-            retire_changed_candidate(&mut media, &mut candidates, None, frame, &reports(vec![], vec![Uuid::new_v4()]));
+            retire_changed_candidate(&mut media, &candidates, frame, &reports(vec![], vec![Uuid::new_v4()]));
             assert!(!*pending.borrow());
-            retire_changed_candidate(&mut media, &mut candidates, None, frame, &event);
+            retire_changed_candidate(&mut media, &candidates, frame, &event);
             assert!(*pending.borrow());
             assert!(media.candidate_lifetime(id).is_none());
             assert!(!*current_reader.borrow());

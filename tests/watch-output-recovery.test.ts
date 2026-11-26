@@ -36,7 +36,7 @@ it.each([false, true])("offers output recovery for a page-supplied player with a
   await playbackOutput.choose("missing");
   const page = new AppPage(crypto.randomUUID(), "https://source.test/player", vi.fn(), vi.fn(), vi.fn());
   const media = new PageSuppliedMedia(page, new HTMLVideoMedia(() => new Promise(() => {})),
-    { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" });
+    { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" }, () => page.close());
   const player = new WatchPlayer("fixture", false, media, vi.fn());
   const render = () => renderToStaticMarkup(createElement(ChannelWatchVideo, {
     player, owned: false, paused: true, label: "Page", presentation: "full", disabled: false,

@@ -133,7 +133,7 @@ export class PageSuppliedMedia implements WatchMedia {
   private closed = false;
   private readonly unlisten: () => void;
   constructor(readonly page: AppPage, private readonly media: HTMLVideoMedia, readonly retainedByteSource: WatchByteSource,
-    private releasePage: (() => void) | null = () => page.close()) {
+    private releasePage: (() => void) | null) {
     this.presentation = media.presentation;
     // Original play/pause/seek events are deliberately not room playback events.
     this.unlisten = page.listen(event => { if (event === "closed") this.close(); });

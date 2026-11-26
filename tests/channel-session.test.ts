@@ -13687,7 +13687,7 @@ test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback:
   const dispose = vi.fn();
   const page = new appLink.AppPage(crypto.randomUUID(), "https://video.test/film", vi.fn(async () => ({})), dispose, () => {});
   const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
-  const media = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/local.mp4", "file"), bytes);
+  const media = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/local.mp4", "file"), bytes, () => page.close());
   const player = new WatchPlayer("first", true, media, () => {});
   player.error = "watch_media_failed";
   installWatchPlayer(session, "owned", player);
@@ -13714,7 +13714,7 @@ test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback:
 test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {
   const {session,page,socket,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[],byteSource:null}));
   localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
-  const media=new PageSuppliedMedia(page,new HTMLVideoMedia('https://fixture.test/local.mp4','file'),source);
+  const media=new PageSuppliedMedia(page,new HTMLVideoMedia('https://fixture.test/local.mp4','file'),source, () => page.close());
   const player=new WatchPlayer('first',true,media,()=>{}),stop=vi.spyOn(page,'stopMedia');
   installWatchPlayer(session, 'owned',player);
   try{

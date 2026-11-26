@@ -3076,7 +3076,7 @@ export class ChannelSession {
       return;
     }
     const candidate = this.stages.get(player.roomId)?.sourceSelection?.watchCandidate;
-    if (candidate?.player === player && !player.mode && this.view.connection === "connected") candidate.stopping = true;
+    if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
     this.retireWatchPlayer(id, reason);
     this.refreshActivity();
     this.browseRooms();

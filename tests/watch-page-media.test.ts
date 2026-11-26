@@ -15,7 +15,7 @@ test('main media owns state and events while its page owns only resource lifetim
   const dispose = vi.fn(), page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), dispose, vi.fn());
   const candidateId = page.selectedCandidateId = crypto.randomUUID(), pageEvent = vi.fn();
   page.listen(pageEvent);
-  const media = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), {sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
+  const media = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), {sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'}, () => page.close());
   const changed = vi.fn();media.listen(changed);
   page.receive({type:'page_sample',pageId:page.id,candidateId,event:'seeked'});
   expect(pageEvent).toHaveBeenCalledWith('seeked');
@@ -32,7 +32,7 @@ test('a failed local retry keeps the provider open and only its committed succes
   const closePage = vi.fn();
   const page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), closePage, vi.fn());
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
-  const first = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), source);
+  const first = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), source, () => page.close());
   first.retryCandidate('media').close();
   expect(closePage).not.toHaveBeenCalled();
   const replacement = first.retryCandidate('media');

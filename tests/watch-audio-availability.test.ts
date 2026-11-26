@@ -52,7 +52,7 @@ test("DASH audio uses the active public variant and PageSuppliedMedia delegates 
   vi.stubGlobal("document", { createElement: () => video });
   const main = new HTMLVideoMedia("https://fixture.test/file.mp4", "file");
   const page = new AppPage(crypto.randomUUID(), "https://fixture.test/page", vi.fn(), vi.fn(), vi.fn());
-  const supplied = new PageSuppliedMedia(page, main, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" });
+  const supplied = new PageSuppliedMedia(page, main, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" }, () => page.close());
   try {
     expect((main as WatchMedia).audioAvailable?.()).toBeUndefined(); expect(supplied.audioAvailable()).toBeUndefined();
     (main as unknown as { dash: WatchDashMedia }).dash = dash;
