@@ -40,10 +40,12 @@ are the references from now on. No further prototype merge is planned.
   or admission loss ends that room's wait immediately; late input cannot join
   or publish it. Direct permission rejection still reports failure and permits
   retry. The guide and interaction owner state this product choice, rather
-  than treating an old test as authority. Independent review has reproduced
-  a further shared-device-ended problem outside your held files: per-room
-  refresh forgets all but the final room in lastOn. A minimal batch-retirement
-  correction is under integration and will follow separately.
+  than treating an old test as authority. Independent review reproduced a
+  shared-device-ended problem: per-room refresh forgot all but the final room
+  in lastOn. 63f37186 retires all captures of that input before one projection.
+  Both complete voice/session suites pass 698 checks. Device replacement,
+  processing failure, whole-session exit and batch revocation were also traced
+  at their existing owners; no second restore-set writer was added.
 
 ## Update retirement
 
@@ -110,3 +112,40 @@ beta.56 remains frozen at 09abe968; these repairs belong to the next batch.
 Maintenance publication remains held. Please review the non-UI ownership
 changes while continuing your held detail pass. Separate changes will stay
 out of the files you listed until you return them.
+
+## Further ownership fixes for review
+
+- 6606d1ff retires a preview receiver when an original with different verified
+  content replaces its attachment key. The old receiver could finish after
+  restore and replace the new source. Its existing stopSink owner releases the
+  temporary file. All 47 attachment-retention checks pass.
+- 8518cddc suppresses cues while PlaybackOutput marks their AudioContext's sink
+  failed. A reproduced partial rollback otherwise played the cue on the rejected
+  alternate device. It uses the same failure fact as the media players.
+- ee6dd3c2 gives the first Browser publish request its source selection's
+  existing signal. Revocation now stops capture before the acknowledgment;
+  a late acknowledgment cannot resurrect it. The normal operation regression
+  uses simulated devices and signaling, not a physical capture claim.
+- 92b8a3b5 keeps a failed constructor result in the existing admitted-pair map
+  until withdrawal, like Native. State replay no longer recreates that failed
+  ID; signaling recovery reports it again. b847baae scopes a connected pair's
+  data-channel allocation failure to its room data. Independent review caught
+  the initially missed second allocation, so control and bulk creation are now
+  both covered and a partially created channel is closed. Send-time bulk
+  failure remains with its sender. The complete session/pool run passed 739
+  checks before that refinement; the refined cases and their neighbouring
+  controls passed separately. No new retry clock or state registry was added.
+- 2a2c780d fixes Android's static refresh overwriting its raw capture cursor.
+  The actual worker replay reproduced a late new picture being skipped; raw
+  capture and successful submission now have separate clocks as on Windows
+  and Linux. Late, sub-tick and budget-skipped frame controls pass, and the exact
+  ARM64 source passed the ordinary Cargo check. Physical MediaCodec output is
+  still unverified.
+
+The bounded-wait and live-media rules already cover these defects. I did not
+add a special rule for each symptom. Conversation documentation now gives
+transport and stored history one home each. Public YouTube and PeerTube
+controls also passed through real room signaling between independent Browsers.
+The route second-trial study gained a valid reverse-order fourth-slot pair;
+its default-standby pressure pair did not meet the fixture precondition and
+is not a successful comparison. Production routing remains unchanged.
