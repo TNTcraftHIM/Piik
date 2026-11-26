@@ -2764,14 +2764,16 @@ export class ChannelSession {
   inspectWatchMpdSource = (roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog> => this.action(activityId ? `watch-source:${activityId}` : `screen:${roomId}`, async () => {
     const selection = this.stages.get(roomId)?.sourceSelection, player = activityId ? this.watchPlayer(activityId) : undefined;
     const page = activityId ? player?.owner ? player.media.page : undefined : selection?.page;
-    const choice = selection?.watchSources?.mpd.find(value => value.candidate.id === choiceId);
-    if (!(page instanceof AppPage) || !activityId && !choice) throw new Error("watch_page_unavailable");
+    const sources = selection?.watchSources;
+    if (!(page instanceof AppPage) || !activityId && !sources?.mpd.some(value => value.candidate.id === choiceId)) throw new Error("watch_page_unavailable");
     const lifetime = AbortSignal.any([signal, ...(!activityId && selection ? [selection.controller.signal] : [])]);
     const catalog = await page.inspectMpd(choiceId, lifetime, selection?.pendingCandidateId);
     lifetime.throwIfAborted();
     if (activityId ? this.watchPlayer(activityId) !== player : this.stages.get(roomId)?.sourceSelection !== selection) throw new DOMException("Cancelled", "AbortError");
-    if (!activityId && choice && selection?.watchSources) {
-      for (const value of selection.watchSources.mpd) { delete value.catalog; delete value.error; }
+    if (!activityId && sources) {
+      const choice = sources.mpd.find(value => value.candidate.id === choiceId);
+      if (!choice) throw new Error("watch_page_unavailable");
+      for (const value of sources.mpd) { delete value.catalog; delete value.error; }
       choice.catalog = catalog; this.patch({});
     }
     return catalog;

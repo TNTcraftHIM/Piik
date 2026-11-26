@@ -13216,6 +13216,28 @@ test('a late MPD inspection cannot replace a newer page selection catalog', asyn
   } finally { session.close(); }
 });
 
+test.each([true, false])('MPD inspection settles against the refreshed manifest list (retained %s)', async retained => {
+  const first = mpdSelectionFixture(), other = mpdSelectionFixture();
+  let candidates = [first.candidate];
+  const { session, page, candidateId } = await websiteSourceSelection(async () => ({
+    choices: [], indexedCandidates: [], mpdCandidates: candidates, byteSource: null,
+  }));
+  let finish!: (catalog: typeof first.catalog) => void;
+  vi.spyOn(page, 'inspectMpd').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  try {
+    await session.selectWatchPage('first', candidateId);
+    const inspecting = session.inspectWatchMpdSource('first', first.candidate.id, new AbortController().signal);
+    candidates = retained ? [first.candidate, other.candidate] : [other.candidate];
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(session.watchPage('first')?.watchSources?.mpd.map(value => value.candidate)).toEqual(candidates));
+    finish(first.catalog);
+    if (retained) {
+      await inspecting;
+      expect(session.watchPage('first')?.watchSources?.mpd[0].catalog).toEqual(first.catalog);
+    } else await expect(inspecting).rejects.toThrow('watch_page_unavailable');
+  } finally { session.close(); }
+});
+
 test('MPD manifests are inspected explicitly and replacing the current catalog retires its old selection', async () => {
   const first = mpdSelectionFixture(), second = mpdSelectionFixture();
   const { session, page, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [first.candidate, second.candidate], byteSource: null }));
