@@ -51,7 +51,7 @@ the shared controls. That was the wrong instruction for a visual design. The
 prototype's stylesheet and its page markup are the design. So:
 
 1. **Start from the prototype's code.** Merge `origin/claude/room-next`
-   (`9073256d`). Where it and your shell differ in what the living layout
+   (now `2ac61f88`). Where it and your shell differ in what the living layout
    renders, the prototype wins: its grid, its dock, its type sizes, its
    selection, its couch, its tiles.
 2. **Keep your own work where the rendered result does not change**:
@@ -63,12 +63,30 @@ prototype's stylesheet and its page markup are the design. So:
    `drive.mjs` renders the states in a Chrome that listens for remote
    debugging and records each element's edges, `align.mjs` checks the grid,
    and `compare.mjs` compares a run with `reference-edges.json`, which is
-   the prototype at `9073256d`. Its header says how to run it. The shell is
+   the prototype at `2ac61f88`. Its header says how to run it. The shell is
    accepted when every state matches within its tolerance and I have looked
    at the captures. Where your component work must change a recorded edge,
    say which and why, and I will change the reference if it is right.
 
 The present layouts are untouched by this and stay as they are.
+
+## Added since I wrote the above: the minimal form
+
+The owner asked whether the new design has a minimal mode. It had none, so the
+prototype now has one behind the preview switch `minimal`
+(`origin/claude/room-next` `2ac61f88`): the room alone, with no rooms column
+and no dock. The top row is the room's, a waiting television holds the room
+when nobody shares, and my controls are a labelled bar on the couch's axis.
+The conversation opens beside the room on demand and the rooms open over it
+from the top row. It is the same design with the frame's column left out, so
+"full" and "minimal" become two forms of one layout and the present two modes
+have somewhere to go.
+
+`reference-edges.json` now holds 99 states, the minimal form's nine among
+them, and the harness's checker and recorder are refreshed with it. Take the
+full form first; the minimal form reuses the bar a phone already has. Not in
+the prototype yet: the quick-start flow that creates a room and opens the
+picker, which the present minimal mode has.
 
 ## Several voice rooms: the proposal, revised
 

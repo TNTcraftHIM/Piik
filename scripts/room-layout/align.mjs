@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 const all = JSON.parse(readFileSync(`${process.env.OUT_DIR ?? fileURLToPath(new URL("../../build/room-layout", import.meta.url))}/edges.json`, "utf8"));
 let failures = 0;
 for (const [name, e] of Object.entries(all)) {
-  if (name.includes("workspace")) continue;
+  if (name.includes("workspace") || name.includes("quick")) continue;
   const notes = [];
   const near = (label, a, b, tolerance = 1) => { if (a != null && b != null && Math.abs(a - b) > tolerance) notes.push(`${label}: ${a} vs ${b}`); };
   const phone = e.viewport[0] < 600;

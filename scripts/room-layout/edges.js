@@ -34,7 +34,7 @@
     cluster: cluster && { l: Math.round(cluster.l * 10) / 10, r: Math.round(cluster.r * 10) / 10, cx: Math.round((cluster.l + cluster.r) / 2 * 10) / 10 },
     tiles,
     controls: shell?.dataset.controls, head: shell?.dataset.head, rooms: shell?.dataset.rooms, pane: shell?.dataset.pane,
-    lastTool: rect(document.querySelector(".c3-living-app .lr-btn .lr-cap") ?? [...document.querySelectorAll(".c3-room-tools .lr-btn svg")].filter(visible).pop()),
+    lastTool: rect(document.querySelector(".c3-living-app .lr-btn .lr-cap") ?? [...document.querySelectorAll(".c3-site-bar .lr-btn svg")].filter(visible).pop()),
     couchText: Math.min(...[...document.querySelectorAll(".c3-couch .lr-pawn-name")].filter(visible).map(node => parseFloat(getComputedStyle(node).fontSize) * (node.currentCSSZoom ?? 1)), 99),
     toolSizes: [...new Set([...document.querySelectorAll(".c3-site-bar .lr-btn")].filter(visible).map(node => Math.round(node.getBoundingClientRect().height)))],
     homeMark: rect(".c3-site-home svg"), itemIcon: rect(".c3-room-link .c3-identity-mark"), itemName: rect(".c3-room-link strong"),

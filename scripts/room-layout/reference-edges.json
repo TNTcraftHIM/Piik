@@ -11781,6 +11781,1272 @@
    20
   ]
  },
+ "min-empty-1360": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&minimal",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 21,
+   "r": 1339,
+   "t": 69,
+   "b": 631,
+   "cx": 680
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 643.5,
+   "b": 761,
+   "cx": 680
+  },
+  "bench": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 659.8,
+   "b": 761,
+   "cx": 680
+  },
+  "bar": {
+   "l": 21,
+   "r": 1339,
+   "t": 771,
+   "b": 835,
+   "cx": 680
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 788.5,
+   "b": 818.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 399,
+   "r": 961,
+   "cx": 680
+  },
+  "tiles": [],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1307,
+   "r": 1323,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1315
+  },
+  "couchText": 15,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 791.5,
+   "b": 815.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1204.8,
+   "t": 21,
+   "b": 68,
+   "cx": 612.9
+  },
+  "pictureShare": 0,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
+ "min-empty-laptop": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&minimal",
+  "size": [
+   1366,
+   650
+  ],
+  "steps": [],
+  "viewport": [
+   1366,
+   650
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1346,
+   "t": 20,
+   "b": 626,
+   "cx": 683
+  },
+  "stage": {
+   "l": 21,
+   "r": 1345,
+   "t": 69,
+   "b": 449,
+   "cx": 683
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 554,
+   "r": 812,
+   "t": 459,
+   "b": 553,
+   "cx": 683
+  },
+  "bench": {
+   "l": 554,
+   "r": 812,
+   "t": 472,
+   "b": 553,
+   "cx": 683
+  },
+  "bar": {
+   "l": 21,
+   "r": 1345,
+   "t": 561,
+   "b": 625,
+   "cx": 683
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 578.5,
+   "b": 608.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 402,
+   "r": 964,
+   "cx": 683
+  },
+  "tiles": [],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1313,
+   "r": 1329,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1321
+  },
+  "couchText": 12,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 581.5,
+   "b": 605.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1210.8,
+   "t": 21,
+   "b": 68,
+   "cx": 615.9
+  },
+  "pictureShare": 0,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
+ "min-s1-1360": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&screens=1&minimal",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 21,
+   "r": 1339,
+   "t": 69,
+   "b": 631,
+   "cx": 680
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 643.5,
+   "b": 761,
+   "cx": 680
+  },
+  "bench": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 659.8,
+   "b": 761,
+   "cx": 680
+  },
+  "bar": {
+   "l": 21,
+   "r": 1339,
+   "t": 771,
+   "b": 835,
+   "cx": 680
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 788.5,
+   "b": 818.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 399,
+   "r": 961,
+   "cx": 680
+  },
+  "tiles": [
+   {
+    "l": 236,
+    "r": 1124,
+    "t": 86,
+    "b": 626,
+    "cx": 680
+   }
+  ],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1307,
+   "r": 1323,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1315
+  },
+  "couchText": 15,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 791.5,
+   "b": 815.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1204.8,
+   "t": 21,
+   "b": 68,
+   "cx": 612.9
+  },
+  "pictureShare": 38,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
+ "min-s1-laptop": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&screens=1&minimal",
+  "size": [
+   1366,
+   650
+  ],
+  "steps": [],
+  "viewport": [
+   1366,
+   650
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1346,
+   "t": 20,
+   "b": 626,
+   "cx": 683
+  },
+  "stage": {
+   "l": 21,
+   "r": 1345,
+   "t": 69,
+   "b": 449,
+   "cx": 683
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 554,
+   "r": 812,
+   "t": 459,
+   "b": 553,
+   "cx": 683
+  },
+  "bench": {
+   "l": 554,
+   "r": 812,
+   "t": 472,
+   "b": 553,
+   "cx": 683
+  },
+  "bar": {
+   "l": 21,
+   "r": 1345,
+   "t": 561,
+   "b": 625,
+   "cx": 683
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 578.5,
+   "b": 608.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 402,
+   "r": 964,
+   "cx": 683
+  },
+  "tiles": [
+   {
+    "l": 400.5,
+    "r": 965.5,
+    "t": 86,
+    "b": 444,
+    "cx": 683
+   }
+  ],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1313,
+   "r": 1329,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1321
+  },
+  "couchText": 12,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 581.5,
+   "b": 605.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1210.8,
+   "t": 21,
+   "b": 68,
+   "cx": 615.9
+  },
+  "pictureShare": 20.2,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
+ "min-s4-1360": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&screens=4&minimal",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 21,
+   "r": 1339,
+   "t": 69,
+   "b": 631,
+   "cx": 680
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 475,
+   "r": 885,
+   "t": 643.5,
+   "b": 761,
+   "cx": 680
+  },
+  "bench": {
+   "l": 475,
+   "r": 885,
+   "t": 659.8,
+   "b": 761,
+   "cx": 680
+  },
+  "bar": {
+   "l": 21,
+   "r": 1339,
+   "t": 771,
+   "b": 835,
+   "cx": 680
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 788.5,
+   "b": 818.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 413.5,
+   "r": 946.5,
+   "cx": 680
+  },
+  "tiles": [
+   {
+    "l": 278,
+    "r": 674,
+    "t": 87,
+    "b": 350,
+    "cx": 476
+   },
+   {
+    "l": 686,
+    "r": 1082,
+    "t": 87,
+    "b": 350,
+    "cx": 884
+   },
+   {
+    "l": 278,
+    "r": 674,
+    "t": 362,
+    "b": 625,
+    "cx": 476
+   },
+   {
+    "l": 686,
+    "r": 1082,
+    "t": 362,
+    "b": 625,
+    "cx": 884
+   }
+  ],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1307,
+   "r": 1323,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1315
+  },
+  "couchText": 15,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 791.5,
+   "b": 815.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1204.8,
+   "t": 21,
+   "b": 68,
+   "cx": 612.9
+  },
+  "pictureShare": 30.2,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
+ "min-s4-laptop": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&screens=4&minimal",
+  "size": [
+   1366,
+   650
+  ],
+  "steps": [],
+  "viewport": [
+   1366,
+   650
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1346,
+   "t": 20,
+   "b": 626,
+   "cx": 683
+  },
+  "stage": {
+   "l": 21,
+   "r": 1345,
+   "t": 69,
+   "b": 449,
+   "cx": 683
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 519,
+   "r": 847,
+   "t": 459,
+   "b": 553,
+   "cx": 683
+  },
+  "bench": {
+   "l": 519,
+   "r": 847,
+   "t": 472,
+   "b": 553,
+   "cx": 683
+  },
+  "bar": {
+   "l": 21,
+   "r": 1345,
+   "t": 561,
+   "b": 625,
+   "cx": 683
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 578.5,
+   "b": 608.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 416.5,
+   "r": 949.5,
+   "cx": 683
+  },
+  "tiles": [
+   {
+    "l": 37,
+    "r": 351,
+    "t": 157,
+    "b": 373,
+    "cx": 194
+   },
+   {
+    "l": 363,
+    "r": 677,
+    "t": 157,
+    "b": 373,
+    "cx": 520
+   },
+   {
+    "l": 689,
+    "r": 1003,
+    "t": 157,
+    "b": 373,
+    "cx": 846
+   },
+   {
+    "l": 1015,
+    "r": 1329,
+    "t": 157,
+    "b": 373,
+    "cx": 1172
+   }
+  ],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1313,
+   "r": 1329,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1321
+  },
+  "couchText": 12,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 581.5,
+   "b": 605.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1210.8,
+   "t": 21,
+   "b": 68,
+   "cx": 615.9
+  },
+  "pictureShare": 24.9,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
+ "min-s1-1360-chat": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&screens=1&minimal",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [
+   "clicked 聊天"
+  ],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 21,
+   "r": 1019,
+   "t": 69,
+   "b": 631,
+   "cx": 520
+  },
+  "chat": {
+   "l": 1019,
+   "r": 1339,
+   "t": 69,
+   "b": 835,
+   "cx": 1179
+  },
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": {
+   "l": 1036,
+   "r": 1323,
+   "t": 97,
+   "b": 115,
+   "cx": 1179.5
+  },
+  "avatar": {
+   "l": 1036,
+   "r": 1065,
+   "t": 129,
+   "b": 165,
+   "cx": 1050.5
+  },
+  "messageText": {
+   "l": 1076,
+   "r": 1323,
+   "t": 156,
+   "b": 181.6,
+   "cx": 1199.5
+  },
+  "composer": {
+   "l": 1020,
+   "r": 1339,
+   "t": 771,
+   "b": 835,
+   "cx": 1179.5
+  },
+  "composeField": {
+   "l": 1036,
+   "r": 1323,
+   "t": 777,
+   "b": 829,
+   "cx": 1179.5
+  },
+  "couch": {
+   "l": 358.8,
+   "r": 681.3,
+   "t": 643.5,
+   "b": 761,
+   "cx": 520
+  },
+  "bench": {
+   "l": 358.8,
+   "r": 681.3,
+   "t": 659.8,
+   "b": 761,
+   "cx": 520
+  },
+  "bar": {
+   "l": 21,
+   "r": 1019,
+   "t": 771,
+   "b": 835,
+   "cx": 520
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 788.5,
+   "b": 818.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 239,
+   "r": 801,
+   "cx": 520
+  },
+  "tiles": [
+   {
+    "l": 76,
+    "r": 964,
+    "t": 86,
+    "b": 626,
+    "cx": 520
+   }
+  ],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1307,
+   "r": 1323,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1315
+  },
+  "couchText": 15,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 791.5,
+   "b": 815.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1204.8,
+   "t": 21,
+   "b": 68,
+   "cx": 612.9
+  },
+  "pictureShare": 38,
+  "fonts": [
+   12,
+   14,
+   16,
+   20
+  ]
+ },
+ "min-empty-1360-rooms": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&minimal",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [
+   "clicked 房间列表"
+  ],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 21,
+   "r": 1339,
+   "t": 69,
+   "b": 631,
+   "cx": 680
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 643.5,
+   "b": 761,
+   "cx": 680
+  },
+  "bench": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 659.8,
+   "b": 761,
+   "cx": 680
+  },
+  "bar": {
+   "l": 21,
+   "r": 1339,
+   "t": 771,
+   "b": 835,
+   "cx": 680
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 788.5,
+   "b": 818.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 399,
+   "r": 961,
+   "cx": 680
+  },
+  "tiles": [],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "rooms",
+  "lastTool": {
+   "l": 1307,
+   "r": 1323,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1315
+  },
+  "couchText": 15,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": {
+   "l": 38,
+   "r": 68,
+   "t": 29.5,
+   "b": 59.5,
+   "cx": 53
+  },
+  "itemIcon": {
+   "l": 42.5,
+   "r": 63.5,
+   "t": 145,
+   "b": 166,
+   "cx": 53
+  },
+  "itemName": {
+   "l": 76,
+   "r": 186,
+   "t": 145.7,
+   "b": 165.3,
+   "cx": 131
+  },
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 791.5,
+   "b": 815.5,
+   "cx": 88
+  },
+  "navLabel": {
+   "l": 33,
+   "r": 61,
+   "t": 80.5,
+   "b": 101.5,
+   "cx": 47
+  },
+  "group": {
+   "l": 29,
+   "r": 244,
+   "t": 117,
+   "b": 135,
+   "cx": 136.5
+  },
+  "siteCell": {
+   "l": 21,
+   "r": 253,
+   "t": 21,
+   "b": 68,
+   "cx": 137
+  },
+  "sidebar": {
+   "l": 21,
+   "r": 253,
+   "t": 69,
+   "b": 771,
+   "cx": 137
+  },
+  "heading": {
+   "l": 21,
+   "r": 1204.8,
+   "t": 21,
+   "b": 68,
+   "cx": 612.9
+  },
+  "pictureShare": 0,
+  "fonts": [
+   12,
+   14,
+   16,
+   20
+  ]
+ },
+ "min-novoice-1360": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&minimal",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [
+   "clicked 退出语音"
+  ],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 21,
+   "r": 1339,
+   "t": 69,
+   "b": 631,
+   "cx": 680
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 73,
+   "r": 98,
+   "t": 32,
+   "b": 57,
+   "cx": 85.5
+  },
+  "roomName": {
+   "l": 106,
+   "r": 186,
+   "t": 31.5,
+   "b": 57.5,
+   "cx": 146
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 643.5,
+   "b": 761,
+   "cx": 680
+  },
+  "bench": {
+   "l": 518.8,
+   "r": 841.3,
+   "t": 659.8,
+   "b": 761,
+   "cx": 680
+  },
+  "bar": {
+   "l": 21,
+   "r": 1339,
+   "t": 771,
+   "b": 835,
+   "cx": 680
+  },
+  "identity": {
+   "l": 37,
+   "r": 61,
+   "t": 788.5,
+   "b": 818.5,
+   "cx": 49
+  },
+  "cluster": {
+   "l": 500.5,
+   "r": 859.5,
+   "cx": 680
+  },
+  "tiles": [],
+  "controls": "bar",
+  "rooms": "none",
+  "pane": "room",
+  "lastTool": {
+   "l": 1307,
+   "r": 1323,
+   "t": 36.5,
+   "b": 52.5,
+   "cx": 1315
+  },
+  "couchText": 15,
+  "toolSizes": [
+   36
+  ],
+  "homeMark": null,
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 72,
+   "r": 103.9,
+   "t": 791.5,
+   "b": 815.5,
+   "cx": 88
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": null,
+  "sidebar": null,
+  "heading": {
+   "l": 21,
+   "r": 1204.8,
+   "t": 21,
+   "b": 68,
+   "cx": 612.9
+  },
+  "pictureShare": 0,
+  "fonts": [
+   14,
+   16,
+   20
+  ]
+ },
  "voices-1360": {
   "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=living&voice-rooms=2",
   "size": [
@@ -13537,8 +14803,1080 @@
    20
   ]
  },
+ "empty-1360-quick": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=quick",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": true,
+  "shell": {
+   "l": 82.5,
+   "r": 1262.5,
+   "t": 20,
+   "b": 1094,
+   "cx": 672.5
+  },
+  "stage": {
+   "l": 177.5,
+   "r": 1167.5,
+   "t": 94,
+   "b": 686,
+   "cx": 672.5
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 177.5,
+   "r": 202.5,
+   "t": 893.5,
+   "b": 918.5,
+   "cx": 190
+  },
+  "roomName": {
+   "l": 212.5,
+   "r": 287,
+   "t": 893.7,
+   "b": 918.3,
+   "cx": 249.7
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 543.5,
+   "r": 801.5,
+   "t": 710,
+   "b": 804,
+   "cx": 672.5
+  },
+  "bench": {
+   "l": 543.5,
+   "r": 801.5,
+   "t": 723,
+   "b": 804,
+   "cx": 672.5
+  },
+  "bar": null,
+  "identity": {
+   "l": 185.5,
+   "r": 211.5,
+   "t": 1047,
+   "b": 1081,
+   "cx": 198.5
+  },
+  "cluster": {
+   "l": 190.5,
+   "r": 1154.5,
+   "cx": 672.5
+  },
+  "tiles": [],
+  "pane": "room",
+  "lastTool": {
+   "l": 1136.5,
+   "r": 1154.5,
+   "t": 897,
+   "b": 915,
+   "cx": 1145.5
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 82.5,
+   "r": 112.5,
+   "t": 34,
+   "b": 64,
+   "cx": 97.5
+  },
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 219.5,
+   "r": 1107.5,
+   "t": 1044.5,
+   "b": 1064,
+   "cx": 663.5
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": {
+   "l": 82.5,
+   "r": 482.5,
+   "t": 27,
+   "b": 71,
+   "cx": 282.5
+  },
+  "sidebar": null,
+  "heading": {
+   "l": 177.5,
+   "r": 1167.5,
+   "t": 872,
+   "b": 940,
+   "cx": 672.5
+  },
+  "pictureShare": 0,
+  "fonts": [
+   11,
+   12.5,
+   13,
+   16,
+   19
+  ]
+ },
+ "s1-1360-quick": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=quick&screens=1",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": true,
+  "shell": {
+   "l": 82.5,
+   "r": 1262.5,
+   "t": 20,
+   "b": 1162.8,
+   "cx": 672.5
+  },
+  "stage": {
+   "l": 177.5,
+   "r": 1167.5,
+   "t": 94,
+   "b": 754.8,
+   "cx": 672.5
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 177.5,
+   "r": 202.5,
+   "t": 962.3,
+   "b": 987.3,
+   "cx": 190
+  },
+  "roomName": {
+   "l": 212.5,
+   "r": 287,
+   "t": 962.4,
+   "b": 987.1,
+   "cx": 249.7
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 543.5,
+   "r": 801.5,
+   "t": 778.8,
+   "b": 872.8,
+   "cx": 672.5
+  },
+  "bench": {
+   "l": 543.5,
+   "r": 801.5,
+   "t": 791.8,
+   "b": 872.8,
+   "cx": 672.5
+  },
+  "bar": null,
+  "identity": {
+   "l": 185.5,
+   "r": 211.5,
+   "t": 1115.8,
+   "b": 1149.8,
+   "cx": 198.5
+  },
+  "cluster": {
+   "l": 190.5,
+   "r": 1154.5,
+   "cx": 672.5
+  },
+  "tiles": [
+   {
+    "l": 177.5,
+    "r": 1167.5,
+    "t": 128.8,
+    "b": 754.8,
+    "cx": 672.5
+   }
+  ],
+  "pane": "room",
+  "lastTool": {
+   "l": 1136.5,
+   "r": 1154.5,
+   "t": 965.8,
+   "b": 983.8,
+   "cx": 1145.5
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 82.5,
+   "r": 112.5,
+   "t": 34,
+   "b": 64,
+   "cx": 97.5
+  },
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 219.5,
+   "r": 1107.5,
+   "t": 1113.3,
+   "b": 1132.8,
+   "cx": 663.5
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": {
+   "l": 82.5,
+   "r": 482.5,
+   "t": 27,
+   "b": 71,
+   "cx": 282.5
+  },
+  "sidebar": null,
+  "heading": {
+   "l": 177.5,
+   "r": 1167.5,
+   "t": 940.8,
+   "b": 1008.8,
+   "cx": 672.5
+  },
+  "pictureShare": 49.4,
+  "fonts": [
+   10,
+   11,
+   12,
+   12.5,
+   13,
+   16,
+   19
+  ]
+ },
+ "s4-1360-quick": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=quick&screens=4",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": true,
+  "shell": {
+   "l": 82.5,
+   "r": 1262.5,
+   "t": 20,
+   "b": 1114.5,
+   "cx": 672.5
+  },
+  "stage": {
+   "l": 82.5,
+   "r": 1262.5,
+   "t": 94,
+   "b": 706.5,
+   "cx": 672.5
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 177.5,
+   "r": 202.5,
+   "t": 914,
+   "b": 939,
+   "cx": 190
+  },
+  "roomName": {
+   "l": 212.5,
+   "r": 287,
+   "t": 914.2,
+   "b": 938.8,
+   "cx": 249.7
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 508.5,
+   "r": 836.5,
+   "t": 730.5,
+   "b": 824.5,
+   "cx": 672.5
+  },
+  "bench": {
+   "l": 508.5,
+   "r": 836.5,
+   "t": 743.5,
+   "b": 824.5,
+   "cx": 672.5
+  },
+  "bar": null,
+  "identity": {
+   "l": 185.5,
+   "r": 211.5,
+   "t": 1067.5,
+   "b": 1101.5,
+   "cx": 198.5
+  },
+  "cluster": {
+   "l": 190.5,
+   "r": 1154.5,
+   "cx": 672.5
+  },
+  "tiles": [
+   {
+    "l": 82.5,
+    "r": 466.5,
+    "t": 158,
+    "b": 425.3,
+    "cx": 274.5
+   },
+   {
+    "l": 480.5,
+    "r": 864.5,
+    "t": 158,
+    "b": 425.3,
+    "cx": 672.5
+   },
+   {
+    "l": 878.5,
+    "r": 1262.5,
+    "t": 158,
+    "b": 425.3,
+    "cx": 1070.5
+   },
+   {
+    "l": 480.5,
+    "r": 864.5,
+    "t": 439.3,
+    "b": 706.5,
+    "cx": 672.5
+   }
+  ],
+  "pane": "room",
+  "lastTool": {
+   "l": 1136.5,
+   "r": 1154.5,
+   "t": 917.5,
+   "b": 935.5,
+   "cx": 1145.5
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 82.5,
+   "r": 112.5,
+   "t": 34,
+   "b": 64,
+   "cx": 97.5
+  },
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 219.5,
+   "r": 1107.5,
+   "t": 1065,
+   "b": 1084.5,
+   "cx": 663.5
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": {
+   "l": 82.5,
+   "r": 482.5,
+   "t": 27,
+   "b": 71,
+   "cx": 282.5
+  },
+  "sidebar": null,
+  "heading": {
+   "l": 177.5,
+   "r": 1167.5,
+   "t": 892.5,
+   "b": 960.5,
+   "cx": 672.5
+  },
+  "pictureShare": 29.6,
+  "fonts": [
+   10,
+   11,
+   12,
+   12.5,
+   13,
+   16,
+   19
+  ]
+ },
+ "empty-390-quick": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=quick",
+  "size": [
+   390,
+   844
+  ],
+  "steps": [],
+  "viewport": [
+   390,
+   844
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 8,
+   "r": 382,
+   "t": 8,
+   "b": 814,
+   "cx": 195
+  },
+  "stage": {
+   "l": 8,
+   "r": 382,
+   "t": 78,
+   "b": 422,
+   "cx": 195
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 8,
+   "r": 33,
+   "t": 621.5,
+   "b": 646.5,
+   "cx": 20.5
+  },
+  "roomName": {
+   "l": 43,
+   "r": 109.6,
+   "t": 623,
+   "b": 645,
+   "cx": 76.3
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 66,
+   "r": 324,
+   "t": 442,
+   "b": 536,
+   "cx": 195
+  },
+  "bench": {
+   "l": 66,
+   "r": 324,
+   "t": 455,
+   "b": 536,
+   "cx": 195
+  },
+  "bar": null,
+  "identity": {
+   "l": 16,
+   "r": 42,
+   "t": 767,
+   "b": 801,
+   "cx": 29
+  },
+  "cluster": {
+   "l": 21,
+   "r": 369,
+   "cx": 195
+  },
+  "tiles": [],
+  "pane": "room",
+  "lastTool": {
+   "l": 351,
+   "r": 369,
+   "t": 625,
+   "b": 643,
+   "cx": 360
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 8,
+   "r": 38,
+   "t": 22,
+   "b": 52,
+   "cx": 23
+  },
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 50,
+   "r": 322,
+   "t": 764.5,
+   "b": 784,
+   "cx": 186
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": {
+   "l": 8,
+   "r": 286,
+   "t": 15,
+   "b": 59,
+   "cx": 147
+  },
+  "sidebar": null,
+  "heading": {
+   "l": 8,
+   "r": 382,
+   "t": 600,
+   "b": 668,
+   "cx": 195
+  },
+  "pictureShare": 0,
+  "fonts": [
+   11,
+   12.5,
+   13,
+   16,
+   17
+  ]
+ },
+ "s1-390-quick": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=quick&screens=1",
+  "size": [
+   390,
+   844
+  ],
+  "steps": [],
+  "viewport": [
+   390,
+   844
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 8,
+   "r": 382,
+   "t": 8,
+   "b": 780.3,
+   "cx": 195
+  },
+  "stage": {
+   "l": 8,
+   "r": 382,
+   "t": 78,
+   "b": 388.3,
+   "cx": 195
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 8,
+   "r": 33,
+   "t": 587.8,
+   "b": 612.8,
+   "cx": 20.5
+  },
+  "roomName": {
+   "l": 43,
+   "r": 100,
+   "t": 589.2,
+   "b": 611.3,
+   "cx": 71.5
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 66,
+   "r": 324,
+   "t": 408.3,
+   "b": 502.3,
+   "cx": 195
+  },
+  "bench": {
+   "l": 66,
+   "r": 324,
+   "t": 421.3,
+   "b": 502.3,
+   "cx": 195
+  },
+  "bar": null,
+  "identity": {
+   "l": 16,
+   "r": 42,
+   "t": 733.3,
+   "b": 767.3,
+   "cx": 29
+  },
+  "cluster": {
+   "l": 21,
+   "r": 369,
+   "cx": 195
+  },
+  "tiles": [
+   {
+    "l": 8,
+    "r": 382,
+    "t": 108.8,
+    "b": 388.3,
+    "cx": 195
+   }
+  ],
+  "pane": "room",
+  "lastTool": {
+   "l": 351,
+   "r": 369,
+   "t": 591.3,
+   "b": 609.3,
+   "cx": 360
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 8,
+   "r": 38,
+   "t": 22,
+   "b": 52,
+   "cx": 23
+  },
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 50,
+   "r": 322,
+   "t": 730.8,
+   "b": 750.3,
+   "cx": 186
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": {
+   "l": 8,
+   "r": 286,
+   "t": 15,
+   "b": 59,
+   "cx": 147
+  },
+  "sidebar": null,
+  "heading": {
+   "l": 8,
+   "r": 382,
+   "t": 566.3,
+   "b": 634.3,
+   "cx": 195
+  },
+  "pictureShare": 27,
+  "fonts": [
+   10,
+   11,
+   12,
+   12.5,
+   13,
+   16,
+   17
+  ]
+ },
+ "s4-390-quick": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&layout=quick&screens=4",
+  "size": [
+   390,
+   844
+  ],
+  "steps": [],
+  "viewport": [
+   390,
+   844
+  ],
+  "scrolls": true,
+  "shell": {
+   "l": 8,
+   "r": 367,
+   "t": 8,
+   "b": 1578.8,
+   "cx": 187.5
+  },
+  "stage": {
+   "l": 8,
+   "r": 367,
+   "t": 78,
+   "b": 1186.8,
+   "cx": 187.5
+  },
+  "chat": null,
+  "roomIcon": {
+   "l": 8,
+   "r": 33,
+   "t": 1386.3,
+   "b": 1411.3,
+   "cx": 20.5
+  },
+  "roomName": {
+   "l": 43,
+   "r": 109.6,
+   "t": 1387.7,
+   "b": 1409.8,
+   "cx": 76.3
+  },
+  "date": null,
+  "avatar": null,
+  "messageText": null,
+  "composer": null,
+  "composeField": null,
+  "couch": {
+   "l": 42,
+   "r": 333,
+   "t": 1206.8,
+   "b": 1300.8,
+   "cx": 187.5
+  },
+  "bench": {
+   "l": 42,
+   "r": 333,
+   "t": 1219.8,
+   "b": 1300.8,
+   "cx": 187.5
+  },
+  "bar": null,
+  "identity": {
+   "l": 16,
+   "r": 42,
+   "t": 1531.8,
+   "b": 1565.8,
+   "cx": 29
+  },
+  "cluster": {
+   "l": 21,
+   "r": 354,
+   "cx": 187.5
+  },
+  "tiles": [
+   {
+    "l": 8,
+    "r": 367,
+    "t": 138,
+    "b": 391.2,
+    "cx": 187.5
+   },
+   {
+    "l": 8,
+    "r": 367,
+    "t": 403.2,
+    "b": 656.4,
+    "cx": 187.5
+   },
+   {
+    "l": 8,
+    "r": 367,
+    "t": 668.4,
+    "b": 921.6,
+    "cx": 187.5
+   },
+   {
+    "l": 8,
+    "r": 367,
+    "t": 933.6,
+    "b": 1186.8,
+    "cx": 187.5
+   }
+  ],
+  "pane": "room",
+  "lastTool": {
+   "l": 336,
+   "r": 354,
+   "t": 1389.8,
+   "b": 1407.8,
+   "cx": 345
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 8,
+   "r": 38,
+   "t": 22,
+   "b": 52,
+   "cx": 23
+  },
+  "itemIcon": null,
+  "itemName": null,
+  "myName": {
+   "l": 50,
+   "r": 307,
+   "t": 1529.3,
+   "b": 1548.8,
+   "cx": 178.5
+  },
+  "navLabel": null,
+  "group": null,
+  "siteCell": {
+   "l": 8,
+   "r": 271,
+   "t": 15,
+   "b": 59,
+   "cx": 139.5
+  },
+  "sidebar": null,
+  "heading": {
+   "l": 8,
+   "r": 367,
+   "t": 1364.8,
+   "b": 1432.8,
+   "cx": 187.5
+  },
+  "pictureShare": 92.1,
+  "fonts": [
+   10,
+   11,
+   12,
+   12.5,
+   13,
+   16,
+   17
+  ]
+ },
+ "own-1360-workspace": {
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room",
+  "size": [
+   1360,
+   860
+  ],
+  "steps": [
+   "clicked 开始分享",
+   "clicked 分享窗口：Sketchbook"
+  ],
+  "viewport": [
+   1360,
+   860
+  ],
+  "scrolls": false,
+  "shell": {
+   "l": 20,
+   "r": 1340,
+   "t": 20,
+   "b": 836,
+   "cx": 680
+  },
+  "stage": {
+   "l": 261,
+   "r": 1019,
+   "t": 145,
+   "b": 655,
+   "cx": 640
+  },
+  "chat": {
+   "l": 1019,
+   "r": 1339,
+   "t": 145,
+   "b": 835,
+   "cx": 1179
+  },
+  "roomIcon": {
+   "l": 281,
+   "r": 306,
+   "t": 99.5,
+   "b": 124.5,
+   "cx": 293.5
+  },
+  "roomName": {
+   "l": 316,
+   "r": 390.5,
+   "t": 99.7,
+   "b": 124.3,
+   "cx": 353.2
+  },
+  "date": {
+   "l": 1038,
+   "r": 1320,
+   "t": 239,
+   "b": 255.5,
+   "cx": 1179
+  },
+  "avatar": {
+   "l": 1038,
+   "r": 1067,
+   "t": 267.5,
+   "b": 303.5,
+   "cx": 1052.5
+  },
+  "messageText": {
+   "l": 1078,
+   "r": 1320,
+   "t": 290,
+   "b": 337.3,
+   "cx": 1199
+  },
+  "composer": {
+   "l": 1035,
+   "r": 1323,
+   "t": 753,
+   "b": 819,
+   "cx": 1179
+  },
+  "composeField": {
+   "l": 1046,
+   "r": 1312,
+   "t": 764,
+   "b": 808,
+   "cx": 1179
+  },
+  "couch": {
+   "l": 511,
+   "r": 769,
+   "t": 733,
+   "b": 827,
+   "cx": 640
+  },
+  "bench": {
+   "l": 511,
+   "r": 769,
+   "t": 746,
+   "b": 827,
+   "cx": 640
+  },
+  "bar": {
+   "l": 21,
+   "r": 261,
+   "t": 655,
+   "b": 835,
+   "cx": 141
+  },
+  "identity": {
+   "l": 33,
+   "r": 59,
+   "t": 788,
+   "b": 822,
+   "cx": 46
+  },
+  "cluster": {
+   "l": 33,
+   "r": 249,
+   "cx": 141
+  },
+  "tiles": [
+   {
+    "l": 271,
+    "r": 994,
+    "t": 181.8,
+    "b": 645,
+    "cx": 632.5
+   }
+  ],
+  "pane": "room",
+  "lastTool": {
+   "l": 1293,
+   "r": 1309,
+   "t": 104,
+   "b": 120,
+   "cx": 1301
+  },
+  "couchText": 11,
+  "toolSizes": [
+   36,
+   44
+  ],
+  "homeMark": {
+   "l": 37,
+   "r": 67,
+   "t": 35,
+   "b": 65,
+   "cx": 52
+  },
+  "itemIcon": {
+   "l": 80.5,
+   "r": 101.5,
+   "t": 182.5,
+   "b": 203.5,
+   "cx": 91
+  },
+  "itemName": {
+   "l": 114,
+   "r": 201,
+   "t": 183.9,
+   "b": 202.1,
+   "cx": 157.5
+  },
+  "myName": {
+   "l": 67,
+   "r": 197,
+   "t": 785.5,
+   "b": 805,
+   "cx": 132
+  },
+  "navLabel": {
+   "l": 37,
+   "r": 62,
+   "t": 102.5,
+   "b": 121.5,
+   "cx": 49.5
+  },
+  "group": {
+   "l": 33,
+   "r": 249,
+   "t": 153,
+   "b": 169.5,
+   "cx": 141
+  },
+  "siteCell": {
+   "l": 37,
+   "r": 437,
+   "t": 28,
+   "b": 72,
+   "cx": 237
+  },
+  "sidebar": {
+   "l": 21,
+   "r": 261,
+   "t": 79,
+   "b": 655,
+   "cx": 141
+  },
+  "heading": {
+   "l": 261,
+   "r": 1339,
+   "t": 79,
+   "b": 145,
+   "cx": 800
+  },
+  "pictureShare": 25.8,
+  "fonts": [
+   10,
+   11,
+   12,
+   12.5,
+   13,
+   14,
+   15,
+   16,
+   19
+  ]
+ },
  "empty-1360-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room",
   "size": [
    1360,
    860
@@ -13735,7 +16073,7 @@
   ]
  },
  "s1-1360-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&screens=1",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&screens=1",
   "size": [
    1360,
    860
@@ -13948,7 +16286,7 @@
   ]
  },
  "s2-1360-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&screens=2",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&screens=2",
   "size": [
    1360,
    860
@@ -14168,7 +16506,7 @@
   ]
  },
  "s4-1360-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&screens=4",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&screens=4",
   "size": [
    1360,
    860
@@ -14402,7 +16740,7 @@
   ]
  },
  "empty-390-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room",
   "size": [
    390,
    844
@@ -14556,7 +16894,7 @@
   ]
  },
  "s1-390-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&screens=1",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&screens=1",
   "size": [
    390,
    844
@@ -14689,7 +17027,7 @@
   ]
  },
  "s2-390-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&screens=2",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&screens=2",
   "size": [
    390,
    844
@@ -14829,7 +17167,7 @@
   ]
  },
  "s4-390-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&screens=4",
+  "url": "http://127.0.0.1:8788/__tooltip-preview?channel-room&screens=4",
   "size": [
    390,
    844
@@ -14980,1078 +17318,6 @@
    13,
    16,
    17
-  ]
- },
- "empty-1360-quick": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&layout=quick",
-  "size": [
-   1360,
-   860
-  ],
-  "steps": [],
-  "viewport": [
-   1360,
-   860
-  ],
-  "scrolls": true,
-  "shell": {
-   "l": 82.5,
-   "r": 1262.5,
-   "t": 20,
-   "b": 1094,
-   "cx": 672.5
-  },
-  "stage": {
-   "l": 177.5,
-   "r": 1167.5,
-   "t": 94,
-   "b": 686,
-   "cx": 672.5
-  },
-  "chat": null,
-  "roomIcon": {
-   "l": 177.5,
-   "r": 202.5,
-   "t": 893.5,
-   "b": 918.5,
-   "cx": 190
-  },
-  "roomName": {
-   "l": 212.5,
-   "r": 287,
-   "t": 893.7,
-   "b": 918.3,
-   "cx": 249.7
-  },
-  "date": null,
-  "avatar": null,
-  "messageText": null,
-  "composer": null,
-  "composeField": null,
-  "couch": {
-   "l": 543.5,
-   "r": 801.5,
-   "t": 710,
-   "b": 804,
-   "cx": 672.5
-  },
-  "bench": {
-   "l": 543.5,
-   "r": 801.5,
-   "t": 723,
-   "b": 804,
-   "cx": 672.5
-  },
-  "bar": null,
-  "identity": {
-   "l": 185.5,
-   "r": 211.5,
-   "t": 1047,
-   "b": 1081,
-   "cx": 198.5
-  },
-  "cluster": {
-   "l": 190.5,
-   "r": 1154.5,
-   "cx": 672.5
-  },
-  "tiles": [],
-  "pane": "room",
-  "lastTool": {
-   "l": 1136.5,
-   "r": 1154.5,
-   "t": 897,
-   "b": 915,
-   "cx": 1145.5
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 82.5,
-   "r": 112.5,
-   "t": 34,
-   "b": 64,
-   "cx": 97.5
-  },
-  "itemIcon": null,
-  "itemName": null,
-  "myName": {
-   "l": 219.5,
-   "r": 1107.5,
-   "t": 1044.5,
-   "b": 1064,
-   "cx": 663.5
-  },
-  "navLabel": null,
-  "group": null,
-  "siteCell": {
-   "l": 82.5,
-   "r": 482.5,
-   "t": 27,
-   "b": 71,
-   "cx": 282.5
-  },
-  "sidebar": null,
-  "heading": {
-   "l": 177.5,
-   "r": 1167.5,
-   "t": 872,
-   "b": 940,
-   "cx": 672.5
-  },
-  "pictureShare": 0,
-  "fonts": [
-   11,
-   12.5,
-   13,
-   16,
-   19
-  ]
- },
- "s1-1360-quick": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&layout=quick&screens=1",
-  "size": [
-   1360,
-   860
-  ],
-  "steps": [],
-  "viewport": [
-   1360,
-   860
-  ],
-  "scrolls": true,
-  "shell": {
-   "l": 82.5,
-   "r": 1262.5,
-   "t": 20,
-   "b": 1162.8,
-   "cx": 672.5
-  },
-  "stage": {
-   "l": 177.5,
-   "r": 1167.5,
-   "t": 94,
-   "b": 754.8,
-   "cx": 672.5
-  },
-  "chat": null,
-  "roomIcon": {
-   "l": 177.5,
-   "r": 202.5,
-   "t": 962.3,
-   "b": 987.3,
-   "cx": 190
-  },
-  "roomName": {
-   "l": 212.5,
-   "r": 287,
-   "t": 962.4,
-   "b": 987.1,
-   "cx": 249.7
-  },
-  "date": null,
-  "avatar": null,
-  "messageText": null,
-  "composer": null,
-  "composeField": null,
-  "couch": {
-   "l": 543.5,
-   "r": 801.5,
-   "t": 778.8,
-   "b": 872.8,
-   "cx": 672.5
-  },
-  "bench": {
-   "l": 543.5,
-   "r": 801.5,
-   "t": 791.8,
-   "b": 872.8,
-   "cx": 672.5
-  },
-  "bar": null,
-  "identity": {
-   "l": 185.5,
-   "r": 211.5,
-   "t": 1115.8,
-   "b": 1149.8,
-   "cx": 198.5
-  },
-  "cluster": {
-   "l": 190.5,
-   "r": 1154.5,
-   "cx": 672.5
-  },
-  "tiles": [
-   {
-    "l": 177.5,
-    "r": 1167.5,
-    "t": 128.8,
-    "b": 754.8,
-    "cx": 672.5
-   }
-  ],
-  "pane": "room",
-  "lastTool": {
-   "l": 1136.5,
-   "r": 1154.5,
-   "t": 965.8,
-   "b": 983.8,
-   "cx": 1145.5
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 82.5,
-   "r": 112.5,
-   "t": 34,
-   "b": 64,
-   "cx": 97.5
-  },
-  "itemIcon": null,
-  "itemName": null,
-  "myName": {
-   "l": 219.5,
-   "r": 1107.5,
-   "t": 1113.3,
-   "b": 1132.8,
-   "cx": 663.5
-  },
-  "navLabel": null,
-  "group": null,
-  "siteCell": {
-   "l": 82.5,
-   "r": 482.5,
-   "t": 27,
-   "b": 71,
-   "cx": 282.5
-  },
-  "sidebar": null,
-  "heading": {
-   "l": 177.5,
-   "r": 1167.5,
-   "t": 940.8,
-   "b": 1008.8,
-   "cx": 672.5
-  },
-  "pictureShare": 49.4,
-  "fonts": [
-   10,
-   11,
-   12,
-   12.5,
-   13,
-   16,
-   19
-  ]
- },
- "s4-1360-quick": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&layout=quick&screens=4",
-  "size": [
-   1360,
-   860
-  ],
-  "steps": [],
-  "viewport": [
-   1360,
-   860
-  ],
-  "scrolls": true,
-  "shell": {
-   "l": 82.5,
-   "r": 1262.5,
-   "t": 20,
-   "b": 1114.5,
-   "cx": 672.5
-  },
-  "stage": {
-   "l": 82.5,
-   "r": 1262.5,
-   "t": 94,
-   "b": 706.5,
-   "cx": 672.5
-  },
-  "chat": null,
-  "roomIcon": {
-   "l": 177.5,
-   "r": 202.5,
-   "t": 914,
-   "b": 939,
-   "cx": 190
-  },
-  "roomName": {
-   "l": 212.5,
-   "r": 287,
-   "t": 914.2,
-   "b": 938.8,
-   "cx": 249.7
-  },
-  "date": null,
-  "avatar": null,
-  "messageText": null,
-  "composer": null,
-  "composeField": null,
-  "couch": {
-   "l": 508.5,
-   "r": 836.5,
-   "t": 730.5,
-   "b": 824.5,
-   "cx": 672.5
-  },
-  "bench": {
-   "l": 508.5,
-   "r": 836.5,
-   "t": 743.5,
-   "b": 824.5,
-   "cx": 672.5
-  },
-  "bar": null,
-  "identity": {
-   "l": 185.5,
-   "r": 211.5,
-   "t": 1067.5,
-   "b": 1101.5,
-   "cx": 198.5
-  },
-  "cluster": {
-   "l": 190.5,
-   "r": 1154.5,
-   "cx": 672.5
-  },
-  "tiles": [
-   {
-    "l": 82.5,
-    "r": 466.5,
-    "t": 158,
-    "b": 425.3,
-    "cx": 274.5
-   },
-   {
-    "l": 480.5,
-    "r": 864.5,
-    "t": 158,
-    "b": 425.3,
-    "cx": 672.5
-   },
-   {
-    "l": 878.5,
-    "r": 1262.5,
-    "t": 158,
-    "b": 425.3,
-    "cx": 1070.5
-   },
-   {
-    "l": 480.5,
-    "r": 864.5,
-    "t": 439.3,
-    "b": 706.5,
-    "cx": 672.5
-   }
-  ],
-  "pane": "room",
-  "lastTool": {
-   "l": 1136.5,
-   "r": 1154.5,
-   "t": 917.5,
-   "b": 935.5,
-   "cx": 1145.5
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 82.5,
-   "r": 112.5,
-   "t": 34,
-   "b": 64,
-   "cx": 97.5
-  },
-  "itemIcon": null,
-  "itemName": null,
-  "myName": {
-   "l": 219.5,
-   "r": 1107.5,
-   "t": 1065,
-   "b": 1084.5,
-   "cx": 663.5
-  },
-  "navLabel": null,
-  "group": null,
-  "siteCell": {
-   "l": 82.5,
-   "r": 482.5,
-   "t": 27,
-   "b": 71,
-   "cx": 282.5
-  },
-  "sidebar": null,
-  "heading": {
-   "l": 177.5,
-   "r": 1167.5,
-   "t": 892.5,
-   "b": 960.5,
-   "cx": 672.5
-  },
-  "pictureShare": 29.6,
-  "fonts": [
-   10,
-   11,
-   12,
-   12.5,
-   13,
-   16,
-   19
-  ]
- },
- "empty-390-quick": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&layout=quick",
-  "size": [
-   390,
-   844
-  ],
-  "steps": [],
-  "viewport": [
-   390,
-   844
-  ],
-  "scrolls": false,
-  "shell": {
-   "l": 8,
-   "r": 382,
-   "t": 8,
-   "b": 814,
-   "cx": 195
-  },
-  "stage": {
-   "l": 8,
-   "r": 382,
-   "t": 78,
-   "b": 422,
-   "cx": 195
-  },
-  "chat": null,
-  "roomIcon": {
-   "l": 8,
-   "r": 33,
-   "t": 621.5,
-   "b": 646.5,
-   "cx": 20.5
-  },
-  "roomName": {
-   "l": 43,
-   "r": 109.6,
-   "t": 623,
-   "b": 645,
-   "cx": 76.3
-  },
-  "date": null,
-  "avatar": null,
-  "messageText": null,
-  "composer": null,
-  "composeField": null,
-  "couch": {
-   "l": 66,
-   "r": 324,
-   "t": 442,
-   "b": 536,
-   "cx": 195
-  },
-  "bench": {
-   "l": 66,
-   "r": 324,
-   "t": 455,
-   "b": 536,
-   "cx": 195
-  },
-  "bar": null,
-  "identity": {
-   "l": 16,
-   "r": 42,
-   "t": 767,
-   "b": 801,
-   "cx": 29
-  },
-  "cluster": {
-   "l": 21,
-   "r": 369,
-   "cx": 195
-  },
-  "tiles": [],
-  "pane": "room",
-  "lastTool": {
-   "l": 351,
-   "r": 369,
-   "t": 625,
-   "b": 643,
-   "cx": 360
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 8,
-   "r": 38,
-   "t": 22,
-   "b": 52,
-   "cx": 23
-  },
-  "itemIcon": null,
-  "itemName": null,
-  "myName": {
-   "l": 50,
-   "r": 322,
-   "t": 764.5,
-   "b": 784,
-   "cx": 186
-  },
-  "navLabel": null,
-  "group": null,
-  "siteCell": {
-   "l": 8,
-   "r": 286,
-   "t": 15,
-   "b": 59,
-   "cx": 147
-  },
-  "sidebar": null,
-  "heading": {
-   "l": 8,
-   "r": 382,
-   "t": 600,
-   "b": 668,
-   "cx": 195
-  },
-  "pictureShare": 0,
-  "fonts": [
-   11,
-   12.5,
-   13,
-   16,
-   17
-  ]
- },
- "s1-390-quick": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&layout=quick&screens=1",
-  "size": [
-   390,
-   844
-  ],
-  "steps": [],
-  "viewport": [
-   390,
-   844
-  ],
-  "scrolls": false,
-  "shell": {
-   "l": 8,
-   "r": 382,
-   "t": 8,
-   "b": 780.3,
-   "cx": 195
-  },
-  "stage": {
-   "l": 8,
-   "r": 382,
-   "t": 78,
-   "b": 388.3,
-   "cx": 195
-  },
-  "chat": null,
-  "roomIcon": {
-   "l": 8,
-   "r": 33,
-   "t": 587.8,
-   "b": 612.8,
-   "cx": 20.5
-  },
-  "roomName": {
-   "l": 43,
-   "r": 100,
-   "t": 589.2,
-   "b": 611.3,
-   "cx": 71.5
-  },
-  "date": null,
-  "avatar": null,
-  "messageText": null,
-  "composer": null,
-  "composeField": null,
-  "couch": {
-   "l": 66,
-   "r": 324,
-   "t": 408.3,
-   "b": 502.3,
-   "cx": 195
-  },
-  "bench": {
-   "l": 66,
-   "r": 324,
-   "t": 421.3,
-   "b": 502.3,
-   "cx": 195
-  },
-  "bar": null,
-  "identity": {
-   "l": 16,
-   "r": 42,
-   "t": 733.3,
-   "b": 767.3,
-   "cx": 29
-  },
-  "cluster": {
-   "l": 21,
-   "r": 369,
-   "cx": 195
-  },
-  "tiles": [
-   {
-    "l": 8,
-    "r": 382,
-    "t": 108.8,
-    "b": 388.3,
-    "cx": 195
-   }
-  ],
-  "pane": "room",
-  "lastTool": {
-   "l": 351,
-   "r": 369,
-   "t": 591.3,
-   "b": 609.3,
-   "cx": 360
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 8,
-   "r": 38,
-   "t": 22,
-   "b": 52,
-   "cx": 23
-  },
-  "itemIcon": null,
-  "itemName": null,
-  "myName": {
-   "l": 50,
-   "r": 322,
-   "t": 730.8,
-   "b": 750.3,
-   "cx": 186
-  },
-  "navLabel": null,
-  "group": null,
-  "siteCell": {
-   "l": 8,
-   "r": 286,
-   "t": 15,
-   "b": 59,
-   "cx": 147
-  },
-  "sidebar": null,
-  "heading": {
-   "l": 8,
-   "r": 382,
-   "t": 566.3,
-   "b": 634.3,
-   "cx": 195
-  },
-  "pictureShare": 27,
-  "fonts": [
-   10,
-   11,
-   12,
-   12.5,
-   13,
-   16,
-   17
-  ]
- },
- "s4-390-quick": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room&layout=quick&screens=4",
-  "size": [
-   390,
-   844
-  ],
-  "steps": [],
-  "viewport": [
-   390,
-   844
-  ],
-  "scrolls": true,
-  "shell": {
-   "l": 8,
-   "r": 367,
-   "t": 8,
-   "b": 1578.8,
-   "cx": 187.5
-  },
-  "stage": {
-   "l": 8,
-   "r": 367,
-   "t": 78,
-   "b": 1186.8,
-   "cx": 187.5
-  },
-  "chat": null,
-  "roomIcon": {
-   "l": 8,
-   "r": 33,
-   "t": 1386.3,
-   "b": 1411.3,
-   "cx": 20.5
-  },
-  "roomName": {
-   "l": 43,
-   "r": 109.6,
-   "t": 1387.7,
-   "b": 1409.8,
-   "cx": 76.3
-  },
-  "date": null,
-  "avatar": null,
-  "messageText": null,
-  "composer": null,
-  "composeField": null,
-  "couch": {
-   "l": 42,
-   "r": 333,
-   "t": 1206.8,
-   "b": 1300.8,
-   "cx": 187.5
-  },
-  "bench": {
-   "l": 42,
-   "r": 333,
-   "t": 1219.8,
-   "b": 1300.8,
-   "cx": 187.5
-  },
-  "bar": null,
-  "identity": {
-   "l": 16,
-   "r": 42,
-   "t": 1531.8,
-   "b": 1565.8,
-   "cx": 29
-  },
-  "cluster": {
-   "l": 21,
-   "r": 354,
-   "cx": 187.5
-  },
-  "tiles": [
-   {
-    "l": 8,
-    "r": 367,
-    "t": 138,
-    "b": 391.2,
-    "cx": 187.5
-   },
-   {
-    "l": 8,
-    "r": 367,
-    "t": 403.2,
-    "b": 656.4,
-    "cx": 187.5
-   },
-   {
-    "l": 8,
-    "r": 367,
-    "t": 668.4,
-    "b": 921.6,
-    "cx": 187.5
-   },
-   {
-    "l": 8,
-    "r": 367,
-    "t": 933.6,
-    "b": 1186.8,
-    "cx": 187.5
-   }
-  ],
-  "pane": "room",
-  "lastTool": {
-   "l": 336,
-   "r": 354,
-   "t": 1389.8,
-   "b": 1407.8,
-   "cx": 345
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 8,
-   "r": 38,
-   "t": 22,
-   "b": 52,
-   "cx": 23
-  },
-  "itemIcon": null,
-  "itemName": null,
-  "myName": {
-   "l": 50,
-   "r": 307,
-   "t": 1529.3,
-   "b": 1548.8,
-   "cx": 178.5
-  },
-  "navLabel": null,
-  "group": null,
-  "siteCell": {
-   "l": 8,
-   "r": 271,
-   "t": 15,
-   "b": 59,
-   "cx": 139.5
-  },
-  "sidebar": null,
-  "heading": {
-   "l": 8,
-   "r": 367,
-   "t": 1364.8,
-   "b": 1432.8,
-   "cx": 187.5
-  },
-  "pictureShare": 92.1,
-  "fonts": [
-   10,
-   11,
-   12,
-   12.5,
-   13,
-   16,
-   17
-  ]
- },
- "own-1360-workspace": {
-  "url": "http://127.0.0.1:8789/__tooltip-preview?channel-room",
-  "size": [
-   1360,
-   860
-  ],
-  "steps": [
-   "clicked 开始分享",
-   "clicked 分享窗口：Sketchbook"
-  ],
-  "viewport": [
-   1360,
-   860
-  ],
-  "scrolls": false,
-  "shell": {
-   "l": 20,
-   "r": 1340,
-   "t": 20,
-   "b": 836,
-   "cx": 680
-  },
-  "stage": {
-   "l": 261,
-   "r": 1019,
-   "t": 145,
-   "b": 655,
-   "cx": 640
-  },
-  "chat": {
-   "l": 1019,
-   "r": 1339,
-   "t": 145,
-   "b": 835,
-   "cx": 1179
-  },
-  "roomIcon": {
-   "l": 281,
-   "r": 306,
-   "t": 99.5,
-   "b": 124.5,
-   "cx": 293.5
-  },
-  "roomName": {
-   "l": 316,
-   "r": 390.5,
-   "t": 99.7,
-   "b": 124.3,
-   "cx": 353.2
-  },
-  "date": {
-   "l": 1038,
-   "r": 1320,
-   "t": 239,
-   "b": 255.5,
-   "cx": 1179
-  },
-  "avatar": {
-   "l": 1038,
-   "r": 1067,
-   "t": 267.5,
-   "b": 303.5,
-   "cx": 1052.5
-  },
-  "messageText": {
-   "l": 1078,
-   "r": 1320,
-   "t": 290,
-   "b": 337.3,
-   "cx": 1199
-  },
-  "composer": {
-   "l": 1035,
-   "r": 1323,
-   "t": 753,
-   "b": 819,
-   "cx": 1179
-  },
-  "composeField": {
-   "l": 1046,
-   "r": 1312,
-   "t": 764,
-   "b": 808,
-   "cx": 1179
-  },
-  "couch": {
-   "l": 511,
-   "r": 769,
-   "t": 733,
-   "b": 827,
-   "cx": 640
-  },
-  "bench": {
-   "l": 511,
-   "r": 769,
-   "t": 746,
-   "b": 827,
-   "cx": 640
-  },
-  "bar": {
-   "l": 21,
-   "r": 261,
-   "t": 655,
-   "b": 835,
-   "cx": 141
-  },
-  "identity": {
-   "l": 33,
-   "r": 59,
-   "t": 788,
-   "b": 822,
-   "cx": 46
-  },
-  "cluster": {
-   "l": 33,
-   "r": 249,
-   "cx": 141
-  },
-  "tiles": [
-   {
-    "l": 271,
-    "r": 994,
-    "t": 181.8,
-    "b": 645,
-    "cx": 632.5
-   }
-  ],
-  "pane": "room",
-  "lastTool": {
-   "l": 1293,
-   "r": 1309,
-   "t": 104,
-   "b": 120,
-   "cx": 1301
-  },
-  "couchText": 11,
-  "toolSizes": [
-   36,
-   44
-  ],
-  "homeMark": {
-   "l": 37,
-   "r": 67,
-   "t": 35,
-   "b": 65,
-   "cx": 52
-  },
-  "itemIcon": {
-   "l": 80.5,
-   "r": 101.5,
-   "t": 182.5,
-   "b": 203.5,
-   "cx": 91
-  },
-  "itemName": {
-   "l": 114,
-   "r": 201,
-   "t": 183.9,
-   "b": 202.1,
-   "cx": 157.5
-  },
-  "myName": {
-   "l": 67,
-   "r": 197,
-   "t": 785.5,
-   "b": 805,
-   "cx": 132
-  },
-  "navLabel": {
-   "l": 37,
-   "r": 62,
-   "t": 102.5,
-   "b": 121.5,
-   "cx": 49.5
-  },
-  "group": {
-   "l": 33,
-   "r": 249,
-   "t": 153,
-   "b": 169.5,
-   "cx": 141
-  },
-  "siteCell": {
-   "l": 37,
-   "r": 437,
-   "t": 28,
-   "b": 72,
-   "cx": 237
-  },
-  "sidebar": {
-   "l": 21,
-   "r": 261,
-   "t": 79,
-   "b": 655,
-   "cx": 141
-  },
-  "heading": {
-   "l": 261,
-   "r": 1339,
-   "t": 79,
-   "b": 145,
-   "cx": 800
-  },
-  "pictureShare": 25.8,
-  "fonts": [
-   10,
-   11,
-   12,
-   12.5,
-   13,
-   14,
-   15,
-   16,
-   19
   ]
  }
 }

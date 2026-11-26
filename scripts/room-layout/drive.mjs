@@ -30,7 +30,7 @@ const states = {
 };
 const share = [["click", "开始分享"], ["wait", 900], ["click", "分享窗口：Sketchbook"], ["wait", 1500]];
 const scenarios = [];
-const add = (name, layout, state, size, extra = {}) => scenarios.push({ name, url: `${base}${layout === "workspace" ? "" : `&layout=${layout}`}${states[state]}`, size: sizes[size], ...extra });
+const add = (name, layout, state, size, extra = {}) => scenarios.push({ name, url: `${base}${layout === "workspace" ? "" : `&layout=${layout}`}${states[state]}${extra.minimal ? "&minimal" : ""}`, size: sizes[size], ...extra });
 for (const size of [1360, 1024, 390]) for (const state of ["empty", "s1", "s2", "s4", "failed", "offline", "long"]) add(`${state}-${size}`, "living", state, size);
 for (const size of [1360, 390]) add(`own-${size}`, "living", "empty", size, { steps: share });
 add("s1-1600", "living", "s1", 1600); add("empty-1600", "living", "empty", 1600);
@@ -66,6 +66,10 @@ add("t-overlay-escape", "living", "s1", 1360, { steps: [["click", list], ["wait"
 add("t-overlay-outside", "living", "s1", 1360, { steps: [["click", list], ["wait", 500], ["tap", 700, 300], ["wait", 400]] });
 add("t-overlay-again", "living", "s1", 1360, { steps: [["click", list], ["wait", 500], ["click", list], ["wait", 400]] });
 add("t-focus", "living", "s1", 1360, { steps: [["key", "Tab"], ["key", "Tab"], ["key", "Tab"], ["wait", 300]] });
+for (const state of ["empty", "s1", "s4"]) for (const size of [1360, "laptop"]) add(`min-${state}-${size}`, "living", state, size, { minimal: true });
+add("min-s1-1360-chat", "living", "s1", 1360, { minimal: true, steps: [["click", "聊天"], ["wait", 700]] });
+add("min-empty-1360-rooms", "living", "empty", 1360, { minimal: true, steps: [["click", "房间列表"], ["wait", 700]] });
+add("min-novoice-1360", "living", "empty", 1360, { minimal: true, steps: [["click", "退出语音"], ["wait", 700]] });
 add("voices-1360", "living", "voices", 1360);
 add("voices-s1-1360", "living", "voices1", 1360);
 add("voices-s1-fhd", "living", "voices1", "fhd");
