@@ -2931,6 +2931,7 @@ export class ChannelSession {
         await this.stopScreen(screen.id, id);
       }
       await confirmPage?.();
+      if (!current() || this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
       committed = true;
       player.mode = "direct";
       delete selection.watchCandidate;

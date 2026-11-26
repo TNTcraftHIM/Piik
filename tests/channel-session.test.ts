@@ -16197,6 +16197,57 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
   } finally { session.close(); }
 });
 
+test("stopping a borrowed-page replacement before confirmation keeps it retired", async () => {
+  const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  commit.mockRestore();
+  let confirm!: (value: unknown) => void;
+  try {
+    const initial = session.selectWatchPage("first", candidateId, undefined, false, "original-page");
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "start_watch")).toBe(true));
+    const old = socket.sent.findLast(command => command.type === "start_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: old.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "update_watch")).toBe(true));
+    const update = socket.sent.findLast(command => command.type === "update_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
+    await initial;
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [{
+      id: old.id, roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+      source: old.source, playback: old.playback,
+    }] } });
+    vi.stubGlobal("window", new EventTarget());
+    page.receive({ type: "page_share_requested", pageId: page.id });
+    const nextId = crypto.randomUUID();
+    page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [
+      { id: candidateId, title: "A", url: null, duration: 60 },
+      { id: nextId, title: "B", url: null, duration: 60 },
+    ] });
+    const ready = await page.read(), respond = request.getMockImplementation()!;
+    request.mockImplementation(command => command.type === "page_select"
+      ? new Promise(resolve => { confirm = resolve; }) : respond(command));
+    const listenSources = vi.spyOn(page, "listenMediaSources");
+    const replacing = session.selectWatchPage("first", nextId, undefined, false, "original-page");
+    const rejected = expect(replacing).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(2));
+    const start = socket.sent.findLast(command => command.type === "start_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: start.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await vi.waitFor(() => expect(confirm).toBeTypeOf("function"));
+    const player = session.getSnapshot().watchPlayers.get(start.id as string)!;
+    const stopping = session.stopWatch(start.id as string);
+    const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
+    await stopping;
+    expect(player.signal.aborted).toBe(true);
+    confirm(ready);
+    await rejected;
+    expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(false);
+    expect(listenSources).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "update_watch" && command.id === start.id)).toBe(false);
+    expect(socket.sent.filter(command => command.type === "stop_watch" && command.id === start.id)).toHaveLength(1);
+    expect(session.getSnapshot().watchPlayers.has(old.id as string)).toBe(true);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
 test("page owner and borrowed player each release their page at most once", () => {
   const dispose = vi.fn();
   const page = new appLink.AppPage(crypto.randomUUID(), "https://fixture.test", vi.fn(), dispose, vi.fn());
