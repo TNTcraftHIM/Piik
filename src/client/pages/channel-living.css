@@ -371,6 +371,13 @@
 .c3-living .c3-message-content-body .c3-content-actions { position: absolute; inset-block-start: -14px; inset-inline-end: var(--lv-inset); display: inline-flex; gap: 2px; margin: 0; padding: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--wall); }
 .c3-living .c3-message-meta time, .c3-living .c3-message-date, .c3-living .c3-attachment small { font-size: 12px; }
 .c3-living .c3-attachment strong { font-size: 14px; }
+/* A shared picture is shown as a picture: it comes first and has no card around it; its name, its size and
+   the way to get the original are its caption. */
+.c3-living .c3-attachment:has(> .c3-attachment-preview) { max-width: min(100%, 360px); gap: 6px; padding: 0; border: 0; background: transparent; }
+.c3-living .c3-attachment > .c3-attachment-preview { order: -1; justify-self: start; display: block; padding: 0; border: 0; border-radius: 12px; background: var(--wall); overflow: hidden; cursor: zoom-in; }
+.c3-living .c3-attachment > .c3-attachment-preview > img { max-height: 320px; border-radius: 0; }
+.c3-living .c3-attachment:has(> .c3-attachment-preview) .c3-attachment-file > svg { display: none; }
+.c3-living .c3-attachment:has(> .c3-attachment-preview) .c3-attachment-file > div { flex: 0 1 auto; }
 .c3-living .c3-room-start p { font-size: 14px; }
 .c3-living .c3-person strong { font-size: 16px; font-weight: 600; }
 .c3-living :is(.c3-person small, .c3-you, .c3-people-panel h2 > span, .c3-people-body .c3-section-label) { font-size: 12px; }
@@ -518,3 +525,5 @@
 /* A choice between a few options: a tonal track, a tonal selection. */
 :root:has(.c3-shell.c3-living) .lr-toggle { border-radius: 12px; box-shadow: none; }
 :root:has(.c3-shell.c3-living) .lr-toggle::before { border-radius: 9px; box-shadow: none; }
+/* A picture is never drawn larger than it is: a small preview stays sharp in the viewer. */
+:root:has(.c3-shell.c3-living) .c3-image-view > img { object-fit: scale-down; }
