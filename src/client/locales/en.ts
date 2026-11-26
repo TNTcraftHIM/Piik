@@ -120,7 +120,7 @@ export const en: Record<CopyKey, string> = {
   "room.settings.removePassword": "Remove password",
   "room.settings.hidden": "Hide from users without access",
   "room.relay.default": "Room forwarding default",
-  "room.relay.defaultNote": "Default direct device limit for each screen share in this room.",
+  "room.relay.defaultNote": "Default direct device limit for screens, voice and files in this room.",
   "room.action.cancel": "Cancel",
   "room.action.save": "Save",
   "room.action.create": "Create room",

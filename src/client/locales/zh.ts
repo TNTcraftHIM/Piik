@@ -118,7 +118,7 @@ export const zh = {
   "room.settings.removePassword": "移除密码",
   "room.settings.hidden": "对未获准的用户隐藏房间",
   "room.relay.default": "房间默认转发",
-  "room.relay.defaultNote": "本房间每场画面共享的默认直连设备上限。",
+  "room.relay.defaultNote": "本房间画面、语音和文件的默认直连设备上限。",
   "room.action.cancel": "取消",
   "room.action.save": "保存",
   "room.action.create": "创建房间",
