@@ -73,7 +73,11 @@ type Pair = (Uuid, Uuid);
 fn pair(a: Uuid, b: Uuid) -> Pair {
     (a.min(b), a.max(b))
 }
-type CrossingRank = (bool, bool, Option<u64>, Pair);
+// A crossing is a missing pair from a reached forwarder to an unreached node.
+// Freshness first: confirmed, then pending, then never failed, then the oldest
+// failure. Among equals the shallowest offered parent, so that a pair worth
+// trying is also a short path. The endpoints only make the order total.
+type CrossingRank = (bool, bool, Option<u64>, usize, Pair);
 fn path_segments(
     prefix: &BTreeSet<Pair>,
     mut at: Uuid,
@@ -227,11 +231,13 @@ impl Discovery<'_> {
         })
     }
 
-    fn rank(&self, edge: &DiscoveryEdge) -> CrossingRank {
+    /// `depth` is how many hops below the source the offered parent sits.
+    fn rank(&self, edge: &DiscoveryEdge, depth: usize) -> CrossingRank {
         (
             !self.confirmed.contains(&edge.endpoints),
             !self.transports.pending(edge),
             self.transports.retry_after(edge),
+            depth,
             edge.endpoints,
         )
     }
@@ -263,7 +269,6 @@ impl Discovery<'_> {
             }
             let key = pair(from, to);
             let edge = DiscoveryEdge::current(key, self.identity)?;
-            let rank = self.rank(&edge);
             if self.transports.has_pair(key)
                 && !self.transports.pending(&edge)
                 && !self.confirmed.contains(&key)
@@ -276,6 +281,8 @@ impl Discovery<'_> {
                     confirmed_prefix(&self.confirmed, scope, frontier, from).map(Rc::new)
                 })
                 .as_ref()?;
+            // The prefix is the offered parent's confirmed path up to the source.
+            let rank = self.rank(&edge, prefix.len());
             Some((rank, edge, prefix.clone(), to, terminal))
         })
     }
@@ -374,6 +381,7 @@ impl Discovery<'_> {
         requested: &BTreeMap<Pair, bool>,
     ) -> BTreeMap<Pair, (DiscoveryEdge, BTreeSet<Pair>)> {
         let mut suggestions = BTreeMap::new();
+        let mut chosen = BTreeMap::<Pair, CrossingRank>::new();
         for frontier in &projection.delivery_frontiers {
             let source = frontier.source;
             if !scope.contains(&source) {
@@ -418,13 +426,11 @@ impl Discovery<'_> {
                     })
                     .min_by_key(|(r, _, _, _)| **r);
                 if let Some((r, edge, prefix, at)) = best {
-                    if suggestions
-                        .get(&direct)
-                        .is_some_and(|(old, _)| self.rank(old) <= *r)
-                    {
+                    if chosen.get(&direct).is_some_and(|old| old <= r) {
                         continue;
                     }
                     let segments = path_segments(prefix, at, &tail);
+                    chosen.insert(direct, *r);
                     suggestions.insert(direct, (edge.clone(), segments));
                 }
             }
@@ -1375,6 +1381,89 @@ mod tests {
         channel.remote.get_mut("room").unwrap().projection = Some(delivered);
         channel.reconcile_transports(&endpoints);
         assert!(!channel.repairs.contains_key(&("room".into(), edge(direct))));
+    }
+
+    #[test]
+    fn a_waiting_receiver_is_offered_the_shallowest_fresh_parent() {
+        use crate::{access::RoomState, room::RoomRuntime, wire::RoomAccess};
+        // Identifiers are random. An order that consulted them before depth
+        // would offer the deeper parent in about half of these rooms.
+        for _ in 0..16 {
+            let mut identity = Identity::new(String::new());
+            let peers = join(&mut identity, ["source", "near", "far", "viewer"]);
+            let [source, near, far, viewer] = peers;
+            let endpoints = identity.endpoints();
+            let mut room = RoomRuntime::new(
+                RoomState::new(
+                    "room".into(),
+                    "Room".into(),
+                    Default::default(),
+                    endpoints[&source].member.user_id,
+                    RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap(),
+            );
+            for id in peers {
+                room.browse(endpoints[&id].member, id, true).unwrap();
+            }
+            let item = crate::AttachmentDescriptor {
+                id: Uuid::new_v4(),
+                name: "file".into(),
+                size: 3,
+                media_type: "application/octet-stream".into(),
+                sha256: crate::attachment::sha256_hex(b"abc"),
+            };
+            // `near` receives from the source; `far` only reads the room.
+            for (id, offer) in [(source, true), (near, false), (viewer, false)] {
+                room.finish_file(
+                    id,
+                    1,
+                    endpoints[&source].member.user_id,
+                    item.clone(),
+                    offer,
+                    true,
+                )
+                .unwrap();
+            }
+            let pair = |a: Uuid, b: Uuid| (a.min(b), a.max(b));
+            // source - near - far: `near` is one hop below the source, `far` two.
+            let confirmed: BTreeSet<_> = [pair(source, near), pair(near, far)].into();
+            room.reconcile_with_pairs(&endpoints, 0, &confirmed);
+            let projection = room.projection(&endpoints);
+            assert_eq!(projection.delivery_frontiers.len(), 1);
+            assert_eq!(projection.delivery_frontiers[0].waiting, [viewer].into());
+            // The viewer's own pair with the source has failed.
+            let mut book = TransportBook::default();
+            let direct = pair(source, viewer);
+            let edge = DiscoveryEdge::current(direct, &identity).unwrap();
+            book.reconcile_with_standby(
+                [],
+                [],
+                &[(edge, Interest::Activity)].into(),
+                &[],
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                0,
+                |_| 64,
+            );
+            let attempt = book.snapshot(direct.0, |_| false, |_| false)[0].id;
+            book.retire(attempt, &identity, 1);
+            let discovery = Discovery {
+                identity: &identity,
+                transports: &book,
+                confirmed,
+            };
+            let suggestions = discovery.room_suggestions(
+                &projection,
+                &peers.into(),
+                &projection.requested_pairs(),
+            );
+            // Both relays offer a pair never tried. The shallower one is asked.
+            assert_ne!(pair(far, viewer), pair(near, viewer));
+            assert_eq!(suggestions[&direct].0.endpoints, pair(near, viewer));
+        }
     }
 
     #[test]
