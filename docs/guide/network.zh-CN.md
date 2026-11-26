@@ -101,7 +101,7 @@ STUN 服务会收到参与者的公网 IP，请选择信任的服务。
 
 - **网页打不开：** 查[本地访问与防火墙](./troubleshooting.zh-CN.md#本地邀请打不开)。
 - **聊天或历史加载失败：** 查[房间托管](./troubleshooting.zh-CN.md#聊天或历史记录加载不出来)。
-- **聊天正常，画面、语音或文件不通：** 检查组网工具是否允许设备之间传输 WebRTC UDP，再看[WebRTC 设置](#浏览器限制了-webrtc)。
+- **聊天正常，画面、语音或文件不通：** 检查组网工具是否支持受影响设备之间的 WebRTC UDP 通信。如果其中一台设备在 Windows 上运行 Piik App，请该设备的使用者[允许 Piik 的 UDP 媒体通信通过防火墙](./troubleshooting.zh-CN.md#本地邀请打不开)。仍有问题时，再查[WebRTC 设置](#浏览器限制了-webrtc)。
 - **麦克风或远控权限不可用：** 使用 HTTPS 邀请，检查[浏览器权限](./troubleshooting.zh-CN.md#无法使用麦克风或远程控制)。
 
 仅与信任的朋友组网。仍然失败时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)收集同一次尝试的报告。

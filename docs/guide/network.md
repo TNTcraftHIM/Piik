@@ -122,7 +122,7 @@ Do not send `localhost`, which points to each recipient's own device.
 
 - **Page will not open:** check whether the tool carries web traffic to the Piik App device, then review [local access and firewall rules](./troubleshooting.md#local-invitation-will-not-open).
 - **Chat/history will not load:** check [room hosting](./troubleshooting.md#chat-or-history-will-not-load).
-- **Chat works, but picture, voice or files do not:** check whether the tool carries WebRTC UDP between the devices, then review [WebRTC restrictions](#browser-webrtc-restrictions).
+- **Chat works, but picture, voice or files do not:** check whether the tool carries WebRTC UDP between the affected devices. If one runs Piik App on Windows, ask its user to [allow UDP media through the firewall](./troubleshooting.md#local-invitation-will-not-open). If the issue persists, review [WebRTC restrictions](#browser-webrtc-restrictions).
 - **Microphone or remote-control permission is unavailable:** use the HTTPS invitation and review [browser permissions](./troubleshooting.md#microphone-or-remote-controls-are-unavailable).
 
 Join only with trusted friends. If the issue persists, [collect reports](./troubleshooting.md#reporting-a-problem) from the same attempt.
