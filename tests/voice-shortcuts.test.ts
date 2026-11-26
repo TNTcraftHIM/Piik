@@ -138,7 +138,7 @@ describe("push-to-talk shortcut", () => {
     } finally { await unmount(); }
   });
 
-  it("does nothing outside push to talk, and releases when the mode or the room changes while held", async () => {
+  it("keeps a held input across room targets and releases when its mode or callback changes", async () => {
     const talk = vi.fn();
     const fixture = await dock({});
     try {
@@ -154,8 +154,13 @@ describe("push-to-talk shortcut", () => {
       await fixture.render({ talk });
       await fixture.press(key("keydown", "V"));
       await fixture.render({ talk, room: "other" });
+      expect(talk.mock.calls).toEqual([[true], [false], [true]]);
+      expect(fixture.current().talking).toBe(true);
+      const nextTalk = vi.fn();
+      await fixture.render({ talk: nextTalk, room: "other" });
       expect(talk.mock.calls).toEqual([[true], [false], [true], [false]]);
       expect(fixture.current().talking).toBe(false);
+      expect(nextTalk).not.toHaveBeenCalled();
     } finally { await fixture.unmount(); }
   });
 });
