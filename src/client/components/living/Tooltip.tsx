@@ -114,8 +114,8 @@ export function Tooltip({
       "aria-describedby"?: string;
       "aria-expanded"?: boolean;
       "aria-controls"?: string;
-      label?: string;
-      title?: string;
+      label?: string | { text: string };
+      title?: string | { text: string };
     }>(children) ? children : null;
   const disabledTrigger = trigger?.props.disabled === true;
   const rawTriggerLabel = trigger
@@ -123,7 +123,9 @@ export function Tooltip({
       trigger.props.label ??
       trigger.props.title
     : undefined;
-  const triggerLabel = rawTriggerLabel && isCopyKey(rawTriggerLabel) ? say(rawTriggerLabel) : rawTriggerLabel;
+  // A control names itself with a copy key or with text it already holds, as its own label does.
+  const triggerLabel = typeof rawTriggerLabel === "object" ? rawTriggerLabel.text
+    : rawTriggerLabel && isCopyKey(rawTriggerLabel) ? say(rawTriggerLabel) : rawTriggerLabel;
   const disabledTriggerLabel = disabledTrigger ? triggerLabel : undefined;
   const focusableWrap = disabledTrigger || (overflowing && !kind && trigger?.type !== "button");
 
