@@ -145,7 +145,6 @@ export function Btn({
       <Glyph
         key={draw ? (busy ? "loader" : icon) : undefined}
         name={busy ? "loader" : icon}
-        size={19}
         draw={draw}
         className={busy ? "lr-spin" : undefined}
       />

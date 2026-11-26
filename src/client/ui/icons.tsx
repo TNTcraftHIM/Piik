@@ -1,5 +1,5 @@
 // Hand-drawn flat icon set for the living-room UI. Stroke icons use
-// currentColor; solid icons (play/pause/stop) are filled. Bodies are real JSX
+// currentColor; solid icons are filled. Bodies are real JSX
 // children (never dangerouslySetInnerHTML — React re-sets innerHTML on every
 // render pass, which would restart the draw-in animation on unrelated state
 // changes; reconciled children stay put, so the draw only replays on a true
@@ -26,7 +26,6 @@ const PATHS = {
   keyboard: { body: (<><rect pathLength={1} x="2" y="5" width="20" height="14" rx="3"/><path pathLength={1} d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10"/></>) },
   mouse: { body: (<><rect pathLength={1} x="6" y="2" width="12" height="20" rx="6"/><path pathLength={1} d="M12 2v7M6 10h12"/></>) },
   star: { body: <path pathLength={1} d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.3-5.7-3-5.7 3 1.1-6.3L3.1 9.6l6.3-.9Z" /> },
-  textSize: { body: (<><path pathLength={1} d="m2 18 4-9 4 9m-6.5-3h5M12 18l5-13 5 13m-8-4h6"/></>) },
   opacity: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" opacity=".4"/></>) },
   danmaku: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="4"/><path pathLength={1} d="M7 9h7M11 14h6m-3-2 3 2-3 2"/></>) },
   chat: { body: (<><path pathLength={1} d="M5 4h14a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H9l-5 3v-4a3 3 0 0 1-2-3V7a3 3 0 0 1 3-3Z"/><path pathLength={1} d="M7 9h10M7 13h6"/></>) },
@@ -43,11 +42,7 @@ const PATHS = {
   save: { body: (<><path pathLength={1} d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path pathLength={1} d="M7 3v6h9V3M7 21v-7h10v7"/></>) },
   popcorn: { body: (<><path pathLength={1} d="M5 9c-3-3 0-6 3-5 0-4 6-4 7-1 4-1 7 3 4 6M5 9h14l-2 12H7Z"/><path pathLength={1} d="m9 12 1 6m5-6-1 6"/></>) },
   clapperboard: { body: (<><path pathLength={1} d="m3 9-1-5 19-3 1 5ZM3 10h19v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path pathLength={1} d="m7 3 3 4m4-5 3 4"/></>) },
-  trophy: { body: (<><path pathLength={1} d="M7 3h10v6a5 5 0 0 1-10 0ZM7 5H3v3a4 4 0 0 0 5 4m9-7h4v3a4 4 0 0 1-5 4M12 14v6m-5 1h10"/></>) },
-  gift: { body: (<><rect pathLength={1} x="3" y="8" width="18" height="5" rx="1"/><path pathLength={1} d="M5 13v8h14v-8M12 8v13m0-13C5 8 4 3 7 3c3 0 5 5 5 5s2-5 5-5c3 0 2 5-5 5Z"/></>) },
-  flag: { body: (<><path pathLength={1} d="M5 22V3h14l-4 5 4 5H5"/></>) },
   heart: { body: (<><path pathLength={1} d="M12 21 3.6 12.6C-2 7 5.5.5 12 7 18.5.5 26 7 20.4 12.6Z"/></>) },
-  bulb: { body: (<><path pathLength={1} d="M8 17v-2c-6-5-3-13 4-13s10 8 4 13v2ZM9 21h6m-3-4v-7m-3 0 3 3 3-3"/></>) },
   plus: { body: <path pathLength={1} d="M12 5v14M5 12h14" /> },
   copy: { body: (<><rect pathLength={1} x="9" y="9" width="12" height="12" rx="2"/><path pathLength={1} d="M5 15V5a2 2 0 0 1 2-2h10"/></>) },
   check: { body: (<><path pathLength={1} d="M4 12.5 9.5 18 20 6.5"/></>) },
@@ -107,13 +102,12 @@ const PATHS = {
   theaterExit: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="2"/><rect pathLength={1} x="6" y="8" width="12" height="8" rx="1"/></>) },
   speaker: { phases: [0, 1], body: (<><path pathLength={1} d="M4 9v6h4l5 4V5L8 9H4Z"/><path pathLength={1} d="M16 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></>) },
   sliders: { body: (<><path pathLength={1} d="M3 6h9m4 0h5M3 12h3m4 0h11M3 18h12m4 0h2"/><circle pathLength={1} cx="14" cy="6" r="2"/><circle pathLength={1} cx="8" cy="12" r="2"/><circle pathLength={1} cx="17" cy="18" r="2"/></>) },
-  more: { body: (<><circle pathLength={1} cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle pathLength={1} cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle pathLength={1} cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></>) },
+  more: { solid: true, body: (<><circle pathLength={1} cx="5" cy="12" r="1.5"/><circle pathLength={1} cx="12" cy="12" r="1.5"/><circle pathLength={1} cx="19" cy="12" r="1.5"/></>) },
   mountain: { body: (<><path pathLength={1} d="m3 18 5.5-8.5L13 15l3.5-5L21 18H3Z"/></>) },
   balance: { body: (<><path pathLength={1} d="M12 4v16m-5 0h10"/><path pathLength={1} d="m12 6-6 1.5L3.5 13a3.1 3.1 0 0 0 5 0L6 7.5M12 6l6 1.5 2.5 5.5a3.1 3.1 0 0 1-5 0L18 7.5"/></>) },
   branch: { body: (<><circle pathLength={1} cx="6" cy="6" r="2.5"/><circle pathLength={1} cx="6" cy="18" r="2.5"/><circle pathLength={1} cx="18" cy="8" r="2.5"/><path pathLength={1} d="M6 8.5v7M6 13c5 0 5.5-2 9.3-3.2"/></>) },
   clock: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M12 7v5.2l3.4 2"/></>) },
   cpu: { body: (<><rect pathLength={1} x="7" y="7" width="10" height="10" rx="2"/><path pathLength={1} d="M10 2v3m4-3v3M10 19v3m4-3v3M2 10h3M2 14h3m14-4h3m-3 4h3"/></>) },
-  zap: { body: (<><path pathLength={1} d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></>) },
   cast: { body: (<><path pathLength={1} d="M4 16a4 4 0 0 1 4 4M4 12a8 8 0 0 1 8 8"/><circle pathLength={1} cx="4" cy="20" r="1.2" fill="currentColor" stroke="none"/><path pathLength={1} d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></>) },
   sun: { body: (<><circle pathLength={1} cx="12" cy="12" r="4"/><path pathLength={1} d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>) },
 } satisfies Record<string, GlyphDefinition>;
