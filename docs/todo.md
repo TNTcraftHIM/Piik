@@ -18,11 +18,15 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
-  interaction lifetime, operation feedback and the remaining Stage operations.
-  Source operations and three share-setting loops still belong to Session;
-  resource selection, promotion and retirement belong to each room's Stage.
+  interaction lifetime, operation feedback and the remaining capture, embed
+  and source-setting operations. Review their acquisition and release at the
+  actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
+- [ ] **Room layout integration.** Complete visual acceptance of the shared
+  frame, room and aside surfaces and paired controls, then implement the chosen
+  shell with the shared component owners. Keep existing layout retirement on
+  hold until the owner's workspace/screen-centred replacement decision.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
@@ -32,6 +36,10 @@ the feedback period; they do not delay that delivery.
   while its room remains available. Set the progress budget and recovery scope
   before adding a deadline; compare the existing fresh-binding handshake with
   connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
+- [ ] **Native room execution.** Give each room an independent serial work
+  owner over bounded shared execution. Preserve same-room order, storage locks,
+  rebinding and shutdown; compare optimized carrier behavior before adopting
+  additional concurrency.
 - [ ] **Host synchronization under concurrent admission.** Measure actual writer
   draining and atomic first-Join admission at the supported room scale. Preserve
   ordered host inputs, current bindings and revision order. Keep reader capacity
