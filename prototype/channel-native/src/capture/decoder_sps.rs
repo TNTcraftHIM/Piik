@@ -1,7 +1,7 @@
 //! SPS storage admission for one desktop decoder lifetime.
 use anyhow::{anyhow, ensure, Result};
 use h264_reader::nal::{
-    sps::{ChromaFormat, FrameMbsFlags, Level, SeqParameterSet},
+    sps::{FrameMbsFlags, Level, SeqParameterSet},
     Nal, RefNal,
 };
 
@@ -21,11 +21,8 @@ impl DecoderSps {
             }
             let sps = SeqParameterSet::from_bits(RefNal::new(nal, &[], true).rbsp_bits())
                 .map_err(|e| anyhow!("invalid decoder H264 SPS: {e:?}"))?;
-            let chroma = &sps.chroma_info;
             ensure!(
-                chroma.chroma_format == ChromaFormat::YUV420
-                    && chroma.bit_depth_luma_minus8 == 0
-                    && chroma.bit_depth_chroma_minus8 == 0,
+                crate::media::h264::is_8bit_420(&sps.chroma_info),
                 "H264 decoder requires 8-bit 4:2:0"
             );
             let width = u64::from(sps.pic_width_in_mbs());

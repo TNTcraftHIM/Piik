@@ -1,16 +1,27 @@
 //! NAL boundaries in one complete H264 Annex B access unit.
 use anyhow::{ensure, Context, Result};
 use h264_reader::{
-    nal::{pps::PicParamSetId, sps::SeqParamSetId, Nal, RefNal},
+    nal::{
+        pps::PicParamSetId,
+        sps::{ChromaFormat, ChromaInfo, SeqParamSetId},
+        Nal, RefNal,
+    },
     rbsp::BitRead,
 };
 use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub(super) struct ParameterSets {
+    pub(super) external_input: bool,
     sequences: BTreeMap<u8, Vec<u8>>,
     pictures: BTreeMap<u8, (u8, Vec<u8>)>,
     emitted_pps: Option<u8>,
+}
+
+pub(crate) fn is_8bit_420(chroma: &ChromaInfo) -> bool {
+    chroma.chroma_format == ChromaFormat::YUV420
+        && chroma.bit_depth_luma_minus8 == 0
+        && chroma.bit_depth_chroma_minus8 == 0
 }
 
 pub(super) enum Picture {
@@ -57,6 +68,17 @@ impl ParameterSets {
                         .ok()
                         .context("truncated H264 SPS header")?;
                     let id = sps_id(&mut bits).context("invalid H264 SPS ID")?;
+                    if self.external_input {
+                        let chroma =
+                            ChromaInfo::read(&mut bits, nal[1].into()).map_err(|error| {
+                                anyhow::anyhow!("invalid external H264 SPS: {error:?}")
+                            })?;
+                        if !is_8bit_420(&chroma) {
+                            return Err(
+                                super::UnsupportedH264Format([nal[1], nal[2], nal[3]]).into()
+                            );
+                        }
+                    }
                     self.sequences.insert(id, nal.to_vec());
                     inline_sps = Some(id);
                     inline_pps = None;
@@ -169,6 +191,42 @@ fn delimiter(bytes: &[u8]) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn external_sps_replacement_rechecks_chroma_with_the_same_profile_level_and_id() -> Result<()> {
+        // libx264, 16x16 black IDRs, 8-bit High 3.1, SPS and PPS ID 0.
+        let mut color = vec![
+            0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x1f, 0xac, 0xd9, 0x5e, 0xc0, 0x44, 0x00,
+            0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0x08, 0x3c, 0x60, 0xc6, 0x58, 0x00,
+            0x00, 0x00, 0x01, 0x68, 0xeb, 0xe3, 0xcb, 0x22, 0xc0, 0x00, 0x00, 0x01, 0x65, 0x88,
+            0x84, 0x00, 0x15, 0xff, 0xfe, 0xf7, 0xc9, 0xef, 0xc0, 0xa6, 0xeb, 0xdb, 0xdf, 0x81,
+        ];
+        let mut mono = vec![
+            0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x1f, 0xf3, 0x65, 0x7b, 0x01, 0x6c, 0x80,
+            0x00, 0x00, 0x03, 0x00, 0x80, 0x00, 0x00, 0x03, 0x01, 0x07, 0x8c, 0x18, 0xcb, 0x00,
+            0x00, 0x00, 0x01, 0x68, 0xeb, 0xe3, 0xcb, 0x22, 0xc0, 0x00, 0x00, 0x01, 0x65, 0x88,
+            0x84, 0x00, 0x15, 0xff, 0xfe, 0xf7, 0xad, 0xfe, 0x65, 0x97, 0x61, 0x0f, 0x0d,
+        ];
+        let mut sets = ParameterSets {
+            external_input: true,
+            ..Default::default()
+        };
+        let mut sps = super::super::H264Sps::default();
+        assert!(matches!(
+            sets.picture(&mut color, &mut sps)?,
+            Picture::Independent(_)
+        ));
+        let result = sets.picture(&mut mono, &mut sps);
+        let error = result.err().context("monochrome source accepted")?;
+        assert_eq!(
+            error
+                .downcast_ref::<super::super::UnsupportedH264Format>()
+                .unwrap()
+                .0,
+            [100, 0, 31]
+        );
+        Ok(())
+    }
 
     #[test]
     fn idr_selects_its_parameter_sets_after_another_pair_is_announced() -> Result<()> {

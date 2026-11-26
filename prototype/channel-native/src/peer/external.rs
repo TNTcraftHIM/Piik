@@ -279,7 +279,7 @@ async fn receive_track(
                         let Some(at) = track.presentation(packet.header.timestamp, ssrc) else {
                             continue;
                         };
-                        let input = Incoming::with_time(
+                        let input = Incoming::external(
                             &codec.mime_type,
                             SourceTime::incoming(at, packet.header.timestamp, report.clone()),
                             changed.clone(),
@@ -534,7 +534,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn unsupported_sps_fact_precedes_both_ready_and_ended_completions() -> Result<()> {
-        for ended_first in [false, true] {
+        // libx264 High 3.1, 320x180 8-bit monochrome.
+        let high_mono = [0x67, 0x64, 0, 0x1f, 0xf3, 0x65, 5, 6, 0x7e, 0x37, 1, 0x6c,
+            0x80, 0, 0, 3, 0, 0x80, 0, 0, 0x0a, 7, 0x8c, 0x18, 0xcb];
+        let high10 = [0x67, 0x6e, 0, 0x34];
+        for (ended_first, rejected) in [(false, high10.as_slice()), (true, &high10), (true, &high_mono)] {
             let (mut driver, mut events, _commands, _stop) = crate::peer::tests::driver();
             let sender_runtime = transport::Runtime::ipv4_loopback();
             let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4()).await?;
@@ -557,11 +561,11 @@ mod tests {
                     frame += 1;
                     let packet = rtp::Packet {
                         header: rtp::header::Header { version: 2, marker: true, timestamp: frame * 1800, ..Default::default() },
-                        payload: vec![0x67, 0x6e, 0, 0x34].into(),
+                        payload: rejected.to_vec().into(),
                     };
                     send(&sender, video, vec![packet], Instant::now(), &writable).await?;
                 }
-                let expected = Some(UnsupportedVideoFormat { codec: "h264", profile_idc: 110, constraint_flags: 0, level_idc: 52 });
+                let expected = Some(UnsupportedVideoFormat { codec: "h264", profile_idc: rejected[1], constraint_flags: rejected[2], level_idc: rejected[3] });
                 assert_eq!(control.unsupported_video_format(), expected);
                 if !ended_first {
                     assert_eq!(prepared.lease.ready().await.unwrap_err().to_string(), "external_video_format_unsupported");
