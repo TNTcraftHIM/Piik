@@ -53,30 +53,18 @@ over a reused comic's default; localized tooltips retain that context.
   the known failure boundary: unknown/session/settings failures must not default
   to capture advice, and retiring a share must retain a known App control or
   media-connection failure instead of replacing it with a generic stop notice.
-- On the 2.x Host couch, each Viewer has one round lamp. Grey means present
-  without a media connection, blue means connecting, green means a committed
-  picture or voice route, and amber means a recent picture receive freeze.
-  `participantConnection` projects the server's confirmed picture/voice facts for
-  both the lamp and topology. Microphone capture and sharing controls do not
-  own connectivity.
-  The Host's own pawn has no duplicate lamp. `deriveParticipantStatus` supplies
-  both the couch and Host overview; neither stores another copy of the status.
-- On the 2.x Viewer couch, pawns have no round lamps. While awaiting media
-  readiness, a pawn's body breathes gently and becomes still when ready. The
-  motion expresses the scope of the roster evidence, which is readiness.
-- The 3.0 couch shows presence, voice, sharing, watching and file activity.
+- Room participation follows the workspace's presence and activity projections.
   Remote-control grants belong to the controls for the selected share.
   [3.0 Room Workspace](./visual-language.md#30-room-workspace)
+- The [published 2.x status rules](https://github.com/TNTcraftHIM/Piik/blob/v2.8.0/docs/standards/media-status.md#projection-rules)
+  define the Host couch's route lamps, Viewer readiness motion and remote-control marks.
 - Integrated pawn accessories describe participation: headphones mean voice
   membership, worn on the head while listening and around the neck when listening
   is paused. The microphone boom extends when input is on and folds up when muted.
-  On the 2.x couch, a mouse on the body identifies an approved remote controller
-  regardless of device.
-  Shared glyphs use the cast's ink and
-  existing pawn motion. Their facts come from voice membership/publication,
-  local listening and native grants; leaving an activity removes its marker.
-  Pausing listening does not mute the
-  microphone or change forwarding or routes. The 2.x route lamp remains separate.
+  Shared glyphs use the cast's ink and existing pawn motion. The headset and
+  microphone reflect voice membership, listening and microphone state. Leaving
+  voice removes the headset. Pausing listening keeps microphone state and
+  forwarding independent.
   Accessory positions do not assert connection health or speaking activity.
   When measured voice levels are available, the microphone boom may show that
   activity. Use the speaking endpoint's current room stream; forwarding a voice

@@ -269,7 +269,12 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
 /** Guide images use these production controls with local sample props. */
 export function ChannelGuidePreview({ shareVariant }: { shareVariant?: ComponentProps<typeof ChannelShareControl>["variant"] }) {
   const { lang } = useCopy(), zh = lang === "zh";
-  const { channel, roomName, notice, received, onSend } = useChannelGuideSample({ showSampleAttachment: true });
+  const voiceView = new URLSearchParams(location.search).get("voice");
+  const voiceRooms = voiceView === "rooms" || voiceView === "rail";
+  const { channel, roomName, notice, received, onSend } = useChannelGuideSample({
+    multiRoom: voiceRooms, multiVoice: voiceRooms, showSampleAttachment: true,
+  });
+  const [voiceRoom, setVoiceRoom] = useState("friday");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const shareStart = useSettingsAction();
@@ -319,7 +324,9 @@ export function ChannelGuidePreview({ shareVariant }: { shareVariant?: Component
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
-      <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />
+      {voiceRooms ? <ChannelVoiceDock presentation="rooms" channel={channel} browsingRoomId={voiceRoom}
+        renderingBySpeaker={new Map()} compact={voiceView === "rail"} onBrowse={setVoiceRoom} />
+        : <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />}
       </div>
     </div>
     {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)}

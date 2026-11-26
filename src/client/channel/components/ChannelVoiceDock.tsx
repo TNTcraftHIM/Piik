@@ -18,69 +18,74 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { SurfaceDocument } from "../../ui/panel-window";
 import { VoiceOverlay } from "./voice-overlay";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
-import { resolveVoiceDockControls } from "../voice-dock-controls";
+import { resolveRoomVoiceControls, resolveVoiceDockControls } from "../voice-dock-controls";
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding";
 import { SPEAKING_LEVEL } from "../../media/voice-gate";
+import { ChannelVoiceRooms, VOICE_STATUS_LABEL } from "./ChannelVoiceRooms";
+
+type VoiceDockProps = {
+  channel: ChannelController;
+  renderingBySpeaker: ReadonlyMap<string, VoiceRendering>;
+  onBrowse: (id: string) => void;
+} & ({
+  presentation?: "legacy";
+  selected: string;
+  onSelect: (id: string) => void;
+} | {
+  presentation: "rooms";
+  browsingRoomId: string;
+  compact?: boolean;
+  toolsTarget?: HTMLElement | null;
+});
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
-export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSelect, onBrowse }: {
-  channel: ChannelController; selected: string; renderingBySpeaker: ReadonlyMap<string, VoiceRendering>;
-  onSelect: (id: string) => void; onBrowse: (id: string) => void;
-}) {
+export function ChannelVoiceDock(props: VoiceDockProps) {
+  const { channel, renderingBySpeaker, onBrowse } = props;
+  const roomList = props.presentation === "rooms";
   const { t } = useCopy();
   const state = channel.state;
-  const { joined, activity, microphoneDisabled, microphonePending, toggle } = resolveVoiceDockControls(channel, selected);
+  const legacy = resolveVoiceDockControls(channel, roomList ? undefined : props.selected);
+  const { joined } = legacy;
+  const activity = roomList ? joined.length === 1 ? joined[0] : undefined : legacy.activity;
+  const { microphoneDisabled, microphonePending, toggle } = roomList ? resolveRoomVoiceControls(channel, activity) : legacy;
   const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
     channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined,
-    channel.voiceTransmission.mode === "push" ? channel.talk : undefined);
+    joined.length && channel.voiceTransmission.mode === "push" ? channel.talk : undefined);
   const controls = useRef<HTMLDivElement>(null);
   const roomId = activity?.roomId ?? "";
   const overlay = useContext(VoiceOverlay);
   const readRemote = !!overlay?.target && !activity?.deafened;
   const readLevels = useCallback(() => channel.voiceActivity(roomId, !readRemote), [channel.voiceActivity, roomId, readRemote]);
-  const levels = useVoiceLevels(readLevels, !!activity && (!activity.muted || readRemote), overlay?.target?.ownerDocument);
+  const levels = useVoiceLevels(readLevels, !!activity && (roomList ? !!overlay?.target && (!activity.muted || readRemote)
+    : !activity.muted || readRemote), overlay?.target?.ownerDocument);
   useEffect(() => { if (!activity && overlay?.target) overlay.close(); }, [activity, overlay]);
-  if (!activity || !state) return null;
+  if (!joined.length || !state) return null;
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
   const interaction = channel.interactionsByRoom.get(roomId) ?? null;
   const roomName = nameOfRoom(roomId);
   const multipleRooms = joined.length > 1;
-  const { muted, deafened } = activity;
   const { microphone, listening } = shortcuts.bindings;
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
-  const status = roomVoiceStatus(state, channel.sessionId, roomId, renderingBySpeaker);
   const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > SPEAKING_LEVEL) : [];
-  return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
-    <Glyph name="headphones" size={22} />
-    <div className="c3-voice-destination">
-      <div className="c3-voice-room-info">
-        <small data-status={status} role="status">{t(VOICE_STATUS_LABEL[status])}</small>
-        <div className="c3-voice-room-choice">
-          <Tooltip className="c3-voice-room" overflow={{ text: roomName, selector: "button, select" }}>
-            {multipleRooms ? <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
-              onChange={event => onSelect(event.target.value)}>
-              {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
-            </select> : <button type="button" onClick={() => onBrowse(roomId)}>{roomName}</button>}
-          </Tooltip>
-          {multipleRooms && <Btn icon="arrowRight" size="compact" quiet textTooltip
-            title={{ text: t("channel.voiceDock.openRoom", { name: roomName }) }}
-            onClick={() => onBrowse(roomId)} />}
-        </div>
-      </div>
-      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} shortcuts={shortcuts} />
-    </div>
-    {overlay?.target && createPortal(<SurfaceDocument.Provider value={overlay.target.ownerDocument}>
+  const overlayTools = overlay && activity && <>
+    <Btn icon={overlay.mode === "editing" ? "check" : "pip"} size="compact" quiet textTooltip
+      title={overlay.mode === "panel" ? roomList ? { text: t("channel.voiceDock.openRoomOverlay", { name: roomName }) }
+        : "channel.voiceDock.openOverlay" : overlay.mode === "editing" ? "channel.voiceDock.pinOverlay" : "channel.voiceDock.adjustOverlay"}
+      onClick={overlay.mode === "panel" ? overlay.show : overlay.edit} />
+    {overlay.target && <Btn icon="x" size="compact" quiet textTooltip title="common.close" onClick={overlay.close} />}
+  </>;
+  const overlayView = overlay?.target && activity && createPortal(<SurfaceDocument.Provider value={overlay.target.ownerDocument}>
       <div className="c3-speaking-overlay">
         <div className="c3-speaking-overlay-header">
           <strong title={roomName}>{roomName}</strong>
-          <span role="img" aria-label={t(muted ? "voice.microphoneInactive" : "voice.microphoneActive")}>
-            <Glyph name={muted ? "microphoneOff" : "microphone"} size={16} />
+          <span role="img" aria-label={t(activity.muted ? "voice.microphoneInactive" : "voice.microphoneActive")}>
+            <Glyph name={activity.muted ? "microphoneOff" : "microphone"} size={16} />
           </span>
-          <span role="img" aria-label={t(deafened ? "voice.listeningPaused" : "voice.listeningActive")}>
-            <Glyph name={deafened ? "headphonesOff" : "headphones"} size={16} />
+          <span role="img" aria-label={t(activity.deafened ? "voice.listeningPaused" : "voice.listeningActive")}>
+            <Glyph name={activity.deafened ? "headphonesOff" : "headphones"} size={16} />
           </span>
           {speaking.length > 4 && <small>+{speaking.length - 4}</small>}
           {overlay.mode === "editing" && interaction && <VoiceOverlayChatSettings key={interaction.key} session={interaction} />}
@@ -97,8 +102,53 @@ export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSele
           <RoomChatOverlay session={interaction} visible />
         </div>
       </div>
-    </SurfaceDocument.Provider>, overlay.target)}
-    <MutedTalkNotice anchor={controls} shown={shortcuts.talking && joined.every(value => value.muted)} />
+    </SurfaceDocument.Provider>, overlay.target);
+  const mutedNotice = <MutedTalkNotice anchor={controls} shown={shortcuts.talking && joined.every(value => value.muted)} />;
+  if (roomList) {
+    const inputAvailable = channel.connection === "connected" && state.channel.rooms.some(room => room.available
+      && joined.some(value => value.roomId === room.id));
+    const tools = <div className="c3-voice-shared-tools">
+      <ChannelVoiceSettings channel={channel} available={inputAvailable} shortcuts={shortcuts} />
+      {overlayTools}
+    </div>;
+    return <>
+      <div ref={controls} className="c3-voice-dock-rooms">
+        <ChannelVoiceRooms key={props.compact ? "compact" : "inline"} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
+          onBrowse={onBrowse} renderingBySpeaker={renderingBySpeaker} shortcuts={shortcuts}
+          shortcutRoomId={activity?.roomId} compact={props.compact} />
+        {mutedNotice}
+      </div>
+      {props.toolsTarget ? createPortal(
+        <SurfaceDocument.Provider value={props.toolsTarget.ownerDocument}>{tools}</SurfaceDocument.Provider>,
+        props.toolsTarget,
+      ) : tools}
+      {overlayView}
+    </>;
+  }
+  if (!activity) return null;
+  const { muted, deafened } = activity;
+  const status = roomVoiceStatus(state, channel.sessionId, roomId, renderingBySpeaker);
+  return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
+    <Glyph name="headphones" size={22} />
+    <div className="c3-voice-destination">
+      <div className="c3-voice-room-info">
+        <small data-status={status} role="status">{t(VOICE_STATUS_LABEL[status])}</small>
+        <div className="c3-voice-room-choice">
+          <Tooltip className="c3-voice-room" overflow={{ text: roomName, selector: "button, select" }}>
+            {multipleRooms ? <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
+              onChange={event => props.onSelect(event.target.value)}>
+              {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
+            </select> : <button type="button" onClick={() => onBrowse(roomId)}>{roomName}</button>}
+          </Tooltip>
+          {multipleRooms && <Btn icon="arrowRight" size="compact" quiet textTooltip
+            title={{ text: t("channel.voiceDock.openRoom", { name: roomName }) }}
+            onClick={() => onBrowse(roomId)} />}
+        </div>
+      </div>
+      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} shortcuts={shortcuts} />
+    </div>
+    {overlayView}
+    {mutedNotice}
     <div ref={controls} className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
@@ -109,23 +159,12 @@ export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSele
         <VoiceListeningButton deafened={deafened} quiet
           keyShortcuts={voiceShortcutAria(listening)} shortcutLabel={listening ? voiceShortcutLabel(listening, shortcuts.mac) : undefined} onClick={() => toggle("listening")} />
       </AudioVolumeMenu>
-      {overlay && <>
-        <Btn icon={overlay.mode === "editing" ? "check" : "pip"} size="compact" quiet textTooltip
-          title={overlay.mode === "panel" ? "channel.voiceDock.openOverlay" : overlay.mode === "editing" ? "channel.voiceDock.pinOverlay" : "channel.voiceDock.adjustOverlay"}
-          onClick={overlay.mode === "panel" ? overlay.show : overlay.edit} />
-        {overlay.target && <Btn icon="x" size="compact" quiet textTooltip title="common.close" onClick={overlay.close} />}
-      </>}
+      {overlayTools}
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         onClick={() => run(channel.leaveVoice(roomId))} />
     </div>
   </section>;
 }
-
-const VOICE_STATUS_LABEL = {
-  joining: "channel.voiceDock.voiceConnecting",
-  connected: "channel.voiceDock.voiceConnected",
-  joined: "channel.voiceDock.voiceJoined",
-} as const;
 
 /** Holding the talk key while every joined room is muted sends nothing; this says so above the microphone without moving the controls.
  * The gate is shared, so one unmuted room carries the press and the notice stays hidden. */

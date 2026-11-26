@@ -1,0 +1,23 @@
+.c3-voice-rooms {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.c3-voice-room-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: var(--control-radius);
+}
+.c3-voice-room-row[data-current] { background: var(--control-hover); }
+.c3-voice-room-row small { display: block; color: var(--live-ink); font-size: 11px; }
+.c3-voice-room-row small[data-status="joining"] { color: var(--busy); }
+.c3-voice-room-actions, .c3-voice-shared-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.c3-voice-rooms-compact .lr-btn .lr-cap { font-variant-numeric: tabular-nums; }
+.c3-voice-rooms-popover { width: min(320px, calc(100vw - 16px)); padding: 8px; overflow: auto; }

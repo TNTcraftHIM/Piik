@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
+import { AudioBitrateControl } from "../../components/living/QualityPresets";
+import { MAX_AUDIO_SEND_BITRATE } from "../../media/quality";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { downloadBlob } from "../../lib/download";
@@ -115,6 +117,8 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
     <RelayLimit value={relayCapacity} min={1} label={t("room.relay.defaultLimit")}
       note={t("room.relay.defaultNote")}
       disabled={disabled} onChange={relayCapacity => change({ relayCapacity })} /></details>
+    {room && <AudioBitrateControl purpose="voice" value={value.voiceBitrate ?? room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
+      disabled={disabled} onChange={voiceBitrate => change({ voiceBitrate })} />}
     <div className="c3-form-actions"><ChannelAction icon="x" quiet label={t("room.action.cancel")} onClick={onCancel} />
       <ChannelAction icon={room ? "check" : "plus"} label={room ? t("room.action.save") : createLabel ?? t("room.action.create")}
         primary type="submit" disabled={!canSave} busy={busy} /></div>

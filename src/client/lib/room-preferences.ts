@@ -20,6 +20,7 @@ const roomPreferencesSchema = z.object({
     clips: z.object({ message: feedbackClipSchema.optional(), throw: feedbackClipSchema.optional() }).optional(),
   }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),
+  roomListFolded: z.boolean().catch(false).default(false),
   interfaceLayout: interfaceLayoutSchema.optional(),
   screenBufferTargetMs: z.number().min(0).max(4000).nullable().default(null),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),

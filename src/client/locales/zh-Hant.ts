@@ -385,6 +385,8 @@ export const zhHant = {
   "channel.user.avatar": "{name} 的頭像",
   "channel.voiceDock.voiceControls": "語音控制",
   "channel.voiceDock.openOverlay": "開啟語音浮層",
+  "channel.voiceDock.voiceRoomCount": "已加入的語音房間（{count}）",
+  "channel.voiceDock.openRoomOverlay": "開啟{name}的語音浮層",
   "channel.voiceDock.adjustOverlay": "調整語音浮層",
   "channel.voiceDock.pinOverlay": "固定語音浮層",
   "channel.voiceDock.voiceJoined": "已加入語音",

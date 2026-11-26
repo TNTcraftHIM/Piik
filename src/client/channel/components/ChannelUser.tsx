@@ -33,8 +33,7 @@ interface ActivityBadge {
   status?: GlyphName;
 }
 
-export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFiles, receivingFiles }: PersonActivity) {
-  const copy = useCopy();
+export function participantActivityBadges({ voice, sharing, viewing, sendingFiles, receivingFiles }: PersonActivity, copy: Copy) {
   const { t } = copy;
   const badges: ActivityBadge[] = [];
   if (voice) badges.push({
@@ -49,16 +48,26 @@ export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFile
   }
   const file = sendingFiles && receivingFiles ? fileBadges.both : sendingFiles ? fileBadges.sending : receivingFiles ? fileBadges.receiving : undefined;
   if (file) badges.push({ icon: file.icon, label: t(file.label) });
+  return badges;
+}
+
+export function ChannelActivityMarks({ badges }: { badges: readonly ActivityBadge[] }) {
+  return <span className="c3-participant-activity" aria-hidden="true">
+    {badges.map(({ icon, viewing, status }) => <span key={icon} data-viewing={viewing}>
+      <Glyph name={icon} size={14} />
+      {status && <Glyph name={status} size={10} />}
+    </span>)}
+  </span>;
+}
+
+export function ChannelActivityIndicators(activity: PersonActivity) {
+  const copy = useCopy();
+  const badges = participantActivityBadges(activity, copy);
   if (!badges.length) return null;
   const labels = badges.map(badge => badge.label);
   return <Tooltip toggleOnClick text={labels.join("\n")}>
     <button type="button" className="c3-participant-status" aria-label={joinSentences(copy.lang, labels)}>
-      <span className="c3-participant-activity" aria-hidden="true">
-        {badges.map(({ icon, viewing, status }) => <span key={icon} data-viewing={viewing}>
-          <Glyph name={icon} size={14} />
-          {status && <Glyph name={status} size={10} />}
-        </span>)}
-      </span>
+      <ChannelActivityMarks badges={badges} />
     </button>
   </Tooltip>;
 }

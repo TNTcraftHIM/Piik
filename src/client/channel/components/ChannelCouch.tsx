@@ -8,10 +8,10 @@ import { RoomReactionEffects } from "../../components/living/RoomReaction";
 import { Tooltip } from "../../components/living/Tooltip";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useElementWidth } from "../../lib/use-element-width";
-import { useCopy } from "../../ui/copy";
+import { joinSentences, useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelActivityIndicators, ChannelUser, personVoiceLabel } from "./ChannelUser";
+import { ChannelActivityMarks, ChannelUser, participantActivityBadges, personVoiceLabel } from "./ChannelUser";
 import type { ParticipantActivity } from "../presentation";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import "./channel-couch.css";
@@ -32,9 +32,9 @@ const noSubscription = () => () => {};
 const noSnapshot = () => null;
 
 /** Presence supplies people; the existing interaction session owns every effect and send. */
-export function ChannelCouch({ people, selfUserId, session, className = "", floating = false }: {
+export function ChannelCouch({ people, selfUserId, session, className = "", floating = false, compact = false }: {
   people: readonly ChannelCouchPerson[]; selfUserId: string | null;
-  session: RoomInteractionSession | null; className?: string; floating?: boolean;
+  session: RoomInteractionSession | null; className?: string; floating?: boolean; compact?: boolean;
 }) {
   const copy = useCopy();
   const { t } = copy;
@@ -82,27 +82,34 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   function seat(person: ChannelCouchPerson, clipped = false) {
     const active = target?.userId === person.userId;
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
-    const voice = person.voice && personVoiceLabel(person.voice, copy);
+    const { voice, ...activity } = person;
+    const badges = participantActivityBadges(activity, copy);
+    const labels = badges.map(badge => badge.label);
+    if (voice) labels.unshift(personVoiceLabel(voice, copy));
+    const details = labels.length ? joinSentences(copy.lang, labels) : undefined;
     const inner = <>
-      <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
-        avatar={person.avatar} voice={person.voice} collaboration={person.collaboration} />
+      <span className="c3-couch-figure">
+        <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
+          avatar={person.avatar} voice={voice} collaboration={person.collaboration} />
+        {!!badges.length && <span className="c3-couch-activity"><ChannelActivityMarks badges={badges} /></span>}
+      </span>
       <span className="lr-pawn-name">{person.name}</span>
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;
     const overflow = { text: person.name, selector: ".lr-pawn-name" };
-    const hint = session ? { kind: "hint-reaction-picker" as const, text: voice ? `${action}\n${voice}` : action, overflow } : { text: voice, overflow };
+    const hint = session ? { kind: "hint-reaction-picker" as const, text: [action, ...labels].join("\n"), overflow }
+      : { text: labels.length ? labels.join("\n") : undefined, overflow };
     return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId} data-pawn-clipped={clipped || undefined}>
-      <Tooltip {...hint} disabled={active}>
-        {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={voice}
+      <Tooltip {...hint} disabled={active} toggleOnClick={!session && !!details}>
+        {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={details}
           aria-expanded={active} aria-controls={pickerId}
           onClick={event => setTarget({ userId: person.userId, trigger: event.currentTarget })}>{inner}</button>
-          : <span className={pawnClass}>{inner}{voice && <span className="visually-hidden">{voice}</span>}</span>}
+          : details ? <button type="button" className={pawnClass} aria-label={person.name} aria-description={details}>{inner}</button>
+            : <span className={pawnClass}>{inner}</span>}
       </Tooltip>
-      <span className="c3-couch-activity"><ChannelActivityIndicators sharing={person.sharing} viewing={person.viewing}
-        sendingFiles={person.sendingFiles} receivingFiles={person.receivingFiles} /></span>
     </span>;
   }
-  return <section className={`c3-couch ${className}`} aria-label={t("channel.couch.friendsInThisRoom")}
+  return <section className={`c3-couch ${className}`} data-compact={compact || floating || undefined} aria-label={t("channel.couch.friendsInThisRoom")}
     style={{ "--c3-couch-seat": `${seatWidth}px`, "--c3-couch-gutter": `${SEAT_GUTTER}px` } as CSSProperties}>
     <div ref={container} className="c3-couch-width">
       <div ref={area} className="c3-couch-scene" style={{ width }}>
