@@ -9144,6 +9144,9 @@ test("bulk waits for its own open and buffer while control and media remain avai
     await new Promise(resolve => setTimeout(resolve, 0));
     bulk.close();
     await expect(closing).rejects.toThrow("data_channel_unavailable");
+    const allocationFailure = new DOMException("Data channel IDs exhausted", "OperationError");
+    vi.spyOn(pc, "createDataChannel").mockImplementationOnce(() => { throw allocationFailure; });
+    await expect(media.sendData("z", "chunk", new Uint8Array([5]))).rejects.toBe(allocationFailure);
     await media.sendData("z", "control", "still-open");
     media.update("a", state);
     expect(pc.channels).toHaveLength(3);
@@ -10275,6 +10278,58 @@ test("transient transport loss retains base leases and proves new leases after r
     ]);
     expect(sent.at(-1)).toEqual({ type: "link_state", pairId: "pair", state: "failed" });
   } finally { media.reset(); session.close(); }
+});
+
+test.each(["piik-room", "piik-file"])("a rejected %s channel preserves the voice on the same connected pair", async rejectedLane => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { session, socket } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ audience: [], id: "voice", roomId: "first", sessionId: "z-voice", userId: "other", kind: "voice", paused: false }];
+    state.pairs = [{ id: "pair", peerId: "z-voice", canReceiveVideoLayers: false, rooms: [],
+      incoming: [{ id: "voice-flow", publicationId: "voice", selected: true, inputFlowId: null }], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    const [pc] = RoomPeerConnection.instances;
+    pc.connected();
+    const voice = remoteStream("voice-stream", [remoteTrack("audio")]);
+    socket.receive({ type: "signal", pairId: "pair", fromSessionId: "z-voice", payload: {
+      exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "voice offer" }, tracks: [{ flowId: "voice-flow", streamId: voice.id }],
+    } });
+    await vi.waitFor(() => expect(pc.remoteDescription).not.toBeNull());
+    pc.ontrack?.({ streams: [voice] });
+    expect(session.getSnapshot().streams.get("voice")).toBe(voice);
+
+    const createDataChannel = pc.createDataChannel.bind(pc);
+    const create = vi.spyOn(pc, "createDataChannel").mockImplementation((label, options) => {
+      if (label === rejectedLane) throw new DOMException("Data channel IDs exhausted", "OperationError");
+      return createDataChannel(label, options);
+    });
+    const attempted = rejectedLane === "piik-room" ? ["piik-room"] : ["piik-room", "piik-file"];
+    state.pairs[0].rooms.push("first");
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state });
+    const failure = { type: "room_data_state", pairId: "pair", roomId: "first", ready: false };
+    expect(socket.sent.filter(command => command.type === "room_data_state")).toEqual([failure]);
+    expect(create.mock.calls.map(([label]) => label)).toEqual(attempted);
+    expect(pc.channels.map(({ label, readyState }) => [label, readyState]))
+      .toEqual(rejectedLane === "piik-room" ? [] : [["piik-room", "closed"]]);
+    expect(socket.sent).not.toContainEqual({ type: "link_state", pairId: "pair", state: "failed" });
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get("voice")).toBe(voice);
+
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "room_data_state")).toEqual([failure]));
+    expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([{ type: "link_state", pairId: "pair", state: "connected" }]);
+    expect(RoomPeerConnection.instances).toEqual([pc]);
+    expect(create).toHaveBeenCalledTimes(attempted.length);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get("voice")).toBe(voice);
+  } finally { session.close(); }
 });
 
 test("connected media keeps its PC when the room data channel exceeds the existing preparation deadline", async () => {

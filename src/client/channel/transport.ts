@@ -256,10 +256,17 @@ export class ChannelTransport {
       if (this.dataLifetime.signal.aborted) this.dataLifetime = new AbortController();
     }
     if (!rooms.length || this.dataLifetime.signal.aborted) { this.syncDeadline(); return; }
-    if (!this.channel && !this.options.polite) {
-      this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
+    try {
+      if (!this.channel && !this.options.polite) {
+        this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
+      }
+      this.ensureBulkChannel();
+    } catch (error) {
+      if (this.pc.connectionState !== "connected" || !(error instanceof DOMException) || error.name !== "OperationError") throw error;
+      console.warn("Could not create the room data channels", error);
+      this.failRoomData();
+      return;
     }
-    this.ensureBulkChannel();
     this.reportRoomDataReady();
     this.syncDeadline();
     if (changed) this.retryOffer();
