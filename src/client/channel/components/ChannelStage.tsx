@@ -105,7 +105,7 @@ export interface ScreenStageSource extends StagePictureSource {
   waitingForInput?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
-  shareControls?: ReactNode;
+  shareControls?: (actions: ReactNode, compact: boolean) => ReactNode;
   interaction?: RoomInteractionSession | null;
   sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; canDisable?: boolean; onEnabled: (enabled: boolean) => void };
   inputs?: readonly ChannelScreenInput[];
@@ -197,7 +197,8 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
 
 export interface ChannelStageProps {
   layoutHome?: HTMLElement | null;
-  roomLayout?: boolean;
+  /** Measure the settled living-room area before painting a companion change. */
+  roomLayout?: "chat" | "people" | "none";
   theaterMode: ReturnType<typeof useTheaterMode>;
   buffering?: import("../../components/living/PlaybackSettings").PlaybackSettingsProps["buffering"];
   sources: ChannelStageSource[];
@@ -394,6 +395,24 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
             deliveryFailed: source.deliveryFailed, waitingForInput: source.waitingForInput, playbackError: source.playbackError });
           const retryable = failed || !waiting && !source.waitingForInput;
           const help = diagnosis && canSubscribe && !waiting && !source.pending && !source.hidden;
+          const groupPublishing = fitGrid && !!size && size.width <= 480 && !waiting;
+          const publishingActions = !waiting && source.owned && <>
+            {source.sourceAudio && <SourceSound sound={source.sourceAudio} title={title} />}
+            {microphone && <VoiceMicrophoneButton active={microphone.enabled}
+              quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
+              disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
+              hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
+              onClick={() => microphone.onEnabled(!microphone.enabled)} />}
+            <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
+              title={{ text: source.pauseAvailable === false
+                ? t("screen.actionAfterReconnect", { action: t(source.paused ? "host.resume" : "host.pause") })
+                : t(source.paused ? "host.resume" : "host.pause") }} pressed={source.paused}
+              disabled={source.pauseAvailable === false || source.pausePending}
+              hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
+              onClick={() => onPause(source.id, !source.paused)} />
+            {source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
+              onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
+          </>;
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={tileStyle}
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
@@ -412,8 +431,7 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
               }}
               label={`${title} / ${source.name} / ${source.roomName}`} />
               : <div className="c3-monitor-wait" data-failed={failed || undefined}>
-                {source.paused || failed || source.waitingForInput
-                  ? <Glyph name={source.paused ? "pause" : failed ? "x" : "tv"} size={24} /> : <BrandLoader />}
+                {source.paused || failed || source.waitingForInput ? <Glyph name={source.paused ? "pause" : failed ? "x" : "tv"} size={24} /> : <BrandLoader />}
                 <span role="status">{t(source.paused ? "host.pauseNotice" : playbackFailed && diagnosis ? diagnosis.message
                   : source.deliveryFailed ? "screen.deliveryRetry" : source.waitingForInput ? "screen.waitingPicture" : "screen.connectingPicture")}</span>
                 {!source.paused && !source.owned && !source.localSource && (retryable || help) &&
@@ -451,22 +469,7 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
                       title={{ text: t("screen.focusNamed", { title }) }} onClick={() => onFocus(source.id)} /></Tooltip>}
                   {!waiting && source.owned && <div className="c3-monitor-publishing" role="group"
                     aria-label={t("screen.sharingControls", { title })}>
-                    {!source.hidden && source.shareControls}
-                    {source.sourceAudio && <SourceSound sound={source.sourceAudio} title={title} />}
-                    {microphone && <VoiceMicrophoneButton active={microphone.enabled}
-                      quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
-                      disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
-                      hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
-                      onClick={() => microphone.onEnabled(!microphone.enabled)} />}
-                    <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
-                      title={{ text: source.pauseAvailable === false
-                        ? t("screen.actionAfterReconnect", { action: t(source.paused ? "host.resume" : "host.pause") })
-                        : t(source.paused ? "host.resume" : "host.pause") }} pressed={source.paused}
-                      disabled={source.pauseAvailable === false || source.pausePending}
-                      hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
-                      onClick={() => onPause(source.id, !source.paused)} />
-                    {source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
-                      onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
+                    {source.shareControls ? !source.hidden && source.shareControls(publishingActions, groupPublishing) : publishingActions}
                     <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"
                       title={{ text: t("screen.stopSharing", { title }) }}
                       hint="hint-share-stop" busy={source.pending} disabled={source.pending} onClick={() => onStop(source.id)} /></span>

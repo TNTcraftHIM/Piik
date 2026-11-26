@@ -42,10 +42,21 @@
 }
 .c3-monitor-grid[data-fitted].is-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow: visible; scrollbar-gutter: auto; }
 .c3-monitor-grid[data-fitted] > .c3-monitor-tile { place-self: center; width: var(--stage-picture-width); border: 0; box-shadow: 0 0 0 1px var(--line); }
-/* Keep the source actions on one line; a narrow caption already scrolls horizontally. */
+/* Publishing settings take the adjustments on small cards. */
 .c3-monitor-grid[data-fitted] .c3-monitor-tile-actions { flex: none; }
 .c3-monitor-grid[data-fitted] .c3-monitor-source-info { min-width: min-content; }
 .c3-monitor-grid[data-fitted] .c3-monitor-social { min-width: max-content; }
+.c3-share-live-actions, .c3-share-inline-actions { display: contents; }
+.c3-share-publication-actions:empty { display: none; }
+.c3-share-publication-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 12px; }
+@container (max-width: 480px) {
+  .c3-monitor-grid[data-fitted] .c3-monitor-tile .c3-monitor-source-row { padding-inline: 4px; }
+  .c3-monitor-grid[data-fitted] .c3-monitor-layout-action { position: absolute; top: 4px; right: 4px; z-index: 1; }
+  .c3-monitor-grid[data-fitted] .c3-monitor-layout-action .lr-btn { background: var(--wall); }
+}
+@container (max-width: 240px) {
+  .c3-monitor-grid[data-fitted] .c3-monitor-social { position: absolute; top: 4px; left: 4px; max-width: calc(100% - 48px); min-width: 0; background: var(--wall); border-radius: var(--c3-inset-radius); }
+}
 .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) {
   flex: none;
   min-height: 0;
@@ -55,7 +66,9 @@
 .c3-monitor-tile.is-thumbnail .c3-monitor-source-row { padding: 0 4px; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */
 .c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions > :not(.c3-monitor-close, .c3-monitor-publishing, .c3-monitor-layout-action),
-.c3-monitor-tile.is-thumbnail .c3-monitor-publishing > :not(.c3-monitor-close, .c3-source-audio) { display: none; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-publishing > :not(.c3-monitor-close, .c3-source-audio, [data-publication-actions]),
+.c3-monitor-tile.is-thumbnail [data-publication-actions] .c3-share-actions > :not(.c3-share-inline-actions),
+.c3-monitor-tile.is-thumbnail .c3-share-inline-actions .c3-share-live-actions > :not(.c3-source-audio) { display: none; }
 .c3-monitor-close, .c3-monitor-layout-action { display: inline-flex; }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
 .c3-monitor-tile > footer { display: flex; flex: none; flex-direction: column; gap: 2px; padding: 0; }

@@ -42,7 +42,7 @@ describe("Playback audio controls", () => {
     const source: ChannelStageProps["sources"][number] = {
       kind: "screen", id: "screen", userId: "self", name: "Me", roomName: "Room",
       source: { kind: "screen", name: "Own screen" }, title: null, owned: true, audience: [], subscribed: true,
-      localSource: true, paused: false, stream: {} as MediaStream, shareControls: createElement("button", { id: "share-settings" }),
+      localSource: true, paused: false, stream: {} as MediaStream, shareControls: () => createElement("button", { id: "share-settings" }),
     };
     const render = (hidden: boolean) => renderToStaticMarkup(createElement(ChannelStage, {
       theaterMode: [false, vi.fn()], sources: [{ ...source, hidden }], focusedId: null, canSubscribe: true,

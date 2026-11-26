@@ -27,6 +27,7 @@
   padding: 0; overflow: hidden;
 }
 .c3-quality-picker:popover-open { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.c3-share-settings-content { display: contents; }
 .c3-quality-body { overflow: auto; overscroll-behavior: contain; }
 .c3-quality-picker .lr-sharing-panel { margin: 0; border: 0; border-radius: inherit; box-shadow: none; animation: none; }
 .c3-quality-picker > .c3-quality-heading {
