@@ -1843,13 +1843,13 @@ impl Session {
                             };
                             // The Ack owns exactly these callers from this point on. A retired or
                             // rejected mailbox drops their LocalAnswers with their original error.
-                            live.room.rooms.post(&room_id, false, false, move |host| {
+                            live.room.rooms.post(&room_id, true, false, move |host| {
                                 let summary = host
                                     .as_ref()
                                     .filter(|h| h.binding().is_some())
                                     .map(HostedRoom::summary);
                                 Ok(Box::new(move |_, delivery| {
-                                    if delivery.connected {
+                                    if delivery.current {
                                         for reply in replies {
                                             reply.finish(
                                                 summary

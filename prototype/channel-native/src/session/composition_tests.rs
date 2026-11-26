@@ -798,3 +798,66 @@ async fn room_review_fresh_welcome_settles_saved_registration_when_open_fails() 
     ensure!(!native.opening.contains_key(&id) && matches!(&*ready.borrow(), Some(Ok(()))));
     native.release().await
 }
+
+#[tokio::test]
+async fn confirmed_registration_replies_locally_after_its_carrier_disconnects() -> Result<()> {
+    let (mut core, mut native, _directory, _ready, _welcome) = room_review_session()?;
+    let id = core.room_ids[0].clone();
+    let summary = piik_channel_core::StoredRoomHost::open(&core.paths[&id])
+        .map_err(anyhow::Error::from_boxed)?
+        .summary();
+    let (result, reply) = oneshot::channel();
+    let writes = native.register_room(summary, None, false, OpeningReply::new(None, result, None));
+    let [(register, request_id)] = writes
+        .try_into()
+        .map_err(|_| anyhow!("expected one registration"))?;
+    let addressed = core.command(register, request_id.clone()).events;
+    let mut wire = RecordedSink::default();
+    let mut sync = None;
+    let mut confirmed = false;
+    for (to, event) in addressed {
+        if to != core.connection {
+            continue;
+        }
+        let bound = matches!(&event, Event::HostBound { room_id, .. } if room_id == &id);
+        let input = matches!(&event, Event::HostInput { room_id, .. } if room_id == &id);
+        let ack = matches!(&event, Event::Ack {request_id: returned} if Some(returned) == request_id.as_ref());
+        native.route_event(event, &mut wire).await?;
+        if bound {
+            receive_one_room(&mut native, &mut wire).await?;
+        }
+        if input {
+            // Holding the preceding Sync completion keeps this room's Ack query queued.
+            sync = native
+                .live
+                .as_mut()
+                .unwrap()
+                .room
+                .rooms
+                .finished
+                .recv()
+                .await;
+        }
+        if ack {
+            confirmed = true;
+            break;
+        }
+    }
+    ensure!(confirmed && !native.opening.contains_key(&id));
+    native.live.as_mut().unwrap().room.disconnected();
+    native
+        .finish_room(sync.context("missing Core Sync")?, None)
+        .await?;
+    let queried = time::timeout(
+        Duration::from_secs(3),
+        native.live.as_mut().unwrap().room.rooms.finished.recv(),
+    )
+    .await?
+    .context("missing Ack query")?;
+    native.finish_room(queried, None).await?;
+    ensure!(native.live.as_ref().unwrap().room.rooms[&id]
+        .binding()
+        .is_some());
+    ensure!(reply.await?.map_err(anyhow::Error::msg)?.id == id);
+    native.release().await
+}
