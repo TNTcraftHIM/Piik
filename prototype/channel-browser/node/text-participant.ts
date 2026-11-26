@@ -62,8 +62,8 @@ type Pending = {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 };
-function expectsWriterResult(pending: Pending): boolean {
-  return pending.expects !== 'ack' && pending.expects !== 'room_created';
+function expectsWriterResult(expects: Pending['expects']): boolean {
+  return expects !== 'ack' && expects !== 'room_created';
 }
 /** Only socket/request I/O; the existing Core WASM signs and validates every room record. */
 export type TextParticipantEvents = {
@@ -237,7 +237,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
         reject(new Error('request_timeout'));
-      }, expects === 'ack' || expects === 'room_created' ? 10_000 : 30_000);
+      }, expectsWriterResult(expects) ? 30_000 : 10_000);
       const roomId = command.type === 'conversation' ? this.roomId : 'roomId' in command ? command.roomId : undefined;
       this.pending.set(requestId, { roomId, expects, reject, timer, resolve(value) {
         try { accepted?.(); resolve(value); }
@@ -328,7 +328,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       // All pending conversation records belong to the one selected room and its previous binding.
       if (!room?.authorized || !room.available || room.delivery?.bindingId !== previous) {
         for (const [id, pending] of this.pending) {
-          if (expectsWriterResult(pending))
+          if (expectsWriterResult(pending.expects))
             this.complete(id, undefined, new Error('room_unavailable'));
         }
       }
@@ -352,7 +352,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (!pending || pending.roomId !== event.roomId) return;
       if (event.result.type === 'error')
         this.complete(event.requestId, undefined, Error(event.result.code));
-      else if (expectsWriterResult(pending)) return;
+      else if (expectsWriterResult(pending.expects)) return;
       else if (pending.expects === 'ack' && event.result.type === 'done')
         this.complete(event.requestId, event.result);
       else this.complete(event.requestId, undefined, Error('invalid_response'));
@@ -375,7 +375,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       return;
     }
     if (record.type === 'message_reactions') return;
-    if (pending && expectsWriterResult(pending) && record.type !== pending.expects) {
+    if (pending && expectsWriterResult(pending.expects) && record.type !== pending.expects) {
       this.complete(reply.requestId, undefined, Error(record.type === 'error' ? record.code : 'invalid_response'));
       return;
     }
