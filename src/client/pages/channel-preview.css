@@ -216,7 +216,7 @@
   .c3-shell > .c3-room-presence { grid-row: 4; }
   .c3-shell > .c3-personal { grid-row: 5; }
   .c3-room-presence { padding: 4px 12px 8px; }
-  .c3-personal .c3-identity { display: none; }
+  .c3-personal .c3-identity:not(:focus-within, :has(.c3-name-popover:popover-open)) { display: none; }
   .c3-shell[data-pane="rooms"] .c3-personal .c3-identity { display: flex; }
   .c3-room-name h2 { font-size: 17px; }
   .c3-room-heading .c3-share-control:nth-child(1) .lr-cap { display: inline; }

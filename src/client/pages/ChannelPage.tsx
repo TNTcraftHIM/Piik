@@ -139,6 +139,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [companionChoice, setCompanionChoice] = useState<Companion>();
   const [toolTriggerHome, setToolTriggerHome] = useState<HTMLDivElement | null>(null);
   const [stageLayoutHome, setStageLayoutHome] = useState<HTMLDivElement | null>(null);
+  const [moreHome, setMoreHome] = useState<HTMLDivElement | null>(null);
   const [voiceToolsHost, setVoiceToolsHost] = useState<HTMLDivElement | null>(null);
   const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
   const [newRoom, setNewRoom] = useState<string | RoomCreationInterrupted | null>(null);
@@ -341,7 +342,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const joined = myVoice.some(value => value.roomId === roomId);
   // A join reports here, not in a slot: membership arrives before the join settles and the slot moves with the room tool.
   const voiceJoin = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId]));
-  const joinVoice = room?.authorized && (!joined || busy("voice", roomId) || voiceJoin.error) ? <ChannelJoinVoice quiet joined={joined && !busy("voice", roomId)}
+  const joinVoice = room?.authorized && (!joined || busy("voice", roomId) || voiceJoin.error) ? <ChannelJoinVoice tonal={bar} joined={joined && !busy("voice", roomId)}
     disabled={joined || !connected || !room.available} busy={busy("voice", roomId)}
     error={voiceJoin.error} onJoin={listenOnly => { void voiceJoin.run(() => channel.joinVoice(roomId, listenOnly, false), () => setVoiceFocus(roomId)); }} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
@@ -397,7 +398,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
   // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
   // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
-  const visibleWatches = watches.filter(activity => activity.roomId === roomId && mobilePane === "room"
+  const visibleWatches = watches.filter(activity => activity.roomId === roomId && !(phone && roomListOpen)
     && (!theaterVisible || activity.id === focusedScreen));
   const sourceAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]), [
     ...publications.map(publication => ({ id: `picture:${publication.id}` })), ...visibleWatches.map(activity => ({ id: `watch:${activity.id}` })),
@@ -466,8 +467,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     <ChannelForwardingSettings channel={channel} />
     {previewOptions}
   </>;
-  const chatToggle = state && !overview && !roomToolOpen && (hasPictures || minimal) && room?.authorized && <Btn id="c3-chat-trigger" icon="chat" title="conversation.chat" size="dense" quiet textTooltip
-        pressed={!conversationHidden} controls="c3-chat" onClick={() => toggleCompanion("chat")} />;
+  const chatToggle = state && !overview && !roomToolOpen && (hasPictures || minimal) && room?.authorized && <Btn id="c3-chat-trigger" icon="chat" title="conversation.chat" size={bar ? "compact" : "dense"} quiet={!bar} className={bar ? "is-tonal" : undefined}
+        cap={minimal && !phone ? "conversation.chat" : undefined} textTooltip pressed={!conversationHidden} controls="c3-chat" onClick={() => toggleCompanion("chat")} />;
   const connections = room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />;
   const standingTools = <div className="c3-standing-room-tools" hidden={phone && roomListOpen}>
     {connections}{room?.authorized && <div ref={setToolTriggerHome} />}
@@ -496,13 +497,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     : ownWatch ? () => run(channel.stopWatch(ownWatch.id)) : undefined;
   const ownShareId = ownShare?.id ?? ownWatch?.id;
   const personal = <div className="c3-personal">
-    {self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
-      <div><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>
-      <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
-        busy={busy("profile")} onSave={channel.updateProfile} />
-      {!phone && <HeaderControls personalControls={personalControls} />}
-    </div>}
-    {!phone && !self && <HeaderControls personalControls={personalControls} />}
+    <div className="c3-identity">
+      {self && <>
+        {(bar || !roomListCompact) && <PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />}
+        {!minimal && <div className="c3-identity-copy"><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>}
+        <ChannelProfileEditor triggerStyle={minimal ? "name" : !bar && roomListCompact ? "pawn" : "pencil"} key={self.id}
+          userId={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
+          busy={busy("profile")} onSave={channel.updateProfile} />
+      </>}
+      <div ref={setMoreHome} className="c3-more-home" />
+    </div>
     <div className="c3-living-actions">
       <div ref={voiceSlot} className="c3-room-slot" />
       {room?.authorized && (stopOwnShare ? <Btn icon="stop" size="compact" tone="danger" title="host.stop"
@@ -560,8 +564,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {!connected && <LedStrip state={connection === "closed" ? "bad" : "busy"}
           label={connectionLabel} comic={connection === "closed" ? "signal-failed"
             : connection === "reconnecting" ? "signal-recovering" : "signal-connecting"} />}
-      </div>{roomHeading}{!phone ? <div className="c3-living-app">{standingTools}{appControl}</div>
-        : <div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls} /></div>}
+      </div>{roomHeading}<div className={bar ? "lr-top c3-global-tools" : "c3-living-app"}>
+        {standingTools}<HeaderControls appControl={appControl} moreTarget={bar ? null : moreHome} personalControls={personalControls} />
+      </div>
       </header>
       <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}
         hidden={bar && !roomListOpen} inert={bar && !roomListOpen || undefined}>
@@ -738,7 +743,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
             onSend={channel.sendMessage} onDiscardSend={channel.discardMessageRetry} floating={roomToolOpen} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
-            {joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
+            {joinVoice && <>{!bar && <div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>}{joinVoice}</>}
           </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
             renderingBySpeaker={renderingBySpeaker} onBrowse={id => { setVoiceFocus(id); selectRoom(id); }} toolsTarget={voiceToolsHost} /></>} />
       </div>

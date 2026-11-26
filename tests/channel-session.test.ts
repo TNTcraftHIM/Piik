@@ -14,7 +14,7 @@ import { channelErrorPresentation } from "../src/client/channel/error-presentati
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
 import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";
-import { resolveVoiceDockControls } from "../src/client/channel/voice-dock-controls";
+import { resolveRoomVoiceControls } from "../src/client/channel/voice-dock-controls";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
 import * as indexedSource from "../src/client/channel/watch-indexed-source";
@@ -2353,11 +2353,9 @@ test("mute and leave supersede a pending unmute without activating a late microp
     const opening = session.setMuted("first", false);
     const openingAborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
     expect(session.getSnapshot().pending.has("voice:first")).toBe(true);
-    const controls = resolveVoiceDockControls({
-      ...session.getSnapshot(), voiceMicrophonePending: session.voiceMicrophonePending, canUnmute: session.canUnmute,
-      setMuted: session.setMuted, setDeafened: session.setDeafened,
-    }, "first");
-    expect(controls.activity?.muted).toBe(true);
+    const member = session.getSnapshot().state!.voice.find(value => value.roomId === "first")!;
+    expect(member.muted).toBe(true);
+    const controls = resolveRoomVoiceControls(session, member);
     expect(controls.microphonePending).toBe(true);
     expect(controls.microphoneDisabled).toBe(false);
     await session.setDeafened("first", true);

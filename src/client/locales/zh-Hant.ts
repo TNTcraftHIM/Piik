@@ -1025,6 +1025,8 @@ export const zhHant = {
   "voice.undeafen": "恢復收聽",
   "voice.deafenHint": "僅暫停你這裡的語音播放，麥克風與轉發繼續。",
   "voice.undeafenHint": "恢復房間語音收聽，不改變麥克風狀態。",
+  "voice.leave.short": "退出",
+  "voice.listening.short": "收聽",
   "voice.leave": "退出語音",
   "voice.microphoneOn": "開啟麥克風",
   "voice.microphoneOff": "關閉麥克風",

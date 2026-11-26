@@ -1,5 +1,6 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useId, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { useCallback, useId, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
@@ -104,11 +105,23 @@ function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; di
   </div>;
 }
 
-export function HeaderControls({ diagnosticControl, appControl, personalControls }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode; personalControls?: React.ReactNode } = {}) {
+export function HeaderControls({ diagnosticControl, appControl, personalControls, moreTarget }: {
+  diagnosticControl?: React.ReactNode; appControl?: React.ReactNode; personalControls?: React.ReactNode; moreTarget?: HTMLElement | null;
+} = {}) {
   const { t } = useCopy();
   const trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
   const id = useId();
   const [open, setOpen] = useState(false);
+  const invoker = useRef<HTMLSpanElement>(null);
+  const restoreTriggerFocus = useRef(false);
+  const setTrigger = useCallback((anchor: HTMLSpanElement | null) => {
+    if (!anchor) restoreTriggerFocus.current = Boolean(trigger.current?.contains(trigger.current.ownerDocument.activeElement));
+    trigger.current = anchor;
+    if (anchor && restoreTriggerFocus.current) {
+      restoreTriggerFocus.current = false;
+      anchor.querySelector("button")?.focus({ preventScroll: true });
+    }
+  }, []);
   useAnchoredPopover(trigger, options);
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
@@ -129,14 +142,20 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
         </span>
     </button>
   );
+  const more = <span ref={setTrigger} className="lr-header-more">
+    <Btn icon="more" title="header.more" textTooltip size="compact" quiet popoverTarget={id} controls={id} expanded={open} />
+  </span>;
   return (
     <div className="lr-top-right lr-header-controls">
       {appControl}
-      <span ref={trigger} className="lr-header-more">
-        <Btn icon="more" title="header.more" textTooltip size="compact" quiet popoverTarget={id} controls={id} expanded={open} />
-      </span>
+      {moreTarget ? createPortal(<div className="lr-top-right lr-header-controls">{more}</div>, moreTarget) : more}
       <div ref={options} id={id} popover="auto" role="dialog" aria-label={t("header.more")}
-        className="lr-header-options lr-anchored-card" onToggle={event => {
+        className="lr-header-options lr-anchored-card" onBeforeToggle={event => {
+          if (event.target !== event.currentTarget) return;
+          if (event.newState === "open") invoker.current = trigger.current;
+          else if (invoker.current !== trigger.current && event.currentTarget.contains(event.currentTarget.ownerDocument.activeElement))
+            trigger.current?.querySelector("button")?.focus({ preventScroll: true });
+        }} onToggle={event => {
           if (event.target === event.currentTarget) setOpen(event.newState === "open");
         }}>
         <div className="lr-header-settings">

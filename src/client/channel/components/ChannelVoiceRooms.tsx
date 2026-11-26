@@ -42,7 +42,7 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
     const status = roomVoiceStatus(state, channel.sessionId, roomId, renderingBySpeaker);
     const showRoomInfo = !direct || !current || joined.length > 1 || status === "joining";
     return <ChannelVoiceRoomRow key={roomId} channel={channel} activity={activity} name={name}
-      current={current} visible={visible} direct={direct} status={status} showRoomInfo={showRoomInfo}
+      current={current} visible={visible} direct={direct} labelled={direct && density === "bar"} status={status} showRoomInfo={showRoomInfo}
       shortcuts={roomId === shortcutRoomId ? shortcuts : undefined}
       onBrowse={() => { dismiss?.(); onBrowse(roomId); }} />;
   };
@@ -79,9 +79,9 @@ function ChannelVoiceRoomDisclosure({ count, layoutAnchor, children }: {
   </div>;
 }
 
-function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct, status, showRoomInfo, shortcuts, onBrowse }: {
+function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct, labelled, status, showRoomInfo, shortcuts, onBrowse }: {
   channel: ChannelController; activity: VoiceActivity; name: string; current: boolean; visible: boolean;
-  direct: boolean; showRoomInfo: boolean; status: keyof typeof VOICE_STATUS_LABEL; shortcuts?: Shortcuts; onBrowse: () => void;
+  direct: boolean; labelled: boolean; showRoomInfo: boolean; status: keyof typeof VOICE_STATUS_LABEL; shortcuts?: Shortcuts; onBrowse: () => void;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -100,12 +100,12 @@ function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct
       </Tooltip>
     </div>}
     <div className="c3-voice-room-actions">
-      <VoiceMicrophoneButton active={!muted} level={level} disabled={microphoneDisabled} cancelPending={microphonePending} className="is-tonal"
+      <VoiceMicrophoneButton cap={labelled ? "host.device.microphone" : undefined} active={!muted} level={level} disabled={microphoneDisabled} cancelPending={microphonePending} className="is-tonal"
         keyShortcuts={voiceShortcutAria(microphone ?? null)} shortcutLabel={microphone && shortcuts ? voiceShortcutLabel(microphone, shortcuts.mac) : undefined}
         onClick={() => toggle("microphone")} />
-      <VoiceListeningButton deafened={deafened} className="is-tonal" keyShortcuts={voiceShortcutAria(listening ?? null)}
+      <VoiceListeningButton cap={labelled ? "voice.listening.short" : undefined} deafened={deafened} className="is-tonal" keyShortcuts={voiceShortcutAria(listening ?? null)}
         shortcutLabel={listening && shortcuts ? voiceShortcutLabel(listening, shortcuts.mac) : undefined} onClick={() => toggle("listening")} />
-      <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" className="is-tonal"
+      <Btn icon="door" cap={labelled ? "voice.leave.short" : undefined} title="voice.leave" hint="hint-voice-leave" size="compact" className="is-tonal"
         onClick={() => { void channel.leaveVoice(roomId).catch(() => {}); }} />
     </div>
   </div>;

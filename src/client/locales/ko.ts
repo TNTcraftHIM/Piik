@@ -1031,6 +1031,8 @@ export const ko = {
   "voice.undeafen": "듣기 재개",
   "voice.deafenHint": "내 방 음성 재생을 일시 중지해요. 마이크와 전달은 계속돼요.",
   "voice.undeafenHint": "마이크 설정을 바꾸지 않고 방 음성 재생을 재개해요.",
+  "voice.leave.short": "나가기",
+  "voice.listening.short": "듣기",
   "voice.leave": "음성 나가기",
   "voice.microphoneOn": "마이크 켜기",
   "voice.microphoneOff": "마이크 끄기",

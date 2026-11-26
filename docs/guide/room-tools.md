@@ -167,7 +167,7 @@ browser's site storage and are not sent to the room.
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
 Microphone and listening controls do not change the shared picture's sound.
-Room managers can change **Room voice bitrate** in voice settings.
+Room managers can change **Room voice bitrate** in the room's settings.
 The microphone's green fill follows your voice level. Friends' microphone booms
 light up as their voices arrive; an unfolded boom by itself means the microphone is on.
 

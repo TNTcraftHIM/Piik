@@ -164,13 +164,14 @@ export class VoiceParticipation {
     const closing = [...this.rooms.keys()].filter(roomId => on.has(roomId) || action === "microphone" && this.microphonePending(roomId));
     const set = action === "microphone" ? this.setMuted : this.setDeafened;
     if (closing.length) {
+      // Apply the entire press before projecting which rooms are still on.
+      for (const roomId of closing) this.setLocalControl(this.rooms.get(roomId)!, action, true);
+      this.refresh();
       for (const roomId of closing) {
         // Cancel an unjoined room's request before it can announce participation.
-        const operation = members.some(member => member.roomId === roomId) ? set(roomId, true) : this.leave(roomId);
+        const operation = members.some(member => member.roomId === roomId) ? this.sync(roomId) : this.leave(roomId);
         void operation.catch(() => {});
       }
-      // The writes above refresh synchronously. Remember the whole press, ahead of any replies.
-      if (on.size) this.lastOn[action] = on;
       return true;
     }
     const joined = [...this.rooms.keys()].filter(roomId => members.some(member => member.roomId === roomId));
@@ -210,13 +211,22 @@ export class VoiceParticipation {
     return levels;
   };
 
+  private setLocalControl(intent: VoiceIntent, action: VoiceToggleAction, off: boolean): MediaStream | undefined {
+    if (action === "listening") {
+      intent.deafened = off;
+      return;
+    }
+    intent.muted = off;
+    const stream = intent.publicationId ? this.session.local.get(intent.publicationId)?.stream : undefined;
+    stream?.getAudioTracks().forEach(track => { track.enabled = !off; });
+    return stream;
+  }
+
   setMuted = (roomId: string, muted: boolean): Promise<void> => {
     const intent = this.rooms.get(roomId);
     if (!intent) return Promise.resolve();
     if (!muted && !this.canUnmute(roomId)) return Promise.reject(new Error("capture_unavailable"));
-    intent.muted = muted;
-    const stream = intent.publicationId ? this.session.local.get(intent.publicationId)?.stream : undefined;
-    stream?.getAudioTracks().forEach(track => { track.enabled = !muted; });
+    const stream = this.setLocalControl(intent, "microphone", muted);
     this.refresh();
     if (!muted && !stream) return this.session.action(roomKey(roomId), async () => {
       try {
@@ -244,7 +254,7 @@ export class VoiceParticipation {
   setDeafened = (roomId: string, deafened: boolean): Promise<void> => {
     const intent = this.rooms.get(roomId);
     if (!intent) return Promise.resolve();
-    intent.deafened = deafened;
+    this.setLocalControl(intent, "listening", deafened);
     this.refresh();
     return this.sync(roomId);
   };

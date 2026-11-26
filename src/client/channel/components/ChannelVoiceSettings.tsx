@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { MicrophoneSettings } from "../../components/living/MicrophoneSettings";
 import { AudioVolumeControl } from "../../components/living/AudioVolumeControl";
-import { AudioBitrateControl } from "../../components/living/QualityPresets";
 import { WrappingSegmentedControl } from "../../components/living/WrappingSegmentedControl";
-import { MAX_AUDIO_SEND_BITRATE } from "../../media/quality";
 import { supportsStrongerSuppression } from "../../media/microphone-input";
 import { dbfsFromLevel, microphoneModes, VOICE_ACTIVATION_RANGE_DBFS } from "../../media/voice-gate";
 import { Btn, SwitchItem } from "../../components/living/primitives";
@@ -18,11 +16,11 @@ import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
 import "./channel-voice-settings.css";
 
 type VoiceSettingsProps = {
-  channel: ChannelController; roomId?: string; available: boolean; shortcuts: ReturnType<typeof useVoiceShortcuts>;
+  channel: ChannelController; available: boolean; shortcuts: ReturnType<typeof useVoiceShortcuts>;
 };
 
-export function ChannelVoiceSettings({ triggerDocument, renderTrigger, ...props }: VoiceSettingsProps & {
-  triggerDocument?: Document; renderTrigger?: (trigger: ReactNode) => ReactNode;
+export function ChannelVoiceSettings({ triggerDocument, renderTrigger, onClose, ...props }: VoiceSettingsProps & {
+  triggerDocument?: Document; renderTrigger?: (trigger: ReactNode) => ReactNode; onClose?: () => void;
 }) {
   const { t } = useCopy();
   const surface = useSurfaceDocument();
@@ -38,19 +36,23 @@ export function ChannelVoiceSettings({ triggerDocument, renderTrigger, ...props 
   return <>
     {renderTrigger ? renderTrigger(trigger) : trigger}
     {openDocument && <SurfaceDocument.Provider value={openDocument}>
-      <ChannelSettingsDialog title={t("voice.settings")} compact dismissOnBackdrop onClose={() => setOpenDocument(null)}>
+      <ChannelSettingsDialog title={t("voice.settings")} compact dismissOnBackdrop onClose={() => {
+        setOpenDocument(null);
+        openDocument.defaultView?.requestAnimationFrame(() => {
+          if (openDocument.activeElement === openDocument.body) onClose?.();
+        });
+      }}>
         <ChannelVoiceSettingsForm {...props} />
       </ChannelSettingsDialog>
     </SurfaceDocument.Provider>}
   </>;
 }
 
-export function ChannelVoiceSettingsForm({ channel, roomId, available, shortcuts }: VoiceSettingsProps) {
+export function ChannelVoiceSettingsForm({ channel, available, shortcuts }: VoiceSettingsProps) {
   const { t } = useCopy();
   const id = useId();
   const busy = channel.voiceBusy();
   const enabled = channel.state?.publications.some(publication => publication.kind === "voice" && publication.sessionId === channel.sessionId) ?? false;
-  const room = channel.state?.channel.rooms.find(room => room.id === roomId);
   const supportsEnhanced = supportsStrongerSuppression();
   const configure = (settings: Parameters<ChannelController["configureVoiceInput"]>[0]) => { void channel.configureVoiceInput(settings).catch(() => {}); };
   return <div className="c3-settings-panels c3-voice-settings">
@@ -68,16 +70,10 @@ export function ChannelVoiceSettingsForm({ channel, roomId, available, shortcuts
         label={t("voice.noise.enhanced")} hint="hint-voice-microphone-processing" note={t("voice.noise.enhancedHint")} />
       {!supportsEnhanced && <p role="status">{t("voice.noise.unsupported")}</p>}
     </section>
-    {roomId === undefined && <div className="lr-door-group lr-audio-settings">
+    <div className="lr-door-group lr-audio-settings">
       <AudioVolumeControl volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume" />
-    </div>}
+    </div>
     <ChannelVoiceShortcutSettings pushToTalk={channel.voiceTransmission.mode === "push"} {...shortcuts} />
-    {roomId && room?.canManage && <section aria-labelledby={id + "-room"}>
-      <h3 id={id + "-room"}>{room.name}</h3>
-      <AudioBitrateControl purpose="voice" value={room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
-        disabled={!available || channel.pending.has(`room:${roomId}`)}
-        onChange={bitrate => { void channel.setRoomVoiceBitrate(roomId, bitrate).catch(() => {}); }} />
-    </section>}
   </div>;
 }
 

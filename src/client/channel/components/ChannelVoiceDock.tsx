@@ -105,7 +105,13 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
       {mutedNotice}
     </div>
     <ChannelVoiceSettings channel={channel} available={inputAvailable} shortcuts={shortcuts}
-      triggerDocument={target?.ownerDocument} renderTrigger={renderTools} />
+      triggerDocument={target?.ownerDocument} renderTrigger={renderTools} onClose={() => {
+        // The dialog can outlive the More trigger from which it opened.
+        const menu = target?.closest("[popover]");
+        if (menu?.id) menu.ownerDocument.querySelector<HTMLButtonElement>(
+          `button[aria-controls="${CSS.escape(menu.id)}"]`,
+        )?.focus({ preventScroll: true });
+      }} />
     {overlayView}
   </>;
 }

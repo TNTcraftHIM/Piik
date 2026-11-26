@@ -1025,6 +1025,8 @@ export const ja = {
   "voice.undeafen": "聞くのを再開",
   "voice.deafenHint": "自分の通話音声の再生を一時停止します。マイクと転送は継続します。",
   "voice.undeafenHint": "マイクを変更せずに通話音声の再生を再開します。",
+  "voice.leave.short": "退出",
+  "voice.listening.short": "聴く",
   "voice.leave": "通話から退出",
   "voice.microphoneOn": "マイクをオン",
   "voice.microphoneOff": "マイクをオフ",

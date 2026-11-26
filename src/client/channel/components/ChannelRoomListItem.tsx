@@ -50,7 +50,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         unread={roomHasUnread(room, channel.readByRoom[room.id])} unopened={unopened}
         compact={compact} participantCount={compact ? present.length : undefined}
         participantDisclosure={showPeople ? { open: peopleOpen, count: present.length, controls: id, onToggle: () => setPeopleOpen(value => !value) } : undefined}
-        peopleFaces={showPeople ? <span className="c3-room-faces" aria-hidden="true">
+        peopleFaces={present.length > 0 ? <span className="c3-room-faces" aria-hidden="true">
           {present.slice(0, shownFaces).map(person => <PawnSvg key={person.userId} centered color={participantColor(person.userId)}
             identity={person.userId} avatar={person.avatar} />)}
           {present.length > shownFaces && <span>+{present.length - shownFaces}</span>}
@@ -61,7 +61,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         onSelect={onSelect} onManage={onManage} />
     {showPeople && <div id={id} className="c3-room-people" role="group" aria-label={room.name} hidden={!peopleOpen}>
       {peopleOpen && present.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
-        self={person.userId === channel.self?.id} owner={person.owner} online />)}
+        self={person.userId === channel.self?.id} owner={person.owner} online={person.online} />)}
     </div>}
   </div>;
 }
