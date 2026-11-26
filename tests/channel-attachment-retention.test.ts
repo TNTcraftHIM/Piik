@@ -629,6 +629,34 @@ test.each(["in progress", "completed without retention"])("restore replaces a re
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
+test("restoring new bytes retires a preview receiver before its old file can finish", async () => {
+  const command = vi.fn(async (_event: ChannelCommand) => {});
+  const files = setup(command), oldFile = new File(["GIF89a"], attachment.name);
+  const replacement = { ...attachment, sha256: "b".repeat(64) }, newFile = new File(["GIF87a"], attachment.name);
+  const removeEntry = vi.fn(async () => {});
+  stubTransferStorage({ getFileHandle: async () => ({ getFile: async () => oldFile,
+    createWritable: async () => ({ close: async () => {}, abort: async () => {} }) }), removeEntry });
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...await hosting.loadRoomHosting(),
+    FileDelivery: class {
+      start() { return []; } update() { return []; } cancel() { return []; } free() {}
+      next_deadline() {}
+      control() { return [{ type: "complete", key }]; }
+    },
+  } as never);
+  vi.spyOn(FileStore.prototype, "retain").mockImplementation(async entry => ({ file: entry.file, evicted: [] }));
+  try {
+    const signal = new AbortController().signal;
+    const preview = files.content(key, attachment, signal);
+    void preview.catch(() => {});
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: true }));
+    await files.restoreRetained(key.roomId, [{ key, attachment: replacement, file: newFile }]);
+    files.data("source", "control", "finished");
+    await expect(preview).rejects.toThrow("attachment_unavailable");
+    await expect(files.content(key, replacement, signal)).resolves.toBe(newFile);
+    expect(removeEntry).toHaveBeenCalledOnce();
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("a generated preview cannot replace the original in the download content path", async () => {
   const files = setup(), original = new File(["GIF89a"], attachment.name, { type: attachment.mediaType });
   vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
