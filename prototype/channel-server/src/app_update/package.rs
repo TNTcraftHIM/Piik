@@ -276,7 +276,7 @@ pub(super) fn entries(root: &Path) -> Result<Vec<BundleEntry>> {
 }
 
 impl BundleLayout {
-    pub(super) fn check(&self, root: &Path) -> Result<()> {
+    fn expected_entries(&self) -> Result<Vec<BundleEntry>> {
         ensure!(
             self.schema == 1 && relative_path(&self.entrypoint) && !self.entrypoint.contains('/'),
             "Invalid package layout"
@@ -297,9 +297,26 @@ impl BundleLayout {
             }),
             "Missing package entrypoint"
         );
+        Ok(expected)
+    }
+
+    pub(super) fn check(&self, root: &Path) -> Result<()> {
+        let expected = self.expected_entries()?;
         ensure!(
             entries(root)? == expected,
             "Program directory contains missing, changed or additional entries"
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    pub(super) fn check_remaining(&self, root: &Path) -> Result<()> {
+        let expected = self.expected_entries()?;
+        ensure!(
+            entries(root)?
+                .iter()
+                .all(|entry| expected.binary_search(entry).is_ok()),
+            "Previous program directory contains changed or additional entries"
         );
         Ok(())
     }

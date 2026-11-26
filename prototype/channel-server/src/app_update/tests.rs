@@ -834,3 +834,57 @@ async fn unmanaged_directories_and_data_inside_the_bundle_stay_manual() {
         Some("unmanaged-installation")
     );
 }
+
+#[cfg(windows)]
+#[tokio::test]
+async fn failed_handoff_retries_after_windows_releases_a_download_file() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let fixture = fixture([None, None], [false; 2]).await;
+    let Config::Enabled(options) = &fixture.config.update else {
+        unreachable!()
+    };
+    let installation = package::Installation::inspect(options, &fixture.config).unwrap();
+    let selection = Selection {
+        version: "v3.0.1".into(),
+        revision: SOURCE.into(),
+    };
+    let (_open, closing) = tokio::sync::watch::channel(false);
+    let prepare = || {
+        download::prepare(
+            options,
+            &installation,
+            Uuid::new_v4(),
+            &selection,
+            |_, _, _| {},
+        )
+    };
+    let prepared = prepare().await.unwrap();
+    let path = prepared.directory.path().to_owned();
+    let scanner = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(3)
+        .open(path.join("update.json.sig"))
+        .unwrap();
+    let handoff = |prepared| windows::handoff(options, &installation, prepared, closing.clone());
+    // The fixture App is a text file. Windows rejects the copied helper at CreateProcess.
+    assert_eq!(
+        handoff(prepared).await.unwrap_err().to_string(),
+        "Start update helper"
+    );
+    assert!(installation
+        .data_root
+        .join("update-workspace.json")
+        .is_file());
+    assert!(path.join("update.json.sig").is_file());
+    assert!(path.join("plan.json").is_file());
+    drop(scanner);
+    assert_eq!(
+        handoff(prepare().await.unwrap())
+            .await
+            .unwrap_err()
+            .to_string(),
+        "Start update helper"
+    );
+    assert!(!path.exists());
+    assert_eq!(fs::read(&options.executable).unwrap(), b"old executable");
+}
