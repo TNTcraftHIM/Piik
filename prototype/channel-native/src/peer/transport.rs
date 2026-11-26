@@ -497,6 +497,13 @@ impl Runtime {
                 None
             };
             let (network, mut incoming) = mpsc::channel::<Datagram>(256);
+            let mut deadline = match crate::deadline::Deadline::new() {
+                Ok(deadline) => deadline,
+                Err(error) => {
+                    log::error!("Native deadline creation failed: {error}");
+                    return;
+                }
+            };
             let mut gateway: Option<super::mapping::Mapping> = None;
             let mut mapped: Option<Candidate> = None;
             let mut sockets: Vec<Socket> = vec![];
@@ -619,10 +626,15 @@ impl Runtime {
                             }
                         }
                     },
-                    _=async {
-                        // A freshly expired Sleep can still wait for Tokio's next millisecond tick.
-                        if next > Instant::now() { tokio::time::sleep_until(next.into()).await; }
-                    }=> {
+                    // The SDK's pacer and probes need this instant met, not the next system tick.
+                    result=deadline.wait(next)=> {
+                        if let Err(error) = result {
+                            log::error!("Native deadline wait failed: {error}");
+                            for engine in engines.values_mut() {
+                                engine.fail();
+                            }
+                            break;
+                        }
                         let now=Instant::now();
                         for engine in engines.values_mut().filter(|e|e.deadline<=now) {
                             for endpoint in engine.turn.values_mut(){endpoint.timeout(now);}

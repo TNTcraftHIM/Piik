@@ -201,6 +201,111 @@ and undirected edges S–A, S–B, B–A and A–W, the tree S→A→B strands W
 S→B→A→W serves all three viewers. This is a static alternative; its transition
 must still respect the live operation's overlap and proof budget.
 
+## First Picture And The Order Of Pair Attempts
+
+The placement harness gained a clock. A pair that can connect confirms 0.5 s
+after it is asked for, a pair that cannot is reported failed after 5 s, as a
+Native endpoint gives up an ordinary attempt, or after 20 s, as a Browser
+does, and the proof of a new flow takes 0.5 s. The authority's own deadlines
+run as they do in a runtime. A warm viewer was on the site before it started
+watching. A cold one enables peer transport as it arrives, so it has no pair
+yet. Everything else is as in the study above, with the same invented NAT
+mix, and the figures below are for its base setting at a limit of two with
+`STUDY_SCALE=2`. The harness is `time_model` on `test/placement-study`.
+
+**How long a viewer waits for its first picture.** The median is 0.5 to 1.0 s
+in every row. The tail is long:
+
+| Arrival and failure time | Over 5 s at 8, 16, 32 viewers | Over 20 s | Ninetieth percentile |
+| --- | --- | --- | --- |
+| Warm, 5 s | 7%, 9%, 9% | 4%, 2%, 2% | 1.0, 1.5, 1.5 s |
+| Warm, 20 s | 8%, 11%, 12% | 6%, 8%, 9% | 1.5, 12.7, 14.4 s |
+| Cold, 5 s | 13%, 15%, 15% | 4%, 3%, 2% | 6.0 s |
+| Cold, 20 s | 14%, 16%, 17% | 11%, 13%, 14% | 21.0 s |
+
+The optimistic setting gives 2 to 7% over 5 s and the pessimistic one 14 to
+35%. At 16 and 32 viewers, half to two thirds of the waits over 5 s belong to
+a viewer whose confirmed pairs all end at members that are full, usually its
+own pair with a sharer that already has two children, while one pair to a
+relay is tried at a time and each failure costs the failure time.
+
+**Racing an alternative beside a pending direct pair changes little.** The
+share over 5 s moved between +0.3 and −2.2 points. The present rule already
+starts other pairs for a viewer beside its pending direct pair, about nine
+in ten of them at the same moment as the direct pair. The proposal is
+withdrawn.
+
+**Asking the shallowest parent first shortens the simulated trees.** A
+missing pair from a reached forwarder to an unreached node was ranked by
+freshness and then by the identifiers of its two ends. With the depth of the
+offered parent placed before the identifiers:
+
+| Viewers | Extra hops per viewer, before | After | Deepest viewer, before and after |
+| --- | --- | --- | --- |
+| 8 | 0.13 to 0.17 | 0.12 to 0.17 | 2.4 and 2.4 |
+| 16 | 0.29 to 0.35 | 0.22 to 0.28 | 3.6 to 3.8 and 3.5 to 3.6 |
+| 32 | 0.49 to 0.52 | 0.19 to 0.34 | 5.1 to 5.2 and 4.6 to 4.9 |
+
+The ranges span the four rows of arrival and failure time. Pairs started in a
+session, viewers left unplaced and the first-picture figures stay within a
+point of the present rule. The depth is that of the parent offered: when the
+pair enters an unplaced relay that leads on to the viewer, the hops after it
+are not counted. The same switch also chose which child a reduction moves by
+depth, but no session in the harness lowers a limit, so that half is
+unmeasured and is not proposed.
+
+An independent bounded replay of 64 sessions found 6.8–14.3% lower summed depth
+at 32 viewers, with mixed first-picture tails and one additional censored arrival
+in a cold, slow-failure cell. The workload removes relays selected from each
+policy's resulting tree, so it can remove different participants after the
+policies diverge. This supports the local depth tie-break; it does not establish
+unchanged reachability, lower real playback latency or cost-free live movement.
+
+## Voice Fan-out Measured
+
+The room planner was run with every pair confirmed and everyone in voice, and
+one speaker's flows were counted. Under the room default of two downstream
+connections the speaker sent to two listeners however many it could reach:
+
+| In voice | Listeners | Direct from the speaker | Deepest listener |
+| --- | --- | --- | --- |
+| 3 | 2 | 2 | 1 hop |
+| 4 | 3 | 2 | 2 hops |
+| 6 | 5 | 2 | 2 hops |
+| 8 | 7 | 2 | 3 hops |
+
+The delay of a Browser relay was measured in Chrome 158 in one page on one
+audio clock. A 20 ms tone burst once a second was sent as Opus over loopback
+connections, and its onset was timed where it was generated and where each
+receiver decoded it. A relay re-sent the track it received, as the Browser
+client does. Medians of 35 bursts, with the tenth and ninetieth percentiles
+within 3 ms of them:
+
+| Path | Onset delay | Added by the hop |
+| --- | --- | --- |
+| Direct | 40.9 ms | |
+| One Browser relay | 91.8 ms | 50.9 ms |
+| Two Browser relays | 139.4 ms | 47.6 ms |
+
+Each receiving connection reported a jitter-buffer delay of about 30 ms. This
+is a floor: loopback has no transit time, jitter or loss, and a real path adds
+its own transit and a larger buffer at every hop. A second measurement in
+Chrome 156 gave 43 to 55 ms a hop. Neither measures a Native forwarder, which
+forwards packets without decoding.
+
+What a speaker pays for direct copies was measured the same way: n loopback
+outputs of one noise-like track for ten seconds. Processor time covers every
+process of the browser and the n receiving connections in the same page, so it
+is an upper bound for a sender.
+
+| Outputs | On the wire at 64 kbit/s | At 320 kbit/s | Processor |
+| --- | --- | --- | --- |
+| 1 | 84 kbit/s | 285 kbit/s | 4 to 6% of a core |
+| 3 | 253 kbit/s | 853 kbit/s | 9 to 12% |
+| 7 | 590 kbit/s | 1,991 kbit/s | 12 to 14% |
+| 15 | 1,265 kbit/s | 4,266 kbit/s | 24 to 26% |
+| 31 | 2,616 kbit/s | 8,815 kbit/s | 47 to 51% |
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to
@@ -210,7 +315,8 @@ must still respect the live operation's overlap and proof budget.
    glitch at the cut.
 4. The cost of one re-encoding hop: delay, resolution, frame rate.
 5. Whether a node's proved capacity repeats from day to day.
-6. A hop chain for voice, with a Native forwarder and with a Browser.
+6. A hop chain for voice, with a Native forwarder. The Browser hop is
+   measured above.
 7. Idle audio connections on a phone, at 3, 7 and 19. On a desktop Browser,
    twenty idle pairs cost about 2.4 KiB/s per endpoint
    ([network lab](./network-lab.md#idle-physical-connection-cost)).

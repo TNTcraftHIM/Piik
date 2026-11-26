@@ -16,6 +16,7 @@ import * as appLink from "../src/client/channel/app-link";
 import * as indexedSource from "../src/client/channel/watch-indexed-source";
 import { HTMLVideoMedia, AppPageMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
+import type { Stage } from "../src/client/channel/stage";
 import * as watchMedia from "../src/client/channel/watch-media";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import * as nativeActivation from "../src/client/native/activation";
@@ -37,6 +38,10 @@ import type { InputTransport } from "../src/client/remote-control/input-route";
 import { BrowserEncodingPool, type BrowserPooledSender } from "../src/client/media/browser-encoding-pool";
 import * as encodingOutput from "../src/client/media/browser-encoding-output";
 import * as browserDiagnostics from "../src/client/lib/debug";
+
+function installWatchPlayer(session: ChannelSession, id: string, player: WatchPlayer): void {
+  (session as unknown as { stage(roomId: string): Stage }).stage(player.roomId).useWatch(id, player);
+}
 
 class ChannelSocket {
   static OPEN = 1;
@@ -12963,7 +12968,7 @@ test('MPD preparation failure preserves the selected page and incumbent; cancell
   await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://fixture.test/old.mp4', 'file'), () => {});
   const close = vi.spyOn(incumbent, 'close');
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('old', incumbent);
+  installWatchPlayer(session, 'old', incumbent);
   try {
     const pageId = await openMpdPage(session, app, candidate);
     const inspecting = session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
@@ -13127,7 +13132,7 @@ test('cancelling single-resource forwarding retains the incumbent and retires a 
   const choice = { id: crypto.randomUUID(), displayURL: 'https://fixture.test/live.m3u8', name: 'Live', format: 'hls' as const };
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [choice], indexedCandidates: [], byteSource: null }));
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://fixture.test/old.mp4', 'file'), () => {});
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('old', incumbent);
+  installWatchPlayer(session, 'old', incumbent);
   const close = vi.spyOn(incumbent, 'close');
   let release!: (value: WatchByteSource) => void;
   vi.spyOn(page, 'prepareMedia').mockImplementation(() => new Promise(resolve => { release = resolve; }));
@@ -13278,7 +13283,7 @@ test('replaced audio metadata cancels only its obsolete inspection and prepares 
   const { session, page, candidateId, request, commit, dispose } = await websiteSourceSelection(discover);
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
   const incumbent = new WatchPlayer('second', true, new HTMLVideoMedia('https://fixture.test/other.mp4', 'file'), () => {});
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('other-watch', incumbent);
+  installWatchPlayer(session, 'other-watch', incumbent);
   const closeIncumbent = vi.spyOn(incumbent, 'close');
   localProviderVideo();
   const original = request.getMockImplementation()!;
@@ -13417,7 +13422,7 @@ test('local provider preparation failure releases only its reader and candidate,
   const incumbent=new WatchPlayer('first',true,new HTMLVideoMedia('https://fixture.test/old.mp4','file'),()=>{});
   vi.stubGlobal('document', { createElement: () => local });
   const close=vi.spyOn(incumbent,'close');
-  (session as unknown as {watchPlayers:Map<string,WatchPlayer>}).watchPlayers.set('old',incumbent);
+  installWatchPlayer(session, 'old',incumbent);
   try{
     await session.selectWatchPage('first',candidateId);
     await expect(session.selectWatchIndexedSource('first',video.candidate.id)).rejects.toThrow('watch_media_unavailable');
@@ -13432,7 +13437,7 @@ test('closing forwarding settings during direct preparation releases the reader 
   const { session, page, socket, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const media = new AppPageMedia(page);
   await media.opening;
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('owned', new WatchPlayer('first', true, media, () => {}));
+  installWatchPlayer(session, 'owned', new WatchPlayer('first', true, media, () => {}));
   const controller = new AbortController();
   const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation((_id, signal) =>
     new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
@@ -13456,8 +13461,8 @@ test.each(["before activation", "before publication", "after publication"])("a n
   const media = new AppPageMedia(page);
   await media.opening;
   const player = new WatchPlayer("first", true, media, () => {});
-  const owner = session as unknown as { watchPlayers: Map<string, WatchPlayer>; activateWatchOwner(id: string, player: WatchPlayer): void };
-  owner.watchPlayers.set("owned", player);
+  const owner = session as unknown as { activateWatchOwner(id: string, player: WatchPlayer): void };
+  installWatchPlayer(session, "owned", player);
   const state = session.getSnapshot().state!;
   const activity = {
     id: "owned", roomId: "first", viewerSessionIds: [], sessionId: "endpoint", userId: "self",
@@ -13475,7 +13480,7 @@ test.each(["before activation", "before publication", "after publication"])("a n
     if (timing === "before publication") publish();
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "set_watch_byte_source", id: "owned", byteSource: null }));
     socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } });
-    expect(owner.watchPlayers.get("owned")).toBe(player);
+    expect(session.getSnapshot().watchPlayers.get("owned")).toBe(player);
   } finally { session.close(); }
 });
 
@@ -13487,7 +13492,7 @@ test("foreground recovery cannot withdraw a replacement watch byte source", asyn
   await media.opening;
   const player = new WatchPlayer("first", true, media, () => {});
   player.mode = "direct";
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set("owned", player);
+  installWatchPlayer(session, "owned", player);
   const stopReader = vi.spyOn(page, "stopMedia").mockResolvedValue();
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
   const state = session.getSnapshot().state!;
@@ -13526,7 +13531,7 @@ test('turning off remote forwarding preserves the Host local provider and reuses
   localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
   const media=new PageSuppliedMedia(page,new HTMLVideoMedia('https://fixture.test/local.mp4','file'),source);
   const player=new WatchPlayer('first',true,media,()=>{}),stop=vi.spyOn(page,'stopMedia');
-  (session as unknown as {watchPlayers:Map<string,WatchPlayer>}).watchPlayers.set('owned',player);
+  installWatchPlayer(session, 'owned',player);
   try{
     expect(player.media.retainedByteSource).toEqual(source);
     await expect(session.watchMediaChoices('owned',new AbortController().signal)).rejects.toThrow('watch_page_unavailable');
@@ -13817,7 +13822,7 @@ test('a rejected portable room confirmation retires its Page and candidate witho
   vi.stubGlobal('document', { createElement: () => nextVideo });
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://media.test/current.mp4', 'file'), () => {});
   const incumbentClose = vi.spyOn(incumbent, 'close');
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('retained-watch', incumbent);
+  installWatchPlayer(session, 'retained-watch', incumbent);
   nextVideo = candidateVideo; commit.mockRestore();
   try {
     page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
@@ -13916,7 +13921,7 @@ test.each(['direct', 'choice'] as const)('portable %s preparation failure retain
   let nextVideo = originalVideo;
   vi.stubGlobal('document', { createElement: () => nextVideo });
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://media.test/current.mp4', 'file'), () => {});
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('retained-watch', incumbent);
+  installWatchPlayer(session, 'retained-watch', incumbent);
   nextVideo = candidateVideo;
   const close = vi.spyOn(HTMLVideoMedia.prototype, 'close');
   vi.spyOn(HTMLVideoMedia.prototype, 'ready').mockRejectedValueOnce(new Error('watch_media_network_failed'));
@@ -13947,7 +13952,7 @@ test('explicit file forwarding publishes the selected direct URL and retains the
   const original = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => original });
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://fixture.test/old.mp4', 'file'), () => {});
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('old', incumbent);
+  installWatchPlayer(session, 'old', incumbent);
   const close = vi.spyOn(incumbent, 'close');
   localProviderVideo();
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
@@ -14126,7 +14131,7 @@ test.each(["source", "autoplay"])("explicit watch edits preserve validation and 
   const patch = vi.fn(async (_value: watchMedia.WatchMediaPatch) => {});
   const player = new WatchPlayer("first", true, { read: async () => state, patch, ready: async () => {}, listen: () => () => {}, close() {} }, () => {});
   player.calibrate(1000, performance.now());
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set("owned-edit", player);
+  installWatchPlayer(session, "owned-edit", player);
   const failure = kind === "autoplay" ? new DOMException("Playback denied", "NotAllowedError") : new Error("watch_source_unavailable");
   try {
     await expect(session.setWatchPlayback("missing", { paused: false })).rejects.toThrow("not_watch_owner");
@@ -14153,7 +14158,7 @@ test('shared live seek controls select available content while pause keeps its o
  const patch = vi.fn(async () => {});
  const player = new WatchPlayer('first', true, { read: async () => state, patch, ready: async () => {}, listen: () => () => {}, close: () => {} }, () => {});
  player.calibrate(1000, 0, 0);
- (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('owned-live', player);
+ installWatchPlayer(session, 'owned-live', player);
  try {
    await session.setWatchPlayback('owned-live', { position: epoch + 18 });
    expect(patch).toHaveBeenLastCalledWith({ position: epoch + 20 });
@@ -16147,17 +16152,17 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_patch", patch: { position: 5 } }), expect.any(AbortSignal));
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_media_stop", candidateId: otherId }), expect.any(AbortSignal));
     expect(request.mock.calls.some(([cmd]) => cmd.type === "page_media_stop" && !("candidateId" in cmd))).toBe(false);
-    const manager = session as unknown as { sourceSelections: Map<string, { pendingCandidateId?: string }>; finishSourceSelection(room: string, selection: { pendingCandidateId?: string }): void };
-    const stale = manager.sourceSelections.get("first")!;
+    const stage = (session as unknown as { stage(roomId: string): Stage }).stage("first");
+    const stale = stage.sourceSelection!;
     await session.selectWatchPage("first", otherId, undefined, false, "choose-source");
     await session.cancelScreenSelection("first");
     next.receive({ type: "page_share_requested", pageId: next.id });
     await session.selectWatchPage("first", otherId, undefined, false, "choose-source");
     const stops = () => request.mock.calls.filter(([cmd]) => cmd.type === "page_media_stop").length;
     const stopped = stops();
-    manager.finishSourceSelection("first", stale);
+    stage.finishSelection(stale);
     expect(stops()).toBe(stopped);
-    expect(manager.sourceSelections.get("first")?.pendingCandidateId).toBe(otherId);
+    expect(stage.sourceSelection?.pendingCandidateId).toBe(otherId);
     const mode = prior === "forward" ? "original" : "forward";
     const denied = select(mode, next, otherId);
     const failure = expect(denied).rejects.toThrow();
@@ -16192,6 +16197,57 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
   } finally { session.close(); }
 });
 
+test("stopping a borrowed-page replacement before confirmation keeps it retired", async () => {
+  const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  commit.mockRestore();
+  let confirm!: (value: unknown) => void;
+  try {
+    const initial = session.selectWatchPage("first", candidateId, undefined, false, "original-page");
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "start_watch")).toBe(true));
+    const old = socket.sent.findLast(command => command.type === "start_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: old.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "update_watch")).toBe(true));
+    const update = socket.sent.findLast(command => command.type === "update_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
+    await initial;
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [{
+      id: old.id, roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+      source: old.source, playback: old.playback,
+    }] } });
+    vi.stubGlobal("window", new EventTarget());
+    page.receive({ type: "page_share_requested", pageId: page.id });
+    const nextId = crypto.randomUUID();
+    page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [
+      { id: candidateId, title: "A", url: null, duration: 60 },
+      { id: nextId, title: "B", url: null, duration: 60 },
+    ] });
+    const ready = await page.read(), respond = request.getMockImplementation()!;
+    request.mockImplementation(command => command.type === "page_select"
+      ? new Promise(resolve => { confirm = resolve; }) : respond(command));
+    const listenSources = vi.spyOn(page, "listenMediaSources");
+    const replacing = session.selectWatchPage("first", nextId, undefined, false, "original-page");
+    const rejected = expect(replacing).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(2));
+    const start = socket.sent.findLast(command => command.type === "start_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: start.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await vi.waitFor(() => expect(confirm).toBeTypeOf("function"));
+    const player = session.getSnapshot().watchPlayers.get(start.id as string)!;
+    const stopping = session.stopWatch(start.id as string);
+    const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
+    await stopping;
+    expect(player.signal.aborted).toBe(true);
+    confirm(ready);
+    await rejected;
+    expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(false);
+    expect(listenSources).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "update_watch" && command.id === start.id)).toBe(false);
+    expect(socket.sent.filter(command => command.type === "stop_watch" && command.id === start.id)).toHaveLength(1);
+    expect(session.getSnapshot().watchPlayers.has(old.id as string)).toBe(true);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
 test("page owner and borrowed player each release their page at most once", () => {
   const dispose = vi.fn();
   const page = new appLink.AppPage(crypto.randomUUID(), "https://fixture.test", vi.fn(), dispose, vi.fn());
@@ -16215,7 +16271,7 @@ test('a watch that ends during source selection does not block the new share', a
   const id = 'ended-watch';
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://media.test/old.mp4', 'file'), () => {});
   incumbent.mode = 'direct';
-  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set(id, incumbent);
+  installWatchPlayer(session, id, incumbent);
   let releaseReady!: () => void;
   const readiness = new Promise<void>(resolve => { releaseReady = resolve; });
   const ready = vi.spyOn(HTMLVideoMedia.prototype, 'ready').mockImplementation(() => readiness);

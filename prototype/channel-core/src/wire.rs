@@ -837,7 +837,7 @@ pub struct RoomDelivery {
     pub binding_id: Uuid,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomCapabilities {
     pub attachments: bool,
@@ -846,7 +846,7 @@ pub struct RoomCapabilities {
 pub const FILE_AVAILABILITY_LIMIT: usize =
     crate::history::HISTORY_PAGE * crate::attachment::ATTACHMENT_LIMITS.max_attachments_per_message;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileAvailability {
     pub observation_id: Uuid,
@@ -904,7 +904,7 @@ pub enum RoomInvitation {
     Available { key: String },
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicationInfo {
     #[serde(flatten)]
@@ -935,7 +935,7 @@ pub enum AudienceState {
     Failed,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceInfo {
     pub session_id: Uuid,
@@ -1179,7 +1179,7 @@ impl WatchPlayback {
         Ok(())
     }
 }
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchActivity {
     #[serde(default, skip_serializing_if = "Option::is_none")]

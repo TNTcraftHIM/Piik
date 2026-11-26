@@ -1,6 +1,7 @@
 import Hls, { LoaderContextType } from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelSession } from "../src/client/channel/session";
+import type { Stage } from "../src/client/channel/stage";
 import { HTMLVideoMedia, createResourceWatchMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
@@ -105,7 +106,7 @@ test("actual Session explicit peer command retains the admitted root and reader 
   const activity = { id: "owned-published", roomId: "owned-room", source: { kind: "website", url: "https://owned.test/official", mediaUrl: "https://owned.test/direct.mp4" }, byteSource: root, playback: { timeline: "media", paused: true, position: 2, rate: 1, anchorTime: 1000 } };
   const old = new WatchPlayer(activity.roomId, false, { ready: async () => {}, read: async () => ({ readyState: 0, position: 0, paused: true, rate: 1, duration: 6, ended: false, buffered: [] }), patch: async () => {}, listen: () => () => {}, close: vi.fn() }, () => {});
   old.error = "watch_media_unavailable";
-  const players = new Map([[activity.id, old]]),commands: unknown[] = [];
+  const commands: unknown[] = [];
   const read = vi.fn(async () => { throw Error("watch_source_unavailable"); });
   // Public joinWatch is an instance field; construct the actual Session without starting
   // a socket, then replace only its owned authority/I/O boundaries with controlled state.
@@ -120,7 +121,9 @@ test("actual Session explicit peer command retains the admitted root and reader 
   const request = vi.fn(async (command: unknown, reply?: (value: unknown) => void) => {
     commands.push(command);reply?.({ type: "room_reply", result: { type: "watch_ready", serverTime: 1000 } });
   });
-  Object.assign(session, { watchPlayers: players, view: { ...view, state: { watchActivities: [activity], publications: [], channel: { rooms: [] } } }, watchBytes: { read }, request });
+  const stage = (session as unknown as { stage(roomId: string): Stage }).stage(activity.roomId);
+  stage.useWatch(activity.id, old);
+  Object.assign(session, { view: { ...view, state: { watchActivities: [activity], publications: [], channel: { rooms: [] } } }, watchBytes: { read }, request });
   try {
     await session.joinWatch(activity.id, "peer");
     expect(commands).toEqual([{ type: "join_watch", roomId: activity.roomId, id: activity.id, mode: "peer" }]);
@@ -140,7 +143,7 @@ test("actual Session explicit peer command retains the admitted root and reader 
     loader.destroy();
     expect(activity.byteSource).toBe(root);
     expect(old.error).toBe("watch_media_unavailable");
-  } finally { for(const player of players.values())player.close();old.close(); }
+  } finally { stage.close(); }
 });
 
 test("a generic append failure still uses a proven platform decode error", async () => {

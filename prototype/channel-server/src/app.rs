@@ -380,7 +380,14 @@ impl App {
             }
             std::mem::take(&mut registry.hosts).into_values().collect()
         };
+        let report_shutdown = piik_channel_native::diagnostics::enabled();
+        if report_shutdown {
+            eprintln!("App shutdown: waiting for host tasks");
+        }
         stop_hosts(hosts).await;
+        if report_shutdown {
+            eprintln!("App shutdown: host tasks stopped");
+        }
         self.desktop.close();
         if let Some(launch) = self.launch.lock().await.take() {
             launch.close().await;

@@ -268,6 +268,10 @@ the observation or decision that would settle it.
   separate even when their numbers match; straightforward local arithmetic needs
   no ceremonial constants. Follow
   [ES.45](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Res-magic).
+- Time-sensitive work carries its due instant. Pace a sequence from its previous
+  scheduled instant so late wakes do not compound drift. Select a platform wait
+  against the measured timing need; a requested sleep duration is not a guarantee
+  about when the thread or async task will run.
 - Keep simple logic at its call site. Extract a helper for actual reuse, a
   substantial boundary, or a distinct concept whose name makes the caller clearer.
   In longer orchestration, keep the main flow readable and move substantial
@@ -349,6 +353,9 @@ the observation or decision that would settle it.
   ASCII, with format exceptions in [`.gitattributes`](../../.gitattributes).
   Scripts use stable executable paths; physical confidence stays explicit in
   [verification status](../verification-status.md).
+  Cargo build scripts read build-specific paths from the
+  [runtime build environment](https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts),
+  so a shared cache does not retain a previous source directory.
 - Update generated files through their source schema, template or generator and
   the existing regeneration command; do not patch generated output by hand.
 - Retained tools declare their direct package dependencies. Documented TypeScript

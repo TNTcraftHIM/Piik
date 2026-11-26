@@ -361,24 +361,14 @@ impl Encoder {
                         break Work::Bitrate(bitrate);
                     }
                     if !resizing && need_input > 0 {
-                        if let Some(raw) = &state.latest {
-                            if match timing {
-                                super::FrameTiming::Capture => {
-                                    state.force_keyframe
-                                        || (last_capture != Some(raw.qpc)
-                                            && cadence.accept(raw.qpc))
-                                }
-                                super::FrameTiming::Source => {
-                                    last_capture != Some(raw.qpc)
-                                        && presentation.last_qpc().is_none_or(|last| raw.qpc > last)
-                                        && (state.force_keyframe
-                                            || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
-                                }
-                            } {
-                                let frame = raw.clone();
-                                let force = std::mem::take(&mut state.force_keyframe);
-                                break Work::Frame(frame, force);
-                            }
+                        if let Some((frame, force)) = state.admit_frame(
+                            timing,
+                            last_capture,
+                            &presentation,
+                            frame_limit,
+                            &mut cadence,
+                        ) {
+                            break Work::Frame(frame, force);
                         }
                         shared.request_frame(&mut state);
                     }

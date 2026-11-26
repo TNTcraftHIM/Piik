@@ -670,6 +670,23 @@ and Opus decoders. This used the original-forwarding Driver without capture;
 received data was decoded offline. Capture-enabled derivation, physical audio,
 presented cadence and Internet performance remain separate checks.
 
+The Windows RTC pump's timer was compared with the same pinned SDK at
+`9e359a52`. On the review machine's ordinary system tick, the Tokio wait left
+the loopback bandwidth estimate around 0.2–0.3 Mbps; meeting the SDK deadlines
+raised it above 11 Mbps. On a second Windows machine with a roughly 1 ms system
+timer resolution, both implementations already admitted the selected and
+optional media. Their single startup estimates were 1.206 and 1.831 Mbps;
+those samples do not establish a comparative bandwidth improvement.
+
+The platform owner uses one persistent high-resolution waitable timer and one
+stopping event per RTC pump. In a same-process 10-second comparison, this reduced
+worker CPU from 187.5 to 62.5 ms relative to one-millisecond sleep slices, with
+similar median lateness. Actual Native consent, LocalInput, deadline replacement
+and shutdown checks passed. Thread scheduling can still delay a wake. The
+[Windows timer](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createwaitabletimerexw)
+and [wait](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects)
+own timing; RTC still owns pacing, congestion control and consent.
+
 ### Duplicate NACK Feedback
 
 A controlled Windows UDP comparison uses Piik's `Transport.write_au`, real

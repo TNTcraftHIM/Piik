@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { HTMLVideoMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { ChannelSession } from "../src/client/channel/session";
+import type { Stage } from "../src/client/channel/stage";
 import type { WatchMediaState, WatchMedia } from "../src/client/channel/watch-media";
 
 class Video extends EventTarget {
@@ -67,32 +68,31 @@ test("Creator late first-decode failure never publishes or stops its current sou
   const oldState: WatchMediaState = { position: 1, duration: 6, paused: false, rate: 1, readyState: 4, ended: false, buffered: [[0, 6]] };
   const oldMedia: WatchMedia = { read: async () => oldState, ready: async () => {}, patch: async () => {}, listen: () => () => {}, close: oldClose };
   const incumbent = new WatchPlayer("owned", true, oldMedia, () => {});
-  const players = new Map([["old-watch", incumbent]]);
-  const selection = { controller: new AbortController(), committing: false };
   const request = vi.fn(async () => {}), stopScreen = vi.fn(async () => {});
   const view = session.getSnapshot();
-  Object.assign(session, { watchPlayers: players, request, stopScreen,
+  Object.assign(session, { request, stopScreen,
     view: { ...view, state: { publications: [], channel: { rooms: [] } } },
-    sourceSelections: new Map([["owned", selection]]),
-    screenShares: new Map([["owned", { id: "old-screen" }]]),
     local: new Map([["old-screen", { stream: { getTracks: () => [{ stop: stopTrack }] } }]]) });
-  const media = new HTMLVideoMedia("https://owned.test/new.mp4", "file");
-  const owner = session as unknown as { commitWatch(room: string, source: unknown, media: WatchMedia, selection: unknown): Promise<void> };
-  const opening = owner.commitWatch("owned", { kind: "media", url: "https://owned.test/new.mp4" }, media, selection);
+  const stage = (session as unknown as { stage(roomId: string): Stage }).stage("owned");
+  stage.useWatch("old-watch", incumbent);
+  stage.selectScreen({ id: "old-screen", profile: view.quality, codecMode: view.videoCodecMode,
+    encodingExecution: view.encodingExecution, volume: { level: 1, muted: false },
+    microphone: { deviceId: "", volume: 1, voiceProcessing: true } });
+  const opening = session.startWatch("owned", "https://owned.test/new.mp4", false);
   const rejected = expect(opening).rejects.toThrow("watch_media_decode_failed");
   try {
     await vi.advanceTimersByTimeAsync(0);
     expect(request).not.toHaveBeenCalled();
-    expect(selection.committing).toBe(false);
+    expect(stage.sourceSelection?.committing).toBe(false);
     video.error = { code: 3, message: "owned first-frame decode failure" } as MediaError;
     video.dispatchEvent(new Event("error"));
     await rejected;
     expect(request).not.toHaveBeenCalled();
-    expect(players.get("old-watch")).toBe(incumbent);
+    expect(stage.watch("old-watch")).toBe(incumbent);
     expect(oldClose).not.toHaveBeenCalled();
     expect(stopScreen).not.toHaveBeenCalled();
     expect(stopTrack).not.toHaveBeenCalled();
     expect(video.src).toBe("");
-  } finally { incumbent.close(); selection.controller.abort(); media.close(); }
+  } finally { stage.close(); }
   expect(vi.getTimerCount()).toBe(0);
 });
