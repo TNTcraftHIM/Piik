@@ -480,7 +480,7 @@ pub(in crate::peer) fn video_payloads(
     use rtc_rtp::packetizer::Payloader;
     let bytes = [
         vec![
-            u8::from(!keyframe),
+            if keyframe { 0x30 } else { 1 },
             0,
             0,
             0x9d,
