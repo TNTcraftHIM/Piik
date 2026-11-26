@@ -1,118 +1,83 @@
 /* Prototype: the room as one living room (build/lanes/ui/redesign-direction.md). Not accepted.
    Every rule is scoped to .c3-living, so the workspace and quick layouts are unaffected.
-   It re-places the same owners: one conversation, one voice dock, one couch, one share control. */
+   It re-places the same owners: one conversation, one voice dock, one couch, one share control.
 
-/* ---------- Tokens: one type scale (12/14/16/20), no cream selection, tonal toggles ---------- */
+   The grid. Three rows of chrome and one lit room:
+     top bar    site › room ............................ view tools · site tools
+     body       rooms | the room (pictures, or the conversation when nobody shares) | companion
+     couch              the whole couch, always, at the foot of the room
+     my row     me    | my controls, centred under the room                         | composer
+   Everything in a column shares that column's inset, and the room's centre is one axis. */
+
+/* ---------- Tokens and the grid ---------- */
 .c3-shell.c3-living {
-  --living-rooms: 232px;
-  --living-rail: 72px;
-  --living-panel: 320px;
-  --living-bar: 48px;
-  /* Height outside the column that holds the pictures and the couch: the top bar, the tab row, my bar. */
-  --living-reserve: 160px;
-  --c3-navigation-size: var(--living-rooms);
-  --c3-companion-size: var(--living-panel);
+  --lv-rooms: 232px;
+  --lv-rail: 72px;
+  --lv-panel: 320px;
+  --lv-people: 280px;
+  --lv-top: 48px;
+  --lv-band: 64px;
+  --lv-inset: 16px;
+  --lv-bar-gap: 8px;
+  /* The width of the rooms column, which my own corner of the bottom row shares. */
+  --lv-nav: var(--lv-rooms);
+  --c3-navigation-size: var(--lv-rooms);
+  --c3-companion-size: var(--lv-panel);
   --control-label-size: 14px;
   /* Selection and pressed controls are a tonal surface, never the brightest shape on screen. */
   --control-selected: color-mix(in srgb, var(--ink) 10%, transparent);
   --control-selected-ink: var(--ink);
-  /* The stage column holds one group (picture, its bar, the couch), centred with spare height above and below. */
-  grid-template-columns: var(--living-rooms) minmax(0, 1fr) var(--living-panel);
-  grid-template-rows: var(--living-bar) auto minmax(0, 1fr) auto auto minmax(0, 1fr) auto;
+  grid-template-columns: var(--lv-nav) minmax(0, 1fr) auto;
+  grid-template-rows: var(--lv-top) minmax(0, 1fr) auto var(--lv-band);
   grid-template-areas:
-    "site  room  tools"
-    "rooms .     tabs"
-    "rooms .     panel"
-    "rooms stage panel"
-    "rooms couch panel"
-    "rooms .     panel"
-    "rooms me    panel";
+    "top   top   top"
+    "rooms stage side"
+    "rooms couch side"
+    "me    bar   side";
   font-size: 14px;
   /* A container of its own name: the workspace's channel-shell compaction rules do not apply here. */
   container-name: channel-living;
 }
-/* Only one side region fits beside a large picture: the room list folds to its rail. */
-.c3-shell.c3-living[data-rooms="rail"] {
-  grid-template-columns: var(--living-rail) auto minmax(0, 1fr) var(--living-panel);
-  grid-template-areas:
-    "site  site  room  tools"
-    "rooms .     .     tabs"
-    "rooms .     .     panel"
-    "rooms stage stage panel"
-    "rooms couch couch panel"
-    "rooms .     .     panel"
-    "rooms me    me    panel";
-}
-/* The right panel folded: the stage takes its width; utilities keep the top bar's end. */
-.c3-shell.c3-living[data-companion="none"] {
-  grid-template-columns: var(--living-rooms) minmax(0, 1fr) auto;
-  grid-template-areas:
-    "site  room  tools"
-    "rooms .     ."
-    "rooms .     ."
-    "rooms stage stage"
-    "rooms couch couch"
-    "rooms .     ."
-    "rooms me    me";
-}
-.c3-shell.c3-living[data-companion="none"][data-rooms="rail"] {
-  grid-template-columns: var(--living-rail) auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "site  site  room  tools"
-    "rooms .     .     ."
-    "rooms .     .     ."
-    "rooms stage stage stage"
-    "rooms couch couch couch"
-    "rooms .     .     ."
-    "rooms me    me    me";
-}
-/* Without a picture the conversation is the main column: its tabs, messages and composer,
-   then the couch at full size and my bar. The room list stays inline. */
+/* Only one side region fits beside a large picture: the room list is its rail. */
+.c3-shell.c3-living[data-rooms="rail"] { --lv-nav: var(--lv-rail); }
+/* Nobody shares: the conversation is the room. */
 .c3-shell.c3-living[data-stage="empty"] {
-  grid-template-columns: var(--living-rooms) minmax(0, 1fr) auto;
-  grid-template-rows: var(--living-bar) auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--lv-top) auto minmax(0, 1fr) auto var(--lv-band);
   grid-template-areas:
-    "site  room  tools"
-    "rooms stage stage"
-    "rooms tabs  tabs"
-    "rooms panel panel"
-    "rooms couch couch"
-    "rooms me    me";
+    "top   top   top"
+    "rooms stage side"
+    "rooms chat  side"
+    "rooms couch side"
+    "me    bar   side";
 }
-.c3-shell.c3-living[data-stage="empty"][data-rooms="rail"] {
-  grid-template-columns: var(--living-rail) auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "site  site  room  tools"
-    "rooms stage stage stage"
-    "rooms tabs  tabs  tabs"
-    "rooms panel panel panel"
-    "rooms couch couch couch"
-    "rooms me    me    me";
-}
-.c3-living[data-stage="empty"] > :is(.c3-living-tabs, .c3-chat-panel, .c3-living-people) { border-inline-start: 0; background: var(--paper); }
-.c3-living[data-stage="empty"] .c3-people-panel { background: var(--paper); }
-/* Conversation folded with no picture: the couch takes the middle of the column. */
-.c3-shell.c3-living[data-stage="empty"][data-companion="none"] .c3-room-presence .c3-couch { grid-area: panel; align-self: center; }
-/* Messages and composer in a column of readable width, left-aligned with the tab row. */
-.c3-living[data-stage="empty"] .c3-chat-panel .c3-conversation { max-width: 744px; }
-.c3-living[data-stage="empty"] .c3-living-people > .c3-people-panel { flex: 0 1 744px; }
-.c3-living[data-stage="empty"] > .c3-living-tabs { padding-inline: 12px 16px; }
 .c3-living .lr-btn.is-on { border-color: transparent; box-shadow: none; }
 .c3-living .lr-btn .lr-cap { margin-left: 0; font-size: 14px; }
 
-/* ---------- Top bar: site identity, the room's name and invitation, utilities ---------- */
-.c3-shell.c3-living > .c3-site-bar { display: contents; }
-.c3-living .c3-site-identity { grid-area: site; align-self: stretch; max-width: none; min-width: 0; padding-inline: 12px; background: var(--wall); }
+/* ---------- Top bar: one row. The site, then the room, like a path; tools at the end ---------- */
+.c3-shell.c3-living > .c3-site-bar { grid-area: top; display: flex; flex-wrap: nowrap; align-items: stretch; gap: 0; min-width: 0; min-height: 0; padding: 0; background: var(--wall); border-bottom: 1px solid var(--line); }
+/* With the list open the site heads the rooms column, so the room's name starts on the room's own edge. */
+.c3-living .c3-site-identity { flex: 0 0 var(--lv-rooms); box-sizing: border-box; max-width: none; min-width: 0; padding-inline: 12px 8px; }
+.c3-living[data-rooms="rail"] .c3-site-identity { flex: 0 1 auto; }
 .c3-living .c3-site-name :is(.lr-btn .lr-cap, strong) { font-size: 16px; font-weight: 600; }
 /* Connection shows itself only when something is wrong. */
 .c3-living .c3-site-identity [role="status"]:has(> .lr-comic-tip-wrap > .lr-leds[data-state="live"]),
 .c3-living .c3-site-identity .lr-leds[data-state="live"] { display: none; }
-.c3-living .c3-global-tools.lr-top { grid-area: tools; align-self: stretch; justify-self: stretch; margin: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; background: var(--wall); }
-.c3-shell.c3-living .c3-room-heading { grid-area: room; align-items: center; flex-wrap: nowrap; gap: 8px; min-height: var(--living-bar); padding: 0 8px 0 16px; background: var(--wall); border-inline-start: 1px solid var(--line); }
-.c3-living .c3-room-name { flex: 1 1 auto; gap: 8px; }
+.c3-shell.c3-living .c3-room-heading { flex: 1 1 0; display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; min-height: 0; padding: 0 0 0 var(--lv-inset); }
+.c3-living .c3-room-name { flex: 1 1 auto; gap: 8px; min-width: 0; }
 .c3-living .c3-room-name h2 { font-size: 20px; font-weight: 600; letter-spacing: 0; line-height: 1.3; }
+.c3-living .c3-room-name > .c3-room-invitation-entry { border: 0; padding-inline-start: 0; }
 .c3-living .c3-room-toolbar { flex: none; }
+.c3-living .c3-room-tools { display: flex; align-items: center; gap: 2px; }
+.c3-living .c3-living-view { display: inline-flex; align-items: center; margin-inline-end: 8px; }
+.c3-living .c3-living-view:empty { display: none; }
+/* The switch sits among quiet tools: a hairline track and a tonal selection, no ring. */
+.c3-living .c3-living-view .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; padding: 2px; border: 1px solid var(--line); background: transparent; box-shadow: none; font-size: 12px; }
+.c3-living .c3-living-view .c3-monitor-layout > .lr-toggle::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--lr-segments)); box-shadow: none; }
+.c3-living .c3-global-tools.lr-top { flex: none; align-self: stretch; margin: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px 0 2px; }
+/* The rail is narrower than the site's name: the room's name follows it after a short rule. */
 .c3-living[data-rooms="rail"] .c3-pane-navigation { display: inline-flex; flex: none; }
+.c3-shell.c3-living[data-rooms="rail"] .c3-room-heading { padding-inline-start: 0; }
+.c3-living[data-rooms="rail"] .c3-room-heading::before { content: ""; flex: none; width: 1px; height: 20px; background: var(--line); }
 
 /* ---------- Rooms: a quiet list, a face pile per room ---------- */
 .c3-shell.c3-living > .c3-sidebar { grid-area: rooms; padding-bottom: 8px; border-inline-end: 1px solid var(--line); }
@@ -142,41 +107,36 @@
   .c3-room-pile > svg { width: 12px; height: 15px; margin-inline-end: -4px; }
   .c3-room-pile > span { margin-inline-start: 7px; }
 }
-.c3-living.c3-living.c3-living[data-rooms="rail"] > .c3-sidebar { display: block; width: var(--living-rail); translate: none; pointer-events: auto; }
-/* The full list opens over the stage without resizing it. */
-.c3-living.c3-living.c3-living[data-rooms="rail"][data-pane="rooms"] > .c3-sidebar { position: relative; z-index: 5; width: var(--living-rooms); box-shadow: var(--panel-shadow); }
+.c3-living.c3-living.c3-living[data-rooms="rail"] > .c3-sidebar { display: block; width: var(--lv-rail); translate: none; pointer-events: auto; }
+/* The full list opens over the room without resizing it. */
+.c3-living.c3-living.c3-living[data-rooms="rail"][data-pane="rooms"] > .c3-sidebar { position: relative; z-index: 5; width: var(--lv-rooms); box-shadow: var(--panel-shadow); }
 
-/* ---------- Stage: pictures as large as they fit, each at its own shape ---------- */
-.c3-shell.c3-living .c3-main-body { grid-area: stage; min-height: 0; container-type: inline-size; }
-.c3-living[data-overview] .c3-main-body { grid-row: 2 / 7; }
-/* Safe centring: content taller than its box (stacked pictures) starts at the top and scrolls. */
-.c3-living .c3-workspace { display: flex; flex-direction: column; justify-content: safe center; }
-.c3-living .c3-workspace > .c3-monitor { flex: none; min-height: 0; }
-.c3-living .c3-workspace:not(.has-screens) > .c3-monitor { max-height: none; border-bottom: 0; }
-/* The picture's height follows its shape within the height the rest of the group leaves. */
-.c3-shell.c3-living .c3-workspace.has-screens > .c3-monitor:not(.is-theater) {
-  container-type: inline-size; max-height: calc(100cqb - var(--living-reserve));
-  /* Heights of the full couch and of the strip, each with its gap; the stage picks one with its tiles. */
-  --stage-couch-full: 126px; --stage-couch-strip: 76px;
-}
-.c3-living .c3-monitor { --stage-padding: 12px; gap: 8px; }
-.c3-living .c3-monitor-heading > div:first-child { display: none; }
-.c3-living .c3-monitor-heading:not(:has(.c3-monitor-layout)) { display: none; }
-.c3-living .c3-monitor-layout > .lr-toggle { --selection-item-size: 32px; font-size: 12px; }
+/* ---------- The room: pictures as large as they fit, each at its own shape ---------- */
+/* Its height follows its content where the row is automatic, so it is a container by width only. */
+.c3-shell.c3-living .c3-main-body { grid-area: stage; min-height: 0; background: var(--paper); container-type: inline-size; }
+.c3-living[data-overview] .c3-main-body { grid-row: 2 / -1; }
+.c3-living .c3-workspace { display: flex; flex-direction: column; min-height: 0; }
+/* The stage fills the room above the couch and centres its pictures: a wall with a television on it. */
+.c3-living .c3-workspace.has-screens > .c3-monitor { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.c3-living .c3-workspace:not(.has-screens) > .c3-monitor { flex: none; max-height: none; border-bottom: 0; }
+/* The room’s inset on three sides; the couch’s own space is the fourth. Its hidden heading leaves no gap. */
+.c3-shell.c3-living .c3-workspace .c3-monitor { --stage-padding: var(--lv-inset); gap: 0; padding-bottom: 4px; }
+.c3-living .c3-monitor-heading { display: none; }
+.c3-living[data-sidebars="phone"] .c3-monitor-heading:has(.c3-monitor-layout) { display: flex; justify-content: flex-end; padding: 6px 8px; }
+.c3-living[data-sidebars="phone"] .c3-monitor-heading > div:first-child { display: none; }
+.c3-living[data-sidebars="phone"] .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; padding: 2px; border: 1px solid var(--line); background: transparent; box-shadow: none; font-size: 12px; }
+.c3-living[data-sidebars="phone"] .c3-monitor-layout > .lr-toggle::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--lr-segments)); box-shadow: none; }
 .c3-living .c3-monitor-grid { --stage-tile-min: 200px; gap: 12px; }
-.c3-living .c3-monitor-grid[data-fitted] { grid-template-columns: repeat(calc(var(--stage-columns, 1) * 2), max-content); justify-content: center; grid-auto-rows: max-content; align-content: safe center; min-height: 0; }
+.c3-living .c3-monitor-grid[data-fitted] { grid-template-columns: repeat(calc(var(--stage-columns, 1) * 2), max-content); grid-auto-rows: max-content; justify-content: center; align-content: center; min-height: 0; }
 .c3-living .c3-monitor-grid[data-fitted].is-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; justify-content: stretch; overflow: visible; }
-.c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile { position: relative; width: var(--stage-picture-width); justify-self: center; align-self: center; border: 0; box-shadow: none; background: transparent; }
-/* The box has the picture's shape; any rounding remainder shows the stage, not a dark band. */
+/* A tile is one card of exactly its picture's width: the picture, then one line about it. */
+.c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile { width: var(--stage-picture-width); justify-self: center; align-self: center; border: 0; border-radius: var(--c3-surface-radius); background: var(--wall); box-shadow: 0 0 0 1px var(--line); overflow: clip; }
+.c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: none; height: var(--stage-picture-height); min-height: 0; aspect-ratio: auto; border-radius: 0; }
 .c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile > .c3-video.c3-mini-player { background: transparent; }
-.c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile > footer { background: var(--wall); border-radius: 0 0 var(--c3-surface-radius) var(--c3-surface-radius); }
-.c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { border-radius: var(--c3-surface-radius) var(--c3-surface-radius) 0 0; }
-.c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: none; height: var(--stage-picture-height); min-height: 0; aspect-ratio: auto; }
-/* A slim information bar: sharer, title, reactions, viewers and leave; the rest on hover or focus. */
 .c3-living .c3-monitor-source small { display: none; }
 .c3-living .c3-monitor-source strong { font-size: 14px; font-weight: 600; }
 .c3-living .c3-monitor-source-row { flex-wrap: nowrap; padding: 2px 8px; }
-/* The bar keeps one line, so its measured height stays the one the stage layout reserved. */
+/* The line keeps one line, so its measured height stays the one the stage layout reserved. */
 .c3-living :is(.c3-monitor-tile-actions, .c3-monitor-publishing) { flex-wrap: nowrap; }
 .c3-living .c3-monitor-tile-actions { flex: none; }
 /* A narrow tile keeps leave and focus; focusing it gives the full publishing controls room. */
@@ -189,40 +149,40 @@
   .c3-living .c3-monitor-tile:not(:hover, :focus-within) :is(.c3-monitor-layout-action, .c3-monitor-publishing > :not(.c3-monitor-close)) { position: absolute; opacity: 0; pointer-events: none; }
 }
 .c3-living .c3-monitor-wait { font-size: 14px; }
+.c3-living .c3-notice { font-size: 14px; margin: 12px var(--lv-inset); }
+.c3-living .c3-other-activities { margin-inline: var(--lv-inset); }
+.c3-living .c3-other-activity small, .c3-living .c3-activity-room { font-size: 12px; }
+.c3-living .c3-other-activity strong { font-size: 14px; }
 
-/* ---------- Couch: everyone present, directly under the picture or the television ---------- */
-/* The presence wrapper steps aside so the couch and the pop-out button each take their own place. */
+/* ---------- The couch: whole, in every state, at the foot of the room ---------- */
 .c3-shell.c3-living > .c3-room-presence:not([data-empty]) { display: contents; }
-.c3-shell.c3-living .c3-room-presence .c3-couch { grid-area: couch; zoom: 1.25; margin-top: 8px; }
-/* The strip: figures and names without the bench, when pictures need the height (and on a phone). */
-.c3-shell.c3-living[data-couch="strip"] .c3-room-presence .c3-couch { zoom: 1; margin-top: 4px; }
-.c3-living[data-couch="strip"] .c3-couch-scene { height: auto; padding-bottom: 4px; }
-.c3-living[data-couch="strip"] .c3-couch-bench { display: none; }
-.c3-living[data-couch="strip"] :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 4px 0; }
-.c3-living[data-couch="strip"] .c3-couch-seat .lr-person { width: 30px; height: 36px; }
+.c3-shell.c3-living .c3-room-presence .c3-couch { grid-area: couch; align-self: end; box-sizing: border-box; padding: 10px var(--lv-inset) 8px; background: var(--paper); zoom: var(--lv-couch-scale, 1.25); }
 .c3-living .c3-room-tool-entry > small { display: none; }
-/* Pop-out sits in the right panel's tab row; without the panel, at the end of my bar. */
-.c3-shell.c3-living .c3-room-presence > .c3-room-tool-entry { grid-area: me; justify-self: end; align-self: center; z-index: 2; margin-inline-end: 16px; }
-.c3-shell.c3-living[data-sidebars="inline"]:not([data-companion="none"]) .c3-room-presence > .c3-room-tool-entry { grid-area: tabs; align-self: end; margin: 0 56px 0 0; padding-bottom: 0; }
+/* The room's small window opens from the end of my row. */
+.c3-shell.c3-living .c3-room-presence > .c3-room-tool-entry { grid-area: bar; justify-self: end; align-self: center; z-index: 2; margin-inline-end: 12px; padding: 0; }
 .c3-living .lr-pawn-name { font-size: 12px; }
 
-/* ---------- My bar: me, microphone, listening, sharing, leave ---------- */
-.c3-shell.c3-living > .c3-personal { grid-area: me; display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; container: living-bar / inline-size; min-width: 0; min-height: 64px; padding: 8px 16px; background: var(--wall); border-top: 1px solid var(--line); }
-.c3-shell.c3-living > .c3-personal::after { content: ""; order: 99; flex: 1 1 0; }
-/* My name yields first when the bar is tight; the controls keep one line. */
-.c3-shell.c3-living .c3-personal .c3-identity { order: 0; flex: 1 1 0; min-width: 5em; display: flex; padding: 0; gap: 8px; }
-.c3-living .c3-personal .c3-identity > div { flex: 0 1 auto; max-width: 9em; }
-.c3-living .c3-personal .c3-identity > svg { width: 24px; height: 30px; }
-.c3-living .c3-personal .c3-identity strong { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---------- My row: me at the left, my controls centred under the room ---------- */
+.c3-shell.c3-living > .c3-personal { grid-row: me; grid-column: me-start / bar-end; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--lv-bar-gap); container: living-bar / inline-size; min-width: 0; padding: 0; background: var(--wall); border-top: 1px solid var(--line); }
+/* Two equal springs centre the controls in the room's own width, on the couch's axis. */
+.c3-shell.c3-living > .c3-personal::before, .c3-shell.c3-living > .c3-personal::after { content: ""; flex: 1 1 0; }
+.c3-shell.c3-living > .c3-personal::before { order: 0; }
+.c3-shell.c3-living > .c3-personal::after { order: 99; }
+.c3-shell.c3-living .c3-personal .c3-identity { order: -1; flex: 0 0 var(--lv-nav); box-sizing: border-box; width: var(--lv-nav); min-width: 0; margin-inline-end: calc(-1 * var(--lv-bar-gap)); display: flex; align-items: center; gap: 8px; padding: 0 8px 0 20px; }
+.c3-living .c3-personal .c3-identity > div { flex: 1 1 auto; min-width: 0; }
+.c3-living .c3-personal .c3-identity > svg { flex: none; width: 24px; height: 30px; }
+.c3-living .c3-personal .c3-identity strong { display: block; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-living .c3-personal .c3-identity small { display: none; }
-.c3-shell.c3-living .c3-personal :is(.c3-voice-dock, .c3-voice-controls, .c3-voice-destination) { display: contents; }
+.c3-living[data-rooms="rail"] .c3-personal .c3-identity { justify-content: center; padding: 0; }
+.c3-living[data-rooms="rail"] .c3-personal .c3-identity > :not(svg) { display: none; }
+.c3-shell.c3-living .c3-personal :is(.c3-room-slot, .c3-voice-dock, .c3-voice-controls, .c3-voice-destination) { display: contents; }
 .c3-living .c3-personal .c3-voice-dock > svg { display: none; }
 .c3-living .c3-personal .c3-voice-room-info { display: none; }
 .c3-living .c3-personal[data-voice-elsewhere] .c3-voice-room-info { display: block; order: 1; flex: 0 1 auto; min-width: 6em; max-width: 10em; }
 /* My voice is in another room: its controls stay compact after its name; this room's join and share follow. */
 .c3-living .c3-personal[data-voice-elsewhere] .c3-voice-controls .lr-btn .lr-cap { display: none; }
 .c3-living .c3-personal[data-voice-elsewhere] .c3-voice-controls .lr-btn { width: var(--control-compact-size); padding: 0; }
-.c3-shell.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-entry { order: 8; margin-inline-start: 8px; }
+.c3-shell.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-entry { order: 8; }
 .c3-living .c3-personal[data-voice-elsewhere] .c3-living-share { order: 9; }
 .c3-living .c3-personal .c3-voice-room-info small { font-size: 12px; }
 .c3-living .c3-personal .c3-voice-room > button { font-size: 14px; }
@@ -231,140 +191,143 @@
 .c3-living .c3-personal .c3-voice-controls > :nth-child(1) { order: 2; }
 .c3-living .c3-personal .c3-voice-destination > span { order: 3; }
 .c3-living .c3-personal .c3-voice-controls > :nth-child(2) { order: 4; }
-.c3-living .c3-personal .c3-living-share { order: 5; }
+.c3-living .c3-personal .c3-living-share { order: 5; display: inline-flex; align-items: center; }
 .c3-living .c3-personal .c3-living-chat { order: 6; }
-.c3-living .c3-personal .c3-voice-controls > :last-child { order: 7; margin-inline-start: 4px; }
-.c3-living .c3-personal :is(.c3-voice-controls, .c3-voice-entry) .lr-btn { width: auto; padding-inline: 10px; }
-/* Editing my profile is secondary in this bar: it appears on hover or focus, like a picture's extra controls. */
+.c3-living .c3-personal .c3-voice-controls > :last-child { order: 7; }
+/* One shape for every control in the row. */
+.c3-living .c3-personal .lr-btn { border-radius: 12px; }
+.c3-living .c3-personal :is(.c3-voice-controls, .c3-voice-entry, .c3-living-share) .lr-btn { width: auto; padding-inline: 14px; }
+/* Editing my profile is secondary in this row: it appears on hover or focus. */
 @media (hover: hover) {
   .c3-living .c3-personal .c3-identity:not(:hover, :focus-within) .c3-profile-editor { position: absolute; opacity: 0; pointer-events: none; }
-}
-/* Captions yield before the controls: a narrow bar keeps icons and accessible names. */
-@container living-bar (width < 540px) {
-  .c3-living .c3-personal .c3-voice-controls .lr-btn .lr-cap, .c3-living .c3-personal .c3-living-share .lr-cap { display: none; }
-  .c3-living .c3-personal .c3-voice-controls .lr-btn { width: var(--control-compact-size); padding: 0; }
 }
 .c3-living .c3-personal .c3-voice-controls > :first-child .lr-btn[aria-pressed="false"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); border-color: transparent; box-shadow: none; }
 .c3-living .c3-personal .lr-btn.is-on { color: var(--ink); }
 .c3-living .c3-personal .c3-voice-entry .lr-btn { --primary-fill: var(--primary); border-color: var(--primary-fill); background: var(--primary-fill); color: var(--primary-ink); }
-/* Settings are a caret on the control they adjust. */
-.c3-living .c3-personal :is(.c3-voice-destination > span, .c3-share-control:nth-child(2)) .lr-btn, .c3-living .c3-living-caret { width: 24px; min-width: 24px; padding: 0; }
+/* A control and its settings are one split button: the control, a seam, a caret. */
+.c3-living .c3-personal :is(.c3-voice-controls > :nth-child(1), .c3-share-control:nth-child(1):not(:last-child)) .lr-btn { border-start-end-radius: 0; border-end-end-radius: 0; }
+.c3-living .c3-personal :is(.c3-voice-destination > span, .c3-share-control:nth-child(2)) .lr-btn { width: 28px; min-width: 28px; padding: 0; border-color: transparent; border-start-start-radius: 0; border-end-start-radius: 0; background: var(--control-selected); color: var(--ink); box-shadow: none; }
 .c3-living .c3-personal :is(.c3-voice-destination > span, .c3-share-control:nth-child(2)) .lr-btn > :is(svg, .lr-cap) { display: none; }
 .c3-living .c3-personal :is(.c3-voice-destination > span, .c3-share-control:nth-child(2)) .lr-btn::before { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0; rotate: 45deg; translate: 0 -2px; }
-.c3-living .c3-personal .c3-voice-destination > span { margin-inline-start: -8px; }
-.c3-living .c3-personal .c3-share-actions { flex-wrap: nowrap; gap: 0; }
+.c3-living .c3-personal .c3-voice-destination > span { margin-inline-start: calc(1px - var(--lv-bar-gap)); }
+.c3-living .c3-personal .c3-share-actions { flex-wrap: nowrap; gap: 1px; }
 .c3-living .c3-personal .c3-share-feedback { flex-direction: row; align-items: center; }
-/* While I share here, an invisible copy of Start sharing holds the slot so Leave keeps its place. */
-.c3-living .c3-personal .c3-living-share.is-vacant { display: inline-flex; visibility: hidden; }
-/* One filled accent: Join voice when I am not in voice; otherwise the bar's Start sharing. */
+/* One filled accent: Join voice when I am not in voice; otherwise Start sharing, caret included. */
+.c3-living .c3-personal .c3-share-control:nth-child(2) .lr-btn { background: var(--primary); color: var(--primary-ink); }
 .c3-living:has(.c3-voice-entry .lr-btn) .c3-living-share .lr-btn.is-primary { --primary-fill: var(--control-selected); color: var(--ink); border-color: transparent; }
-/* Chat: in the bar only when the panel is folded or narrow screens open it on demand. */
-.c3-shell.c3-living .c3-living-chat { display: none; }
-.c3-shell.c3-living:is([data-companion="none"], [data-sidebars="phone"]) .c3-living-chat { display: inline-grid; }
-/* A phone without a picture has nothing to fold the conversation into: the chat button is hidden. */
-.c3-shell.c3-living[data-sidebars="phone"][data-stage="empty"] .c3-living-chat,
-.c3-living[data-sidebars="phone"][data-stage="empty"] .c3-living-fold { display: none; }
+.c3-living:has(.c3-voice-entry .lr-btn) .c3-personal .c3-share-control:nth-child(2) .lr-btn { background: var(--control-selected); color: var(--ink); }
+/* Captions yield before the controls: a narrow row keeps icons and accessible names. */
+@container living-bar (width < 760px) {
+  .c3-living .c3-personal :is(.c3-voice-controls, .c3-living-share) .lr-btn .lr-cap { display: none; }
+  .c3-living .c3-personal .c3-voice-controls .lr-btn, .c3-living .c3-personal .c3-living-share .lr-btn:not(.c3-share-control:nth-child(2) .lr-btn) { width: var(--control-compact-size); padding: 0; }
+}
 
-/* ---------- Right panel: Chat and Users as tabs in one place ---------- */
-.c3-shell.c3-living > .c3-living-tabs { grid-area: tabs; display: flex; align-items: center; gap: 4px; min-width: 0; padding: 8px 12px 0; background: var(--wall); border-inline-start: 1px solid var(--line); }
-.c3-shell.c3-living[data-companion="none"] > .c3-living-tabs { display: none; }
-.c3-living-tablist { display: flex; gap: 4px; min-width: 0; }
-.c3-living-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--c3-inset-radius); background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; }
-.c3-living-tab:hover { background: var(--control-hover); color: var(--ink); }
-.c3-living-tab[aria-selected="true"] { background: var(--control-selected); color: var(--ink); }
-.c3-living-tabs > .lr-btn, .c3-living-tabs > .lr-comic-tip-wrap { margin-inline-start: auto; }
-.c3-shell.c3-living > :is(.c3-chat-panel, .c3-living-people) { grid-area: panel; width: auto; justify-self: stretch; translate: none; min-height: 0; border-inline-start: 1px solid var(--line); }
+/* ---------- Companions: the conversation beside pictures, or the people of the site ---------- */
+.c3-shell.c3-living.c3-living > :is(.c3-chat-panel, .c3-living-people) { grid-area: side; width: var(--lv-panel); justify-self: stretch; translate: none; min-height: 0; border-inline-start: 1px solid var(--line); background: var(--wall); }
+.c3-shell.c3-living.c3-living > .c3-living-people { width: var(--lv-people); }
 .c3-shell.c3-living > .c3-living-people:not([hidden]) { display: flex; }
-.c3-living .c3-living-people > .c3-people-panel { flex: 1; min-width: 0; }
+.c3-living .c3-living-people > .c3-people-panel { flex: 1; min-width: 0; background: var(--wall); }
 .c3-living .c3-chat-panel .c3-chat-heading { display: none; }
-.c3-living .c3-people-panel > header { display: none; }
-.c3-living .c3-people-panel { background: var(--wall); }
-.c3-living .c3-chat-panel .c3-conversation { padding-block: 0 12px; }
-.c3-living .c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 12px; }
 .c3-living .c3-message-content-body { font-size: 16px; line-height: 1.5; }
-.c3-living .c3-room-start p { font-size: 14px; }
 .c3-living:lang(zh) .c3-message-content-body, :lang(zh) .c3-living .c3-message-content-body { line-height: 1.6; }
 .c3-living .c3-message-meta strong { font-size: 16px; font-weight: 600; }
+.c3-living .c3-message { position: relative; width: auto; max-width: none; margin: 8px calc(-1 * var(--lv-inset)) 0; padding: 4px var(--lv-inset); }
+.c3-living .c3-message.is-continuation { margin-top: 0; padding-inline-start: calc(var(--lv-inset) + 40px); }
+.c3-living .c3-message-date + .c3-message { margin-top: 10px; }
+.c3-living .c3-message:is(:hover, :focus-within, :has([aria-expanded="true"])) { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.c3-living .c3-message-body { flex: 1 1 auto; width: auto; }
+.c3-living .c3-message p { text-wrap: pretty; }
+.c3-living .c3-message-content-body .c3-content-actions { position: absolute; inset-block-start: -14px; inset-inline-end: var(--lv-inset); display: inline-flex; gap: 2px; margin: 0; padding: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--wall); }
 .c3-living .c3-message-meta time, .c3-living .c3-message-date { font-size: 12px; }
+.c3-living .c3-room-start p { font-size: 14px; }
 .c3-living .c3-person strong { font-size: 16px; font-weight: 600; }
 .c3-living :is(.c3-person small, .c3-you, .c3-people-panel h2 > span, .c3-people-body .c3-section-label) { font-size: 12px; }
+/* Beside pictures: messages to the panel's inset; the composer is the panel's part of my row. */
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-conversation { padding: 0; gap: 0; }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 0; }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-message-log { padding: 4px var(--lv-inset) 12px; }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-composer { box-sizing: border-box; min-height: var(--lv-band); justify-content: center; padding: 5px var(--lv-inset); border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--wall); }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-compose-input { box-sizing: border-box; align-items: center; gap: 2px; padding: 3px 6px 3px 2px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--paper); }
+.c3-living[data-chat="panel"] .c3-chat-panel .c3-composer:focus-within .c3-compose-input { border-color: var(--action); }
+/* Nobody shares: the conversation is the room. It uses the room's whole width and the room's inset. */
+.c3-shell.c3-living.c3-living[data-chat="main"] > .c3-chat-panel { grid-area: chat; display: flex; width: auto; translate: none; pointer-events: auto; border: 0; background: var(--paper); }
+.c3-living[data-chat="main"] .c3-chat-panel .c3-conversation { padding: 0; gap: 12px; }
+.c3-living[data-chat="main"] .c3-chat-panel .c3-conversation > :not(.c3-chat-heading, .c3-message-log) { margin-inline: var(--lv-inset); }
+.c3-living[data-chat="main"] .c3-chat-panel .c3-conversation > .c3-message-log { margin-inline: 0; padding: 4px var(--lv-inset) 0; }
 
-/* ---------- Notices inside the stage ---------- */
-.c3-living .c3-notice { font-size: 14px; margin: 12px; }
-.c3-living .c3-other-activity small, .c3-living .c3-activity-room { font-size: 12px; }
-.c3-living .c3-other-activity strong { font-size: 14px; }
+/* ---------- Short windows: the couch at its natural size, still whole ---------- */
+@container channel-living (max-height: 720px) {
+  .c3-shell.c3-living .c3-room-presence .c3-couch { --lv-couch-scale: 1; }
+}
 
-
-/* ---------- Phone: full-bleed, one column, pictures first, chat in the height that remains ---------- */
+/* ---------- Phone: one column; the picture, the couch, the conversation on demand, my row ---------- */
 .c3-app:has(> .c3-shell.c3-living[data-sidebars="phone"]) { --c3-content-width: 100%; padding-top: 0; }
-.c3-shell.c3-living[data-sidebars="phone"] {
+.c3-shell.c3-living.c3-living[data-sidebars="phone"] {
+  --lv-band: 56px; --lv-inset: 12px; --lv-bar-gap: 14px; --lv-couch-scale: 1;
   margin: 0; border: 0; border-radius: 0; box-shadow: none;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: var(--living-bar) auto auto auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "room  tools"
-    "stage stage"
-    "couch couch"
-    "tabs  tabs"
-    "panel panel"
-    "me    me";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--lv-top) minmax(0, 1fr) auto minmax(var(--lv-band), auto);
+  grid-template-areas: "top" "stage" "couch" "me";
 }
-/* Conversation folded (the phone's default with a picture): the picture, the full couch below it, the bar. */
-.c3-shell.c3-living.c3-living[data-sidebars="phone"][data-companion="none"] {
-  grid-template-rows: var(--living-bar) auto minmax(0, 1fr) auto;
-  grid-template-areas: "room tools" "stage stage" "couch couch" "me me";
+/* The conversation opened under the couch: the picture keeps its own height. */
+.c3-shell.c3-living.c3-living[data-sidebars="phone"][data-chat="panel"] {
+  grid-template-rows: var(--lv-top) auto auto minmax(0, 1fr) minmax(var(--lv-band), auto);
+  grid-template-areas: "top" "stage" "couch" "side" "me";
 }
-.c3-living[data-sidebars="phone"][data-companion="none"]:not([data-stack]) .c3-room-presence .c3-couch { align-self: center; }
-.c3-shell.c3-living.c3-living[data-sidebars="phone"][data-couch="full"] .c3-room-presence .c3-couch { zoom: 1.25; }
-/* Two or more pictures, folded: full width and stacked, scrolling above the strip. */
-.c3-shell.c3-living.c3-living[data-sidebars="phone"][data-stack] {
-  grid-template-rows: var(--living-bar) minmax(0, 1fr) auto auto;
-  grid-template-areas: "room tools" "stage stage" "couch couch" "me me";
-}
-.c3-shell.c3-living[data-sidebars="phone"][data-stack] .c3-main-body { overflow-y: auto; overscroll-behavior: contain; }
-.c3-shell.c3-living.c3-living[data-sidebars="phone"][data-stack] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { --stage-stack: 1; max-height: none; overflow: visible; }
-/* Without a picture: messages and composer are the main area, then the strip and the bar. */
 .c3-shell.c3-living.c3-living[data-sidebars="phone"][data-stage="empty"] {
-  grid-template-rows: var(--living-bar) auto auto minmax(0, 1fr) auto auto;
-  grid-template-areas: "room tools" "stage stage" "tabs tabs" "panel panel" "couch couch" "me me";
+  grid-template-rows: var(--lv-top) auto minmax(0, 1fr) auto minmax(var(--lv-band), auto);
+  grid-template-areas: "top" "stage" "chat" "couch" "me";
 }
-.c3-living[data-sidebars="phone"] .c3-site-identity { display: none; }
-.c3-shell.c3-living[data-sidebars="phone"] .c3-room-heading { padding-inline: 4px; border: 0; }
-.c3-living[data-sidebars="phone"] .c3-room-name h2 { font-size: 16px; }
-.c3-living[data-sidebars="phone"] .c3-global-tools.lr-top { padding-inline: 4px; }
-.c3-shell.c3-living[data-sidebars="phone"] .c3-pane-navigation { display: inline-flex; flex: none; }
-.c3-living[data-sidebars="phone"] .c3-room-invitation-entry { display: none; }
-.c3-living.c3-living[data-sidebars="phone"] > .c3-sidebar { display: none; }
-/* The room-list drawer carries the site: its identity, menu and home take the top row, my profile the bar. */
-.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] > .c3-sidebar { display: block; grid-area: 2 / 1 / -2 / -1; z-index: 4; translate: none; pointer-events: auto; border: 0; }
-.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-site-identity { display: grid; grid-area: room; }
-.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-room-heading { display: none; }
-.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-personal :is(.c3-room-slot, .c3-living-share, .c3-living-chat) { display: none; }
-.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-personal .c3-identity { display: flex; flex: 1; }
-/* Conversation open: the strip is fixed, so both couch heights are the strip's. */
-.c3-shell.c3-living[data-sidebars="phone"] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { max-height: calc(100cqb - 350px); --stage-couch-full: 76px; --stage-couch-strip: 76px; }
-.c3-shell.c3-living[data-sidebars="phone"][data-companion="none"] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { max-height: calc(100cqb - 110px); --stage-couch-full: 104px; }
-/* Pictures run to the screen's edges: no stage padding, no rounded outer corners. */
-.c3-living[data-sidebars="phone"] .c3-monitor { --stage-padding: 0px; }
-.c3-living[data-sidebars="phone"] .c3-monitor-heading { padding: 8px 8px 0; }
-.c3-living[data-sidebars="phone"] .c3-monitor-grid { --stage-tile-min: 150px; gap: 4px; }
-.c3-living.c3-living[data-sidebars="phone"] .c3-monitor-grid[data-fitted] > .c3-monitor-tile,
-.c3-living.c3-living[data-sidebars="phone"] .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait, footer) { border-radius: 0; }
-.c3-shell.c3-living[data-sidebars="phone"] .c3-room-presence .c3-couch { zoom: 1; margin-top: 4px; }
-.c3-shell.c3-living[data-sidebars="phone"] .c3-room-presence > .c3-room-tool-entry { grid-area: couch; justify-self: end; align-self: start; margin: 4px 4px 0 0; }
-.c3-shell.c3-living[data-sidebars="phone"] > .c3-living-tabs { padding-inline: 8px; border: 0; }
-.c3-shell.c3-living[data-sidebars="phone"] > :is(.c3-chat-panel, .c3-living-people) { border: 0; border-top: 1px solid var(--line); }
-.c3-shell.c3-living[data-sidebars="phone"] > .c3-personal { justify-content: space-around; gap: 0; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); min-height: 56px; }
+.c3-shell.c3-living.c3-living[data-sidebars="phone"] > .c3-personal { grid-area: me; justify-content: center; padding: 0 4px env(safe-area-inset-bottom); }
+.c3-shell.c3-living[data-sidebars="phone"] > .c3-personal::before,
 .c3-shell.c3-living[data-sidebars="phone"] > .c3-personal::after,
 .c3-living[data-sidebars="phone"] .c3-personal .c3-identity { display: none; }
+.c3-living[data-sidebars="phone"] .c3-site-identity { display: none; }
+.c3-shell.c3-living[data-sidebars="phone"] .c3-room-heading { padding-inline: 4px 0; }
+.c3-living[data-sidebars="phone"] .c3-room-name h2 { font-size: 16px; }
+/* The room’s name comes before its tools: the tools are dense and the mark steps aside. */
+.c3-living[data-sidebars="phone"] .c3-room-name { gap: 4px; }
+.c3-living[data-sidebars="phone"] .c3-room-name > :is(svg, img, .c3-identity-mark) { display: none; }
+.c3-living[data-sidebars="phone"] :is(.c3-room-heading, .c3-global-tools) .lr-btn { --button-size: 36px; width: 36px; min-width: 36px; padding: 0; }
+.c3-living[data-sidebars="phone"] .c3-room-tools { gap: 0; }
+.c3-living[data-sidebars="phone"] .c3-global-tools.lr-top { padding-inline: 0 4px; }
+.c3-shell.c3-living[data-sidebars="phone"] .c3-pane-navigation { display: inline-flex; flex: none; }
+.c3-living.c3-living[data-sidebars="phone"] > .c3-sidebar { display: none; }
+/* The room-list drawer carries the site: its identity, menu and home take the top row, my profile my row. */
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] > .c3-sidebar { display: block; grid-area: 2 / 1 / -2 / -1; z-index: 4; translate: none; pointer-events: auto; border: 0; }
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-site-identity { display: grid; flex: 1 1 auto; }
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-room-heading { display: none; }
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-personal :is(.c3-room-slot, .c3-living-share, .c3-living-chat) { display: none; }
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-personal .c3-identity { display: flex; flex: 1; width: auto; }
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-personal .c3-identity > :not(svg) { display: revert; }
+/* Pictures run to the screen's edges. */
+.c3-shell.c3-living.c3-living[data-sidebars="phone"] .c3-workspace .c3-monitor { --stage-padding: 0px; padding-bottom: 0; }
+.c3-living[data-sidebars="phone"] .c3-monitor-grid { --stage-tile-min: 150px; gap: 4px; }
+.c3-living.c3-living[data-sidebars="phone"] .c3-monitor-grid[data-fitted] > .c3-monitor-tile { border-radius: 0; box-shadow: none; }
+.c3-shell.c3-living[data-sidebars="phone"][data-chat="panel"] .c3-workspace.has-screens > .c3-monitor { flex: none; max-height: 42svh; container-type: inline-size; }
+.c3-shell.c3-living[data-sidebars="phone"] .c3-room-presence > .c3-room-tool-entry { grid-area: couch; justify-self: end; align-self: start; margin: 4px 4px 0 0; }
+.c3-shell.c3-living.c3-living[data-sidebars="phone"] > :is(.c3-chat-panel, .c3-living-people) { width: auto; border: 0; border-top: 1px solid var(--line); }
+.c3-shell.c3-living.c3-living[data-sidebars="phone"] > .c3-living-people { grid-area: 2 / 1 / -2 / -1; z-index: 3; border: 0; }
+.c3-living[data-sidebars="phone"][data-chat="panel"] .c3-chat-panel .c3-composer { min-height: 0; }
 .c3-living[data-sidebars="phone"] .c3-personal .lr-btn .lr-cap { display: none; }
-.c3-living.c3-living[data-sidebars="phone"] .c3-personal .c3-voice-controls .lr-btn,
-.c3-living.c3-living[data-sidebars="phone"] .c3-personal :is(.c3-share-control:first-child, .c3-living-share.is-vacant > :first-child) .lr-btn,
-.c3-living.c3-living[data-sidebars="phone"] .c3-personal .c3-living-share.is-vacant > .lr-btn:first-child { width: var(--control-compact-size); padding: 0; }
+.c3-living.c3-living[data-sidebars="phone"] .c3-personal :is(.c3-voice-controls, .c3-living-share) .lr-btn { width: var(--control-compact-size); padding: 0; }
+.c3-living.c3-living[data-sidebars="phone"] .c3-personal :is(.c3-voice-destination > span, .c3-share-control:nth-child(2)) .lr-btn { width: 24px; min-width: 24px; }
 .c3-living.c3-living.c3-living[data-sidebars="phone"] .c3-personal .c3-voice-entry .lr-btn { width: auto; padding-inline: 12px; }
 .c3-living[data-sidebars="phone"] .c3-personal .c3-voice-entry .lr-btn .lr-cap { display: inline; }
 .c3-shell.c3-living[data-sidebars="phone"] .c3-living-chat { width: var(--control-compact-size); padding: 0; }
-.c3-living[data-sidebars="phone"] .c3-personal .c3-voice-controls > :last-child { margin: 0; }
+.c3-living[data-sidebars="phone"] .c3-personal :is(.c3-living-share, .c3-voice-controls > :last-child) { margin: 0; }
+
+/* The narrowest phones: the room’s name keeps the first row, its tools take a second. */
+@media (max-width: 360px) {
+  .c3-shell.c3-living.c3-living[data-sidebars="phone"] { grid-template-rows: auto minmax(0, 1fr) auto minmax(var(--lv-band), auto); }
+  .c3-shell.c3-living.c3-living[data-sidebars="phone"][data-chat="panel"] { grid-template-rows: auto auto auto minmax(0, 1fr) minmax(var(--lv-band), auto); }
+  .c3-shell.c3-living.c3-living[data-sidebars="phone"][data-stage="empty"] { grid-template-rows: auto auto minmax(0, 1fr) auto minmax(var(--lv-band), auto); }
+  .c3-shell.c3-living[data-sidebars="phone"] > .c3-site-bar { flex-wrap: wrap; }
+  .c3-shell.c3-living[data-sidebars="phone"]:not([data-pane="rooms"]) .c3-room-heading { display: contents; }
+  .c3-living[data-sidebars="phone"] .c3-room-name { order: 1; flex: 1 1 0; min-height: var(--lv-top); padding-inline-start: 4px; }
+  .c3-living[data-sidebars="phone"] .c3-global-tools.lr-top { order: 2; min-height: var(--lv-top); }
+  .c3-living[data-sidebars="phone"] .c3-room-toolbar { order: 3; flex: 1 1 100%; display: flex; justify-content: flex-end; padding: 0 4px 4px; }
+}
 
 /* The room-list drawer moves focus to its heading, as the workspace's narrow drawer does; the heading is
    a non-interactive focus target, so it carries no ring. */

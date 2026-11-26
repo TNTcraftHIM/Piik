@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useStagePicture, type StagePictureSource } from "./use-stage-picture";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
@@ -14,7 +15,7 @@ import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { stageColumns, stageWithCouch, type CouchMode, type StageTile } from "../stage-layout";
+import { stageColumns, stageLayout, type StageTile } from "../stage-layout";
 import type { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { Btn, Cap } from "../../components/living/primitives";
@@ -207,10 +208,9 @@ export interface ChannelStageProps {
   /** Size every grid tile to its own picture's aspect (see stageLayout); off keeps cells of equal shape.
    * The value names the surrounding composition: when it changes, the stage measures again. */
   fit?: string | false;
-  /** With fit: the couch mode chosen from the same measurement (see stageWithCouch). The stage reads the
-   * couch heights from its --stage-couch-full and --stage-couch-strip properties, and stacks full width
-   * without a height budget when --stage-stack is 1. */
-  onCouchMode?: (mode: CouchMode) => void;
+  /** Where the grid and focus switch is shown when it does not head the stage: an element of the page's
+   * own view tools. The stage still owns the switch and its state. */
+  layoutHome?: HTMLElement | null;
 }
 
 function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: {
@@ -226,7 +226,7 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
 export function ChannelStage({ theaterMode: [theater, setTheater], buffering, sources, focusedId, canSubscribe, onFocus: onChangeFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
-  onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut, fit: fitKey = false, onCouchMode }: ChannelStageProps) {
+  onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut, fit: fitKey = false, layoutHome }: ChannelStageProps) {
   const fit = !!fitKey;
   const { lang, t } = useCopy();
   const retained = sources.filter(source => source.kind === "waiting" || source.owned || source.subscribed);
@@ -279,11 +279,9 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
         return video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
       });
       if (fit) {
-        const couch = { full: parseFloat(style.getPropertyValue("--stage-couch-full")) || 0, strip: parseFloat(style.getPropertyValue("--stage-couch-strip")) || 0 };
-        const stacked = style.getPropertyValue("--stage-stack").trim() === "1";
-        const fitted = stageWithCouch(ratios, tiles.clientWidth, stacked ? Infinity : height, parseFloat(layout.rowGap) || 0, footer,
-          couch, parseFloat(layout.getPropertyValue("--stage-tile-min")) || 0);
-        setColumns(fitted.columns); setTileSizes(fitted.tiles); onCouchMode?.(fitted.couch);
+        const fitted = stageLayout(ratios, tiles.clientWidth, height, parseFloat(layout.rowGap) || 0, footer,
+          parseFloat(layout.getPropertyValue("--stage-tile-min")) || 0);
+        setColumns(fitted.columns); setTileSizes(fitted.tiles);
         return;
       }
       setColumns(stageColumns(tiles.clientWidth, height, ratios, parseFloat(layout.columnGap) || 0, footer,
@@ -325,13 +323,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
   const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : focused?.kind === "screen" && hasPicture(focused);
   useEffect(() => { if (!hasFocusedMedia) setTheater(false); }, [focused?.id, hasFocusedMedia, setTheater]);
   if (!sources.length) return null;
-
-  return <section ref={stage} hidden={!active.length && !available.length} className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={t("screen.sharedScreens")}>
-
-    {retained.length > 0 && <>
-      <header className="c3-monitor-heading" hidden={!active.length}>
-        <div><Glyph name="tv" size={18} /><Cap k={{ text: t("screen.screens") }} /><small>{active.length}</small></div>
-        {active.length > 1 && <div className="c3-monitor-layout">
+  const layoutSwitch = active.length > 1 && <div className="c3-monitor-layout">
           {focused && <label className="c3-theater-source">
             <select className="lr-select" aria-label={t("screen.switchScreen")} value={focused.id} onChange={event => onFocus(event.target.value)}>
               {active.map(source => <option key={source.id} value={source.id}>{stageTitle(source, t)} / {source.name} / {source.roomName}</option>)}
@@ -350,7 +342,14 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
               </button>
             </Tooltip>
           </div>
-        </div>}
+        </div>;
+
+  return <section ref={stage} hidden={!active.length && !available.length} className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={t("screen.sharedScreens")}>
+
+    {retained.length > 0 && <>
+      <header className="c3-monitor-heading" hidden={!active.length}>
+        <div><Glyph name="tv" size={18} /><Cap k={{ text: t("screen.screens") }} /><small>{active.length}</small></div>
+        {layoutSwitch && (layoutHome === undefined ? layoutSwitch : layoutHome && createPortal(layoutSwitch, layoutHome))}
       </header>
       <div ref={grid} hidden={!active.length} data-fitted={tileSizes ? true : undefined} className={`c3-monitor-grid${focused ? " is-focused" : active.length > 1 ? " is-grid" : ""}`}
         style={{ "--stage-columns": columns ?? 1, "--stage-thumbnails": Math.max(1, active.length - 1) } as CSSProperties}>
