@@ -24,11 +24,13 @@ export const VOICE_STATUS_LABEL = {
 } as const;
 
 export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBrowse, renderingBySpeaker, shortcuts,
-  shortcutRoomId, density = "rows", directRoomId }: {
+  shortcutRoomId, density = "rows", directRoomId, toolsHome }: {
   channel: ChannelController; state: ChannelSnapshot; joined: readonly VoiceActivity[];
   browsingRoomId: string; onBrowse: (roomId: string) => void;
   renderingBySpeaker: ReadonlyMap<string, VoiceRendering>;
   shortcuts: Shortcuts; shortcutRoomId?: string; density?: VoiceRoomDensity; directRoomId?: string;
+  /** Where the tools that adjust all of my voice are placed: at the heading's end, or after the controls they adjust. */
+  toolsHome?: (element: HTMLElement | null) => void;
 }) {
   const { t } = useCopy();
   const label = t("channel.voiceDock.voiceControls");
@@ -51,8 +53,9 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
   </div>;
 
   return <div ref={layout} data-density={density} className="c3-voice-room-layout" role="region" aria-label={label}>
-    {density === "rows" && <h3 className="c3-voice-rooms-heading">{label}</h3>}
+    {density === "rows" && <div className="c3-voice-rooms-head"><h3 className="c3-voice-rooms-heading">{label}</h3><span ref={toolsHome} className="c3-voice-tools-home" /></div>}
     {direct && row(direct, true, true)}
+    {density !== "rows" && <span ref={toolsHome} className="c3-voice-tools-home" />}
     {density === "rows" ? rows(true) : listed.length > 0 && <ChannelVoiceRoomDisclosure
       count={listed.length} layoutAnchor={density === "rail" ? layout : undefined}>{rows}</ChannelVoiceRoomDisclosure>}
   </div>;

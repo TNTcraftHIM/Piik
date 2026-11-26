@@ -27,7 +27,6 @@ type VoiceDockProps = {
   browsingRoomId: string;
   density?: VoiceRoomDensity;
   directRoomId?: string;
-  toolsTarget?: HTMLElement | null;
 };
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
@@ -41,6 +40,8 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
     joined.length && channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined,
     joined.length && channel.voiceTransmission.mode === "push" ? channel.talk : undefined);
   const controls = useRef<HTMLDivElement>(null);
+  // What adjusts all of my voice stands with the voice controls: the rooms render its place, and it is filled here.
+  const [toolsHome, setToolsHome] = useState<HTMLElement | null>(null);
   const roomId = activity?.roomId ?? "";
   const overlay = useContext(VoiceOverlay);
   const readRemote = !!overlay?.target && !activity?.deafened;
@@ -88,24 +89,19 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
   const mutedNotice = <MutedTalkNotice anchor={controls} shown={shortcuts.talking && joined.every(value => value.muted)} />;
   const inputAvailable = channel.connection === "connected" && state.channel.rooms.some(room => room.available
     && joined.some(value => value.roomId === room.id));
-  const target = props.toolsTarget;
-  // The desktop rail and phone header can replace the tools slot while settings are open.
-  const renderTools = (settings: ReactNode) => {
-    const tools = <div className="c3-voice-shared-tools">{settings}{overlayTools}</div>;
-    return target ? createPortal(
-      <SurfaceDocument.Provider value={target.ownerDocument}>{tools}</SurfaceDocument.Provider>, target,
-    ) : tools;
-  };
+  // The rows, the rail and the bar each give the tools a place, and can replace it while settings are open.
+  const renderTools = (settings: ReactNode) => toolsHome && createPortal(
+    <SurfaceDocument.Provider value={toolsHome.ownerDocument}><div className="c3-voice-shared-tools">{settings}{overlayTools}</div></SurfaceDocument.Provider>, toolsHome);
   return <>
     <div ref={controls} className="c3-voice-dock-rooms">
       <ChannelVoiceRooms key={props.density} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
         onBrowse={onBrowse} renderingBySpeaker={renderingBySpeaker} shortcuts={shortcuts}
         shortcutRoomId={joined.length === 1 ? activity?.roomId : undefined} density={props.density}
-        directRoomId={props.directRoomId} />
+        directRoomId={props.directRoomId} toolsHome={setToolsHome} />
       {mutedNotice}
     </div>
     <ChannelVoiceSettings channel={channel} available={inputAvailable} shortcuts={shortcuts}
-      triggerDocument={target?.ownerDocument} renderTrigger={renderTools} />
+      triggerDocument={toolsHome?.ownerDocument} renderTrigger={renderTools} />
     {overlayView}
   </>;
 }

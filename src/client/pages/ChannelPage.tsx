@@ -139,7 +139,6 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [companionChoice, setCompanionChoice] = useState<Companion>();
   const [toolTriggerHome, setToolTriggerHome] = useState<HTMLDivElement | null>(null);
   const [stageLayoutHome, setStageLayoutHome] = useState<HTMLDivElement | null>(null);
-  const [voiceToolsHost, setVoiceToolsHost] = useState<HTMLDivElement | null>(null);
   const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
   const [newRoom, setNewRoom] = useState<string | RoomCreationInterrupted | null>(null);
   const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
@@ -460,7 +459,6 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
 
   const personalControls = <>
     <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />
-    <div ref={setVoiceToolsHost} className="c3-living-voice-preferences" />
     <PlaybackDeviceSelect />
     <ChannelFeedbackSounds channel={channel} />
     <ChannelForwardingSettings channel={channel} />
@@ -500,9 +498,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       <div><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>
       <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
         busy={busy("profile")} onSave={channel.updateProfile} />
-      {!phone && <HeaderControls personalControls={personalControls} />}
     </div>}
-    {!phone && !self && <HeaderControls personalControls={personalControls} />}
     <div className="c3-living-actions">
       <div ref={voiceSlot} className="c3-room-slot" />
       {room?.authorized && (stopOwnShare ? <Btn icon="stop" size="compact" tone="danger" title="host.stop"
@@ -560,8 +556,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {!connected && <LedStrip state={connection === "closed" ? "bad" : "busy"}
           label={connectionLabel} comic={connection === "closed" ? "signal-failed"
             : connection === "reconnecting" ? "signal-recovering" : "signal-connecting"} />}
-      </div>{roomHeading}{!phone ? <div className="c3-living-app">{standingTools}{appControl}</div>
-        : <div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls} /></div>}
+      </div>{roomHeading}<div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls} /></div>
       </header>
       <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}
         hidden={bar && !roomListOpen} inert={bar && !roomListOpen || undefined}>
@@ -740,7 +735,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
           </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
-            renderingBySpeaker={renderingBySpeaker} onBrowse={id => { setVoiceFocus(id); selectRoom(id); }} toolsTarget={voiceToolsHost} /></>} />
+            renderingBySpeaker={renderingBySpeaker} onBrowse={id => { setVoiceFocus(id); selectRoom(id); }} /></>} />
       </div>
       {personal}
     </main>

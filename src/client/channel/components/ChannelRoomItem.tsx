@@ -40,7 +40,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         aria-describedby={[unread && unreadId, !room.available && offlineId, activityLabel && activityId].filter(Boolean).join(" ") || undefined}
         aria-current={selected ? "page" : undefined} onClick={onSelect}>
         <ChannelIdentityMark icon={room.icon} picture={selected ? room.picture : undefined} size={21} />
-        {compact ? (participantCount ? <span className="c3-room-count" aria-hidden="true"><Glyph name="users" size={12} />{participantCount}</span> : null) : <strong>{room.name}</strong>}
+        {!compact && <strong>{room.name}</strong>}
         {!compact && <span className="c3-room-activity" aria-hidden="true">
           {room.access === "private" && <Glyph name="lock" size={13} />}
           {!room.available && <span>{offlineLabel}</span>}
