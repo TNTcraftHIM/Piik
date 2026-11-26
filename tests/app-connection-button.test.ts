@@ -656,16 +656,17 @@ describe("App connection approval", () => {
     expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
   });
 
-  it.each(["absent", "failed"])("does not activate from an approval message when health is %s", async result => {
+  it.each(["absent", "failed", "incompatible"])("does not activate from an approval message when health is %s", async result => {
     const page = mount();
     await page.openApproval();
     if (result === "absent") page.native.discoverNativeHealth.mockResolvedValue(null);
+    else if (result === "incompatible") page.native.discoverNativeHealth.mockRejectedValue(new page.native.NativeCompatibilityError());
     else page.native.discoverNativeHealth.mockRejectedValue(new Error("network unavailable"));
     page.message();
     await settle();
     expect(page.activateClient).not.toHaveBeenCalled();
     expect(page.onConnected).not.toHaveBeenCalled();
-    expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+    expect(page.setState).toHaveBeenLastCalledWith(result === "incompatible" ? "incompatible" : "unavailable");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
     page.native.discoverNativeHealth.mockResolvedValue(null);
