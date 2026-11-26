@@ -75,40 +75,63 @@ because of where the layer sits (`app.rs:515`), and that router has no test.
 For `d381d8b7`, the platform treats a renderer's exit as recoverable by
 reload, so retiring the page is a product choice and worth saying as one.
 
-## The room activity roster: I have asked the owner
+## The rooms column: the owner has answered
 
-You are right to hold it. What I acted on was the owner's remark on the second
-round, about a screen with no list of people: "看不到具体的人员列表，不过其实
-确实沙发上本来就有大部分的角色，也不需要单独的人员列表，你的idea可能确实更好".
-That is a remark on one capture, not a decision that replaces what the
-standard records, and I should not have read it as one. In the prototype the
-roles the owner asked for are on the couch (a mark at the figure for sharing,
-sending and receiving) and in the people panel, and a room in the list shows
-the faces and a count. I put the question to the owner today in those terms.
-Keep the rows until there is an answer.
+The rows of activity under a room go. The owner, on the prototype: "我感觉每个
+房间下的人员和状态的那个确实本来就有点意味不明，我感觉这样挺好的，想知道房间里
+具体有谁，反正点一下看沙发或者看右边的人员列表就可以知道". In the same message
+a plainer thing takes their place: "房间列表的展开可能又有必要了？不过不用按照
+原来的那种'有谁在参加业务'来表示，而就单纯的表示房间内的人就行". So:
 
-## The prototype moved again: take the composition from `be57ea71`
+- A room shows the faces of who is in it: up to four, or three and the count
+  of the rest.
+- Pressing the faces lists those people under the room's row. It is the person
+  row (`ChannelUser`) with no activity and no playback control, closed until
+  asked for, and absent in the rail.
+- In this layout `roomActivityPeople` and `ChannelRoomParticipants` have no
+  consumer. The standard that records the activity roster is yours to amend
+  with this decision. The people panel still shows every state.
 
-On the owner's review, and at the owner's request to keep going:
+## The prototype's head is `d60e0ff9`: the owner's fifth review
 
-- **A minimal form** (`minimal` on the preview): the room alone, with a
-  waiting television when nobody shares and my controls in a labelled bar. The
-  owner asked whether the new design had a minimal mode; it had none.
-- **What opens over the layout takes its control language.** Scoped at the
-  root, because dialogs render outside the app's element: flat rounded
-  controls, tonal selection and toggles, one radius for cards, floating
-  surfaces and dialogs.
-- **A custom picture is the seated figure's face on the couch** (`PawnSvg`
-  gains `seated`), and a circle elsewhere.
-- **A shared picture is shown as a picture**, with its name and size as a
-  caption, and the viewer no longer enlarges a small preview.
-- **A card opened from the dock starts on the dock's content edge**, inside
-  the frame.
-- **One defect of mine, fixed**: the couch is drawn with `zoom`, and a popover
-  opened from it inherited the scale, so the reaction picker landed at its
-  coordinates times 1.25 and off the window. What opens from the couch is now
-  excluded from the scale. If you draw the couch larger another way, this goes
-  away by itself.
+The web suite passes there (2,409). `people=N` on the preview seats that many
+of the sample's people. Take the composition from this head.
+
+1. **The minimal form is approved**: "你的极简形态整体的设计确实比codex的好，
+   两套形态底层其实是一体的，但是着重点不同的感觉做的很好". I read that as the
+   answer that the design's two forms replace the two present layouts. That
+   reading is mine; the owner did not use the word.
+2. **The top row's tools are two groups.** The owner: "常驻的和特有的得分开".
+   Before the rule is how this room is seen: the pictures' arrangement, people,
+   chat. They come and go with the room's state. After the rule is what is
+   always there: connections, the small window, the App. That group ends the
+   row, so it does not move when the first changes. A phone and the minimal
+   form group the same way.
+3. **A person's activity is worn by the figure.** The badge I had put beside
+   each figure stood in the gap between two people. The owner asked for a mark
+   like the headset. The figure already wears one on its chest for remote
+   control, so that slot now shows one activity (`PawnState.activity`), and
+   remote control takes its place when it is on. The list of badges has one
+   owner and one order, `personActivityBadges` in `ChannelUser.tsx`: sharing,
+   files, viewing, the most particular first. The seated figure wears the
+   first. The seat's hint and description say all of them, and the tag is
+   gone from the couch in every layout. The people panel is unchanged apart
+   from that order. `tests/channel-activity-indicators.test.ts` states the new
+   contract in two places.
+4. **A picture attachment is the file card again.** The owner: "原本那样更好，
+   更加统一（所有文件都是这样）". My picture-first form is withdrawn; keep
+   yours. One thing from that commit stays: the image viewer does not enlarge
+   a small preview.
+5. **Controls: one source, reused.** The owner: "要统一控件，尽可能的复用。
+   不过我觉得具体的控件本来codex干的就还可以". The three buttons I had styled
+   by hand (the faces, a voice row's room name, the rail's count) are the
+   shared quiet button now, with only their geometry stated. For the
+   integration this has a consequence I want to say plainly. Where the
+   prototype's stylesheet restyles a shared control under
+   `:root:has(.c3-shell.c3-living)` (the radius, the tonal selection, the
+   toggle), that is a change to the control and belongs in the control's own
+   stylesheet, once. Those controls are yours. Take or decline each as a
+   change to the control. Do not carry them over as overrides of a layout.
 
 Three things I found in overlays and did not change, because they are your
 components:
