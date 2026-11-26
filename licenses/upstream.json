@@ -29,10 +29,10 @@
     "source": "https://raw.githubusercontent.com/bufbuild/protobuf-es/e31c1b139cf1e7fea2fb914f650af3c28c42ec68/LICENSE",
     "sha256": "c114d9db3f8aa485b7365a01aa6094c71de47262e89f6090c5fe7950e1dac95a"
   },
-  "cloudflared@2026.10.3": {
-    "file": "cloudflared-2026.10.3.txt",
-    "source": "https://github.com/cloudflare/cloudflared/tree/de6376c5af4a67cbc65258682e5a01781827643d",
-    "sha256": "86d91fce84e045818cd3e4e95aba68d32274ed42b9eb1fe88612e12d9e7e1ce1"
+  "cloudflared@2026.11.2": {
+    "file": "cloudflared-2026.11.2.txt",
+    "source": "https://github.com/cloudflare/cloudflared/tree/dc57315806d5faa8715f728fd37b5302c81c467b",
+    "sha256": "cd740e0682e6b4ccef71e7f0821b8208a04ba85d702049430a7ffa5524a0ac20"
   },
   "kotlin-stdlib@2.2.10": {
     "file": "kotlin-stdlib-2.2.10.txt",

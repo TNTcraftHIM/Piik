@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { expect, it, vi } from "vitest";
+import { CLOUDFLARED_VERSION } from "../scripts/app-package-targets.mjs";
 import { recordChannelWeb } from "../scripts/channel-web-artifact.mjs";
 
 const source = vi.hoisted(() => ({ root: "", web: "", revision: "a".repeat(40), frontend: "", webBuilds: 0, commands: [] as string[], cargoEnvs: [] as NodeJS.ProcessEnv[] }));
@@ -56,7 +57,7 @@ it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android u
   const write = (path: string, bytes: string | Buffer) => {
     const target = join(source.root, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes);
   };
-  write("licenses/upstream.json", JSON.stringify({ "cloudflared@2026.10.3": { source: "https://example.invalid/upstream/" + commit } }));
+  write("licenses/upstream.json", JSON.stringify({ [`cloudflared@${CLOUDFLARED_VERSION}`]: { source: "https://example.invalid/upstream/" + commit } }));
   const archive = "build/android-cloudflared/" + commit + ".tar.gz";
   write(archive, scenario === "default" ? "corrupt cache" : "fixture upstream");
   write("gradle/lib/gradle-launcher-fixture.jar", "fixture");
