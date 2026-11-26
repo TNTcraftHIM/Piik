@@ -280,7 +280,8 @@ export class ChannelSession {
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed, request) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed, request),
     key => messageRemoved(this.histories.get(key.roomId)?.changes, key.messageSeq),
-    (peer, request) => this.media.cancelChunks(peer, request), () => this.conversation.fileAvailabilityLimit());
+    (peer, request) => this.media.cancelChunks(peer, request), () => this.conversation.fileAvailabilityLimit(),
+    key => this.histories.get(key.roomId)?.messages?.find(message => message.seq === key.messageSeq));
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };

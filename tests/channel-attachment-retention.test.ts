@@ -36,12 +36,12 @@ test("retention cancels the source when permission is withdrawn while reading", 
   expect(result).toEqual({ file: null, evicted: [] });
 });
 
-function setup(command = async (_command: ChannelCommand) => {}) {
+function setup(command = async (_command: ChannelCommand) => {}, confirmedMessage?: () => ChannelMessage | undefined) {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
-  const files = new ChannelAttachments(command, async () => {}, undefined, undefined, () => 2);
+  const files = new ChannelAttachments(command, async () => {}, undefined, undefined, () => 2, confirmedMessage);
   files.update("endpoint", { domainId: "domain", userId: "self" }, [],
     [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
   return files;
@@ -579,7 +579,8 @@ test("a restored attachment only reuses the platform save for matching content",
 });
 
 test.each(["in progress", "completed without retention"])("restore replaces a receiver that is %s at the same attachment key", async phase => {
-  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  let row: ChannelMessage | undefined;
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command, () => row);
   const a = { ...attachment, size: 3 }, b = { ...a, sha256: "b".repeat(64) };
   const getFileHandle = vi.fn()
     .mockImplementationOnce(async () => handle("AAA"))
@@ -612,6 +613,8 @@ test.each(["in progress", "completed without retention"])("restore replaces a re
       await expect(old).resolves.toBe("AAA");
     }
     update("restored");
+    await expect(read(b)).rejects.toThrow("attachment_unavailable");
+    row = { ...message, attachments: [b] };
     const next = read(b), download = files.download(key, b);
     await vi.waitFor(() => expect(getFileHandle).toHaveBeenCalledTimes(2));
     if (phase === "in progress") await expect(old).rejects.toThrow("attachment_unavailable");
@@ -621,6 +624,7 @@ test.each(["in progress", "completed without retention"])("restore replaces a re
     expect(cancel).toHaveBeenCalledOnce();
     expect(save).toHaveBeenCalledOnce();
     expect(await save.mock.calls[0][0].text()).toBe("BBB");
+    await expect(read(a)).rejects.toThrow("attachment_unavailable");
     await expect(read(b)).resolves.toBe("BBB");
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
