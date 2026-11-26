@@ -238,20 +238,19 @@ impl Codec {
         self.codec.set_parameters(params)?;
         Ok(())
     }
-    fn encode(
-        &mut self,
-        shared: &Shared,
-        frames: &Frames,
-        raw: &RawFrame,
-        nanos: i64,
-        force: bool,
-    ) -> Result<Option<(EncodedFrame, Option<i32>)>> {
+    fn submit(&self, raw: &RawFrame, nanos: i64, force: bool) -> Result<()> {
         if force {
             let mut params = MediaFormat::new();
             params.set_i32("request-sync", 0);
             self.codec.set_parameters(params)?;
         }
-        self.graphics.submit(&raw.image, self.size, nanos)?;
+        self.graphics.submit(&raw.image, self.size, nanos)
+    }
+    fn receive(
+        &mut self,
+        shared: &Shared,
+        frames: &Frames,
+    ) -> Result<Option<(EncodedFrame, Option<i32>)>> {
         let mut bytes = Vec::new();
         let mut keyframe = false;
         loop {
@@ -354,7 +353,8 @@ fn run(
     runtime: &tokio::runtime::Handle,
 ) -> Result<()> {
     let mut codec: Option<Codec> = None;
-    let mut last = None;
+    let mut previous_capture = None;
+    let mut submitted: Option<(i64, i64)> = None;
     let mut bitrate = settings.bitrate;
     let epoch = std::time::Instant::now();
     let mut policy = QualityPolicy::new(video_codec, settings.degradation_preference, 0);
@@ -364,7 +364,7 @@ fn run(
     let mut rate = crate::capture::cadence::AdmissionRate::default();
     let mut dropper = crate::capture::frame_dropper::FrameDropper::new();
     dropper.set_rates(bitrate as f32 / 1000., settings.fps as f32);
-    while let Some(work) = runtime.block_on(next(shared, &frames, last))? {
+    while let Some(work) = runtime.block_on(next(shared, &frames, previous_capture))? {
         let (raw, explicit) = match work {
             Work::Bitrate(value) => {
                 bitrate = value;
@@ -399,20 +399,15 @@ fn run(
             rate = crate::capture::cadence::AdmissionRate::default();
             dropper.set_rates(bitrate as f32 / 1000., fps as f32);
         }
-        let fresh = last.is_none_or(|last| raw.nanos > last);
-        // Explicit local-capture PLI may present the current static image once.
-        let nanos = if explicit && !fresh {
-            Clock::now()?
-        } else {
-            raw.nanos
-        };
-        last = Some(nanos);
+        let fresh = previous_capture.is_none_or(|previous| raw.nanos > previous);
+        previous_capture = Some(raw.nanos);
+        let capture_timestamp = raw.nanos / 100;
         let mut force = explicit || pending_keyframe;
-        if !force && !cadence.accept(nanos / 100) {
+        if !force && !cadence.accept(capture_timestamp) {
             continue;
         }
         if fresh {
-            if let Some(fps) = rate.observe(nanos / 100) {
+            if let Some(fps) = rate.observe(capture_timestamp) {
                 dropper.set_rates(bitrate as f32 / 1000., fps);
             }
             dropper.leak(rate.fps.unwrap_or(fps as f32).round().max(1.) as u32);
@@ -429,11 +424,19 @@ fn run(
             codec = Some(Codec::new(&frames, fitted, video_codec)?);
             force = true;
         }
-        if let Some((frame, qp)) = codec
-            .as_mut()
-            .unwrap()
-            .encode(shared, &frames, &raw, nanos, force)?
-        {
+        let mut nanos = raw.nanos;
+        if let Some((last_capture, last_pts)) = submitted {
+            if explicit && raw.nanos == last_capture {
+                nanos = Clock::now()?;
+            }
+            // MediaCodec reports whole microseconds, so round one 90 kHz tick up to 12 µs.
+            const RTP_TICK_NS: i64 = 12_000;
+            nanos = nanos.max(last_pts + RTP_TICK_NS);
+        }
+        let codec = codec.as_mut().unwrap();
+        codec.submit(&raw, nanos, force)?;
+        submitted = Some((raw.nanos, nanos));
+        if let Some((frame, qp)) = codec.receive(shared, &frames)? {
             policy.report_encoded(qp, epoch.elapsed().as_micros() as u64);
             pending_keyframe = force && !frame.keyframe;
             dropper.fill(frame.bytes.len(), !frame.keyframe);
