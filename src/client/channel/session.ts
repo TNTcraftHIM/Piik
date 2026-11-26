@@ -3070,7 +3070,12 @@ export class ChannelSession {
   }
   stopWatch = async (id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement" = "stop-requested"): Promise<void> => {
     const player = this.watchPlayer(id);
-    if (!player?.owner) return;
+    if (!player?.owner) {
+      if (player || reason !== "stop-requested" || this.view.connection !== "connected") return;
+      const activity = this.roomSnapshot?.watchActivities.find(value => value.id === id && value.sessionId === this.view.sessionId);
+      if (activity) await this.request({ type: "stop_watch", roomId: activity.roomId, id }, undefined, activity.roomId);
+      return;
+    }
     const candidate = this.stages.get(player.roomId)?.sourceSelection?.watchCandidate;
     if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
     this.retireWatchPlayer(id, reason);
