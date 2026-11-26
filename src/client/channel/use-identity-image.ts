@@ -1,26 +1,35 @@
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { prepareIdentityImage } from "./identity-image";
 
-/** Only the current file selection can complete an editor's image preparation. */
+/** A superseded file selection leaves the editor busy with its replacement. */
 export function useIdentityImage() {
-  const request = useRef<AbortController | null>(null);
-  const cancel = () => request.current?.abort();
-  useLayoutEffect(() => () => request.current?.abort(), []);
+  const request = useRef<{ controller: AbortController; complete(): void } | null>(null);
+  const cancel = useCallback(() => {
+    const current = request.current;
+    current?.controller.abort();
+    current?.complete();
+  }, []);
+  useLayoutEffect(() => cancel, [cancel]);
 
   async function prepare(file: File, onImage: (image: string) => void, onError: () => void, onComplete?: () => void) {
-    cancel();
-    const current = new AbortController();
-    request.current = current;
-    try {
-      const image = await prepareIdentityImage(file, current.signal);
-      if (!current.signal.aborted) onImage(image);
-    } catch {
-      if (!current.signal.aborted) onError();
-    } finally {
-      if (!current.signal.aborted) {
+    request.current?.controller.abort();
+    const controller = new AbortController();
+    const current = {
+      controller,
+      complete() {
+        if (request.current !== current) return;
         request.current = null;
         onComplete?.();
-      }
+      },
+    };
+    request.current = current;
+    try {
+      const image = await prepareIdentityImage(file, controller.signal);
+      if (!controller.signal.aborted) onImage(image);
+    } catch {
+      if (!controller.signal.aborted) onError();
+    } finally {
+      current.complete();
     }
   }
   return { prepare, cancel };

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
@@ -74,7 +74,6 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
   const { t } = useCopy();
   const { name, icon, access, hidden, password, removePassword, relayCapacity } = value;
   const change = onChange;
-  useLayoutEffect(() => () => { onImageBusyChange(false); }, [onImageBusyChange]);
   const restoreField = useRoomFormFocus(disabled || busy);
   const canSave = !!name.trim() && !disabled && !busy && !imageBusy;
   return <form className="c3-room-form" onKeyDownCapture={protectRoomComposition} onSubmit={event => {

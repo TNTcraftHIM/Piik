@@ -52,7 +52,7 @@ export function ChannelIdentityImageInput({ value, onChange, disabled = false, b
   const [failed, setFailed] = useState(false);
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const select = (icon: string | null) => {
-    cancel(); setFailed(false); onBusyChange(false); onChange(icon);
+    cancel(); setFailed(false); onChange(icon);
   };
   const image = value && isIdentityImage(value) ? value : null;
   return <>

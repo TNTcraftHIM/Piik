@@ -22,7 +22,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
   const [preparing, setPreparing] = useState(false);
   const { error, run } = useSettingsAction(open);
   useAnchoredPopover(trigger, panel, { side: "above" });
-  const close = () => { setPreparing(false); panel.current?.hidePopover(); };
+  const close = () => panel.current?.hidePopover();
   const editable = !disabled && profileReady && !busy;
   const { message } = channelErrorPresentation(error, t);
   return <>
@@ -39,7 +39,6 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
         const opened = event.newState === "open";
         setOpen(opened);
         if (opened) { setDraft(undefined); setPicture(undefined); input.current?.focus({ preventScroll: true }); }
-        else setPreparing(false);
       }}>
       <h2>{t("channel.profileEditor.editProfile")}</h2>
       <form onSubmit={event => {

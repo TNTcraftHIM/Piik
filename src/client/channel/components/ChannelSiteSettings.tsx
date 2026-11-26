@@ -35,7 +35,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   };
   const title = t("channel.siteSettings.siteSettings");
   const policy = policyDraft ?? current?.roomCreationPolicy ?? "ordinary";
-  const close = () => { setOpen(false); setImageBusy(false); setPolicyDraft(null); };
+  const close = () => { setOpen(false); setPolicyDraft(null); };
   const tasks = [
     { value: "site", label: t("channel.siteSettings.site"), icon: "globe", hint: "hint-advanced" },
     { value: "rooms", label: t("channel.siteSettings.rooms"), icon: "couch" },
