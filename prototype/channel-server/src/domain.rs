@@ -515,9 +515,13 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
     }
     let (mut writer, mut reader) = socket.split();
     {
-        // A blocked write must not stop reading HostOutput: the room host may
-        // itself be waiting for us to drain its large response before reading.
-        let writing = async {
+        // Reading and writing progress independently, each in its own task and
+        // both owned here. A blocked write must not stop reading HostOutput: the
+        // room host may itself be waiting for us to drain its large response
+        // before reading. And a run of buffered requests must not keep its own
+        // replies from draining: in one task, a host registering seventeen rooms
+        // filled its queue before the writer ran once, and was closed each time.
+        let writing = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
             let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
             loop {
                 tokio::select! {
@@ -539,7 +543,7 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
                 }
             }
             send_frame(&mut writer, Message::Close(None)).await;
-        };
+        }));
         let reading = async {
             loop {
                 let incoming = match tokio::time::timeout(Duration::from_secs(20), reader.next()).await {
@@ -568,7 +572,7 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
             _ = &mut writing => {},
             _ = &mut reading => {
                 let _ = close_writer.send(true);
-                writing.await;
+                let _ = writing.await;
             }
         }
     }
