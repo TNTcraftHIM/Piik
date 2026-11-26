@@ -215,8 +215,6 @@
 .c3-living .c3-room-tool-entry > small { display: none; }
 /* The room's small window opens from the end of my row. */
 .c3-living .lr-pawn-name { font-size: 12px; }
-/* A custom picture outside the couch is a circle, the shape of the figure's own head. */
-:root:has(.c3-shell.c3-living) .lr-person[data-avatar] rect { rx: 17px; }
 
 /* ---------- My controls: one shape, whichever place the layout gives them ---------- */
 .c3-shell.c3-living .c3-personal :is(.c3-room-slot, .c3-voice-dock, .c3-voice-controls, .c3-voice-destination) { display: contents; }
