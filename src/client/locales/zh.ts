@@ -1493,7 +1493,7 @@ export const zh = {
   "connection.roomDetails": "{room}的连接详情",
   "connection.scope": "查看",
   "connection.localDisplay": "本机显示链路",
-  "connection.localDisplayHint": "App 接收画面，本页负责显示。",
+  "connection.localDisplayHint": "本页使用 App 提供的画面。",
   "connection.noMedia": "暂无媒体统计。",
   "connection.siteService": "站点服务",
   "connection.noRoomLinks": "暂时没有点对点连接。房间操作通过站点信令进行。",

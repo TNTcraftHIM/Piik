@@ -1495,7 +1495,7 @@ export const en: Record<CopyKey, string> = {
   "connection.roomDetails": "Connection details for {room}",
   "connection.scope": "View",
   "connection.localDisplay": "Local display hop",
-  "connection.localDisplayHint": "The App receives the picture for this page.",
+  "connection.localDisplayHint": "This page uses the picture from the App.",
   "connection.noMedia": "No media measurements yet.",
   "connection.siteService": "Site service",
   "connection.noRoomLinks": "No peer links yet. Room actions use site signaling.",

@@ -32,7 +32,7 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const graph = topology ? channelConnectionGraph(state, roomId, sessionId, topology, t) : null;
   const rows = channelConnectionRows(state, sessionId, topology, metrics, t);
   return <div className="c3-connection-report">
-    {!!graph?.endpointGroups.length && <details className="c3-connection-identities c3-settings-details">
+    {!!graph?.endpointGroups.length && <details open className="c3-connection-identities c3-settings-details">
       <summary>{t("connection.samePersonEndpoints")}</summary>
       <dl>{graph.endpointGroups.map(group => <div key={group.userId} style={{ borderInlineStartColor: participantColor(group.userId) }}>
         <dt><PawnSvg color={participantColor(group.userId)} identity={group.userId} /><span>{group.name}</span></dt>
