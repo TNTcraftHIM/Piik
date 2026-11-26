@@ -6425,6 +6425,26 @@ test.each(["none", "before", "after"])("a confirmed send follows an in-flight ol
   } finally { session.close(); }
 });
 
+test("an unread jump started after a send keeps the history window while the seek is pending", async () => {
+  const { session, peer } = await setup(1);
+  try {
+    await peer.history([message(5)], true);
+    await peer.history([message(4)], true, true);
+    const sending = session.sendMessage("first", "Hello 6"), chat = await peer.next();
+    const lookup = session.findUnreadMessage("first", 1, new AbortController().signal), seek = await peer.next();
+    void lookup.catch(() => {});
+    peer.reply(chat, { type: "confirmed", message: message(6), inserted: true });
+    await sending;
+    expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+    peer.reply(seek, { type: "history_seek_result", after: 1, seq: 2 });
+    const page = await peer.next();
+    expect(page).toMatchObject({ type: "history", before: 3 });
+    peer.page(page, [message(2)], true);
+    await expect(lookup).resolves.toEqual(message(2));
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(2)]);
+  } finally { session.close(); }
+});
+
 test("a confirmed send returns a historical reader to latest without failing the send when history fails", async () => {
   const { session, peer } = await setup(1);
   try {

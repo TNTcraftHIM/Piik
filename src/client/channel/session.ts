@@ -1529,6 +1529,7 @@ export class ChannelSession {
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
     const bindingId = room?.delivery?.bindingId;
     const reading = this.readings.get(roomId);
+    if (reading) delete reading.followLatest;
     const guard = () => {
       signal.throwIfAborted();
       if (this.view.connection !== "connected" || this.view.sessionId !== sessionId) throw new Error("disconnected");
