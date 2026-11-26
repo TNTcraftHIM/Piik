@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Chip } from "../../components/living/primitives";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { isIdentityImage, prepareIdentityImage } from "../identity-image";
+import { isIdentityImage } from "../identity-image";
+import { useIdentityImage } from "../use-identity-image";
 import { ChannelAction } from "./ChannelAction";
 import "./channel-identity.css";
 
@@ -47,25 +48,12 @@ export function ChannelIdentityImageInput({ value, onChange, disabled = false, b
 }) {
   const { t } = useCopy();
   const chooser = useRef<HTMLInputElement>(null);
-  const request = useRef(0);
+  const { prepare, cancel } = useIdentityImage();
   const [failed, setFailed] = useState(false);
   const [failedImage, setFailedImage] = useState<string | null>(null);
-  useEffect(() => () => { request.current++; }, []);
   const select = (icon: string | null) => {
-    request.current++; setFailed(false); onBusyChange(false); onChange(icon);
+    cancel(); setFailed(false); onBusyChange(false); onChange(icon);
   };
-  async function chooseImage(file: File) {
-    const current = ++request.current;
-    setFailed(false); onBusyChange(true);
-    try {
-      const icon = await prepareIdentityImage(file);
-      if (request.current === current) onChange(icon);
-    } catch {
-      if (request.current === current) setFailed(true);
-    } finally {
-      if (request.current === current) onBusyChange(false);
-    }
-  }
   const image = value && isIdentityImage(value) ? value : null;
   return <>
     {presets && <ChannelIconChoices value={value ?? "couch"} onChange={select} disabled={disabled} />}
@@ -77,10 +65,12 @@ export function ChannelIdentityImageInput({ value, onChange, disabled = false, b
           label={busy ? t("channel.identity.openingImage")
             : image ? t("channel.identity.changeImage") : t("channel.identity.chooseImage")}
           onClick={() => chooser.current?.click()} />
-        <input ref={chooser} hidden type="file" accept="image/*" onChange={event => {
+        <input ref={chooser} hidden type="file" accept="image/*" disabled={disabled} onChange={event => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";
-          if (file) void chooseImage(file);
+          if (!file || disabled) return;
+          setFailed(false); onBusyChange(true);
+          void prepare(file, onChange, () => setFailed(true), () => onBusyChange(false));
         }} />
         {image && <ChannelAction icon="x" quiet disabled={disabled} label={t("channel.identity.remove")} onClick={() => select(presets ? "couch" : null)} />}
       </div>

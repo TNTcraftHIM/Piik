@@ -471,7 +471,6 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
   const { t } = useCopy();
   const embedded = source.player?.presentation.kind === "embed";
   const playbackAction = useSettingsAction(!source.hidden, source.player);
-  const resumeAction = useSettingsAction(!source.hidden, source.player);
   const windowAction = useSettingsAction(!source.hidden, source.player);
   return <article hidden={source.hidden} inert={source.hidden} tabIndex={focused ? -1 : undefined} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
@@ -480,10 +479,9 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
       if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
-      actionFeedback={source.actionFailure || playbackAction.error || resumeAction.error || windowAction.error ? <>
+      actionFeedback={source.actionFailure || playbackAction.error || windowAction.error ? <>
         {source.actionFailure && <PictureFailure error={source.actionFailure} onDismiss={source.clearActionFailure} />}
         {playbackAction.error && <PictureFailure error={playbackAction.error} onDismiss={playbackAction.clearError} />}
-        {resumeAction.error && <PictureFailure error={resumeAction.error} onDismiss={resumeAction.clearError} />}
         {windowAction.error && <PictureFailure error={windowAction.error} onDismiss={windowAction.clearError} />}
       </> : undefined}
       website={source.website} originalPageAvailable={source.originalPageAvailable} originalPageUnavailable={source.originalPageUnavailable} onAppWatch={source.onAppWatch} onFocusWindow={() => { void windowAction.run(source.onFocusWindow); }}
@@ -496,7 +494,8 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
           onFocus(source.id);
           if (source.player?.presentation.kind === "embed") source.player.presentation.element.scrollIntoView({ block: "nearest" });
         }
-        void resumeAction.run(source.onResume);
+        // The player owns recovery failures, including a failed replacement.
+        void source.onResume().catch(() => {});
       }} />
       : <div className="c3-monitor-wait" role="status">{source.actionFailure ? <PictureFailure error={source.actionFailure} onDismiss={source.clearActionFailure} /> : source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t(source.awaitingSource ? "watch.waiting" : "watch.browserFailed")}</span>
         {!source.owned && (source.onAppWatch

@@ -38,7 +38,7 @@
 .c3-mini-message .c3-watch-result { flex-direction: column; max-width: min(360px, calc(100% - 24px)); text-align: center; }
 .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player:is([data-external], [data-failed]) { min-height: 240px; }
 .c3-watch-player:is([data-external], [data-failed]) .c3-mini-message { inset: 88px 12px 64px; }
-.c3-watch-player[data-external]:not([data-native-page], :fullscreen) {
+.c3-watch-player[data-external]:not([data-native-page], :fullscreen, :has(> .c3-watch-page-thumbnail)) {
   display: flex;
   flex-direction: column;
   > .c3-mini-message { position: relative; inset: auto; flex: 1; min-height: 0; padding: 8px; overflow-y: auto; pointer-events: auto; }

@@ -189,6 +189,46 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
+test.each(["chat", "deletion"] as const)("leaving before browse admission rejects the waiting %s caller", async kind => {
+  const { session, socket, peer } = await setup(1000, false, "room=first", false);
+  try {
+    const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    const result = (kind === "chat" ? session.sendMessage("first", "Retain this draft")
+      : session.deleteMessage("first", 1, message(1).id)).catch(error => error);
+    expect(peer.sent).toEqual([]);
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    const history = await peer.next();
+    expect(history).toMatchObject({ type: "history", roomId: "second" });
+    peer.page(history, [], false, null);
+    expect(await result).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().pending.has(kind === "chat" ? "chat:first" : "delete-message:first:message-1")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+    socket.receive({ type: "ack", requestId: first.requestId });
+    await Promise.resolve();
+    expect(peer.sent.map(command => command.type)).toEqual(["history"]);
+    expect(peer.interactions.some(command => command.roomId === "first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["chat", "deletion"] as const)("leaving after dispatch preserves the %s confirmation", async kind => {
+  const { session, socket, peer } = await setup();
+  try {
+    const result = kind === "chat" ? session.sendMessage("first", message(1).text)
+      : session.deleteMessage("first", 1, message(1).id);
+    const operation = await peer.next();
+    expect(operation.type).toBe(kind === "chat" ? "chat" : "delete_message");
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    peer.page(await peer.next(), [], false, null);
+    peer.reply(operation, kind === "chat" ? { type: "confirmed", message: message(1), inserted: true }
+      : { type: "message_deleted", messageSeq: 1 });
+    await expect(result).resolves.toBeUndefined();
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test.each(["latest", "message"] as const)("leaving a room retires a %s read still awaiting browse admission", async kind => {
   const { session, socket, peer } = await setup(1000, false);
   try {
@@ -2936,6 +2976,38 @@ test("a reopened source list survives the retired reader's deadline", async () =
     expect(app.sent.filter(command => command.type === "targets")).toHaveLength(2);
     expect(session.getSnapshot().appConnected).toBe(true);
   } finally { session.close(); }
+});
+
+test("cancelling one native source picker during App admission leaves the other reader connected", async () => {
+  const { session } = await setup();
+  const approval = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" };
+  const firstReader = new AbortController(), nextReader = new AbortController();
+  const connecting = session.activateApp(approval).catch(error => error);
+  const app = ChannelSocket.current;
+  const first = session.nativeSources(firstReader.signal).catch(error => error);
+  const next = session.nativeSources(nextReader.signal).catch(error => error);
+  try {
+    await app.onopen?.();
+    const hello = app.sent.at(-1)!;
+    expect(hello.type).toBe("hello");
+    firstReader.abort();
+    expect(await first).toMatchObject({ name: "AbortError" });
+    expect(app.readyState).toBe(ChannelSocket.OPEN);
+    app.receive({ id: hello.id, result: null });
+    await expect(connecting).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    const catalog = { sources: [{ kind: "display", sourceId: "1", title: "Fixture display" }], codecs: ["h264"],
+      softwareEncodingCodecs: [], videoAdaptation: false, processAudio: false, processAudioExclusion: false,
+      systemAudio: false, captureBorderControl: false };
+    app.receive({ id: app.sent.at(-1)!.id, result: catalog });
+    expect(await next).toEqual(catalog);
+    expect(app.sent.map(command => command.type)).toEqual(["hello", "targets"]);
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally {
+    session.close();
+    await Promise.all([connecting, first, next]);
+  }
 });
 
 test("a silent source request times out and a late reply cannot replace its refresh", async () => {
@@ -13602,6 +13674,36 @@ test("foreground recovery cannot withdraw a replacement watch byte source", asyn
     expect(stopReader).toHaveBeenCalledOnce();
     await foreground;
   } finally { session.close(); }
+});
+
+test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback: the current player owns %s failure without a Session banner", async fault => {
+  const { session } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const dispose = vi.fn();
+  const page = new appLink.AppPage(crypto.randomUUID(), "https://video.test/film", vi.fn(async () => ({})), dispose, () => {});
+  const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
+  const media = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/local.mp4", "file"), bytes);
+  const player = new WatchPlayer("first", true, media, () => {});
+  player.error = "watch_media_failed";
+  installWatchPlayer(session, "owned", player);
+  const state = session.getSnapshot().state!;
+  state.watchActivities = fault === "source" ? [] : [{ id: "owned", roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } }];
+  const failure = fault === "cancel" ? new DOMException("Cancelled", "AbortError")
+    : new Error(fault === "source" ? "watch_unavailable" : fault === "candidate" ? "watch_source_unavailable" : "watch_media_access_denied");
+  const candidate = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/retry.mp4", "file"), bytes, false);
+  const closeCandidate = vi.spyOn(candidate, "close");
+  vi.spyOn(candidate, "ready").mockRejectedValue(failure);
+  vi.spyOn(media, "retryCandidate").mockImplementation(() => { if (fault === "candidate") throw failure; return candidate; });
+  try {
+    await expect(session.resumeWatch("owned")).rejects.toThrow(failure.message);
+    expect(player.error).toBe(fault === "cancel" ? "watch_media_failed" : failure.message);
+    expect(session.getSnapshot().watchPlayers.get("owned")).toBe(player);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().pending.has("watch-video:owned")).toBe(false);
+    expect(closeCandidate).toHaveBeenCalledTimes(fault === "ready" || fault === "cancel" ? 1 : 0);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { candidate.close(); session.close(); }
 });
 
 test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {

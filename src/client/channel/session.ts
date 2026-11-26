@@ -279,7 +279,7 @@ export class ChannelSession {
   private watchBytes = new WatchBytes((peer, kind, data, allowed) => this.media.sendData(peer, kind, data, allowed));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed, request) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed, request),
-    key => messageRemoved(this.view.historyChangesByRoom[key.roomId], key.messageSeq),
+    key => messageRemoved(this.histories.get(key.roomId)?.changes, key.messageSeq),
     (peer, request) => this.media.cancelChunks(peer, request), () => this.conversation.fileAvailabilityLimit());
 
   getSnapshot = (): ChannelView => this.view;
@@ -422,7 +422,7 @@ export class ChannelSession {
     if ((document.hidden && !popoutFocused) || !isThrow(event.payload.reaction)) return;
     const target = event.contentTarget;
     const recipient = target ? "messageSeq" in target
-      ? this.view.messagesByRoom[roomId]?.find(message => message.seq === target.messageSeq && message.id === target.messageId)?.userId
+      ? this.histories.get(roomId)?.messages?.find(message => message.seq === target.messageSeq && message.id === target.messageId)?.userId
       : this.view.state?.publications.find(source => source.id === target.publicationId)?.userId
       : event.payload.targetPeerId ?? event.sender.peerId;
     if (event.sender.peerId === self || recipient === self) this.feedbackAudio.play("throw");
@@ -780,7 +780,7 @@ export class ChannelSession {
         if (this.socket === socket && !this.watching.has(next.id)) this.declineSuccessor(next.roomId, { kind: "screen", id: next.id });
       });
     }
-    const historyProfiles = Object.values(this.view.messagesByRoom).flatMap(historyProfileIds);
+    const historyProfiles = [...this.histories.values()].flatMap(history => historyProfileIds(history.messages ?? []));
     void this.loadProfiles([...state.users.map(user => user.id), ...historyProfiles]).catch(() => {});
     if (refreshHelper) void this.syncAppWatching(true);
     this.hosting.update(state);
@@ -995,7 +995,7 @@ export class ChannelSession {
         return;
       }
       this.applyHistory(reply.roomId, history, page);
-    } else if (record.type === "confirmed" && !messageRemoved(this.view.historyChangesByRoom[reply.roomId], record.message.seq)) {
+    } else if (record.type === "confirmed" && !messageRemoved(history?.changes, record.message.seq)) {
       request.result?.(record);
       this.applyMessage(reply.roomId, record.message, record.inserted);
     }
@@ -1286,8 +1286,8 @@ export class ChannelSession {
         this.retireReadings();
         this.syncRoomReading(current);
         if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)) return;
-        const rows = this.view.messagesByRoom[id];
-        const latest = this.view.historyByRoom[id]?.atLatest !== false;
+        const history = this.histories.get(id), rows = history?.messages;
+        const latest = history?.paging?.atLatest !== false;
         const refresh: HistoryRefresh | undefined = rows?.length ? { from: rows[0].seq,
           through: latest ? Math.max(room.lastMessageSeq, rows.at(-1)!.seq) : rows.at(-1)!.seq, latest, window: [] } : undefined;
         let before = !latest && refresh ? refresh.through + 1 : undefined;
@@ -1469,7 +1469,7 @@ export class ChannelSession {
       const follow = () => {
         if (this.readings.get(roomId) !== reading || !this.wantedReadings().has(roomId) || reading.followLatest !== followIntent) return;
         delete reading.followLatest;
-        if (this.view.historyByRoom[roomId]?.atLatest === false)
+        if (this.histories.get(roomId)?.paging?.atLatest === false)
           void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
       };
       if (reading.history && this.view.pending.has(`history:${roomId}`)) void reading.history.then(follow, follow);
@@ -1485,7 +1485,7 @@ export class ChannelSession {
   }, false);
   clearLocalRoomCache = (roomId: string): Promise<void> =>
     this.action(`clear-local-cache:${roomId}`, () => this.attachments.clearLocalCache(roomId), false);
-  loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
+  loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.histories.get(roomId)?.paging?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
   loadMessage = async (roomId: string, seq: number): Promise<void> => {
     const reading = this.readings.get(roomId);
@@ -1494,11 +1494,11 @@ export class ChannelSession {
   };
 
   private async ensureMessage(roomId: string, seq: number, options: { signal?: AbortSignal; bindingId?: string } = {}): Promise<ChannelMessage> {
-    if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) {
+    if (!this.histories.get(roomId)?.messages?.some(message => message.seq === seq)) {
       await this.requestHistory(roomId, seq + 1, true, { ...options, clearError: !options.signal });
     }
     options.signal?.throwIfAborted();
-    const message = this.view.messagesByRoom[roomId]?.find(message => message.seq === seq);
+    const message = this.histories.get(roomId)?.messages?.find(message => message.seq === seq);
     if (!message) throw new Error("message_unavailable");
     return message;
   }
@@ -3168,11 +3168,12 @@ export class ChannelSession {
     const media = player.media;
     if (!player.owner || !player.error || !(media instanceof PageSuppliedMedia)) return player.resume();
     await this.action(`watch-video:${id}`, async () => {
-      const source = this.view.state?.watchActivities.find(value => value.id === id);
-      if (!source) throw new Error("watch_unavailable");
-      const replacement = media.retryCandidate(source.playback.timeline);
-      const next = this.makeWatchPlayer(id, player.roomId, true, replacement);
+      let next: WatchPlayer | undefined;
       try {
+        const source = this.view.state?.watchActivities.find(value => value.id === id);
+        if (!source) throw new Error("watch_unavailable");
+        const replacement = media.retryCandidate(source.playback.timeline);
+        next = this.makeWatchPlayer(id, player.roomId, true, replacement);
         await next.ready(player.signal);
         const activity = this.view.state?.watchActivities.find(value => value.id === id);
         if (!activity) throw new Error("watch_unavailable");
@@ -3186,8 +3187,10 @@ export class ChannelSession {
         this.stage(next.roomId).useWatch(id, next);
         this.activateWatchOwner(id, next);
       } catch (error) {
-        next.close();
-        if (this.watchPlayer(id) === player && error instanceof Error) player.error = error.message;
+        next?.close();
+        if (this.watchPlayer(id) === player && !player.signal.aborted
+          && !(error instanceof DOMException && error.name === "AbortError"))
+          player.error = error instanceof Error ? error.message : "watch_media_failed";
         throw error;
       }
     }, false);

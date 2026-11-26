@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
@@ -66,15 +66,15 @@ export function ServiceTransit({ channel, room, disabled, run }: { channel: Chan
   </section>;
 }
 
-export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled, busy, onSave, onCancel, createLabel }: {
+export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled, busy, imageBusy, onImageBusyChange, onSave, onCancel, createLabel }: {
   room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; roomHost?: "server" | "app" | "browser"; disabled: boolean; busy: boolean;
-  inviteOnly: boolean;
+  inviteOnly: boolean; imageBusy: boolean; onImageBusyChange(busy: boolean): void;
   onSave: () => Promise<unknown>; onCancel(): void; createLabel?: string;
 }) {
   const { t } = useCopy();
   const { name, icon, access, hidden, password, removePassword, relayCapacity } = value;
   const change = onChange;
-  const [imageBusy, setImageBusy] = useState(false);
+  useLayoutEffect(() => () => { onImageBusyChange(false); }, [onImageBusyChange]);
   const restoreField = useRoomFormFocus(disabled || busy);
   const canSave = !!name.trim() && !disabled && !busy && !imageBusy;
   return <form className="c3-room-form" onKeyDownCapture={protectRoomComposition} onSubmit={event => {
@@ -88,7 +88,7 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
       : roomHost === "app" ? t("room.create.appHostedNote") : t("room.create.browserHostedNote")}</p>}
     <ChannelIdentityFields name={name} icon={icon} label={t("room.settings.name")}
       roomPicture={{ value: value.picture === undefined ? room?.picture ?? null : value.picture, onChange: picture => change({ picture }) }}
-      disabled={disabled} onName={name => change({ name })} onIcon={icon => change({ icon })} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
+      disabled={disabled} onName={name => change({ name })} onIcon={icon => change({ icon })} imageBusy={imageBusy} onImageBusyChange={onImageBusyChange} />
     {inviteOnly ? <p>{t("room.settings.inviteOnlyNote")}</p> : <>
       <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
         <legend className="visually-hidden">{t("room.settings.admission")}</legend>
@@ -130,6 +130,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
   const { error, run } = useSettingsAction();
   const [draft, setDraft] = useState<RoomDraft>(() => ({ ...roomDraft(), name: initialName }));
   const input = useRef<HTMLInputElement>(null);
+  const [imageBusy, setImageBusy] = useState(false);
   const [copy, setCopy] = useState<{ file: File; retainedFileCount: number } | null>(null), [inspecting, setInspecting] = useState(false);
   const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | RoomRestoreRecovery | RoomCreationInterrupted | null>(initialInterruption);
   const interrupted = completed instanceof RoomCreationInterrupted ? completed : null;
@@ -140,6 +141,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
   const roomHost = serverHosted ? "server" : channel.appConnected ? "app" : "browser";
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
+  const canLoadCopy = connected && !busy && !backupBusy && !inspecting && !imageBusy;
   const title = t("room.action.create");
   const interruptedRoomId = interrupted?.roomId;
   const recovered = interruptedRoomId && connected && channel.state?.channel.rooms.some(room =>
@@ -164,19 +166,19 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
         <section className="c3-room-copy-load">
           <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={event => {
             const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
-            if (!file) return;
+            if (!file || !canLoadCopy) return;
             setInspecting(true);
             void run(() => channel.inspectRoomCopy(file), ({ settings: info, retainedFileCount }) => {
               setCopy({ file, retainedFileCount }); setDraft({ ...roomDraft(), ...info, name: info.name ?? initialName, icon: info.icon ?? "couch", access: "private", password: "", hidden: false });
             }).finally(() => setInspecting(false));
           }} />
           <ChannelAction icon="arrowUp" quiet label={t("room.copy.load")}
-            disabled={!connected || busy || backupBusy || inspecting} busy={inspecting} onClick={() => input.current?.click()} />
+            disabled={!canLoadCopy} busy={inspecting} onClick={() => input.current?.click()} />
           {copy && <><p>{copy.file.name}</p><p>{t("room.copy.retainedFileCount", { count: String(copy.retainedFileCount) })}</p><p>{t("room.copy.loadNote")}</p>
             <ChannelAction icon="x" quiet label={t("room.copy.remove")} disabled={busy || backupBusy || inspecting} onClick={() => setCopy(null)} /></>}
         </section>
         <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} roomHost={roomHost} inviteOnly={inviteOnly}
-          disabled={!connected || busy || inspecting || (copy !== null && backupBusy)} busy={creating}
+          disabled={!connected || busy || inspecting || (copy !== null && backupBusy)} busy={creating} imageBusy={imageBusy} onImageBusyChange={setImageBusy}
           createLabel={copy ? t("room.copy.create") : undefined}
           onCancel={onClose} onSave={() => { const settings = roomSettings(draft, inviteOnly); setCreating(true); return run(async () => {
             try {
@@ -293,6 +295,7 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
   const cacheAction = useSettingsAction();
   const historyAction = useSettingsAction();
   const [draft, setDraft] = useState<Partial<RoomDraft>>({});
+  const [imageBusy, setImageBusy] = useState(false);
   const [task, setTask] = useState<RoomSettingsTask>(room.canManage ? "room" : "relay");
   const [backupAvailable, setBackupAvailable] = useState(false);
   const [includeFiles, setIncludeFiles] = useState(true);
@@ -352,7 +355,7 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
             channel={channel} roomId={room.id} operator="domain" serverHosted={serverHosted} />}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={{ ...roomDraft(room), ...draft }} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))}
-            inviteOnly={inviteOnly} disabled={!available || working} busy={busy}
+            inviteOnly={inviteOnly} disabled={!available || working} busy={busy} imageBusy={imageBusy} onImageBusyChange={setImageBusy}
             onCancel={onClose} onSave={() => {
               const changes = roomSettingsPatch(draft, room, inviteOnly);
               return Object.keys(changes).length ? run(() => channel.updateRoom(room.id, changes, false), onClose) : Promise.resolve(onClose());

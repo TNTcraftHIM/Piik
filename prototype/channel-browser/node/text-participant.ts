@@ -79,7 +79,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   private sessionId?: string;
   private userId?: string;
   private roomId?: string;
-  private browsingSocket?: WebSocket;
+  private acceptBrowse?: () => void;
   private state?: z.infer<typeof conversationStateSchema>;
   private pending = new Map<string, Pending>();
   private reactionNonce = 0;
@@ -147,6 +147,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         socket.once('close', () => {
           this.socket = undefined;
           this.state = undefined;
+          this.acceptBrowse = undefined;
           this.rejectPending();
           settle(new Error('disconnected'));
           socket.removeAllListeners();
@@ -184,20 +185,24 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     this.checkSocket(socket);
     if (!this.state) throw new Error('disconnected');
     if (this.roomId !== undefined && this.roomId !== roomId) throw new Error('room_already_selected');
-    if (this.browsingSocket === socket) throw new Error('room_selection_pending');
-    this.browsingSocket = socket;
+    if (this.acceptBrowse) throw new Error('room_selection_pending');
+    const accept = () => {
+      this.checkSocket(socket);
+      this.roomId = roomId;
+      this.acceptBrowse = undefined;
+      this.emit('ready', this.summary());
+    };
+    this.acceptBrowse = accept;
     try {
       const admission = this.options.admission;
       if (admission?.inviteKey !== undefined || admission?.password !== undefined)
         await this.request({ type: 'enter_room', roomId, ...admission });
       this.checkSocket(socket);
-      await this.request({ type: 'browse', roomId, active: true });
+      await this.request({ type: 'browse', roomId, active: true }, 'ack', { accepted: accept });
       this.checkSocket(socket);
-      this.roomId = roomId;
     } finally {
-      if (this.browsingSocket === socket) this.browsingSocket = undefined;
+      if (this.acceptBrowse === accept) this.acceptBrowse = undefined;
     }
-    this.emit('ready', this.summary());
   }
 
   summary() {
@@ -223,14 +228,18 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     this.socket.send(JSON.stringify({ ...command, requestId }));
   }
 
-  private request(command: ChannelCommand, expects: Pending['expects'] = 'ack', requestId = randomUUID()): Promise<unknown> {
+  private request(command: ChannelCommand, expects: Pending['expects'] = 'ack',
+    { requestId = randomUUID(), accepted }: { requestId?: string; accepted?: () => void } = {}): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
         reject(new Error('request_timeout'));
       }, expects === 'ack' || expects === 'room_created' ? 10_000 : 30_000);
       const roomId = command.type === 'conversation' ? this.roomId : 'roomId' in command ? command.roomId : undefined;
-      this.pending.set(requestId, { roomId, expects, resolve, reject, timer });
+      this.pending.set(requestId, { roomId, expects, reject, timer, resolve(value) {
+        try { accepted?.(); resolve(value); }
+        catch (error) { reject(error); }
+      } });
       try {
         this.write(command, requestId);
       }
@@ -249,7 +258,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     const requestId = randomUUID(), { roomId, ...body } = command;
     const packet = JSON.parse(this.signer.sign(this.sessionId, JSON.stringify({ roomId, bindingId: delivery.bindingId,
       sender: this.sessionId, recipient: delivery.hostSessionId, requestId, command: body })));
-    return this.request({ type: 'conversation', packet }, expects, requestId);
+    return this.request({ type: 'conversation', packet }, expects, { requestId });
   }
 
   async chat(text: string, options: ChatOptions & { nonce?: string } = {}): Promise<ChannelMessage> {
