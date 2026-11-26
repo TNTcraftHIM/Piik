@@ -189,6 +189,46 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
+test.each(["chat", "deletion"] as const)("leaving before browse admission rejects the waiting %s caller", async kind => {
+  const { session, socket, peer } = await setup(1000, false, "room=first", false);
+  try {
+    const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    const result = (kind === "chat" ? session.sendMessage("first", "Retain this draft")
+      : session.deleteMessage("first", 1, message(1).id)).catch(error => error);
+    expect(peer.sent).toEqual([]);
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    const history = await peer.next();
+    expect(history).toMatchObject({ type: "history", roomId: "second" });
+    peer.page(history, [], false, null);
+    expect(await result).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().pending.has(kind === "chat" ? "chat:first" : "delete-message:first:message-1")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+    socket.receive({ type: "ack", requestId: first.requestId });
+    await Promise.resolve();
+    expect(peer.sent.map(command => command.type)).toEqual(["history"]);
+    expect(peer.interactions.some(command => command.roomId === "first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["chat", "deletion"] as const)("leaving after dispatch preserves the %s confirmation", async kind => {
+  const { session, socket, peer } = await setup();
+  try {
+    const result = kind === "chat" ? session.sendMessage("first", message(1).text)
+      : session.deleteMessage("first", 1, message(1).id);
+    const operation = await peer.next();
+    expect(operation.type).toBe(kind === "chat" ? "chat" : "delete_message");
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    peer.page(await peer.next(), [], false, null);
+    peer.reply(operation, kind === "chat" ? { type: "confirmed", message: message(1), inserted: true }
+      : { type: "message_deleted", messageSeq: 1 });
+    await expect(result).resolves.toBeUndefined();
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test.each(["latest", "message"] as const)("leaving a room retires a %s read still awaiting browse admission", async kind => {
   const { session, socket, peer } = await setup(1000, false);
   try {
