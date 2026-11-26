@@ -144,9 +144,21 @@ async fn encode(
     };
     settings.validate()?;
     let clock = CaptureClock::new()?;
-    let (requests, mut frames) = mpsc::channel(1);
-    let mut encoding =
+    let (requests, frames) = mpsc::channel(1);
+    let (encoding, ended) =
         output::Encoding::start(settings, codec, execution, clock, timing, requests)?;
+    serve(receiver, stdout, frames, encoding, ended, clock, codec).await
+}
+
+async fn serve(
+    receiver: &mut mpsc::Receiver<Command>,
+    stdout: &mut (impl AsyncWrite + Unpin),
+    mut frames: mpsc::Receiver<Option<i64>>,
+    mut encoding: output::Encoding,
+    mut ended: tokio::sync::oneshot::Receiver<()>,
+    clock: CaptureClock,
+    codec: VideoCodec,
+) -> Result<()> {
     let control = encoding.control();
     let mut gpu = None;
     let mut read = false;
@@ -154,6 +166,7 @@ async fn encode(
         loop {
             tokio::select! {
                 biased;
+                _ = &mut ended => break,
                 command = receiver.recv() => match command {
                     Some(Command::Frame { frame, keyframe }) => {
                         if gpu.is_none() {
@@ -220,6 +233,75 @@ fn joined_result(result: Result<()>, joined: Result<()>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn encoder_exit_wakes_idle_ipc_and_preserves_the_worker_cause() -> Result<()> {
+        use super::super::mf_common::HardwareEncoderFailed;
+        for unwind in [false, true] {
+            let (requests, frames) = mpsc::channel(1);
+            let (release, start) = std::sync::mpsc::channel();
+            let (encoding, ended) = output::Encoding::spawn(requests, move |worker| {
+                start.recv().unwrap();
+                if unwind {
+                    let _state = worker.state.lock().unwrap();
+                    panic!("synthetic encoder panic");
+                }
+                Err(HardwareEncoderFailed.into())
+            })?;
+            let (_commands, mut receiver) = mpsc::channel(1);
+            let mut sink = tokio::io::sink();
+            let ipc = serve(
+                &mut receiver,
+                &mut sink,
+                frames,
+                encoding,
+                ended,
+                CaptureClock::new()?,
+                VideoCodec::H264,
+            );
+            tokio::pin!(ipc);
+            assert!(futures_util::poll!(&mut ipc).is_pending());
+            release.send(())?;
+            let error = tokio::time::timeout(std::time::Duration::from_secs(3), ipc)
+                .await?
+                .unwrap_err();
+            if unwind {
+                assert_eq!(error.to_string(), "encoder worker panicked");
+            } else {
+                assert!(error.is::<HardwareEncoderFailed>());
+            }
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn active_bitrate_command_joins_encoder_after_a_locked_panic() -> Result<()> {
+        let (commands, mut receiver) = mpsc::channel(1);
+        commands.try_send(Command::Bitrate { bitrate: 500_000 })?;
+        let (requests, frames) = mpsc::channel(1);
+        let (holding, locked) = tokio::sync::oneshot::channel();
+        let (encoding, ended) = output::Encoding::spawn(requests, move |worker| {
+            let _state = worker.state.lock().unwrap();
+            holding.send(()).unwrap();
+            // Capacity returns only after IPC has selected the bitrate command.
+            commands.blocking_send(Command::Stop).unwrap();
+            panic!("synthetic encoder panic with a bitrate command in flight");
+        })?;
+        locked.await?;
+        let error = serve(
+            &mut receiver,
+            &mut tokio::io::sink(),
+            frames,
+            encoding,
+            ended,
+            CaptureClock::new()?,
+            VideoCodec::H264,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.to_string(), "encoder worker panicked");
+        Ok(())
+    }
 
     #[test]
     fn stopped_command_yields_to_joined_cause_but_ipc_failure_does_not() {

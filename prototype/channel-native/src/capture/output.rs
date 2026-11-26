@@ -10,7 +10,7 @@ use std::{
     sync::{Arc, Condvar, Mutex},
     thread,
 };
-use tokio::sync::Notify;
+use tokio::sync::{oneshot, Notify};
 
 #[derive(Debug)]
 pub(super) struct EncodingStopped;
@@ -67,7 +67,7 @@ impl Shared {
         self.changed.notify_all();
     }
     pub fn input(&self, frame: Option<RawFrame>, keyframe: bool) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().map_err(|_| EncodingStopped)?;
         if state.stop {
             return Err(EncodingStopped.into());
         }
@@ -92,7 +92,10 @@ impl Shared {
         }
     }
     pub fn stop(&self, failure: Option<&str>) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         if let Some(failure) = failure {
             state.failure = Some(failure.to_owned());
         }
@@ -162,7 +165,7 @@ impl EncodingControl {
     }
     pub fn set_bitrate(&self, bitrate: u32) -> Result<()> {
         ensure!(bitrate > 0, "bitrate must be positive");
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = self.0.state.lock().map_err(|_| EncodingStopped)?;
         if state.stop {
             return Err(EncodingStopped.into());
         }
@@ -185,7 +188,18 @@ impl Encoding {
         clock: CaptureClock,
         timing: FrameTiming,
         requests: tokio::sync::mpsc::Sender<Option<i64>>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, oneshot::Receiver<()>)> {
+        Self::spawn(requests, move |worker| match (codec, execution) {
+            (VideoCodec::H264, EncodingExecution::Auto) => {
+                mf::Encoder::run(worker, settings, clock, timing)
+            }
+            _ => software::run(worker, settings, codec, clock, timing),
+        })
+    }
+    pub(super) fn spawn(
+        requests: tokio::sync::mpsc::Sender<Option<i64>>,
+        run: impl FnOnce(&Arc<Shared>) -> Result<()> + Send + 'static,
+    ) -> Result<(Self, oneshot::Receiver<()>)> {
         let shared = Arc::new(Shared {
             requests,
             state: Mutex::new(State::default()),
@@ -193,15 +207,13 @@ impl Encoding {
             available: Notify::new(),
         });
         let worker = shared.clone();
+        let (lifetime, ended) = oneshot::channel();
         let thread = thread::Builder::new()
             .name("piik-encoder".into())
             .spawn(move || {
-                let result = match (codec, execution) {
-                    (VideoCodec::H264, EncodingExecution::Auto) => {
-                        mf::Encoder::run(&worker, settings, clock, timing)
-                    }
-                    _ => software::run(&worker, settings, codec, clock, timing),
-                };
+                // Wakes the IPC owner on return and unwind, even without an AU read.
+                let _lifetime = lifetime;
+                let result = run(&worker);
                 let mut state = worker.state.lock().unwrap();
                 if let Err(error) = &result {
                     state.failure = Some(format!("{error:#}"));
@@ -216,10 +228,13 @@ impl Encoding {
                 worker.available.notify_one();
                 result
             })?;
-        Ok(Self {
-            shared,
-            thread: Some(thread),
-        })
+        Ok((
+            Self {
+                shared,
+                thread: Some(thread),
+            },
+            ended,
+        ))
     }
     pub fn control(&self) -> EncodingControl {
         EncodingControl(self.shared.clone())
@@ -228,7 +243,9 @@ impl Encoding {
         loop {
             let notified = self.shared.available.notified();
             {
-                let mut state = self.shared.state.lock().unwrap();
+                let Ok(mut state) = self.shared.state.lock() else {
+                    return Some(Err(EncodingStopped.into()));
+                };
                 if let Some(frame) = state.output.pop_front() {
                     self.shared.wake();
                     return Some(Ok(frame));
