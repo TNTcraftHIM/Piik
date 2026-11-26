@@ -177,8 +177,10 @@ headphones button with a count to see the other joined rooms. Switching the
 conversation or stopping a picture does not leave those voice rooms.
 
 **Ctrl+Shift+M** toggles your microphone; **Ctrl+Shift+D** toggles listening.
-On macOS, use **Command** instead of Ctrl. Both apply when you have joined voice
-in one room. Change or clear a binding in **Voice settings → Keyboard shortcuts**;
+On macOS, use **Command** instead of Ctrl. With several voice rooms joined,
+the key turns off the microphones or listening that are on; press again to
+restore them. Use a room's own buttons to change only that room.
+Change or clear a binding in **Voice settings → Keyboard shortcuts**;
 press Esc to cancel recording. Page shortcuts work while Piik or its room tool
 has focus. Text entry and remote keyboard control take priority.
 With a supported Windows App connected, enable **Allow shortcuts in other apps**.
@@ -217,7 +219,8 @@ controls and drafts to the page.
 
 On a site hosted by your own Windows Piik App, join voice in the App and choose
 **Open voice overlay** in the voice controls. The compact overlay stays on top,
-shows who is speaking and lets clicks reach the app beneath it.
+shows who is speaking and lets clicks reach the app beneath it. To show another
+joined voice room, select its name in the voice controls.
 Choose **Adjust voice overlay** in Piik to drag or resize the overlay, then choose
 **Pin voice overlay** or press Esc. To dismiss it while pinned, choose **Close**
 in Piik’s voice controls. While adjusting, you can also close it from its title bar.

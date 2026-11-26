@@ -1,4 +1,8 @@
 import { stubTransferStorage } from "./fixtures/transfer-storage";
+import { act, createElement, useSyncExternalStore } from "react";
+import { createRoot } from "react-dom/client";
+import { ChannelVoiceDock } from "../src/client/channel/components/ChannelVoiceDock";
+import type { ChannelController } from "../src/client/channel/types";
 import { en } from "../src/client/locales/en";
 import { zh } from "../src/client/locales/zh";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
@@ -2394,6 +2398,174 @@ test.each(["join", "unmute"])("a rejected voice publication releases its room tr
     expect(roomTrack.stop).toHaveBeenCalledOnce();
     expect(raw.stop).toHaveBeenCalledOnce();
     expect(contexts[0].close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+async function shortcutRooms() {
+  const { session, socket } = await setup(3, false);
+  const state = structuredClone(session.getSnapshot().state!);
+  const rejected = new Set<string>();
+  const original = socket.send.bind(socket);
+  socket.send = data => {
+    original(data);
+    const command = JSON.parse(data);
+    if (!command.requestId || !["publish", "voice"].includes(command.type)) return;
+    queueMicrotask(() => {
+      if (command.type === "publish") {
+        if (rejected.has(command.publication.roomId)) {
+          socket.receive({ type: "error", requestId: command.requestId, code: "room_access_required" });
+          return;
+        }
+        state.publications.push({ ...command.publication, audience: [], sessionId: "endpoint", userId: "self", paused: false });
+      } else {
+        state.voice = state.voice.filter(member => member.roomId !== command.roomId);
+        if (command.joined) state.voice.push({ roomId: command.roomId, sessionId: "endpoint", muted: command.muted, deafened: command.deafened });
+      }
+      socket.receive({ type: "state", state });
+      socket.receive({ type: "ack", requestId: command.requestId });
+    });
+  };
+  const idle = () => vi.waitFor(() => expect(session.voiceBusy()).toBe(false));
+  const active = (action: "microphone" | "listening") => session.getSnapshot().state!.voice
+    .filter(member => action === "microphone" ? !member.muted : !member.deafened).map(member => member.roomId).sort();
+  const toggle = async (action: "microphone" | "listening", expected: string[]) => {
+    expect(session.toggleVoiceShortcut(action)).toBe(true);
+    await idle();
+    expect(active(action)).toEqual(expected);
+  };
+  const join = (roomId: string) => session.joinVoice(roomId, false, true, remoteStream(roomId, [remoteTrack("audio")]));
+  return { session, socket, state, rejected, idle, toggle, join, active };
+}
+
+test("voice shortcut preserves the whole batch, each room's buttons and membership order", async () => {
+  const { session, toggle, join, active } = await shortcutRooms();
+  try {
+    await join("first"); await join("second");
+    await toggle("microphone", []); await toggle("microphone", ["first", "second"]);
+    await session.setMuted("second", true);
+    await session.setDeafened("first", true);
+    await toggle("listening", []); await toggle("microphone", []);
+    await toggle("listening", ["second"]); await toggle("microphone", ["first"]);
+    await toggle("microphone", []);
+    await session.setMuted("second", false);
+    await session.setMuted("first", false);
+    await toggle("microphone", []);
+    await session.leaveVoice("second");
+    await session.joinVoice("second", true);
+    await toggle("microphone", ["first"]); // Rejoining with the same id does not restore its old place in the set.
+    await toggle("microphone", []);
+    await session.leaveVoice("first");
+    expect(active("microphone")).toEqual([]);
+    microphoneMixer([remoteStream("latest", [remoteTrack("audio")])]);
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("raw", [remoteTrack("audio")]) } });
+    await toggle("microphone", ["second"]); // No remembered member remains.
+  } finally { session.close(); }
+});
+
+test.each(["unmute", "join"])("voice shortcut cancels pending permission on %s beside a retained admitted track", async entry => {
+  const { session, join, active } = await shortcutRooms();
+  const contexts = microphoneMixer([]);
+  const late = remoteTrack("audio");
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
+  try {
+    await join("first");
+    if (entry === "unmute") await session.joinVoice("second", true);
+    const opening = entry === "unmute" ? session.setMuted("second", false) : session.joinVoice("second");
+    const aborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
+    expect(session.voiceMicrophonePending("second")).toBe(true);
+    expect(session.toggleVoiceShortcut("microphone")).toBe(true);
+    await aborted;
+    expect(contexts[0].close).toHaveBeenCalled();
+    grant(remoteStream("late", [late]));
+    await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
+    expect(active("microphone")).toEqual([]);
+  } finally { session.close(); }
+});
+
+test("focused voice dock cancels the first join while microphone permission is pending", async () => {
+  const { session, socket } = await shortcutRooms();
+  const contexts = microphoneMixer([]);
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { platform: "Win32", mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
+  const view = Object.assign(new EventTarget(), { HTMLIFrameElement: class {} });
+  const doc = Object.assign(new EventTarget(), { nodeType: 9, defaultView: view, hasFocus: () => true, activeElement: null });
+  vi.stubGlobal("window", Object.assign(view, { document: doc }));
+  vi.stubGlobal("document", doc);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const root = createRoot(Object.assign(new EventTarget(), { nodeType: 1, tagName: "DIV", ownerDocument: doc }) as unknown as HTMLElement);
+  function Dock() {
+    const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
+    const channel = { ...snapshot, voiceMicrophonePending: session.voiceMicrophonePending, toggleVoiceShortcut: session.toggleVoiceShortcut };
+    return createElement(ChannelVoiceDock, { channel: channel as ChannelController,
+      browsingRoomId: "first", renderingBySpeaker: new Map(), onBrowse: () => {} });
+  }
+  const press = () => {
+    const event = Object.assign(new Event("keydown", { cancelable: true }), {
+      key: "M", ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, getModifierState: () => false,
+    });
+    doc.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  try {
+    await act(async () => root.render(createElement(Dock)));
+    expect(press()).toBe(false);
+    let joining!: Promise<unknown>;
+    await act(async () => { joining = session.joinVoice("first").catch(error => error); });
+    expect(session.getSnapshot().state?.voice).toEqual([]);
+    await act(async () => { expect(press()).toBe(true); await joining; });
+    expect(await joining).toMatchObject({ name: "AbortError" });
+    expect(contexts[0].close).toHaveBeenCalled();
+    const late = remoteTrack("audio");
+    grant(remoteStream("late", [late]));
+    await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
+    expect(socket.sent.some(command => command.type === "publish" || command.type === "voice" && command.joined)).toBe(false);
+    expect(press()).toBe(false);
+  } finally { await act(async () => root.unmount()); session.close(); }
+});
+
+test("voice shortcut opens the last joined room and a second press cancels its pending permission", async () => {
+  const { session, socket, state, active, idle } = await shortcutRooms();
+  microphoneMixer([]);
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
+  try {
+    await session.joinVoice("first", true); await session.joinVoice("second", true);
+    state.voice.reverse();
+    socket.receive({ type: "state", state });
+    expect(session.toggleVoiceShortcut("microphone")).toBe(true);
+    expect(session.voiceMicrophonePending("second")).toBe(true);
+    expect(session.voiceMicrophonePending("first")).toBe(false);
+    expect(session.toggleVoiceShortcut("microphone")).toBe(true);
+    await idle();
+    const late = remoteTrack("audio");
+    grant(remoteStream("late", [late]));
+    await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
+    expect(active("microphone")).toEqual([]);
+  } finally { session.close(); }
+});
+
+test("voice shortcut retries total permission denial and remembers only accepted publications", async () => {
+  const { session, socket, state, rejected, toggle, join } = await shortcutRooms();
+  microphoneMixer(["a", "b"].map(id => remoteStream(id, [remoteTrack("audio")])));
+  const permission = vi.fn().mockRejectedValueOnce(new DOMException("declined", "NotAllowedError"))
+    .mockResolvedValue(remoteStream("raw", [remoteTrack("audio")]));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: permission } });
+  try {
+    await join("first"); await join("second");
+    await toggle("microphone", []);
+    state.publications = [];
+    socket.receive({ type: "state", state });
+    await toggle("microphone", []);
+    expect(permission).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().error).toBe("voice_microphone_permission_denied");
+    rejected.add("second");
+    await toggle("microphone", ["first"]);
+    expect(permission).toHaveBeenCalledTimes(2);
+    const before = socket.sent.length;
+    rejected.clear();
+    await toggle("microphone", []); await toggle("microphone", ["first"]);
+    expect(socket.sent.slice(before).filter(c => c.type === "publish")).toHaveLength(0);
   } finally { session.close(); }
 });
 

@@ -740,7 +740,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
           </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
-            renderingBySpeaker={renderingBySpeaker} onBrowse={selectRoom} toolsTarget={voiceToolsHost} /></>} />
+            renderingBySpeaker={renderingBySpeaker} onBrowse={id => { setVoiceFocus(id); selectRoom(id); }} toolsTarget={voiceToolsHost} /></>} />
       </div>
       {personal}
     </main>

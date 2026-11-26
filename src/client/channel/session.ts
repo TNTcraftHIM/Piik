@@ -3612,6 +3612,7 @@ export class ChannelSession {
   joinVoice = this.voice.join;
   leaveVoice = this.voice.leave;
   setMuted = this.voice.setMuted;
+  toggleVoiceShortcut = this.voice.toggleShortcut;
   setDeafened = this.voice.setDeafened;
   canUnmute = this.voice.canUnmute;
   voiceMicrophonePending = this.voice.microphonePending;

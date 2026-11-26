@@ -19,6 +19,7 @@ import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomPreferences } from "../lib/room-preferences";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { MicrophoneMode } from "../media/voice-gate";
+import type { VoiceToggleAction } from "./voice-shortcut-binding";
 import type { BrowserCaptureSource } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
@@ -249,8 +250,9 @@ export interface ChannelActions {
   joinVoice(roomId: string, listenOnly?: boolean, reportError?: boolean): Promise<void>;
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
+  toggleVoiceShortcut(action: VoiceToggleAction): boolean;
   canUnmute(roomId: string): boolean;
-  voiceMicrophonePending(roomId: string): boolean;
+  voiceMicrophonePending(roomId?: string): boolean;
   /** A voice operation in any room or a microphone input change is pending. */
   voiceBusy(): boolean;
   /** Post-gain linear levels keyed by the speaking endpoint/session, never its relay. */

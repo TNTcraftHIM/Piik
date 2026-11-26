@@ -6,6 +6,7 @@ import { MicrophoneInput } from "../media/microphone-input";
 import type { MicrophoneMode } from "../media/voice-gate";
 import type { ChannelCommand, ChannelSnapshot } from "./protocol";
 import type { ChannelView } from "./types";
+import type { VoiceToggleAction } from "./voice-shortcut-binding";
 
 type VoiceInput = RoomPreferences["voiceInput"];
 type VoiceTransmission = RoomPreferences["voiceTransmission"];
@@ -82,6 +83,7 @@ function captureVoiceMicrophone(settings: VoiceInput, signal: AbortSignal): Prom
  */
 export class VoiceParticipation {
   private readonly rooms = new Map<string, VoiceIntent>();
+  private readonly lastOn: Record<VoiceToggleAction, Set<string>> = { microphone: new Set(), listening: new Set() };
   private microphone: MicrophoneInput | null = null;
   private microphoneRequest: MicrophoneRequest | null = null;
   private talkPressed = false;
@@ -124,7 +126,7 @@ export class VoiceParticipation {
     } catch (error) {
       supplied?.getTracks().forEach(track => track.stop());
       const left = this.rooms.get(roomId) !== intent;
-      if (!left) this.rooms.delete(roomId);
+      if (!left) this.forgetRoom(roomId);
       if (intent.publicationId) this.session.retire(intent.publicationId);
       this.release();
       if (left) throw new DOMException("Voice left", "AbortError");
@@ -135,15 +137,48 @@ export class VoiceParticipation {
 
   leave = (roomId: string): Promise<void> => {
     const id = this.rooms.get(roomId)?.publicationId;
-    this.rooms.delete(roomId);
+    this.forgetRoom(roomId);
     if (id) this.session.retire(id);
     this.refresh();
     return this.sync(roomId);
   };
 
-  microphonePending = (roomId: string): boolean => {
+  microphonePending = (roomId?: string): boolean => {
+    if (roomId === undefined) return [...this.rooms.keys()].some(id => this.microphonePending(id));
     const intent = this.rooms.get(roomId);
     return !!intent && !intent.muted && this.busy(roomId);
+  };
+
+  private forgetRoom(roomId: string): void {
+    this.rooms.delete(roomId);
+    this.lastOn.microphone.delete(roomId);
+    this.lastOn.listening.delete(roomId);
+  }
+
+  toggleShortcut = (action: VoiceToggleAction): boolean => {
+    const { state, sessionId } = this.session.view();
+    const members = state?.voice.filter(member => member.sessionId === sessionId) ?? [];
+    const on = new Set(members.filter(member => action === "microphone" ? !member.muted : !member.deafened)
+      .map(member => member.roomId));
+    // A joining room can already be waiting for permission before it appears in the snapshot.
+    const closing = [...this.rooms.keys()].filter(roomId => on.has(roomId) || action === "microphone" && this.microphonePending(roomId));
+    const set = action === "microphone" ? this.setMuted : this.setDeafened;
+    if (closing.length) {
+      for (const roomId of closing) {
+        // Cancel an unjoined room's request before it can announce participation.
+        const operation = members.some(member => member.roomId === roomId) ? set(roomId, true) : this.leave(roomId);
+        void operation.catch(() => {});
+      }
+      // The writes above refresh synchronously. Remember the whole press, ahead of any replies.
+      if (on.size) this.lastOn[action] = on;
+      return true;
+    }
+    const joined = [...this.rooms.keys()].filter(roomId => members.some(member => member.roomId === roomId));
+    const remembered = joined.filter(roomId => this.lastOn[action].has(roomId));
+    const targets = (remembered.length ? remembered : joined.slice(-1))
+      .filter(roomId => action === "listening" || this.canUnmute(roomId));
+    for (const roomId of targets) void set(roomId, false).catch(() => {});
+    return targets.length > 0;
   };
 
   canUnmute = (roomId: string): boolean => {
@@ -273,7 +308,7 @@ export class VoiceParticipation {
       const stream = publicationId ? this.session.local.get(publicationId)?.stream : undefined;
       if (member && stream) stream.getAudioTracks().forEach(track => { track.enabled = !intent.muted; });
       if (!member && !this.busy(roomId)) {
-        this.rooms.delete(roomId);
+        this.forgetRoom(roomId);
         if (publicationId) this.session.retire(publicationId);
       }
     }
@@ -301,15 +336,21 @@ export class VoiceParticipation {
   /** This endpoint's own voice as local intent and live capture show it, ahead of the authority. */
   project(members: ChannelSnapshot["voice"]): ChannelSnapshot["voice"] {
     const { sessionId } = this.session.view();
-    return members.flatMap(member => {
+    const microphone = new Set<string>(), listening = new Set<string>();
+    const projected = members.flatMap(member => {
       if (member.sessionId !== sessionId) return [member];
       const intent = this.rooms.get(member.roomId);
       if (!intent) return [];
       const capture = intent.publicationId ? this.session.local.get(intent.publicationId) : undefined;
       const active = !intent.muted && capture?.admitted
         && capture.stream.getAudioTracks().some(track => track.readyState === "live" && track.enabled);
+      if (active) microphone.add(member.roomId);
+      if (!intent.deafened) listening.add(member.roomId);
       return [{ ...member, muted: !active, deafened: intent.deafened }];
     });
+    if (microphone.size) this.lastOn.microphone = microphone;
+    if (listening.size) this.lastOn.listening = listening;
+    return projected;
   }
 
   /** The session retired a publication. A room that published it stays joined, muted. */
@@ -336,6 +377,8 @@ export class VoiceParticipation {
   close(): void {
     this.talkPressed = false;
     this.rooms.clear();
+    this.lastOn.microphone.clear();
+    this.lastOn.listening.clear();
     this.release();
   }
 
@@ -364,13 +407,14 @@ export class VoiceParticipation {
   }
 
   private release(): void {
-    if ([...this.rooms.values()].some(intent => intent.publicationId || !intent.muted)) return;
+    if ([...this.rooms.values()].some(intent => !intent.muted)) return;
     const request = this.microphoneRequest;
     this.microphoneRequest = null;
     request?.controller.abort();
     request?.input?.close();
     void request?.context?.close().catch(() => {});
     if (request) request.context = null;
+    if ([...this.rooms.values()].some(intent => intent.publicationId)) return;
     this.microphone?.close();
     this.microphone = null;
   }

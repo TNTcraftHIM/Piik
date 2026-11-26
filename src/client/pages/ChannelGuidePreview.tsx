@@ -247,6 +247,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     connectionMetrics: async () => ({ samples: [], unavailable: false }),
     appConnectionMetrics: async roomId => ({ sessionId: appSessionId, bindingId: `sample-binding-${roomId}`, connections: [] }),
     canUnmute: () => true, voiceMicrophonePending: () => false, voiceBusy: () => false,
+    toggleVoiceShortcut: () => { received(); return true; },
     setMuted: async (roomId: string, muted: boolean) => setVoiceByRoom(previous => previous[roomId]
       ? { ...previous, [roomId]: { ...previous[roomId], muted } } : previous),
     setDeafened: async (roomId: string, deafened: boolean) => setVoiceByRoom(previous => previous[roomId]

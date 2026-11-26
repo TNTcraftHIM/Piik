@@ -15,7 +15,7 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { SurfaceDocument } from "../../ui/panel-window";
 import { VoiceOverlay } from "./voice-overlay";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
-import { resolveRoomVoiceControls, resolveVoiceDockControls } from "../voice-dock-controls";
+import { resolveVoiceDockControls } from "../voice-dock-controls";
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { SPEAKING_LEVEL } from "../../media/voice-gate";
 import { ChannelVoiceRooms, type VoiceRoomDensity } from "./ChannelVoiceRooms";
@@ -35,11 +35,10 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
   const { channel, renderingBySpeaker, onBrowse } = props;
   const { t } = useCopy();
   const state = channel.state;
-  const { joined } = resolveVoiceDockControls(channel, undefined);
-  const activity = joined.length === 1 ? joined[0] : undefined;
-  const { toggle } = resolveRoomVoiceControls(channel, activity);
-  const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
-    channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined,
+  const { joined, activity } = resolveVoiceDockControls(channel, props.directRoomId ?? "");
+  const shortcutSession = joined.length || channel.voiceMicrophonePending() ? channel.sessionId ?? undefined : undefined;
+  const shortcuts = useVoiceShortcuts(shortcutSession, channel.toggleVoiceShortcut,
+    joined.length && channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined,
     joined.length && channel.voiceTransmission.mode === "push" ? channel.talk : undefined);
   const controls = useRef<HTMLDivElement>(null);
   const roomId = activity?.roomId ?? "";
@@ -101,7 +100,7 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
     <div ref={controls} className="c3-voice-dock-rooms">
       <ChannelVoiceRooms key={props.density} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
         onBrowse={onBrowse} renderingBySpeaker={renderingBySpeaker} shortcuts={shortcuts}
-        shortcutRoomId={activity?.roomId} density={props.density}
+        shortcutRoomId={joined.length === 1 ? activity?.roomId : undefined} density={props.density}
         directRoomId={props.directRoomId} />
       {mutedNotice}
     </div>

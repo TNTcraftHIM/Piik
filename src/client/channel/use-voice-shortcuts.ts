@@ -58,7 +58,7 @@ const idle = () => () => {};
  * Page shortcuts for the voice dock. `talk` is given only in push-to-talk mode: the talk chord then
  * holds it while down, and any key-up of the chord, lost focus, a hidden or frozen page releases it.
  */
-export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: VoiceToggleAction) => boolean,
+export function useVoiceShortcuts(sessionId: string | undefined, toggle: (action: VoiceToggleAction) => boolean,
   native?: BackgroundVoiceShortcuts, talk?: (pressed: boolean) => void) {
   const surface = useSurfaceDocument();
   const mac = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
@@ -67,10 +67,10 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
   const [talking, setTalking] = useState(false);
   const held = useRef<{ binding: VoiceShortcutBinding; talk: (pressed: boolean) => void } | null>(null);
   const pushToTalk = Boolean(talk);
-  const owned = useSyncExternalStore(native && roomId ? observeInputFocus : idle, focusedInputOwnsKeyboard, () => false);
+  const owned = useSyncExternalStore(native && sessionId ? observeInputFocus : idle, focusedInputOwnsKeyboard, () => false);
   // The App registers only the toggles, so a talk change does not re-register them.
   const toggles = useMemo(() => ({ microphone: bindings.microphone, listening: bindings.listening }), [bindings.microphone, bindings.listening]);
-  const background = useBackgroundVoiceShortcuts(roomId ? native : undefined, toggles, roomId, Boolean(recording) || owned, action => {
+  const background = useBackgroundVoiceShortcuts(sessionId ? native : undefined, toggles, sessionId, Boolean(recording) || owned, action => {
     if (!focusedInputOwnsKeyboard()) toggle(action);
   });
   const save = (next: Partial<VoiceShortcuts>) => {
@@ -93,7 +93,7 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
       return;
     }
     const action = voiceToggleActions.find(action => matchesVoiceShortcut(bindings[action], binding));
-    if (!action || !roomId) return;
+    if (!action || !sessionId) return;
     // Windows can start delivering this chord before its registration reply reaches the page.
     if (background.pending || background.report?.[action] === "registered" || toggle(action)) event.preventDefault();
   });
@@ -106,12 +106,12 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     press.talk(false);
   });
   useEffect(() => {
-    if ((!roomId && !pushToTalk) || !surface) return;
+    if ((!sessionId && !pushToTalk) || !surface) return;
     const owners = new Set([document, surface]);
     const keydown = (event: KeyboardEvent) => onShortcut(event);
     owners.forEach(owner => owner.addEventListener("keydown", keydown));
     return () => owners.forEach(owner => owner.removeEventListener("keydown", keydown));
-  }, [roomId, surface, pushToTalk]);
+  }, [sessionId, surface, pushToTalk]);
   useEffect(() => {
     if (!surface || !talk) return;
     const owners = [...new Set([document, surface])];
