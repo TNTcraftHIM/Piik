@@ -246,7 +246,7 @@ interface notification and lease fixes. Regenerate the Native, Server and Androi
 locks and verify IPv6 trickle, mapping lifecycle and package notices.
 
 Native, Server and Android use str0m 0.26.0 with the `rust-crypto` provider
-from [revision `5f1f6346`](https://github.com/TNTcraftHIM/str0m/commit/5f1f63468bb9b58b8efea6ef00e5805bb51404dd),
+from [revision `9cd8827d`](https://github.com/TNTcraftHIM/str0m/commit/9cd8827dfac502038a0c6c48cf2afdd084b5da19),
 based on official [release commit `6b996d99`](https://github.com/algesten/str0m/commit/6b996d994df0f333c943e77fba2cc35ee484cabe).
 The temporary SDK repair separates send-consent expiry from candidate
 connectivity, retains authorized playback during ICE restart, and permits
@@ -255,6 +255,8 @@ The read-only `Rtc::has_send_consent` query exposes the SDK's current selected-p
 authorization. Native keeps established media through recoverable disconnection
 and retires expired paths on the SDK's existing wakeups; remote input retains
 its stricter connection and grant checks.
+Periodic bandwidth estimates respect their own update deadline, including
+[upstream #1181](https://github.com/algesten/str0m/pull/1181).
 The SDK's `is`, `str0m-proto` and `str0m-rust-crypto` packages remain in its
 official workspace layout and share that Git revision and MIT/Apache-2.0
 licensing.
