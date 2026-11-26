@@ -30,7 +30,6 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
   const watches = state?.watchActivities.filter(source => source.roomId === room.id) ?? [];
   const [over, setOver] = useState(false);
   useEffect(() => { if (!ordering?.active) setOver(false); }, [ordering?.active]);
-  useEffect(() => { if (!showPeople) setPeopleOpen(false); }, [showPeople]);
   return <div className="c3-room-list-item" data-ordering={!!ordering || undefined} data-drop={over && ordering?.active || undefined}
     onDragOver={event => { if (ordering?.active) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setOver(true); } }}
     onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false); }}
