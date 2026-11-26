@@ -22,7 +22,7 @@ import { resolveRoomVoiceControls, resolveVoiceDockControls } from "../voice-doc
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding";
 import { SPEAKING_LEVEL } from "../../media/voice-gate";
-import { ChannelVoiceRooms, VOICE_STATUS_LABEL } from "./ChannelVoiceRooms";
+import { ChannelVoiceRooms, VOICE_STATUS_LABEL, type VoiceRoomDensity } from "./ChannelVoiceRooms";
 
 type VoiceDockProps = {
   channel: ChannelController;
@@ -35,7 +35,8 @@ type VoiceDockProps = {
 } | {
   presentation: "rooms";
   browsingRoomId: string;
-  compact?: boolean;
+  density?: VoiceRoomDensity;
+  directRoomId?: string;
   toolsTarget?: HTMLElement | null;
 });
 
@@ -113,9 +114,10 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
     </div>;
     return <>
       <div ref={controls} className="c3-voice-dock-rooms">
-        <ChannelVoiceRooms key={props.compact ? "compact" : "inline"} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
+        <ChannelVoiceRooms key={props.density} channel={channel} state={state} joined={joined} browsingRoomId={props.browsingRoomId}
           onBrowse={onBrowse} renderingBySpeaker={renderingBySpeaker} shortcuts={shortcuts}
-          shortcutRoomId={activity?.roomId} compact={props.compact} />
+          shortcutRoomId={activity?.roomId} density={props.density}
+          directRoomId={props.directRoomId} />
         {mutedNotice}
       </div>
       {props.toolsTarget ? createPortal(

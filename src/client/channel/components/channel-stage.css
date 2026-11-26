@@ -34,6 +34,19 @@
 }
 .c3-monitor-grid[data-side-strip] > .is-focused { grid-area: 1 / 1 / -1 / 2; width: 100%; }
 .c3-monitor-grid[data-side-strip] > .is-thumbnail { grid-column: 2; grid-row: auto; }
+.c3-monitor-grid[data-fitted] {
+  grid-template-columns: repeat(calc(var(--stage-columns, 1) * 2), max-content);
+  grid-auto-rows: max-content;
+  place-content: safe center;
+  min-height: 0;
+}
+.c3-monitor-grid[data-fitted].is-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow: visible; scrollbar-gutter: auto; }
+.c3-monitor-grid[data-fitted] > .c3-monitor-tile { place-self: center; width: var(--stage-picture-width); border: 0; }
+.c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) {
+  flex: none;
+  min-height: 0;
+  height: var(--stage-picture-height);
+}
 .c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { flex: none; min-height: 90px; aspect-ratio: 16 / 9; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-source-row { padding: 0 4px; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */

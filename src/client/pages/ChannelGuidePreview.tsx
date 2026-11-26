@@ -274,7 +274,6 @@ export function ChannelGuidePreview({ shareVariant }: { shareVariant?: Component
   const { channel, roomName, notice, received, onSend } = useChannelGuideSample({
     multiRoom: voiceRooms, multiVoice: voiceRooms, showSampleAttachment: true,
   });
-  const [voiceRoom, setVoiceRoom] = useState("friday");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const shareStart = useSettingsAction();
@@ -324,8 +323,8 @@ export function ChannelGuidePreview({ shareVariant }: { shareVariant?: Component
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
-      {voiceRooms ? <ChannelVoiceDock presentation="rooms" channel={channel} browsingRoomId={voiceRoom}
-        renderingBySpeaker={new Map()} compact={voiceView === "rail"} onBrowse={setVoiceRoom} />
+      {voiceRooms ? <ChannelVoiceDock presentation="rooms" channel={channel} browsingRoomId="friday"
+        renderingBySpeaker={new Map()} density={voiceView === "rail" ? "rail" : "rows"} onBrowse={received} />
         : <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />}
       </div>
     </div>

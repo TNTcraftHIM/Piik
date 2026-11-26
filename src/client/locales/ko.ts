@@ -386,7 +386,7 @@ export const ko = {
   "channel.user.avatar": "{name}의 프로필 사진",
   "channel.voiceDock.voiceControls": "음성 제어",
   "channel.voiceDock.openOverlay": "음성 오버레이 열기",
-  "channel.voiceDock.voiceRoomCount": "참여 중인 음성 방 ({count})",
+  "channel.voiceDock.otherVoiceRoomCount": "참여 중인 다른 음성 방 ({count})",
   "channel.voiceDock.openRoomOverlay": "{name} 음성 오버레이 열기",
   "channel.voiceDock.adjustOverlay": "음성 오버레이 조정",
   "channel.voiceDock.pinOverlay": "음성 오버레이 고정",

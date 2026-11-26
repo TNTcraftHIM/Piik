@@ -15,7 +15,7 @@ import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { stageColumns, stageFocusSidebar } from "../stage-layout";
+import { stageColumns, stageFocusSidebar, fittedStage, type StageTile } from "../stage-layout";
 import type { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { Btn, Cap } from "../../components/living/primitives";
@@ -248,16 +248,18 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
     onChangeFocus(id);
   };
   const [columns, setColumns] = useState<number>();
+  const fitGrid = !!roomLayout && !theater && (!focused || active.length === 1);
+  const [tileSizes, setTileSizes] = useState<StageTile[]>();
   const [sideStrip, setSideStrip] = useState(false);
   useLayoutEffect(() => {
     const parent = stage.current, tiles = grid.current;
-    if (!parent || !tiles || (focused && !roomLayout) || theater || active.length < 2) { setColumns(undefined); setSideStrip(false); return; }
+    if (!parent || !tiles || (focused && !roomLayout) || theater || active.length < (fitGrid ? 1 : 2)) { setColumns(undefined); setSideStrip(false); setTileSizes(undefined); return; }
     const measure = () => {
-      const style = getComputedStyle(parent), children = [...parent.children].filter(child => !(child as HTMLElement).hidden) as HTMLElement[];
+      const style = getComputedStyle(parent), children = [...parent.children].filter(child => getComputedStyle(child).display !== "none") as HTMLElement[];
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
       const gap = parseFloat(style.rowGap) || 0;
       const layout = getComputedStyle(tiles);
-      if (focused) {
+      if (focused && !fitGrid) {
         const main = tiles.querySelector<HTMLElement>("article.is-focused")!;
         const thumbs = [...tiles.querySelectorAll<HTMLElement>("article.is-thumbnail")];
         setSideStrip(stageFocusSidebar(tiles.clientWidth, tiles.clientHeight,
@@ -269,7 +271,7 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
       const frame = tiles.querySelector<HTMLElement>('article:not([hidden]) > .c3-video, article:not([hidden]) > .c3-monitor-wait');
       const frameStyle = frame && getComputedStyle(frame);
       const [ratioWidth, ratioHeight = 1] = frameStyle?.aspectRatio.split("/").map(Number) ?? [];
-      const natural = layout.gridAutoRows === "auto" && frameStyle ? {
+      const natural = !fitGrid && layout.gridAutoRows === "auto" && frameStyle ? {
         ratio: ratioWidth / ratioHeight || 0,
         insetX: parseFloat(frameStyle.borderLeftWidth) + parseFloat(frameStyle.borderRightWidth) + parseFloat(frameStyle.paddingLeft) + parseFloat(frameStyle.paddingRight),
         insetY: parseFloat(frameStyle.borderTopWidth) + parseFloat(frameStyle.borderBottomWidth) + parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom),
@@ -278,21 +280,29 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
       // A natural grid's height is its output; neither it nor page scrolling sets its budget.
       const availableHeight = natural
         ? Math.max(160, window.innerHeight - (parent.getBoundingClientRect().top + window.scrollY))
-        : parent.clientHeight;
+        : fitGrid && style.maxHeight.endsWith("px") && style.flexGrow === "0" ? parseFloat(style.maxHeight) : parent.clientHeight;
       const height = availableHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
         - gap * (children.length - 1);
-      const footer = Math.max(...[...tiles.querySelectorAll("article:not([hidden]) > footer")].map(node => node.getBoundingClientRect().height)) + 2;
+      const footer = Math.max(...[...tiles.querySelectorAll("article:not([hidden]) > footer")].map(node => node.getBoundingClientRect().height));
       const ratios = [...tiles.children].filter(tile => !(tile as HTMLElement).hidden).map(stagePictureRatio);
-      setColumns(stageColumns(tiles.clientWidth, height, ratios, parseFloat(layout.columnGap) || 0, footer,
-        parseFloat(layout.getPropertyValue("--stage-tile-min")), natural));
+      const tileGap = parseFloat(layout.columnGap) || 0;
+      const minimumWidth = parseFloat(layout.getPropertyValue("--stage-tile-min"));
+      if (fitGrid) {
+        const fitted = fittedStage(tiles.clientWidth, height, ratios, tileGap, footer, minimumWidth);
+        setColumns(fitted.columns);
+        setTileSizes(fitted.tiles);
+      } else {
+        setColumns(stageColumns(tiles.clientWidth, height, ratios, tileGap, footer + 2, minimumWidth, natural));
+      }
     };
     const observer = new ResizeObserver(measure);
     observer.observe(parent);
-    if (focused) {
+    if (fitGrid && parent.parentElement) observer.observe(parent.parentElement);
+    if (focused && !fitGrid) {
       observer.observe(tiles);
       for (const thumb of tiles.querySelectorAll("article.is-thumbnail")) observer.observe(thumb);
     }
-    const selection = roomLayout && focused ? new MutationObserver(measure) : undefined;
+    const selection = roomLayout ? new MutationObserver(measure) : undefined;
     selection?.observe(tiles, { subtree: true, attributes: true, attributeFilter: ["data-selected"] });
     for (const child of parent.children) if (child !== tiles) observer.observe(child);
     for (const footer of tiles.querySelectorAll("article > footer")) observer.observe(footer);
@@ -307,7 +317,7 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
       tiles.removeEventListener("resize", measure, true);
       window.removeEventListener("resize", measure);
     };
-  }, [layoutSources, focused?.id, theater, lang, roomLayout, layoutHome]);
+  }, [layoutSources, focused?.id, theater, lang, roomLayout, layoutHome, fitGrid]);
   useLayoutEffect(() => {
     for (const tile of grid.current?.querySelectorAll<HTMLElement>('article[hidden], article.is-thumbnail') ?? []) {
       for (const panel of tile.querySelectorAll<HTMLElement>('[popover]:popover-open')) panel.hidePopover();
@@ -356,7 +366,7 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
         <div><Glyph name="tv" size={18} /><Cap k={{ text: t("screen.screens") }} /><small>{active.length}</small></div>
         {layoutInToolbar ? createPortal(layoutControls, layoutHome) : layoutControls}
       </header>
-      <div ref={grid} data-side-strip={roomLayout && !!focused && !theater && sideStrip || undefined} hidden={!active.length} className={`c3-monitor-grid${focused ? " is-focused" : active.length > 1 ? " is-grid" : ""}`}
+      <div ref={grid} data-fitted={fitGrid && !!tileSizes || undefined} data-side-strip={roomLayout && !fitGrid && !!focused && !theater && sideStrip || undefined} hidden={!active.length} className={`c3-monitor-grid${focused ? " is-focused" : active.length > 1 ? " is-grid" : ""}`}
         style={{ "--stage-columns": columns ?? 1, "--stage-thumbnails": Math.max(1, active.length - 1) } as CSSProperties}>
         {retained.map(source => {
           const index = active.indexOf(source);
@@ -365,8 +375,14 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
           const focusable = active.length > 1 && !isFocused;
           const remainder = active.length % (columns ?? 1);
           const centeredStart = !source.hidden && !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
+          const size = fitGrid ? tileSizes?.[index] : undefined;
+          const tileStyle = {
+            gridColumn: centeredStart ? `${centeredStart} / span 2` : undefined,
+            "--stage-picture-width": size && `${size.width}px`,
+            "--stage-picture-height": size && `${size.height}px`,
+          } as CSSProperties;
           if (source.kind === "watch") return <WatchStageTile key={source.id} source={source} thumbnail={thumbnail} focused={isFocused} automaticPlayback={source.id === automaticEmbed}
-            focusable={focusable} centeredStart={centeredStart} onFocus={onFocus} theaterMode={theater && isFocused}
+            focusable={focusable} style={tileStyle} onFocus={onFocus} theaterMode={theater && isFocused}
             onToggleTheater={() => { onFocus(source.id); setTheater(!theater); }} />;
           const waiting = source.kind === "waiting";
           const microphone = !waiting && source.sourceMicrophone;
@@ -379,7 +395,7 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
           const retryable = failed || !waiting && !source.awaitingRoute;
           const help = diagnosis && canSubscribe && !waiting && !source.pending && !source.hidden;
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
-            style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
+            style={tileStyle}
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
             aria-label={`${title} / ${source.name} / ${source.roomName}`}
             onClick={event => {
@@ -487,8 +503,8 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
   </section>;
 }
 
-function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, onFocus, theaterMode, onToggleTheater, automaticPlayback }: {
-  source: WatchStageSource; thumbnail: boolean; focused: boolean; focusable: boolean; centeredStart?: number;
+function WatchStageTile({ source, thumbnail, focused, focusable, style, onFocus, theaterMode, onToggleTheater, automaticPlayback }: {
+  source: WatchStageSource; thumbnail: boolean; focused: boolean; focusable: boolean; style: CSSProperties;
   onFocus(id: string | null): void; theaterMode: boolean; onToggleTheater(): void;
   automaticPlayback: boolean;
 }) {
@@ -498,7 +514,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
   const windowAction = useSettingsAction(!source.hidden, source.player);
   return <article hidden={source.hidden} inert={source.hidden} tabIndex={focused ? -1 : undefined} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
-    style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
+    style={style}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {
       if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
     }}>

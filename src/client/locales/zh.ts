@@ -489,7 +489,7 @@ export const zh = {
   "channel.user.avatar": "{name} 的头像",
   "channel.voiceDock.voiceControls": "语音控制",
   "channel.voiceDock.openOverlay": "打开语音浮层",
-  "channel.voiceDock.voiceRoomCount": "已加入的语音房间（{count}）",
+  "channel.voiceDock.otherVoiceRoomCount": "其他已加入的语音房间（{count}）",
   "channel.voiceDock.openRoomOverlay": "打开{name}的语音浮层",
   "channel.voiceDock.adjustOverlay": "调整语音浮层",
   "channel.voiceDock.pinOverlay": "固定语音浮层",

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { VoiceOverlay, type OverlayMode } from "./voice-overlay";
 import { FloatingPanel, type PanelWindowControl } from "../../components/living/FloatingPanel";
@@ -21,15 +21,18 @@ function move(node: HTMLElement, parent: HTMLElement | null) {
 }
 
 /** Three page slots share one room tool without remounting their content. */
-export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, onSurfaceChange, couch, conversation, voice, actions, preferPanel = false }: {
+export function ChannelRoomTool({ title, voiceRoomName, caption, home, triggerHome, surface, onSurfaceChange, couch, conversation, voice, actions, preferPanel = false }: {
   title: string; voiceRoomName?: string; home: Slots; surface: RoomToolSurface; onSurfaceChange: (surface: RoomToolSurface) => void;
   caption?: string;
+  triggerHome?: HTMLElement | null;
   couch: ReactNode; conversation: ReactNode; voice: ReactNode;
   actions?: ReactNode;
   preferPanel?: boolean;
 }) {
   const { t } = useCopy();
-  const id = useId(), trigger = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  // Moving to a different portal home creates a new invoker for the panel's click listener.
+  const trigger = useMemo(() => createRef<HTMLButtonElement>(), [triggerHome]);
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
   const [targets] = useState(() => ({ couch: target(), conversation: target(), voice: target() }));
   const panel = useRef<PanelWindowControl>(null);
@@ -86,17 +89,18 @@ export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, 
     place(panelOpen, surface.document);
   });
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
+  const entry = <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
+    <Tooltip kind={panelOpen ? "hint-pip-exit" : inline || overlay ? "hint-chat-open" : "hint-window-detach"} text={label}>
+      <button ref={trigger} type="button" className={`lr-btn is-dense is-quiet${panelOpen ? " is-on" : ""}`} aria-label={label}
+        aria-haspopup="dialog" aria-expanded={panelOpen} popoverTarget={detached ? undefined : id}>
+        <Glyph name={preferPanel ? "chat" : panelOpen ? "pipExit" : "pip"} size={18} />
+        {preferPanel && <Cap k={{ text: t("channel.roomTool.interact") }} />}
+      </button>
+    </Tooltip>
+    {actions}
+  </div>;
   return <>
-    <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
-      <Tooltip kind={panelOpen ? "hint-pip-exit" : inline || overlay ? "hint-chat-open" : "hint-window-detach"} text={label}>
-        <button ref={trigger} type="button" className={`lr-btn is-dense is-quiet${panelOpen ? " is-on" : ""}`} aria-label={label}
-          aria-haspopup="dialog" aria-expanded={panelOpen} popoverTarget={detached ? undefined : id}>
-          <Glyph name={preferPanel ? "chat" : panelOpen ? "pipExit" : "pip"} size={18} />
-          {preferPanel && <Cap k={{ text: t("channel.roomTool.interact") }} />}
-        </button>
-      </Tooltip>
-      {actions}
-    </div>
+    {triggerHome ? createPortal(entry, triggerHome) : entry}
     <FloatingPanel onDetachedTrigger={overlay ? () => presentation("panel") : undefined} onNativeReady={setReadyDocument} closeOnReturn={overlay}
       windowControl={panel} id={id} trigger={trigger} title={overlay ? voiceRoomName ?? title : title}
       directWindow={!preferPanel} detachable={preferPanel} detachedAction="return" className={`c3-room-tool${overlay ? " is-voice-overlay" : ""}`}
