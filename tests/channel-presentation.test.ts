@@ -55,11 +55,19 @@ it("projects joined watch people independently of transport and deduplicates the
   const viewing = (userId: string) => roomActivityPeople(state, "room", undefined, local).find(person => person.id === userId)?.viewing;
   const localViewing = () => roomSessionViewing([], state.watchActivities, [], local);
   try {
+    player.blockedReason = "autoplay";
+    expect(viewing("viewer")).toBe("joined");
+    expect(localViewing()).toBe("joined");
+    player.blockedReason = null;
     expect(viewing("viewer")).toBe("preparing"); // Metadata is not a composited frame.
     expect(localViewing()).toBe("preparing");
     player.presentFrame();
     expect(viewing("viewer")).toBe("active");
     expect(localViewing()).toBe("active");
+    player.blockedReason = "local-seek";
+    expect(viewing("viewer")).toBe("joined");
+    expect(localViewing()).toBe("joined");
+    player.blockedReason = null;
     observedVideo.readyState = 1;
     expect(viewing("viewer")).toBe("preparing");
     expect(localViewing()).toBe("preparing");
@@ -70,6 +78,7 @@ it("projects joined watch people independently of transport and deduplicates the
     expect(viewing("viewer")).toBe("joined"); // Same identity, different endpoint.
     expect(localViewing()).toBeUndefined();
     state.watchActivities[0].viewerSessionIds = ["viewer-web"];
+    player.blockedReason = "autoplay";
     player.error = "watch_media_failed";
     expect(viewing("viewer")).toBe("failed");
     expect(localViewing()).toBe("failed");
