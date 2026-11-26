@@ -109,3 +109,7 @@
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn > svg { display: none; }
 .c3-voice-room-disclosure > span .lr-btn .lr-cap { font-variant-numeric: tabular-nums; }
 .c3-voice-rooms-popover { width: min(320px, calc(100vw - 16px)); padding: 8px; overflow: auto; }
+/* Leaving ends the row, a step apart from what it ends. */
+.c3-voice-room-layout:is([data-density="bar"], [data-density="rail"]) .c3-voice-room-row[data-direct] .c3-voice-room-actions { gap: 4px; }
+.c3-voice-room-layout[data-density="bar"] .c3-voice-room-row[data-direct] .c3-voice-room-actions > .lr-comic-tip-wrap:last-child,
+.c3-voice-room-layout[data-density="bar"] .c3-voice-room-row[data-direct] .c3-voice-room-actions > .lr-btn:last-child { margin-inline-start: 8px; }

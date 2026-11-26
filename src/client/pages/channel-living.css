@@ -138,9 +138,10 @@
   border-block-start: 1px solid var(--line);
   background: var(--surface-frame);
 }
-[data-layout="living"] .c3-identity { order: 1; min-width: 0; gap: 4px; padding: 4px 0; }
-[data-layout="living"] .c3-identity strong { font-size: 14px; white-space: nowrap; }
-[data-layout="living"] .c3-identity small,
+[data-layout="living"] .c3-identity { min-width: 0; gap: 8px; padding: 4px 0 0 4px; }
+/* A name gets the space before its edit action, and says so when it does not fit. */
+[data-layout="living"] .c3-identity-name { flex: 1; min-width: 0; }
+[data-layout="living"] .c3-identity strong { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 14px; white-space: nowrap; }
 [data-layout="living"] .c3-room-tool-entry > small,
 [data-layout="living"] :is(.c3-chat-panel, .c3-workspace) .c3-chat-heading { display: none; }
 .c3-living-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
@@ -214,7 +215,10 @@
 [data-layout="living"][data-sidebars="phone"] > :is(.c3-chat-panel, .c3-people-panel) { border-inline-start: 0; }
 [data-layout="living"][data-sidebars="phone"] > .c3-people-panel { grid-area: 2 / 1 / -2 / -1; }
 [data-layout="living"][data-sidebars="phone"] > .c3-chat-panel { border-block-start: 1px solid var(--line); }
-[data-layout="living"][data-sidebars="phone"] .c3-living-actions .c3-voice-entry > div { display: none; }
+/* In a bar the room is named by the heading above; my area in the dock names it, being apart from it. */
+[data-layout="living"]:is([data-sidebars="phone"], [data-minimal]) .c3-living-actions .c3-voice-entry > div { display: none; }
+/* A phone's header keeps the room's name: its tools give up four pixels each before the name gives up a letter. */
+[data-layout="living"][data-sidebars="phone"] > .c3-site-bar { --control-compact-size: 40px; }
 .c3-shell[data-layout="living"][data-sidebars="phone"] > .c3-personal { align-items: center; justify-content: center; min-height: 56px; padding: 4px 4px max(4px, env(safe-area-inset-bottom)); border: 0; }
 [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-identity,
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-living-actions { display: none; }

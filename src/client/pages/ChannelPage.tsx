@@ -340,7 +340,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const joined = myVoice.some(value => value.roomId === roomId);
   // A join reports here, not in a slot: membership arrives before the join settles and the slot moves with the room tool.
   const voiceJoin = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId]));
-  const joinVoice = room?.authorized && (!joined || busy("voice", roomId) || voiceJoin.error) ? <ChannelJoinVoice quiet joined={joined && !busy("voice", roomId)}
+  const joinVoice = room?.authorized && (!joined || busy("voice", roomId) || voiceJoin.error) ? <ChannelJoinVoice tonal joined={joined && !busy("voice", roomId)}
     disabled={joined || !connected || !room.available} busy={busy("voice", roomId)}
     error={voiceJoin.error} onJoin={listenOnly => { void voiceJoin.run(() => channel.joinVoice(roomId, listenOnly, false), () => setVoiceFocus(roomId)); }} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
@@ -464,11 +464,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     <ChannelForwardingSettings channel={channel} />
     {previewOptions}
   </>;
-  const chatToggle = state && !overview && !roomToolOpen && (hasPictures || minimal) && room?.authorized && <Btn id="c3-chat-trigger" icon="chat" title="conversation.chat" size="dense" quiet textTooltip
+  const chatToggle = state && !overview && !roomToolOpen && (hasPictures || minimal) && room?.authorized && <Btn id="c3-chat-trigger" icon="chat" title="conversation.chat" size="compact" quiet textTooltip
         pressed={!conversationHidden} controls="c3-chat" onClick={() => toggleCompanion("chat")} />;
   const connections = room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />;
   const standingTools = <div className="c3-standing-room-tools" hidden={phone && roomListOpen}>
-    {connections}{room?.authorized && <div ref={setToolTriggerHome} />}
+    {/* A phone's header keeps the room's name, so the room's window opens from beside the couch it lifts out. */}
+    {connections}{room?.authorized && !phone && <div ref={setToolTriggerHome} />}
   </div>;
   const roomHeading = <div className="c3-room-heading" data-tooltip-controls>
   <div className="c3-room-name">{bar && <span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
@@ -482,9 +483,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   <div className="c3-room-toolbar"><div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
     {!phone && <div ref={setStageLayoutHome} className="c3-living-stage-view" />}
     {state && !overview && !roomToolOpen && <>
-      <Btn id="c3-people-trigger" icon="users" title={{ text: t("channel.people.users") }} size="dense" quiet textTooltip
+      <Btn id="c3-people-trigger" icon="users" title={{ text: t("channel.people.users") }} size="compact" quiet textTooltip
         pressed={companionVisible && companionPane === "people"} controls="c3-people" onClick={() => toggleCompanion("people")} />
-      {!bar && chatToggle}
+      {/* A phone's header has no room for it beside the room's name, and its conversation opens just above my bar. */}
+      {!phone && chatToggle}
     </>}
   </div></div>
 </div>;
@@ -493,20 +495,21 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const stopOwnShare = ownShare ? () => run(channel.stopScreen(ownShare.id))
     : ownWatch ? () => run(channel.stopWatch(ownWatch.id)) : undefined;
   const ownShareId = ownShare?.id ?? ownWatch?.id;
-  const personal = <div className="c3-personal">
-    {self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
-      <div><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>
+  const identity = self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
+      <Tooltip className="c3-identity-name" overflow={{ text: self.name, selector: "strong" }}><strong>{self.name}</strong></Tooltip>
       <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
         busy={busy("profile")} onSave={channel.updateProfile} />
-    </div>}
+    </div>;
+  const personal = <div className="c3-personal">
     <div className="c3-living-actions">
       <div ref={voiceSlot} className="c3-room-slot" />
       {room?.authorized && (stopOwnShare ? <Btn icon="stop" size="compact" tone="danger" title="host.stop"
         cap={phone || roomListCompact ? undefined : "host.stop"} disabled={!connected} busy={busy("stop", ownShareId)} onClick={stopOwnShare} />
         : <ChannelShareControl variant={roomListCompact ? undefined : "split"} compact={phone || roomListCompact} channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)}
             disabled={!connected || !room.available} openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />)}
-      {bar && chatToggle}
+      {phone && chatToggle}
     </div>
+    {identity}
   </div>;
   return <LayerHistory.Provider value={track}><div className="lr-app c3-app c3-living-app-frame">
     {stageWatches.map(activity => {
@@ -734,7 +737,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             onSend={channel.sendMessage} onDiscardSend={channel.discardMessageRetry} floating={roomToolOpen} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
-          </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
+          </section><ChannelVoiceDock density={bar ? "bar" : roomListCompact ? "rail" : "rows"} labelled={minimal && !phone} directRoomId={voiceFocus} channel={channel} browsingRoomId={roomId}
             renderingBySpeaker={renderingBySpeaker} onBrowse={id => { setVoiceFocus(id); selectRoom(id); }} /></>} />
       </div>
       {personal}
