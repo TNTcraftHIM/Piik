@@ -832,6 +832,32 @@ mod room_tests {
             recipient: host_session,
             request_id: "request".into(),
         };
+        let mut malformed = serde_json::to_value(&address).unwrap();
+        malformed["command"] = serde_json::json!({
+            "type": "delete_message", "messageSeq": 1, "messageId": ""
+        });
+        let malformed_packet = sender_key.sign(sender, &malformed).unwrap();
+        let outcome = host.dispatch_peer(&malformed_packet, 1).unwrap();
+        assert!(outcome.projection_update.is_none());
+        let replies = outcome.replies().unwrap();
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0].address, address.reply());
+        assert!(matches!(
+            &replies[0].record,
+            ConversationRecord::Error { code } if code == "invalid_conversation"
+        ));
+        assert!(replies[0].record.broadcast().is_none());
+        let mut forged = malformed_packet;
+        forged.signature[0] ^= 1;
+        assert!(matches!(
+            host.dispatch_peer(&forged, 1),
+            Err("invalid_conversation_signature")
+        ));
+        malformed["bindingId"] = serde_json::json!(Uuid::new_v4());
+        assert!(matches!(
+            host.dispatch_peer(&sender_key.sign(sender, &malformed).unwrap(), 1),
+            Err("invalid_conversation_scope")
+        ));
         let mut request = ConversationRequest {
             address: address.clone(),
             command: ConversationCommand::Chat {
