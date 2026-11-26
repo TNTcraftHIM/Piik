@@ -114,6 +114,76 @@ it("reports a missing selected device across active outputs and lets the browser
   } finally { unsubscribe(); for (const stop of stops) stop(); await output.choose(""); vi.unstubAllGlobals(); }
 });
 
+it("applies a returning device to outputs created while it was absent and keeps a refused output actionable", async () => {
+  const devices = new EventTarget();
+  let available = false;
+  Object.assign(devices, { enumerateDevices: async () => available ? [{ deviceId: "headphones", kind: "audiooutput" }] : [] });
+  vi.stubGlobal("navigator", { mediaDevices: devices });
+  vi.resetModules();
+  const { playbackOutput: output } = await import("../src/client/media/playback-output");
+  await output.choose("headphones");
+  const sink = (refused = false) => ({ setSinkId: vi.fn(async () => {
+    if (!available) throw new DOMException("Unplugged", "NotFoundError");
+    if (refused) throw new DOMException("Not allowed", "NotAllowedError");
+  }) }) as unknown as HTMLMediaElement;
+  const refused = sink(true), screen = sink(), voice = sink(), retired = sink();
+  const stops = [output.attach(refused), output.attach(screen), output.attach(voice), output.attach(retired)];
+  try {
+    await vi.waitFor(() => expect(output.failedFor(retired)).toBe(true));
+    expect(stops.every(stop => stop.getWaiting())).toBe(true);
+    stops[3]();
+    available = true;
+    devices.dispatchEvent(new Event("devicechange"));
+    await vi.waitFor(() => expect(stops[1].getWaiting()).toBe(false));
+    await stops[2].ready;
+    expect(output.selected).toBe("headphones");
+    expect(output.failedFor(screen)).toBe(false);
+    expect(output.failedFor(voice)).toBe(false);
+    expect(output.failedFor(refused)).toBe(true);
+    expect(output.failed).toBe(true);
+    expect(stops[0].getWaiting()).toBe(true);
+    expect(retired.setSinkId).toHaveBeenCalledTimes(1);
+    expect(screen.setSinkId).toHaveBeenLastCalledWith("headphones");
+    stops[0]();
+    expect(output.failed).toBe(false);
+  } finally { for (const stop of stops) stop(); await output.choose(""); vi.unstubAllGlobals(); }
+});
+
+it("finishes device recovery before a later explicit choice without reviving a retired output", async () => {
+  const devices = new EventTarget();
+  let available = false, release!: () => void;
+  Object.assign(devices, { enumerateDevices: async () => available ? [{ deviceId: "A", kind: "audiooutput" }] : [] });
+  vi.stubGlobal("navigator", { mediaDevices: devices });
+  vi.resetModules();
+  const { playbackOutput: output } = await import("../src/client/media/playback-output");
+  await output.choose("A");
+  const screen = { setSinkId: vi.fn(async (id: string) => {
+    if (!available) throw new DOMException("Unplugged", "NotFoundError");
+    if (id === "A") await new Promise<void>(resolve => { release = resolve; });
+  }) } as unknown as HTMLMediaElement;
+  const retired = { setSinkId: vi.fn(async () => {
+    if (!available) throw new DOMException("Unplugged", "NotFoundError");
+  }) } as unknown as HTMLMediaElement;
+  const stopScreen = output.attach(screen), stopRetired = output.attach(retired);
+  try {
+    await vi.waitFor(() => expect(output.failedFor(retired)).toBe(true));
+    available = true;
+    devices.dispatchEvent(new Event("devicechange"));
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const choice = output.choose("B");
+    stopRetired();
+    release();
+    await choice;
+    await stopScreen.ready;
+    expect(output.selected).toBe("B");
+    expect(output.failed).toBe(false);
+    expect(screen.setSinkId).toHaveBeenCalledTimes(3);
+    expect(screen.setSinkId).toHaveBeenLastCalledWith("B");
+    expect(retired.setSinkId).toHaveBeenCalledTimes(1);
+    expect(output.failedFor(retired)).toBe(false);
+  } finally { release?.(); stopScreen(); stopRetired(); await output.choose(""); vi.unstubAllGlobals(); }
+});
+
 it("keeps healthy outputs on the chosen device when a retiring output rejects late", async () => {
   let started!: () => void;
   let reject!: () => void;

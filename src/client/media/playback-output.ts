@@ -15,6 +15,12 @@ devices?.addEventListener("devicechange", () => {
     if (!selected) return;
     const available = await devices.enumerateDevices();
     deviceMissing = !available.some(device => device.kind === "audiooutput" && device.deviceId === selected);
+    if (!deviceMissing) for (const sink of [...failedTargets]) {
+      if (!targets.has(sink)) continue;
+      try { await sink.setSinkId!(selected); }
+      catch { continue; }
+      targets.get(sink)?.();
+    }
     events.dispatchEvent(new Event("change"));
   }).catch(() => {});
 });
