@@ -12197,13 +12197,32 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
     await opening;
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.video).toBe(video);
-    session.browse('second');
     expect(video.src).toBe(url);
     expect(socket.sent.some(command => command.type === 'publish')).toBe(false);
-    const stopping = session.stopWatch(start.id as string);
+    let rowVisible = true;
+    const stopping = session.stopWatch(start.id as string, () => !rowVisible);
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
-    socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
-    await stopping;
+    session.browse('second');
+    rowVisible = false;
+    const rejected = expect(stopping).rejects.toThrow();
+    socket.receive({ type: 'error', requestId: stop.requestId, code: 'storage_failed' });
+    await rejected;
+    expect(session.getSnapshot().error).toBe('storage_failed');
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    await session['stopWatchResource'](start.id as string, 'media-closed');
+    expect(socket.sent.filter(command => command.type === 'stop_watch')).toHaveLength(1);
+    const retrying = session.stopWatch(start.id as string);
+    const retry = socket.sent.findLast(command => command.type === 'stop_watch')!;
+    expect(retry).toMatchObject({ id: start.id, roomId: 'first' });
+    expect(retry.requestId).not.toBe(stop.requestId);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: retry.requestId, result: { type: 'done' } });
+    await retrying;
+    const state = session.getSnapshot().state!;
+    const other = { ...state.watchActivities[0], id: 'other', sessionId: 'other-endpoint' };
+    socket.receive({ type: 'state', state: { ...state, watchActivities: [other] } });
+    await session.stopWatch(start.id as string);
+    await session.stopWatch(other.id);
+    expect(socket.sent.filter(command => command.type === 'stop_watch')).toHaveLength(2);
     expect(video.src).toBe('');
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
   } finally { session.close(); }
@@ -12634,7 +12653,7 @@ test.each(["channel", "writer"])("local video leave clears its audience membersh
   } finally { session.close(); }
 });
 
-test("watch retirement cancels a viewer still waiting for the join reply", async () => {
+test.each(["room", "leave"])("watch retirement by %s cancels a viewer still waiting for the join reply", async cause => {
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo();
   vi.stubGlobal("document", { createElement: () => video });
@@ -12646,7 +12665,13 @@ test("watch retirement cancels a viewer still waiting for the join reply", async
     socket.receive({ type: "state", state });
     const cancelled = expect(session.joinWatch(activity.id)).rejects.toMatchObject({ name: "AbortError" });
     const join = socket.sent.findLast(command => command.type === "join_watch")!;
-    socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
+    if (cause === "leave") {
+      const leaving = session.leaveWatch(activity.id);
+      const leave = socket.sent.findLast(command => command.type === "join_watch")!;
+      expect(leave.mode).toBeNull();
+      socket.receive({ type: "room_reply", roomId: "first", requestId: leave.requestId, result: { type: "done" } });
+      await leaving;
+    } else socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
     expect(video.src).toBe("");
     expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
     await cancelled;
@@ -16242,7 +16267,7 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
       source: start.source, playback: start.playback, ...(start.byteSource ? { byteSource: start.byteSource } : {}),
     }] } });
     next.receive({ type: "page_share_requested", pageId: next.id });
-    const stopping = session.stopWatch(start.id as string, "media-closed");
+    const stopping = session["stopWatchResource"](start.id as string, "media-closed");
     const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
     socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
     await stopping;
@@ -16334,7 +16359,7 @@ test('a watch that ends during source selection does not block the new share', a
   try {
     const opening = session.startWatch('first', 'https://media.test/new.mp4').catch(error => error);
     await vi.waitFor(() => expect(ready).toHaveBeenCalled());
-    const stopping = session.stopWatch(id, 'media-closed');
+    const stopping = session['stopWatchResource'](id, 'media-closed');
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
     await stopping;

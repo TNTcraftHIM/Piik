@@ -117,6 +117,8 @@ export interface ScreenStageSource extends StagePictureSource {
 }
 
 export interface WatchStageSource extends StagePictureSource {
+  actionFailure?: string;
+  clearActionFailure?(): void;
   awaitingSource?: boolean;
   kind: "watch";
   id: string; userId: string; name: string; title: string; roomName: string; avatar?: string;
@@ -453,6 +455,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           <div className="c3-monitor-offer-actions" data-tooltip-controls>
             <SourceOfferAction source={source} disabled={!canSubscribe || source.available === false} onWatch={onWatch} />
           </div>
+          {source.kind === "watch" && source.actionFailure && <PictureFailure error={source.actionFailure} onDismiss={source.clearActionFailure} />}
           {source.kind === "screen" && source.pictureFailure && <PictureFailure error={source.pictureFailure} onDismiss={source.clearPictureFailure} />}
         </div>)}
       </div>
@@ -477,7 +480,8 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
       if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
-      actionFeedback={playbackAction.error || resumeAction.error || windowAction.error ? <>
+      actionFeedback={source.actionFailure || playbackAction.error || resumeAction.error || windowAction.error ? <>
+        {source.actionFailure && <PictureFailure error={source.actionFailure} onDismiss={source.clearActionFailure} />}
         {playbackAction.error && <PictureFailure error={playbackAction.error} onDismiss={playbackAction.clearError} />}
         {resumeAction.error && <PictureFailure error={resumeAction.error} onDismiss={resumeAction.clearError} />}
         {windowAction.error && <PictureFailure error={windowAction.error} onDismiss={windowAction.clearError} />}
@@ -494,7 +498,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         }
         void resumeAction.run(source.onResume);
       }} />
-      : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t(source.awaitingSource ? "watch.waiting" : "watch.browserFailed")}</span>
+      : <div className="c3-monitor-wait" role="status">{source.actionFailure ? <PictureFailure error={source.actionFailure} onDismiss={source.clearActionFailure} /> : source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t(source.awaitingSource ? "watch.waiting" : "watch.browserFailed")}</span>
         {!source.owned && (source.onAppWatch
           ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={source.available === false} onClick={source.onAppWatch} />
           : !(source.receiving?.peerAvailable && source.receiving.peerSupported) && (source.originalPageUnavailable

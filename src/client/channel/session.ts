@@ -706,7 +706,7 @@ export class ChannelSession {
       }
     }
     for (const stage of this.stages.values()) stage.reconcileWatches(state, this.view.state, this.view.pending, restoring,
-      id => { void this.stopWatch(id, "provider-session-ended").catch(() => {}); });
+      id => { void this.stopWatchResource(id, "provider-session-ended").catch(() => {}); });
     // Keep the room's facts for reprojection and forwarding independently of displayed pictures.
     this.roomSnapshot = withoutRoomPictures(state);
     const visible = this.projectActivity(state);
@@ -2597,7 +2597,7 @@ export class ChannelSession {
   };
   private makeWatchPlayer(id: string, roomId: string, owner: boolean, media: WatchMedia): WatchPlayer {
     const player = new WatchPlayer(roomId, owner, media, () => this.patch({}), () => {
-      if (this.watchPlayer(id) === player) void (owner ? this.stopWatch(id, "media-closed") : this.leaveWatch(id)).catch(() => {});
+      if (this.watchPlayer(id) === player) void (owner ? this.stopWatchResource(id, "media-closed") : this.leaveWatchResource(id)).catch(() => {});
       else if (this.pendingWatchPlayer(id) === player) this.cancelWatchPage(id);
     });
     return player;
@@ -2959,7 +2959,7 @@ export class ChannelSession {
       this.finishSourceSelection(roomId, selection);
     }
   }
-  joinWatch = (id: string, mode: WatchMode = "direct"): Promise<void> => this.action(`watch-video:${id}`, async () => {
+  joinWatch = (id: string, mode: WatchMode = "direct", reportError: ReportError = true): Promise<void> => this.action(`watch-video:${id}`, async () => {
     const current = this.watchPlayer(id);
     if (current?.mode === mode && !current.error && current.presentation.kind !== "external") return;
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
@@ -2982,7 +2982,7 @@ export class ChannelSession {
     if (!canWatchInBrowser(activity.source, current)) throw new Error("watch_media_unsupported");
     await this.joinWatchMedia(id, embed.provider === "youtube"
       ? new YouTubeMedia(embed.id, undefined, true) : new PeerTubeMedia(embed.id, true));
-  });
+  }, reportError);
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
     if (!activity) { media.close(); throw new Error("watch_unavailable"); }
@@ -3039,7 +3039,9 @@ export class ChannelSession {
       this.patch({}); throw error;
     }
   }
-  leaveWatch = async (id: string): Promise<void> => {
+  leaveWatch = (id: string, reportError: ReportError = true): Promise<void> =>
+    this.action(`watch:${id}`, () => this.leaveWatchResource(id), reportError);
+  private async leaveWatchResource(id: string): Promise<void> {
     const candidate = this.retirePendingWatchPlayer(id);
     const player = this.watchPlayer(id);
     const waiting = this.waitingWatchPages.get(id);
@@ -3060,7 +3062,7 @@ export class ChannelSession {
       }
       await this.request({ type: "join_watch", roomId, id, mode: null }, undefined, roomId);
     }
-  };
+  }
   /** Tells the room this page will not follow a successor it named, so the room stops naming it. */
   private declineSuccessor(roomId: string, source: { kind: "watch" | "screen"; id: string }): void {
     if (this.declinedSources.has(source.id)) return;
@@ -3068,16 +3070,23 @@ export class ChannelSession {
     void this.request(source.kind === "watch" ? { type: "join_watch", roomId, id: source.id, mode: null }
       : { type: "subscribe", publicationId: source.id, enabled: false }, undefined, roomId).catch(() => {});
   }
-  stopWatch = async (id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement" = "stop-requested"): Promise<void> => {
+  stopWatch = (id: string, reportError: ReportError = true): Promise<void> =>
+    this.action(`stop:${id}`, () => this.stopWatchResource(id, "stop-requested"), reportError);
+  private async stopWatchResource(id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement"): Promise<void> {
     const player = this.watchPlayer(id);
-    if (!player?.owner) return;
+    if (!player?.owner) {
+      if (player || reason !== "stop-requested" || this.view.connection !== "connected") return;
+      const activity = this.roomSnapshot?.watchActivities.find(value => value.id === id && value.sessionId === this.view.sessionId);
+      if (activity) await this.request({ type: "stop_watch", roomId: activity.roomId, id }, undefined, activity.roomId);
+      return;
+    }
     const candidate = this.stages.get(player.roomId)?.sourceSelection?.watchCandidate;
     if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
     this.retireWatchPlayer(id, reason);
     this.refreshActivity();
     this.browseRooms();
     if (this.view.connection === "connected") await this.request({ type: "stop_watch", roomId: player.roomId, id }, undefined, player.roomId);
-  };
+  }
   private async finishScreenSelection(roomId: string, screenId: string): Promise<void> {
     const selection = this.stages.get(roomId)?.sourceSelection;
     const watchId = this.ownedReplacementWatchId(selection);

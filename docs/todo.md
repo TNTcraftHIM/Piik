@@ -33,10 +33,14 @@ the feedback period; they do not delay that delivery.
   before adding a deadline; compare the existing fresh-binding handshake with
   connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
 - [ ] **Host synchronization under concurrent admission.** Measure actual writer
-  draining and review level coalescing at the supported room scale. Preserve
-  intervening actions, current bindings and revision order. Keep reader capacity
+  draining and atomic first-Join admission at the supported room scale. Preserve
+  ordered host inputs, current bindings and revision order. Keep reader capacity
   waits distinct from socket-idle detection and verify slow readers as well as
   same-worker registration bursts.
+- [ ] **Native preparation test under load.** If the completed-success refusal
+  control fails again, retain its deadline and scheduling trace. One busy Windows
+  run failed while isolated repeats and an idle full run passed; do not infer a
+  product timeout change from that result.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
