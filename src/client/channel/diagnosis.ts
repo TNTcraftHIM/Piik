@@ -42,7 +42,7 @@ export interface ChannelDiagnosis {
 export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible";
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
-  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; awaitingRoute?: boolean; playbackError?: ScreenPlaybackError }
+  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; waitingForInput?: boolean; playbackError?: ScreenPlaybackError }
   | { area: "error"; code: string | null | undefined }
   | { area: "roomOpen"; failure: RoomOpenFailure | NativeRoomOpenReason };
 
@@ -69,8 +69,8 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     const message = fact.playbackError === 3 ? "screen.decodeFailed" : fact.playbackError === 4 ? "screen.unplayable"
       : fact.deliveryFailed ? "diagnosis.noPicture" : null;
     if (message) return { message, next: "screen.retryPicture", topic: "picture" };
-    // An unplaced viewer has no failure and no deadline; retrying would not place it sooner.
-    return fact.awaitingRoute ? { message: "diagnosis.noRoute", topic: "picture" } : null;
+    // Missing input only proves that delivery has not assigned this viewer a picture.
+    return fact.waitingForInput ? { message: "diagnosis.waitingForPicture", topic: "picture" } : null;
   }
 
   switch (fact.code) {

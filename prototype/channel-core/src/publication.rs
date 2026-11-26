@@ -811,13 +811,6 @@ impl Publication {
     }
 
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
-        if let Some(receiver) = self.leases.values().find_map(|flow| {
-            ((flow.sender == first && flow.receiver == second)
-                || (flow.sender == second && flow.receiver == first))
-                .then_some(flow.receiver)
-        }) {
-            self.fail_delivery(receiver);
-        }
         if self.operation.as_ref().is_some_and(|op| match &op.kind {
             OperationKind::Switch { legs, .. } | OperationKind::Reduce { legs, .. } => {
                 legs.values().any(|leg| {

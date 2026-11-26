@@ -107,6 +107,10 @@ over a reused comic's default; localized tooltips retain that context.
   warning. Confirmed interruption remains owned by the status projection.
 - Title: keeps the primary activity, with a compact warning for an applicable
   problem. Losing focus alone never means waiting for media.
+- In 3.0, a watched picture with no assigned input shows neutral waiting. The
+  viewing intent stays open while the channel planner seeks a route. A failed
+  physical pair retires its path. A current picture preparation or playback
+  failure has its own recovery action.
 - Recovery: every projection is recomputed from current facts. A warning requires
   current evidence; an expired or mismatched sample becomes unknown, not healthy
   or disconnected. In 2.x, a ready participant can return to a green readiness

@@ -102,7 +102,7 @@ export interface ScreenStageSource extends StagePictureSource {
   clearPictureFailure?(): void;
   roomAdmitted?: boolean;
   deliveryScope?: string;
-  awaitingRoute?: boolean;
+  waitingForInput?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
   shareControls?: ReactNode;
@@ -391,8 +391,8 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
           const playbackFailed = !waiting && source.playbackError !== undefined;
           const failed = !waiting && !source.paused && (playbackFailed || source.deliveryFailed);
           const diagnosis = !waiting && diagnoseChannelFact({ area: "screen", paused: source.paused,
-            deliveryFailed: source.deliveryFailed, awaitingRoute: source.awaitingRoute, playbackError: source.playbackError });
-          const retryable = failed || !waiting && !source.awaitingRoute;
+            deliveryFailed: source.deliveryFailed, waitingForInput: source.waitingForInput, playbackError: source.playbackError });
+          const retryable = failed || !waiting && !source.waitingForInput;
           const help = diagnosis && canSubscribe && !waiting && !source.pending && !source.hidden;
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={tileStyle}
@@ -412,9 +412,10 @@ export function ChannelStage({ layoutHome, roomLayout, theaterMode: [theater, se
               }}
               label={`${title} / ${source.name} / ${source.roomName}`} />
               : <div className="c3-monitor-wait" data-failed={failed || undefined}>
-                {source.paused || failed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
+                {source.paused || failed || source.waitingForInput
+                  ? <Glyph name={source.paused ? "pause" : failed ? "x" : "tv"} size={24} /> : <BrandLoader />}
                 <span role="status">{t(source.paused ? "host.pauseNotice" : playbackFailed && diagnosis ? diagnosis.message
-                  : source.deliveryFailed ? "screen.deliveryRetry" : source.awaitingRoute ? "screen.waitingRoute" : "screen.connectingPicture")}</span>
+                  : source.deliveryFailed ? "screen.deliveryRetry" : source.waitingForInput ? "screen.waitingPicture" : "screen.connectingPicture")}</span>
                 {!source.paused && !source.owned && !source.localSource && (retryable || help) &&
                   <div className="c3-monitor-wait-actions">
                     {onRetryPicture && retryable && <Btn icon="refresh" size="compact" quiet

@@ -196,7 +196,7 @@ describe("Screen delivery result", () => {
 
     for (const [playbackError, copy] of [[3, en["screen.decodeFailed"]], [4, en["screen.unplayable"]]] as const) {
       const result = renderToStaticMarkup(createElement(ChannelStage, { ...props, onRetryPicture: vi.fn(),
-        sources: [{ ...source, awaitingRoute: true, deliveryFailed: false, playbackError }] }));
+        sources: [{ ...source, waitingForInput: true, deliveryFailed: false, playbackError }] }));
       expect(result).toContain(copy);
       expect(result).toContain('aria-label="Retry picture"');
       expect(result).toContain('aria-label="Picture help"');
@@ -229,7 +229,7 @@ describe("Picture surface between flows", () => {
   const incumbent = { flowId: "incumbent", stream: stream("incumbent"), selected: true, switchReady: false };
   const candidate = { flowId: "candidate", stream: stream("candidate"), selected: false, switchReady: false };
   const source = { kind: "screen" as const, audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room",
-    source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false, subscribed: true, paused: false, awaitingRoute: true };
+    source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false, subscribed: true, paused: false, waitingForInput: true };
   const render = (patch: Partial<ChannelStageProps["sources"][number]>) => renderToStaticMarkup(createElement(ChannelStage, {
     theaterMode: [false, vi.fn()], sources: [{ ...source, ...patch } as ChannelStageProps["sources"][number]], focusedId: null, canSubscribe: true,
     onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onRetryPicture: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
@@ -247,7 +247,6 @@ describe("Picture surface between flows", () => {
       const html = render(step);
       expect(html).toMatch(/<video[^>]*data-flow-id="candidate"/);
       expect(html).not.toContain("c3-monitor-wait");
-      expect(html).not.toContain(en["screen.waitingRoute"]);
       expect(html).toContain('aria-label="Stop watching Shared screen"');
     }
     // Mounted without a selection, the candidate prepares unseen behind the surface's own status.
@@ -265,9 +264,9 @@ describe("Picture surface between flows", () => {
     for (const inputs of [undefined, []]) {
       const waiting = render({ inputs });
       expect(waiting).not.toContain("<video");
-      expect(waiting).toContain(en["screen.waitingRoute"]);
+      expect(waiting).toContain(en["screen.waitingPicture"]);
     }
-    const failed = render({ inputs: [], awaitingRoute: false, deliveryFailed: true });
+    const failed = render({ inputs: [], waitingForInput: false, deliveryFailed: true });
     expect(failed).toContain(en["screen.deliveryRetry"]);
     expect(failed).toContain('aria-label="Retry picture"');
   });

@@ -4,7 +4,7 @@ mod support;
 use piik_channel_core::{
     conversation::{ConversationCommand, ConversationResult},
     history::HistoryResult,
-    wire::{Event, PairInfo, RoomAccess},
+    wire::{AudienceState, Event, PairInfo, RoomAccess},
     AttachmentDescriptor,
 };
 use serde_json::{json, Value};
@@ -608,6 +608,27 @@ fn required_physical_repair_renews_only_retired_transport() {
             viewer,
             json!({"type":"subscribe", "publicationId":publication, "enabled":true}),
         );
+        let published_state = |state: &piik_channel_core::wire::Snapshot| {
+            state
+                .publications
+                .iter()
+                .find(|p| p.id == publication)
+                .unwrap()
+                .audience
+                .iter()
+                .find(|viewer| viewer.session_id == receiver)
+                .unwrap()
+                .state
+        };
+        let no_failed_delivery = |effects: piik_channel_core::Effects| {
+            for (target, event) in effects.events {
+                if target == viewer {
+                    if let Event::State { state } = event {
+                        assert_ne!(published_state(&state), AudienceState::Failed);
+                    }
+                }
+            }
+        };
         let old = pair(&network, viewer, source);
         connect(&mut network, [host, viewer], old.id);
         let old_flow = pair(&network, viewer, source).incoming[0].id;
@@ -616,16 +637,18 @@ fn required_physical_repair_renews_only_retired_transport() {
             viewer,
             json!({"type":"flow_state", "pairId":old.id, "flowId":old_flow, "state":"decoded"}),
         );
-        network.command_at(
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Active);
+        no_failed_delivery(network.command_at(
             viewer,
             json!({"type":"link_state","pairId":old.id,"state":"failed"}),
             200,
-        );
+        ));
         assert!(network
             .state(viewer)
             .pairs
             .iter()
             .all(|edge| edge.id != old.id));
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Preparing);
         assert!(network.authority.expire(5_199).events.is_empty());
         let wake = network.authority.expire(5_200);
         assert!(wake.events.iter().any(|(_, event)| matches!(event,
@@ -635,7 +658,7 @@ fn required_physical_repair_renews_only_retired_transport() {
             network.authority.expire(5_200).events.is_empty(),
             "physical retry is admitted once without a room wake"
         );
-        network.deliver(wake);
+        no_failed_delivery(network.deliver(wake));
         assert!(
             physical_pair(&network, viewer, source).is_some(),
             "active demand retries after cooldown on the existing signaling sockets"
@@ -643,6 +666,7 @@ fn required_physical_repair_renews_only_retired_transport() {
         let restored = pair(&network, viewer, source);
         assert_ne!(restored.id, old.id);
         assert!(restored.incoming.is_empty());
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Preparing);
         assert!(network.state(viewer).subscriptions.contains(&publication));
         assert!(network
             .state(viewer)
@@ -671,12 +695,13 @@ fn required_physical_repair_renews_only_retired_transport() {
             assert_eq!(pair(&network, viewer, source).id, restored.id);
         }
         for connection in [host, viewer] {
-            network.command_at(
+            no_failed_delivery(network.command_at(
                 connection,
                 json!({"type":"link_state","pairId":restored.id,"state":"connected"}),
                 5_202,
-            );
+            ));
         }
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Preparing);
         let flow = pair(&network, viewer, source).incoming[0].id;
         assert_ne!(flow, old_flow);
         network.command_at(
@@ -684,6 +709,7 @@ fn required_physical_repair_renews_only_retired_transport() {
             json!({"type":"flow_state", "pairId":restored.id, "flowId":flow, "state":"decoded"}),
             5_203,
         );
+        assert_eq!(published_state(network.state(viewer)), AudienceState::Active);
         assert!(network.authority.expire(30_000).events.is_empty());
         assert_eq!(pair(&network, viewer, source).id, restored.id);
     }

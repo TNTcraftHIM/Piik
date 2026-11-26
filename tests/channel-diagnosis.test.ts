@@ -25,14 +25,14 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "screen", paused: false, deliveryFailed: false })).toBeNull();
   });
 
-  it("explains a picture with no route yet without offering a retry, and lets failures and pause take precedence", () => {
-    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true }))
-      .toEqual({ message: "diagnosis.noRoute", topic: "picture" });
-    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true, deliveryFailed: true }))
+  it("explains that watching continues while awaiting a picture without offering a retry, and lets failures and pause take precedence", () => {
+    expect(diagnoseChannelFact({ area: "screen", paused: false, waitingForInput: true }))
+      .toEqual({ message: "diagnosis.waitingForPicture", topic: "picture" });
+    expect(diagnoseChannelFact({ area: "screen", paused: false, waitingForInput: true, deliveryFailed: true }))
       .toMatchObject({ message: "diagnosis.noPicture", next: "screen.retryPicture" });
-    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true, playbackError: 3 })?.message).toBe("screen.decodeFailed");
-    expect(diagnoseChannelFact({ area: "screen", paused: true, awaitingRoute: true })).toBeNull();
-    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: false })).toBeNull();
+    expect(diagnoseChannelFact({ area: "screen", paused: false, waitingForInput: true, playbackError: 3 })?.message).toBe("screen.decodeFailed");
+    expect(diagnoseChannelFact({ area: "screen", paused: true, waitingForInput: true })).toBeNull();
+    expect(diagnoseChannelFact({ area: "screen", paused: false, waitingForInput: false })).toBeNull();
   });
 
   it("keeps source permissions, failed reads and incompatible storage tied to their own operations", () => {
