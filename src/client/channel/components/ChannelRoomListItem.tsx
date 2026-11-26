@@ -66,7 +66,9 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
       <span className="c3-room-pile" role="img" aria-label={names}>{faces}</span>
       {!nameHint && <div id={id} className="c3-room-people" role="group" aria-label={names} hidden={!open}>
         {open && present.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
-          self={person.userId === channel.self?.id} owner={!!person.owner} online />)}
+          self={person.userId === channel.self?.id} owner={!!person.owner}
+          // Someone still in voice or sharing is listed after their last page went offline, and is shown as offline.
+          online={state!.sessions.some(session => session.userId === person.userId && session.online)} />)}
       </div>}
     </>
       : <div id={id} hidden={!open}>{open && people.length > 0 && <ChannelRoomParticipants channel={channel} room={room} people={people} />}</div>}
