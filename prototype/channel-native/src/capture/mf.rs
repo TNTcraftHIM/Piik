@@ -34,13 +34,19 @@ impl IMFAsyncCallback_Impl for Events_Impl {
         Err(E_NOTIMPL.into())
     }
     fn Invoke(&self, result: Ref<IMFAsyncResult>) -> windows::core::Result<()> {
+        // Complete the platform request even if the encoder has stopped.
         let event = unsafe {
             self.generator.EndGetEvent(result.ok()?).and_then(|event| {
                 event.GetStatus()?.ok()?;
                 event.GetType()
             })
         };
-        self.shared.state.lock().unwrap().event = Some(event);
+        let mut state = self.shared.state.lock().map_err(|_| MF_E_SHUTDOWN)?;
+        if state.stop {
+            return Err(MF_E_SHUTDOWN.into());
+        }
+        state.event = Some(event);
+        drop(state);
         self.shared.wake();
         Ok(())
     }
@@ -511,6 +517,96 @@ impl Encoder {
                 }
             }
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::output::Encoding;
+    use std::{sync::mpsc, time::Duration};
+    use windows::{
+        core::{GUID, HRESULT},
+        Win32::Foundation::{E_FAIL, S_OK},
+    };
+
+    #[implement(IMFAsyncCallback)]
+    struct ObserveCallback {
+        callback: IMFAsyncCallback,
+        invoked: mpsc::Sender<Result<(), HRESULT>>,
+    }
+
+    impl IMFAsyncCallback_Impl for ObserveCallback_Impl {
+        fn GetParameters(&self, _: *mut u32, _: *mut u32) -> windows::core::Result<()> {
+            Err(E_NOTIMPL.into())
+        }
+
+        fn Invoke(&self, result: Ref<IMFAsyncResult>) -> windows::core::Result<()> {
+            let result = unsafe { self.callback.Invoke(result.ok()?) };
+            let _ = self
+                .invoked
+                .send(result.as_ref().map(|()| ()).map_err(|error| error.code()));
+            result
+        }
+    }
+
+    #[test]
+    fn late_mf_callback_preserves_the_encoder_thread_failure() -> Result<()> {
+        let _com = Com::start()?;
+        let session = unsafe { MFCreateMediaSession(None::<&IMFAttributes>)? };
+        let generator = session.cast::<IMFMediaEventGenerator>()?;
+        let (requests, _frames) = tokio::sync::mpsc::channel(1);
+        let (fail, start) = mpsc::channel();
+        let (encoding, ended) = Encoding::spawn(requests, move |worker| {
+            start.recv().unwrap();
+            let _state = worker.state.lock().unwrap();
+            panic!("synthetic encoder panic with an MF callback outstanding");
+        })?;
+        let callback = Events {
+            generator: generator.clone(),
+            shared: encoding.shared.clone(),
+        }
+        .into();
+        let (invoked, completed) = mpsc::channel();
+        let observed: IMFAsyncCallback = ObserveCallback { callback, invoked }.into();
+        let begin = || unsafe { generator.BeginGetEvent(&observed, None::<&IUnknown>) };
+        let queue_event = |status| unsafe {
+            generator.QueueEvent(
+                MEExtendedType.0 as u32,
+                &GUID::zeroed(),
+                status,
+                ptr::null(),
+            )
+        };
+
+        for status in [S_OK, E_FAIL] {
+            begin()?;
+            queue_event(status)?;
+            assert_eq!(completed.recv_timeout(Duration::from_secs(3))?, Ok(()));
+            let event = encoding.shared.state.lock().unwrap().event.take().unwrap();
+            assert_eq!(
+                event.map_err(|error| error.code()),
+                status
+                    .ok()
+                    .map(|()| MEExtendedType.0 as u32)
+                    .map_err(|error| error.code())
+            );
+        }
+
+        begin()?;
+        fail.send(())?;
+        assert!(ended.blocking_recv().is_err());
+        queue_event(S_OK)?;
+        assert_eq!(
+            completed.recv_timeout(Duration::from_secs(3))?,
+            Err(MF_E_SHUTDOWN)
+        );
+        assert_eq!(
+            encoding.stop().unwrap_err().to_string(),
+            "encoder worker panicked"
+        );
+        unsafe { session.Shutdown()? };
         Ok(())
     }
 }
