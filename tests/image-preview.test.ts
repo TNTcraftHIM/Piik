@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { inlineImageFile, prepareInlineImage } from "../src/client/channel/image-preview";
+import { prepareIdentityImage } from "../src/client/channel/identity-image";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -52,4 +53,26 @@ test("a preview file uses its rendition's format without claiming to be the orig
   const file = inlineImageFile(image, "original.png");
   expect(file.type).toBe("image/webp"); expect(await file.text()).toBe("preview bytes");
   expect(image.original).toBe(false);
+});
+
+test("retiring an identity edit revokes the decode URL before a late result", async () => {
+  const request = new AbortController();
+  const create = vi.spyOn(URL, "createObjectURL");
+  const revoke = vi.spyOn(URL, "revokeObjectURL");
+  const detachImage = vi.fn();
+  const createCanvas = vi.fn();
+  let finishDecode!: () => void;
+  const decode = new Promise<void>(resolve => { finishDecode = resolve; });
+  vi.stubGlobal("Image", class { decode() { return decode; } removeAttribute = detachImage; });
+  vi.stubGlobal("document", { createElement: createCanvas });
+
+  const result = prepareIdentityImage(new Blob(["synthetic image"], { type: "image/png" }), request.signal);
+  request.abort();
+  expect(detachImage).toHaveBeenCalledExactlyOnceWith("src");
+  expect(revoke).toHaveBeenCalledExactlyOnceWith(create.mock.results[0].value);
+
+  finishDecode();
+  await expect(result).rejects.toMatchObject({ name: "AbortError" });
+  expect(createCanvas).not.toHaveBeenCalled();
+  expect(revoke).toHaveBeenCalledOnce();
 });

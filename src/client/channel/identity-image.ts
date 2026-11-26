@@ -3,12 +3,19 @@ import { identityImageSchema } from "./protocol";
 export const isIdentityImage = (icon: string): boolean => icon.startsWith("data:");
 
 /** Native decoding/encoding strips the original file into one small square image. */
-export async function prepareIdentityImage(file: Blob): Promise<string> {
+export async function prepareIdentityImage(file: Blob, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
+  const image = new Image();
   const url = URL.createObjectURL(file);
+  const cancel = () => {
+    image.removeAttribute("src");
+    URL.revokeObjectURL(url);
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
   try {
-    const image = new Image();
     image.src = url;
     await image.decode();
+    signal?.throwIfAborted();
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) throw new Error("invalid_identity_image");
@@ -22,5 +29,8 @@ export async function prepareIdentityImage(file: Blob): Promise<string> {
       if (result.success) return result.data;
     }
     throw new Error("identity_image_too_large");
-  } finally { URL.revokeObjectURL(url); }
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+    if (!signal?.aborted) URL.revokeObjectURL(url);
+  }
 }

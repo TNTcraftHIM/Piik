@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PawnSvg, type PawnState } from "../components/living/Pawn";
 import { participantColor } from "../components/living/participant-color";
 import { SwitchItem } from "../components/living/primitives";
-import { prepareIdentityImage } from "../channel/identity-image";
+import { useIdentityImage } from "../channel/use-identity-image";
 import { useCopy } from "../ui/copy";
 import "./pawn-appearance-preview.css";
 
@@ -30,21 +30,19 @@ export function PawnAppearancePreview({ guides, onGuides }: {
   const [host, setHost] = useState(false);
   const [avatar, setAvatar] = useState<string | undefined>("/favicon.svg");
   const [imageError, setImageError] = useState(false);
-  async function chooseImage(file: File) {
-    setImageError(false);
-    try { setAvatar(await prepareIdentityImage(file)); }
-    catch { setImageError(true); }
-  }
+  const { prepare, cancel } = useIdentityImage();
   return <div id="pawn-appearance-preview" className="cp-pawn-preview" data-guides={guides || undefined}>
     <div className="cp-tools">
       <h3>{en ? "Custom avatar and default Pawn" : "自定义头像与默认小人"}</h3>
-      <SwitchItem checked={!!avatar} onChange={value => { setImageError(false); setAvatar(value ? "/favicon.svg" : undefined); }}
+      <SwitchItem checked={!!avatar} onChange={value => { cancel(); setImageError(false); setAvatar(value ? "/favicon.svg" : undefined); }}
         label={en ? "Custom avatar" : "自定义头像"} />
       <label className="cp-pawn-avatar-file">{en ? "Try a local picture" : "试试本地图片"}
         <input type="file" accept="image/*" onChange={event => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";
-          if (file) void chooseImage(file);
+          if (!file) return;
+          setImageError(false);
+          void prepare(file, setAvatar, () => setImageError(true));
         }} />
       </label>
     </div>

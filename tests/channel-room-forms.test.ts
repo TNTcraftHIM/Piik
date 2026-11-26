@@ -23,7 +23,7 @@ test.each(["Enter", "Escape"])("%s leaves the active composition in charge", key
 test("creation and edits give native form submission a single action with the same pending state", () => {
   const props = {
     inviteOnly: false, disabled: false, busy: false, value: { ...roomDraft(), name: "Garden" },
-    onChange() {}, async onSave() {}, onCancel() {},
+    imageBusy: false, onImageBusyChange() {}, onChange() {}, async onSave() {}, onCancel() {},
   };
   const render = (busy: boolean, name = props.value.name) =>
     renderToStaticMarkup(createElement(RoomForm, { ...props, busy, value: { ...props.value, name } }));
