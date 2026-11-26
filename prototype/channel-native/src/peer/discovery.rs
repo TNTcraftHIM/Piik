@@ -393,7 +393,7 @@ mod tests {
         // transaction routes without involving any external STUN destination.
         let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
         let runtime = Runtime::new(Some(fixed));
-        let (peer, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let (peer, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
         let Some(Event::Candidate(_, seed, None)) = events.recv().await else {
             anyhow::bail!("ordinary base missing")
         };
@@ -521,7 +521,7 @@ mod tests {
         use crate::peer::{server_udp::ServerUdp, tests::support::endpoint};
         let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
         let runtime = Runtime::new(Some(fixed));
-        let (peer, _events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let (peer, _events) = endpoint(&runtime, Uuid::new_v4()).await?;
         let generation = peer.call(|engine| {
             engine.linear_enabled = true;
             Ok(engine.rtc.direct_api().local_ice_credentials().ufrag)

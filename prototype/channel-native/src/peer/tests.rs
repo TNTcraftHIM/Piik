@@ -541,13 +541,13 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
         can_receive_video_layers: false,
         id: Uuid::new_v4(),
         peer_id: Uuid::new_v4(),
-        udp_preparation: Some(UdpPreparation::Required),
+        udp_preparation: Some(piik_channel_core::wire::UdpPreparation::Available),
         rooms: vec!["initial".into()],
         incoming: vec![],
         outgoing: vec![],
     };
     d.update(vec![plan.clone()], vec![], vec![]).await;
-    assert!(d.pairs.is_empty() && d.preparings.len() == 1);
+    assert!(d.pairs.contains_key(&plan.id) && d.preparings.len() == 1);
     let pending = &d.preparings[&plan.id];
     let task = pending.task.id();
     let retired = pending.task.abort_handle();
@@ -563,8 +563,8 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
     plan.rooms = vec!["latest".into()];
     d.update(vec![plan.clone()], vec![], vec![]).await;
     assert_eq!(d.preparings[&plan.id].task.id(), task);
-    assert_eq!(d.preparings[&plan.id].plan.rooms, vec!["latest"]);
-    assert_eq!(d.preparings[&plan.id].signals.len(), 1);
+    assert_eq!(d.pairs[&plan.id].plan.rooms, vec!["latest"]);
+    assert_eq!(d.preparings[&plan.id].instance, d.pairs[&plan.id].pc.instance);
     d.update(vec![], vec![], vec![]).await;
     assert!(d.preparings.is_empty() && d.pairs.is_empty() && retired.is_finished());
     while let Ok(event) = commands.try_recv() {
@@ -616,7 +616,7 @@ async fn driver_ends_with_an_error_when_its_transport_runtime_stops() -> Result<
     let fixed = server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
     let holder = transport::Runtime::new(Some(fixed.clone()));
     // The round trip proves the holder owns the lease, so the Driver's runtime stops at once.
-    let (held, _) = support::endpoint(&holder, Uuid::new_v4(), None).await?;
+    let (held, _) = support::endpoint(&holder, Uuid::new_v4()).await?;
     let (tx, _commands) = mpsc::channel(8);
     let mut native =
         NativePeers::with_input(Uuid::nil(), vec![], tx, watch::channel(None).1, None, Some(fixed));

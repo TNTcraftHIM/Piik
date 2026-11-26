@@ -241,7 +241,7 @@ mod tests {
         use super::super::Runtime;
         use crate::peer::{server_udp::ServerUdp, tests::support::endpoint};
         let runtime = Runtime::new(Some(ServerUdp::bind(&[("[::1]:0".parse()?, None)])?));
-        let (peer, _) = endpoint(&runtime, uuid::Uuid::new_v4(), None).await?;
+        let (peer, _) = endpoint(&runtime, uuid::Uuid::new_v4()).await?;
         peer.add_candidate(Candidate::host("8.8.8.8:1234".parse()?, "udp")?.to_sdp_string())
             .await?;
         assert!(peer.call(|engine| Ok(engine.nat64.is_none())).await?);
@@ -259,8 +259,8 @@ mod tests {
         use uuid::Uuid;
         let left_runtime = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?));
         let right_runtime = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?));
-        let (left, _) = endpoint(&left_runtime, Uuid::new_v4(), None).await?;
-        let (right, mut events) = endpoint(&right_runtime, Uuid::new_v4(), None).await?;
+        let (left, _) = endpoint(&left_runtime, Uuid::new_v4()).await?;
+        let (right, mut events) = endpoint(&right_runtime, Uuid::new_v4()).await?;
         left.call(|engine| {
             let mut bootstrap = Bootstrap::new(true);
             bootstrap.resolved(Vec::new());

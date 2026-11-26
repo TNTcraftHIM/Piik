@@ -71,28 +71,52 @@ impl Domain {
         );
         self.apply(effects).await;
     }
-    async fn step(&mut self) -> Option<String> {
+    async fn handle_native(&mut self, request: Request) {
+        let command = request.command.clone();
+        let effects = self.authority.handle(self.connection, request, self.now);
+        if let Command::HostOutput { room_id, output } = &command {
+            if let Some(code) = effects.events.iter().find_map(|(to, event)| match event {
+                Event::Error { code, .. } if *to == self.connection => Some(code),
+                _ => None,
+            }) {
+                panic!(
+                    "Core rejected room {room_id} revision {}: {code}",
+                    output.revision
+                );
+            }
+        }
+        self.commands.push(command);
+        self.apply(effects).await;
+    }
+    async fn step(&mut self) {
         let message = self.socket.next().await.unwrap().unwrap();
         if let Message::Text(text) = message {
-            let request = Request::parse(&text).unwrap();
-            self.commands.push(request.command.clone());
-            let room = match &request.command {
-                Command::HostOutput { room_id, .. } => Some(room_id.clone()),
-                _ => None,
-            };
-            let effects = self.authority.handle(self.connection, request, self.now);
-            self.apply(effects).await;
-            room
-        } else {
-            None
+            self.handle_native(Request::parse(&text).unwrap()).await;
         }
     }
     async fn room_turn(&mut self, id: &str) {
+        let (binding, revision) = self
+            .events
+            .iter()
+            .rev()
+            .find_map(|(to, event)| match event {
+                Event::HostInput { room_id, input } if *to == self.connection && room_id == id => {
+                    Some((input.binding_id, input.revision))
+                }
+                _ => None,
+            })
+            .expect("Core dispatched this room turn");
         tokio::time::timeout(Duration::from_secs(5), async {
-            while self.step().await.as_deref() != Some(id) {}
+            while !self.commands.iter().any(|command| {
+                matches!(command,
+                Command::HostOutput { room_id, output }
+                    if room_id == id && output.binding_id == binding && output.revision == revision)
+            }) {
+                self.step().await;
+            }
         })
         .await
-        .unwrap();
+        .expect("Native returned the dispatched room revision");
     }
     async fn until(&mut self, predicate: impl Fn(Uuid, &Event) -> bool) -> Event {
         tokio::time::timeout(Duration::from_secs(5), async {
@@ -551,10 +575,7 @@ async fn native_registration_refusal_keeps_its_other_room_online() {
                     .unwrap();
                 break;
             }
-            let effects = domain
-                .authority
-                .handle(domain.connection, request, domain.now);
-            domain.apply(effects).await;
+            domain.handle_native(request).await;
         }
         domain.bound("two").await;
         domain.room_turn("two").await;

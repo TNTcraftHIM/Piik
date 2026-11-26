@@ -280,8 +280,7 @@ impl Channel {
                 }
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
                 if let Some(udp) = &payload.udp {
-                    if !self.transports.prepared(pair_id)
-                        || !self.can_prepare_udp(session_id, peer)
+                    if !self.can_prepare_udp(session_id, peer)
                         || !match udp {
                             UdpSignal::Offer { .. } => session_id < peer,
                             UdpSignal::Answer { .. } => session_id > peer,
@@ -363,9 +362,6 @@ impl Channel {
                         broadcast = true;
                         confirmed_peer = Some(peer);
                     }
-                } else if self.can_prepare_udp(session_id, peer) && self.transports.prepare(pair_id, now)
-                {
-                    broadcast = true;
                 } else {
                     self.transports.retire(pair_id, &self.identity, now);
                     let affected: Vec<_> = self

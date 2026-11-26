@@ -11,7 +11,7 @@ describe("network laboratory evidence", () => {
   it("requires a connected incarnation of the current Native room-host pair", () => {
     type Record = Parameters<typeof connectedNativePair>[0][number];
     const original = { id: "original", peerId: "host", preparation: null };
-    const lobby = { id: "lobby", peerId: "other", preparation: "required" } as const;
+    const lobby = { id: "lobby", peerId: "other", preparation: "available" } as const;
     const replacement = { ...original, id: "replacement" };
     const plan = (atMs: number, pairs: Extract<Record["event"], { type: "plan" }>["pairs"], roomHostSessionId = "host"): Record => ({
       atMs, event: { type: "plan", roomHostSessionId, pairs },
@@ -34,9 +34,9 @@ describe("network laboratory evidence", () => {
     expect(connectedNativePair([...records, plan(12, [lobby])], outage)).toBeUndefined();
   });
 
-  it("ties required NAT preparation and completion to the connected incarnation", () => {
+  it("ties a NAT preparation grant and completion to the connected incarnation", () => {
     type Record = Parameters<typeof connectedNativePair>[0][number];
-    const expected = { id: "prepared", peerId: "host", preparation: "required" } as const;
+    const expected = { id: "prepared", peerId: "host", preparation: "available" } as const;
     const plan: Record = { atMs: 0, event: { type: "plan", roomHostSessionId: "host", pairs: [expected] } };
     const link: Record = { atMs: 2, event: { type: "native-command", command: { type: "link_state", pairId: "prepared", state: "connected" } } };
     const complete = (atMs: number, pairId: string): Record => ({ atMs, event: { type: "native-signal", pairId, udp: "complete" } });

@@ -4,7 +4,7 @@ import type { ProbeResult } from "./udp";
 interface NativePair {
   id: string;
   peerId: string;
-  preparation: "available" | "required" | null;
+  preparation: "available" | null;
 }
 
 type NativeRecord = {
@@ -26,7 +26,7 @@ export function connectedNativePair(records: readonly NativeRecord[], {
   const link = records.findLast(row => row.event.type === "native-command"
     && row.event.command.type === "link_state" && row.event.command.pairId === pair.id);
   if (link?.event.type !== "native-command" || link.event.command.state !== "connected" || link.atMs < since) return;
-  if (prepared && (pair.preparation !== "required" || !records.some(row => row.event.type === "native-signal"
+  if (prepared && (pair.preparation !== "available" || !records.some(row => row.event.type === "native-signal"
     && row.event.pairId === pair.id && row.event.udp === "complete" && row.atMs <= link.atMs))) return;
   return { ...pair, connectedAt: link.atMs };
 }

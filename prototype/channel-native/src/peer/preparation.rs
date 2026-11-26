@@ -57,8 +57,8 @@ pub(super) async fn local_ipv4() -> Option<Ipv4Addr> {
 }
 
 pub(super) struct Pending {
-    pub plan: PairInfo,
-    pub signals: Vec<Signal>,
+    pub pair: Uuid,
+    pub instance: Uuid,
     input: mpsc::Sender<UdpSignal>,
     pub refused: bool,
     pub task: JoinHandle<Result<Prepared>>,
@@ -67,7 +67,8 @@ pub(super) struct Pending {
 impl Pending {
     pub fn start(
         local: Uuid,
-        plan: PairInfo,
+        plan: &PairInfo,
+        instance: Uuid,
         servers: Vec<StunServer>,
         commands: mpsc::Sender<NativeEvent>,
     ) -> Self {
@@ -98,34 +99,20 @@ impl Pending {
             result
         });
         Self {
-            plan,
-            signals: vec![],
+            pair,
+            instance,
             input,
             refused: false,
             task,
         }
     }
 
-    pub fn signal(&mut self, signal: Signal) -> Result<()> {
-        if let Some(message) = signal.udp {
-            if matches!(message, UdpSignal::Unavailable {}) {
-                // This also cancels DNS, survey and pool priming. Aborting skips
-                // the local error notification, so refusal never echoes back.
-                // Abort cannot revoke a successful result already awaiting the Driver.
-                self.refused = true;
-                self.task.abort();
-            } else {
-                // A finished task may still await its Driver turn. Its result
-                // owns the ordinary fallback; late UDP signaling cannot retire it.
-                match self.input.try_send(message) {
-                    Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => {}
-                    Err(error) => return Err(error.into()),
-                }
-            }
-        } else {
-            // The peer may finish preparation first and immediately start ICE.
-            ensure!(self.signals.len() < 128, "preparation signaling queue full");
-            self.signals.push(signal);
+    pub fn signal(&mut self, message: UdpSignal) -> Result<()> {
+        if matches!(message, UdpSignal::Unavailable {}) {
+            self.refused = true;
+            self.task.abort();
+        } else if matches!(self.input.try_send(message), Err(mpsc::error::TrySendError::Full(_))) {
+            bail!("preparation signal queue full");
         }
         Ok(())
     }
@@ -174,19 +161,25 @@ async fn negotiate(
         tokio::net::lookup_host((server.host, server.port)).await
     })
     .await?;
-    let (survey, remote) = if initiator {
+    let (survey, remote) = exchange_observations(pair, initiator, local, servers, &commands, &mut incoming, deadline).await?;
+    survey.check(remote, &commands, &mut incoming).await
+}
+
+async fn exchange_observations(
+    pair: Uuid, initiator: bool, local: Ipv4Addr, servers: [SocketAddrV4; 3],
+    commands: &mpsc::Sender<NativeEvent>, incoming: &mut mpsc::Receiver<UdpSignal>, deadline: Instant,
+) -> Result<(Survey, Observation)> {
+    let (observation, retained) = observe(pair, local, servers, deadline).await?;
+    let (secret, remote) = if initiator {
         let mut secret = [0; 32];
         getrandom::fill(&mut secret)
             .map_err(|error| anyhow::anyhow!("preparation secret: {error}"))?;
-        let survey = Preparation::new(pair, secret, local, deadline)?
-            .survey(servers)
-            .await?;
         send(
             &commands,
             pair,
             UdpSignal::Offer {
                 secret,
-                observation: survey.observation,
+                observation,
             },
         )
         .await?;
@@ -199,7 +192,7 @@ async fn negotiate(
         let Some(UdpSignal::Answer { observation }) = incoming.recv().await else {
             bail!("expected UDP preparation answer");
         };
-        (survey, observation)
+        (secret, observation)
     } else {
         rtc_pair(
             pair,
@@ -209,25 +202,22 @@ async fn negotiate(
         );
         let Some(UdpSignal::Offer {
             secret,
-            observation,
+            observation: remote,
         }) = incoming.recv().await
         else {
             bail!("expected UDP preparation offer");
         };
-        let survey = Preparation::new(pair, secret, local, deadline)?
-            .survey(servers)
-            .await?;
         send(
             &commands,
             pair,
             UdpSignal::Answer {
-                observation: survey.observation,
+                observation,
             },
         )
         .await?;
-        (survey, observation)
+        (secret, remote)
     };
-    survey.check(remote, &commands, &mut incoming).await
+    Ok((Survey { preparation: Preparation::new(pair,secret,local,deadline)?, observation,retained },remote))
 }
 
 async fn send(commands: &mpsc::Sender<NativeEvent>, pair: Uuid, udp: UdpSignal) -> Result<()> {
@@ -237,7 +227,7 @@ async fn send(commands: &mpsc::Sender<NativeEvent>, pair: Uuid, udp: UdpSignal) 
         .map_err(anyhow::Error::from)
 }
 
-fn signal(pair: Uuid, udp: UdpSignal) -> NativeEvent {
+pub(super) fn signal(pair: Uuid, udp: UdpSignal) -> NativeEvent {
     NativeEvent::Command(Command::Signal {
         pair_id: pair,
         payload: Signal {
@@ -320,9 +310,10 @@ impl Preparation {
             expires,
         })
     }
-    pub async fn survey(self, servers: [SocketAddrV4; 3]) -> Result<Survey> {
+}
+async fn observe(pair:Uuid, local:Ipv4Addr, servers:[SocketAddrV4;3], expires:Instant) -> Result<(Observation,Option<UdpSocket>)> {
         rtc_pair(
-            self.pair,
+            pair,
             RtcPairEvent::Preparation {
                 step: PreparationStep::Survey,
             },
@@ -331,11 +322,10 @@ impl Preparation {
             servers[0] != servers[1] && servers[1] != servers[2] && servers[0] != servers[2],
             "three distinct STUN destinations required"
         );
-        let deadline = self
-            .expires
+        let deadline = expires
             .min(Instant::now() + Duration::from_millis(1500));
         timeout_at(deadline.into(), async move {
-            let socket = UdpSocket::bind((self.local, 0)).await?;
+            let socket = UdpSocket::bind((local, 0)).await?;
             let mut observations = Vec::with_capacity(3);
             for server in servers {
                 observations.push(binding(&socket, server.into()).await?);
@@ -366,14 +356,9 @@ impl Preparation {
                 Observation::Irregular { address: *c.ip() }
             };
             // The public peer target is checked when supplied by signaling.
-            Ok(Survey {
-                preparation: self,
-                observation,
-                retained: matches!(observation, Observation::Stable { .. }).then_some(socket),
-            })
+            Ok((observation, matches!(observation, Observation::Stable { .. }).then_some(socket)))
         })
         .await?
-    }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RandomRole {
@@ -1095,7 +1080,7 @@ mod tests {
         let plan = PairInfo {
             id: pair,
             peer_id: Uuid::new_v4(),
-            udp_preparation: Some(UdpPreparation::Required),
+            udp_preparation: Some(piik_channel_core::wire::UdpPreparation::Available),
             can_receive_video_layers: false,
             rooms: vec!["prep-fallback".into()],
             incoming: vec![],
@@ -1108,7 +1093,8 @@ mod tests {
             rooms: vec![],
             ..plan.clone()
         };
-        driver.create_pair(&sibling, None).await?;
+        driver.create_pair(&sibling).await?;
+        driver.create_pair(&plan).await?;
         let sibling_instance = driver.pairs[&sibling.id]
             .pc
             .connection_metrics()
@@ -1119,8 +1105,8 @@ mod tests {
         driver.preparings.insert(
             pair,
             Pending {
-                plan: plan.clone(),
-                signals: vec![],
+                pair,
+                instance: driver.pairs[&pair].pc.instance,
                 input,
                 refused: false,
                 task: tokio::spawn(async move {
@@ -1221,6 +1207,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn full_udp_signal_queue_preserves_ordinary_ice() -> Result<()> {
+        let (mut driver, _events, _commands, _stop) = super::super::tests::driver();
+        let id = Uuid::new_v4();
+        let plan = PairInfo {
+            id, peer_id: Uuid::new_v4(), udp_preparation: None, rooms: vec![],
+            outgoing: vec![], incoming: vec![], can_receive_video_layers: false,
+        };
+        driver.create_pair(&plan).await?;
+        let instance = driver.pairs[&id].pc.instance;
+        let deadline = driver.pairs[&id].deadline.unwrap().expires();
+        let (input, _incoming) = mpsc::channel(1);
+        input.try_send(UdpSignal::Ready {})?;
+        driver.preparings.insert(id, Pending {
+            pair: id, instance, input, refused: false,
+            task: tokio::spawn(std::future::pending()),
+        });
+        let NativeEvent::Command(Command::Signal { payload, .. }) = signal(id, UdpSignal::Complete)
+            else { unreachable!() };
+        driver.signal(id, payload).await?;
+        assert!(!driver.preparings.contains_key(&id));
+        assert_eq!(driver.pairs[&id].pc.instance, instance);
+        assert_eq!(driver.pairs[&id].deadline.unwrap().expires(), deadline);
+        driver.pairs[&id].pc.connection_metrics().await?;
+        driver.update(vec![], vec![], vec![]).await;
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn completed_success_refusal_uses_ordinary_fallback_and_releases_prepared_socket(
     ) -> Result<()> {
         use super::super::*;
@@ -1313,19 +1330,21 @@ mod tests {
             second.await?.is_err(),
             "peer unexpectedly completed without local Complete"
         );
-        driver.preparings.insert(
-            pair,
-            Pending {
-                plan: PairInfo {
+        let plan = PairInfo {
                     id: pair,
                     peer_id: Uuid::new_v4(),
-                    udp_preparation: Some(UdpPreparation::Required),
+                    udp_preparation: Some(piik_channel_core::wire::UdpPreparation::Available),
                     can_receive_video_layers: false,
                     rooms: vec![],
                     incoming: vec![],
                     outgoing: vec![],
-                },
-                signals: vec![],
+                };
+        driver.create_pair(&plan).await?;
+        driver.preparings.insert(
+            pair,
+            Pending {
+                pair,
+                instance: driver.pairs[&pair].pc.instance,
                 input,
                 refused: false,
                 task,
@@ -1571,16 +1590,8 @@ mod tests {
         });
         started.notified().await;
         let mut pending = Pending {
-            plan: PairInfo {
-                id: pair,
-                peer_id: Uuid::new_v4(),
-                udp_preparation: Some(piik_channel_core::wire::UdpPreparation::Required),
-                can_receive_video_layers: false,
-                rooms: vec![],
-                incoming: vec![],
-                outgoing: vec![],
-            },
-            signals: vec![],
+            pair,
+            instance: Uuid::new_v4(),
             input,
             refused: false,
             task,
@@ -1590,7 +1601,7 @@ mod tests {
         else {
             unreachable!()
         };
-        pending.signal(payload)?;
+        pending.signal(payload.udp.unwrap())?;
         assert!(matches!((&mut pending.task).await, Err(error) if error.is_cancelled()));
         assert_eq!(RANDOM_PREPARATIONS.available_permits(), 2);
         UdpSocket::bind(address).await?;
@@ -1636,27 +1647,47 @@ mod tests {
                     Ok::<_, anyhow::Error>(())
                 }));
             }
-            let result = Preparation::new(
-                Uuid::new_v4(),
-                [1; 32],
-                Ipv4Addr::LOCALHOST,
-                Instant::now() + Duration::from_secs(3),
-            )?
-            .survey(addresses.try_into().unwrap())
-            .await;
-            let survey = result?;
-            match (name, survey.observation) {
+            let (observation,retained)=observe(Uuid::new_v4(),Ipv4Addr::LOCALHOST,addresses.try_into().unwrap(),Instant::now()+Duration::from_secs(3)).await?;
+            match (name, observation) {
                 ("increasing", Observation::Sequential { step: 2, .. })
                 | ("decreasing", Observation::Sequential { step: -2, .. })
                 | ("stable", Observation::Stable { .. })
                 | ("irregular", Observation::Irregular { .. }) => {}
                 _ => panic!("observation changed meaning"),
             }
-            assert_eq!(survey.retained.is_some(), name == "stable");
+            assert_eq!(retained.is_some(), name == "stable");
             for task in tasks {
                 task.await??;
             }
         }
         Ok(())
     }
+}
+
+#[cfg(test)]
+pub(super) async fn loopback_winners(pair: Uuid) -> Result<[(Prepared, SocketAddr); 2]> {
+    async fn survey(pair: Uuid) -> Result<(Survey, SocketAddrV4)> {
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let SocketAddr::V4(address) = socket.local_addr()? else { unreachable!() };
+        Ok((Survey {
+            preparation: Preparation::new(pair, [29; 32], Ipv4Addr::LOCALHOST, Instant::now() + Duration::from_secs(5))?,
+            observation: Observation::Stable { address: *address.ip(), port: address.port() },
+            retained: Some(socket),
+        }, address))
+    }
+    async fn signal_complete(pair: Uuid, mut events: mpsc::Receiver<NativeEvent>, input: mpsc::Sender<UdpSignal>) -> Result<()> {
+        let Some(NativeEvent::Command(Command::Signal {pair_id, payload})) = events.recv().await else { bail!("missing signal") };
+        ensure!(pair_id == pair && matches!(payload.udp, Some(UdpSignal::Complete)));
+        input.send(UdpSignal::Complete).await?;
+        Ok(())
+    }
+    let (a, a_addr) = survey(pair).await?;
+    let (b, b_addr) = survey(pair).await?;
+    let (a_tx, a_rx) = mpsc::channel(4);
+    let (b_tx, b_rx) = mpsc::channel(4);
+    let (a_in, mut a_msgs) = mpsc::channel(4);
+    let (b_in, mut b_msgs) = mpsc::channel(4);
+    let (a, b, (), ()) = tokio::try_join!(a.check_target(b_addr, &a_tx, &mut a_msgs),
+        b.check_target(a_addr, &b_tx, &mut b_msgs), signal_complete(pair, a_rx, b_in), signal_complete(pair, b_rx, a_in))?;
+    Ok([(a, a_addr.into()), (b, b_addr.into())])
 }

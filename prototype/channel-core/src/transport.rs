@@ -60,18 +60,11 @@ impl Directions {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Attempt {
-    Ordinary,
-    Prepared,
-}
-
 #[derive(Clone, PartialEq)]
 struct Pair {
     id: Uuid,
     flows: Directions,
     interest: Interest,
-    attempt: Attempt,
     confirmed_by: [Option<Uuid>; 2],
     disconnected_by: [Option<Uuid>; 2],
     was_confirmed: bool,
@@ -643,7 +636,6 @@ impl TransportBook {
                 id: Uuid::new_v4(),
                 flows,
                 interest: priority,
-                attempt: Attempt::Ordinary,
                 confirmed_by: [None; 2],
                 disconnected_by: [None; 2],
                 was_confirmed: false,
@@ -777,24 +769,6 @@ impl TransportBook {
         })
     }
 
-    // The caller authorizes both current online capabilities. Only this book
-    // replaces a physical attempt; logical leases and their deadlines stay put.
-    pub fn prepare(&mut self, id: Uuid, now: u64) -> bool {
-        let Some((key, pair)) = self.pairs.iter_mut().find(|(_, pair)| pair.id == id) else {
-            return false;
-        };
-        if pair.attempt != Attempt::Ordinary || pair.confirmed_by != [None; 2] {
-            return false;
-        }
-        pair.id = Uuid::new_v4();
-        pair.disconnected_by = [None; 2];
-        pair.attempt = Attempt::Prepared;
-        if let Some(pending) = self.discovery.get_mut(key) {
-            pending.deadline = now.saturating_add(DISCOVERY_TIMEOUT_MS);
-        }
-        true
-    }
-
     pub(crate) fn expire_discovery(&mut self, now: u64) -> bool {
         let retry_due = self.next_required_retry.take_if(|at| *at <= now).is_some();
         let pending_before = self.discovery.len();
@@ -834,12 +808,6 @@ impl TransportBook {
         self.release(endpoints);
     }
 
-    pub fn prepared(&self, id: Uuid) -> bool {
-        self.pairs
-            .values()
-            .any(|pair| pair.id == id && pair.attempt == Attempt::Prepared)
-    }
-
     pub fn snapshot(
         &self,
         endpoint: Uuid,
@@ -858,15 +826,7 @@ impl TransportBook {
                 };
                 Some(PairInfo {
                     id: pair.id,
-                    udp_preparation: match pair.attempt {
-                        Attempt::Prepared => Some(UdpPreparation::Required),
-                        Attempt::Ordinary
-                            if pair.confirmed_by == [None; 2] && can_prepare(peer) =>
-                        {
-                            Some(UdpPreparation::Available)
-                        }
-                        Attempt::Ordinary => None,
-                    },
+                    udp_preparation: can_prepare(peer).then_some(UdpPreparation::Available),
                     peer_id: peer,
                     can_receive_video_layers: can_receive_video_layers(peer),
                     rooms: pair.flows.rooms.iter().cloned().collect(),
@@ -1329,7 +1289,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_attempt_gets_its_own_timeout_and_only_required_delivery_retries() {
+    fn admission_keeps_its_original_timeout_and_only_required_delivery_retries() {
         let mut book = TransportBook::default();
         let edge = edge(1, 2);
         let interests = [(edge.clone(), Interest::Activity)].into();
@@ -1349,13 +1309,8 @@ mod tests {
         let empty = BTreeSet::new();
         reconcile(&mut book, &empty, 0, 1);
         let ordinary = book.pairs[&edge.endpoints].id;
-        let prepared_at = DISCOVERY_TIMEOUT_MS - 1;
-        assert!(book.prepare(ordinary, prepared_at));
-        let prepared = book.pairs[&edge.endpoints].id;
-        assert_ne!(prepared, ordinary);
-        assert!(!book.prepare(prepared, prepared_at + 1));
-        assert!(!book.expire_discovery(DISCOVERY_TIMEOUT_MS));
-        let failed_at = prepared_at + DISCOVERY_TIMEOUT_MS;
+        let failed_at = DISCOVERY_TIMEOUT_MS;
+        assert!(!book.expire_discovery(failed_at - 1));
         assert!(book.expire_discovery(failed_at));
         let retry_at = failed_at + REQUIRED_RETRY_MS;
         assert_eq!(book.retry_after(&edge), Some(retry_at));
@@ -1372,7 +1327,7 @@ mod tests {
         assert!(!book.expire_discovery(retry_at + 1));
         assert_eq!(book.retry_after(&edge), Some(retry_at));
         reconcile(&mut book, &required, retry_at + 1, 1);
-        assert_ne!(book.pairs[&edge.endpoints].id, prepared);
+        assert_ne!(book.pairs[&edge.endpoints].id, ordinary);
         assert!(!book.rejected(&edge));
         confirm(&mut book, &edge);
         assert!(!book.expire_discovery(u64::MAX));
@@ -1795,8 +1750,6 @@ mod tests {
         let ready_id = book.pairs[&soon_ready.endpoints].id;
         update(&mut book, &completions[1..], DISCOVERY_TIMEOUT_MS - 1);
         assert_eq!(book.pairs[&prepared.endpoints].id, old);
-        assert!(book.prepare(old, DISCOVERY_TIMEOUT_MS - 1));
-        assert_ne!(book.pairs[&prepared.endpoints].id, old);
         assert_eq!(book.pairs[&silent.endpoints].id, silent_id);
         assert_eq!(
             book.discovery[&silent.endpoints].deadline,
@@ -1806,13 +1759,8 @@ mod tests {
         assert!(book.expire_discovery(DISCOVERY_TIMEOUT_MS));
         assert!(book.rejected(&silent));
         assert!(!book.has_pair(silent.endpoints));
-        assert_eq!(
-            book.discovery[&prepared.endpoints].deadline,
-            2 * DISCOVERY_TIMEOUT_MS - 1
-        );
-        assert!(book.peer(prepared.endpoints.0, old).is_none());
-        let prepared_id = confirm(&mut book, &prepared);
-        assert!(book.prepared(prepared_id));
+        assert!(book.rejected(&prepared));
+        assert!(!book.has_pair(prepared.endpoints));
         assert_eq!(book.pairs[&soon_ready.endpoints].id, ready_id);
         assert!(book.discovery.is_empty());
     }

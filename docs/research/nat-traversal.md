@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-11-16
+Last reviewed: 2026-11-26
 
 This document owns evidence and its limits. Current 3.0 behavior belongs to the
 [network model](./channel-network-design.md#reachability-and-repair), execution
@@ -46,7 +46,7 @@ socket transfer. The [ICE triggered-check principle](https://www.rfc-editor.org/
 lets an authenticated incoming request trigger the local check while that owner
 continues answering. Initial and triggered requests share the finite budget.
 
-Controlled results establish three separate improvements:
+Controlled results establish these separate improvements:
 
 - A one-second signaling skew plus a lost first triggered request completed
   within the existing five-second preparation lifetime.
@@ -56,6 +56,17 @@ Controlled results establish three separate improvements:
 - TCP-header controls isolated approximately 0.94 seconds of additional
   Ping/ACK skew. Disabling Nagle through existing Native/App/Domain socket APIs
   removed that component without removing the injected network delay.
+- Concurrent observations reduced the local survey/Offer/Answer control from
+  561 ms to 250 ms with an 80 ms delay at each STUN destination. Each side still
+  sent three ordered requests. An unanswered Offer released its socket at the
+  existing five-second limit; this measurement begins after address resolution.
+- A matched sequential-mapping/APDF media control connected the retained Native
+  pair in 0.334 s, versus 6.104 s for the former replacement sequence. Both arms
+  delivered changing H.264 pictures, Opus sound and a file with the expected hash.
+  First observed viewer playback was 12.553 s versus 15.133 s, including Browser
+  startup and joining, so these are observation bounds, not exact decode-onset
+  latency. Each arm ran once. They establish this controlled path, not public
+  success rates or an already-established TURN-to-direct migration.
 
 The adapter also translates the selected ICE implementation's terminal boundary.
 The reviewed [is 0.11.1 source](https://docs.rs/crate/is/0.11.1/source/src/agent.rs)

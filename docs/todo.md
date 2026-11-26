@@ -293,10 +293,10 @@ the feedback period; they do not delay that delivery.
 - [ ] **Connection attempt deadlines.** Trace ordinary and prepared attempts,
   signaling recovery and data-channel readiness. Consolidate deadlines by their
   actual owner while retaining the intended retry and resource-release behavior.
-- [ ] **Prepared socket adoption.** Verify that an active ICE engine can adopt
-  an enhanced-discovery socket while keeping the physical pair and deadline.
-  Retain bounded cross-peer coordination and cancellation; complete the existing
-  kernel-NAT control before replacing the current preparation transition.
+- [ ] **Prepared-path migration after TURN.** Verify selected-path and decoded
+  media continuity when preparation completes after an existing TURN route has
+  connected. Preserve that RTC and its credentials; unknown candidate provenance
+  remains bounded preparation, not a claim that the selected path is direct.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.

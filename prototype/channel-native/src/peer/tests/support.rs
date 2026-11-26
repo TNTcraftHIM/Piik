@@ -211,7 +211,6 @@ impl Fixture {
             .add(
                 pair,
                 None,
-                Some(piik_channel_core::wire::UdpPreparation::Required),
                 self.remote_sender.clone(),
                 Arc::new(AtomicBool::new(false)),
                 Arc::new(AtomicU8::new(0)),
@@ -610,7 +609,6 @@ pub(in crate::peer) async fn exchange(send: &Channel, receive: &Channel, tag: &s
 pub(in crate::peer) async fn endpoint(
     runtime: &transport::Runtime,
     pair: Uuid,
-    prepared: Option<std::net::UdpSocket>,
 ) -> Result<(Transport, mpsc::Receiver<Event>)> {
     let (events, rx) = mpsc::channel(256);
     let (_, demand) = watch::channel(BandwidthDemand {
@@ -620,8 +618,7 @@ pub(in crate::peer) async fn endpoint(
     let (handle, _) = runtime
         .add(
             pair,
-            prepared,
-            Some(piik_channel_core::wire::UdpPreparation::Required),
+            None,
             events,
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicU8::new(0)),

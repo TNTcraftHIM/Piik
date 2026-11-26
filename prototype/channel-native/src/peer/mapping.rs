@@ -196,7 +196,7 @@ mod tests {
         };
         let first = plan();
         let second = plan();
-        driver.create_pair(&first, None).await?;
+        driver.create_pair(&first).await?;
         let (local, updates) = started.try_recv()?;
         let published = SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, local.port());
         updates.send(Some(published))?;
@@ -221,7 +221,7 @@ mod tests {
             .await?
         }
         let mapped1 = mapped(&mut events, first.id, published).await?;
-        driver.create_pair(&second, None).await?;
+        driver.create_pair(&second).await?;
         let mapped2 = mapped(&mut events, second.id, published).await?;
         ensure!(
             mapped1.local() == local
@@ -239,8 +239,8 @@ mod tests {
         };
         let peer1 = remote()?;
         let peer2 = remote()?;
-        let (r1, mut rx1) = endpoint(&peer1, first.id, None).await?;
-        let (r2, mut rx2) = endpoint(&peer2, second.id, None).await?;
+        let (r1, mut rx1) = endpoint(&peer1, first.id).await?;
+        let (r2, mut rx2) = endpoint(&peer2, second.id).await?;
         let ((tx1, dc1), (tx2, dc2)) =
             tokio::try_join!(open(&a, &r1, &mut rx1), open(&b, &r2, &mut rx2))?;
         tokio::try_join!(exchange(&tx1, &dc1, "one"), exchange(&tx2, &dc2, "two"))?;
@@ -289,10 +289,9 @@ mod tests {
 
     #[tokio::test]
     async fn unavailable_gateway_does_not_keep_a_mapping_service() -> Result<()> {
-        let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
-        let base = Candidate::host(socket.local_addr()?, "udp")?;
-        let runtime = Runtime::new(None);
-        let (transport, _events) = endpoint(&runtime, Uuid::new_v4(), Some(socket)).await?;
+        let (runtime, local) = Runtime::fixed_loopback()?;
+        let base = Candidate::host(local, "udp")?;
+        let (transport, _events) = endpoint(&runtime, Uuid::new_v4()).await?;
         let tasks = tokio::runtime::Handle::current().metrics();
         let before = tasks.num_alive_tasks();
         let mut mapping =
@@ -321,10 +320,7 @@ mod tests {
                 udp_preparation: None,
                 can_receive_video_layers: false,
             };
-            let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
-            driver
-                .create_pair(&plan, Some((socket, "127.0.0.1:41001".parse()?)))
-                .await?;
+            driver.create_pair(&plan).await?;
         }
         let retired = driver.pairs[&id].pc.clone();
         let healthy = driver.pairs[&sibling].pc.clone();
@@ -434,7 +430,7 @@ mod tests {
             })
         });
         let runtime = Runtime::new(None);
-        let (transport, mut results) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let (transport, mut results) = endpoint(&runtime, Uuid::new_v4()).await?;
         while results.try_recv().is_ok() {}
         let mut mapping = Mapping::with_lookup(wrong, transport.clone(), lookup);
         mapping.observe(&expected);
@@ -461,12 +457,10 @@ mod tests {
 
     #[tokio::test]
     async fn mapped_updates_keep_the_bound_base_and_cancel_the_publisher() -> Result<()> {
-        let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
-        let local = socket.local_addr()?;
+        let (runtime, local) = Runtime::fixed_loopback()?;
         let base = Candidate::host(local, "udp")?;
-        let runtime = Runtime::new(None);
         let pair = Uuid::new_v4();
-        let (transport, mut received) = endpoint(&runtime, pair, Some(socket)).await?;
+        let (transport, mut received) = endpoint(&runtime, pair).await?;
         while received.try_recv().is_ok() {}
         let (updates, addresses) = watch::channel(None);
         let worker = tokio::spawn(forward(base, addresses, transport.clone()));

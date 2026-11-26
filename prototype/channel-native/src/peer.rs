@@ -16,7 +16,7 @@ use piik_channel_core::file_room::FilePlan;
 use piik_channel_core::wire::Snapshot;
 use piik_channel_core::wire::{
     Candidate, Command, Description, FlowBinding, FlowState, Kind, LinkState, PairInfo,
-    PublicationInfo, Signal, Track as WireTrack, UdpPreparation,
+    PublicationInfo, Signal, Track as WireTrack, UdpSignal,
 };
 use rtc_rtp as rtp;
 use std::{
@@ -2013,7 +2013,6 @@ impl Driver {
         let removed: Vec<_> = self
             .pairs
             .keys()
-            .chain(self.preparings.keys())
             .filter(|id| !retained.contains(id))
             .copied()
             .collect();
@@ -2026,41 +2025,21 @@ impl Driver {
             // runtime exists. Only authority withdrawal permits another lease.
             if !self.admitted.insert(id)
                 && !self.pairs.contains_key(&id)
-                && !self.preparings.contains_key(&id)
             {
                 continue;
             }
             let result = async {
-                if !self.pairs.contains_key(&id)
-                    && plan.udp_preparation == Some(UdpPreparation::Required)
-                {
-                    if let Some(pending) = self.preparings.get_mut(&id) {
-                        pending.plan = plan;
-                    } else {
-                        let ice = self
-                            .ice
-                            .iter()
-                            .map(|server| serde_json::json!({"urls": server.urls}))
-                            .collect::<Vec<_>>();
-                        let servers = piik_channel_core::udp::stun_servers(&ice)
-                            .ok_or_else(|| anyhow!("UDP preparation destinations unavailable"))?;
-                        self.preparings.insert(
-                            id,
-                            preparation::Pending::start(
-                                self.session,
-                                plan,
-                                servers,
-                                self.commands.clone(),
-                            ),
-                        );
-                    }
-                    return Ok(());
-                }
-                if let Some(pending) = self.preparings.remove(&id) {
-                    pending.close().await;
-                }
                 if !self.pairs.contains_key(&id) {
-                    self.create_pair(&plan, None).await?;
+                    self.create_pair(&plan).await?;
+                    if plan.udp_preparation.is_some() {
+                        let ice = self.ice.iter().map(|server| serde_json::json!({"urls":server.urls})).collect::<Vec<_>>();
+                        if let Some(servers) = piik_channel_core::udp::stun_servers(&ice) {
+                            self.preparings.insert(id, preparation::Pending::start(
+                                self.session, &plan, self.pairs[&id].pc.instance, servers, self.commands.clone()));
+                        }
+                    }
+                } else if plan.udp_preparation.is_none() {
+                    if let Some(pending) = self.preparings.remove(&id) { pending.close().await; }
                 }
                 self.apply_pair(plan).await
             }
@@ -2076,11 +2055,7 @@ impl Driver {
             self.report_room_data_ready(id).await;
         }
     }
-    async fn create_pair(
-        &mut self,
-        plan: &PairInfo,
-        prepared: Option<(std::net::UdpSocket, std::net::SocketAddrV4)>,
-    ) -> Result<()> {
+    async fn create_pair(&mut self, plan: &PairInfo) -> Result<()> {
         let overflow = Arc::new(AtomicBool::new(false));
         let state = Arc::new(AtomicU8::new(PeerState::New as u8));
         let reports = OutputStreams::default();
@@ -2088,15 +2063,8 @@ impl Driver {
             minimum_bps: 0,
             desired_bps: Some(0),
         });
-        let candidates = prepared
-            .as_ref()
-            .map(|(_, remote)| prepared_candidate(*remote))
-            .transpose()?
-            .into_iter()
-            .collect();
         let (pc, bandwidth) = Box::pin(self.transport.add(
             plan.id,
-            prepared.map(|(socket, _)| socket),
             plan.udp_preparation,
             self.events.clone(),
             overflow.clone(),
@@ -2119,7 +2087,7 @@ impl Driver {
                 answer: None,
                 negotiate: false,
                 ignore_offer: false,
-                candidates,
+                candidates: vec![],
                 remote: HashMap::new(),
                 latest: HashMap::new(),
                 outputs: HashMap::new(),
@@ -2137,14 +2105,7 @@ impl Driver {
                 room_data_failed: false,
                 reported: HashSet::new(),
                 deadline: Some(Deadline::Connecting(
-                    Instant::now()
-                        + Duration::from_secs(
-                            if plan.udp_preparation == Some(UdpPreparation::Available) {
-                                5
-                            } else {
-                                20
-                            },
-                        ),
+                    Instant::now() + Duration::from_secs(20),
                 )),
                 overflow,
             },
@@ -2221,65 +2182,33 @@ impl Driver {
         Ok(())
     }
 
+    async fn stop_preparation(&mut self, id: Uuid) {
+        if let Some(pending) = self.preparings.remove(&id) {
+            pending.close().await;
+            let _ = self.commands.try_send(preparation::signal(id, UdpSignal::Unavailable {}));
+        }
+    }
+
     async fn prepared(
         &mut self,
         pending: preparation::Pending,
         result: std::result::Result<Result<preparation::Prepared>, tokio::task::JoinError>,
     ) {
-        let id = pending.plan.id;
+        let id = pending.pair;
+        let Some(pair) = self.pairs.get(&id).filter(|pair| pair.pc.instance == pending.instance) else { return };
         use crate::diagnostics::{rtc_pair, PreparationOutcome, RtcPairEvent};
-        let failure = if pending.refused {
-            PreparationOutcome::PeerRefused
-        } else {
-            match &result {
-                Err(_) => PreparationOutcome::TaskFailed,
-                Ok(Err(error)) if error.is::<tokio::time::error::Elapsed>() => {
-                    PreparationOutcome::TimedOut
-                }
-                Ok(Err(_)) => PreparationOutcome::Failed,
-                Ok(Ok(_)) => PreparationOutcome::CommitFailed,
-            }
+        let outcome = match result {
+            _ if pending.refused => PreparationOutcome::PeerRefused,
+            Err(_) => PreparationOutcome::TaskFailed,
+            Ok(Err(error)) if error.is::<tokio::time::error::Elapsed>() => PreparationOutcome::TimedOut,
+            Ok(Err(_)) => PreparationOutcome::Failed,
+            Ok(Ok(prepared)) => match pair.pc.adopt(prepared).await {
+                Ok(true) => PreparationOutcome::Succeeded,
+                Ok(false) => PreparationOutcome::Superseded,
+                Err(_) => PreparationOutcome::CommitFailed,
+            },
         };
-        // next() consumed the completed JoinHandle; only unconsumed tasks are joined on retirement.
-        let prepared = match result
-            .context("UDP preparation task failed")
-            .and_then(|result| result)
-            .and_then(|prepared| {
-                anyhow::ensure!(!pending.refused, "peer UDP preparation unavailable");
-                prepared.commit(id)
-            }) {
-            Ok(prepared) => {
-                rtc_pair(
-                    id,
-                    RtcPairEvent::PreparationFinished {
-                        outcome: PreparationOutcome::Succeeded,
-                    },
-                );
-                Some(prepared)
-            }
-            Err(error) => {
-                rtc_pair(id, RtcPairEvent::PreparationFinished { outcome: failure });
-                rtc_pair(id, RtcPairEvent::OrdinaryFallback);
-                eprintln!("Native UDP preparation unavailable; continuing ordinary ICE: {error}");
-                None
-            }
-        };
-        let result = async {
-            self.create_pair(&pending.plan, prepared).await?;
-            self.apply_pair(pending.plan).await?;
-            for signal in pending.signals {
-                self.signal(id, signal).await?;
-            }
-            self.refresh_outputs().await;
-            self.report_room_data_ready(id).await;
-            Ok::<_, anyhow::Error>(())
-        }
-        .await;
-        if let Err(error) = result {
-            eprintln!("Native UDP preparation failed: {error}");
-            rtc_pair(id, RtcPairEvent::PairSetupFailed);
-            self.fail(id, RetirementReason::SetupFailed).await;
-        }
+        rtc_pair(id, RtcPairEvent::PreparationFinished { outcome });
     }
 
     async fn local_signal(&self, id: Uuid, exchange: Uuid) -> Result<Signal> {
@@ -2328,13 +2257,7 @@ impl Driver {
     async fn resync(&self) {
         for id in self.admitted.iter().copied() {
             let Some(pair) = self.pairs.get(&id) else {
-                if !self.preparings.contains_key(&id) {
-                    self.send(Command::LinkState {
-                        pair_id: id,
-                        state: LinkState::Failed,
-                    })
-                    .await;
-                }
+                self.send(Command::LinkState { pair_id: id, state: LinkState::Failed }).await;
                 continue;
             };
             let state = match pair.state.load(Ordering::Acquire) {
@@ -2423,10 +2346,10 @@ impl Driver {
         Ok(())
     }
     async fn signal(&mut self, id: Uuid, signal: Signal) -> Result<()> {
-        if let Some(pending) = self.preparings.get_mut(&id) {
-            return pending.signal(signal);
-        }
-        if signal.udp.is_some() {
+        if let Some(udp) = signal.udp {
+            if self.preparings.get_mut(&id).is_some_and(|pending| pending.signal(udp).is_err()) {
+                self.stop_preparation(id).await;
+            }
             return Ok(());
         }
         let Some(p) = self.pairs.get_mut(&id) else {
@@ -2998,6 +2921,9 @@ impl Driver {
                             state: LinkState::Connected,
                         })
                         .await;
+                        if !self.pairs[&id].pc.turn_possible {
+                            self.stop_preparation(id).await;
+                        }
                         self.report_room_data_ready(id).await;
                     } else if state == PeerState::Disconnected {
                         self.send(Command::LinkState {
@@ -3699,10 +3625,6 @@ fn signal_candidate(
         sdp_mid: origin.is_none().then(String::new),
         sdp_m_line_index: Some(0),
     }
-}
-fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
-    let candidate = IceCandidate::host(remote.into(), "udp")?;
-    Ok(signal_candidate(candidate, None))
 }
 fn spawn_reader(
     events: mpsc::Sender<Event>,

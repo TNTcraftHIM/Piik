@@ -707,8 +707,8 @@ can replace an unproved screen fallback; proved media branches remain installed.
 Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
 failure remains local to that publication. Optional
-and idle failures do not schedule retries. A prepared replacement has its own
-physical ID and twenty-second deadline.
+and idle failures do not schedule retries. Adding a prepared candidate preserves
+the physical pair and its original connection and discovery deadlines.
 An affected watch retains the selected path's delivery failure while replacement
 paths prepare; only current decoded proof clears it. Unwatch, source replacement
 or publication retirement ends that result. Optional trial failure preserves the
@@ -744,11 +744,19 @@ candidates and IPv6 continue through the SDK. Native receivers ignore these
 hypotheses; fixed Server listeners and coordinated Native preparation do not
 generate them. The limit bounds added targets, not the SDK's connectivity checks.
 
-The coordinated UDP candidate keeps preparation inside one authorized physical
-pair attempt. The domain's existing transport book issues its replacement UUID;
-logical room/media leases and operation deadlines stay unchanged. Only currently
-capable Native endpoints participate. The prepared socket transfers to the ordinary
-PC after mutual completion, with no competing reader or separate route graph.
+Coordinated UDP preparation starts beside ordinary ICE on one authorized physical
+pair. Both capable Native endpoints survey concurrently; each still queries its
+three STUN destinations in order. The Offer owns the shared secret, and the
+responder publishes its observations only in the Answer. After mutual completion,
+the Runtime admits the socket, reader and candidates in one pump turn before
+polling that same RTC. Pair identity, ICE credentials, DTLS certificate
+and logical room/media leases remain unchanged; the SDK owns nomination.
+Preparation has its existing five-second lifetime. Failure, refusal or a full
+preparation queue retires that work without failing ordinary ICE. The Native
+connection keeps its ordinary twenty-second ceiling, while channel discovery
+and room-operation deadlines retain their own scopes. With a common STUN-only
+configuration, a connected ordinary path ends preparation. Where TURN is configured
+and the selected path's provenance is unknown, preparation runs to its bounded end.
 When the local survey is stable and the remote survey is sequential, the retained
 socket alternates between two predicted targets. Authenticated traffic fixes one
 target before replies; both peers complete within the preparation's shared limits.
@@ -761,7 +769,7 @@ At most two random preparations run per process across all sites and Drivers.
 The [matched budget control](./nat-traversal.md#random-mapping-collision-control)
 compares coverage and traffic under this unchanged lifetime.
 Capacity refusal does not queue work or extend the deadline; a pair-scoped refusal
-ends the other endpoint's preparation and both continue ordinary ICE. Other
+ends the other endpoint's preparation and both retain ordinary ICE. Other
 irregular combinations retain ordinary ICE. Observations are sampling facts, not
 guarantees about all destinations or a claimed NAT classification.
 
