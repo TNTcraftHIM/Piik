@@ -1634,12 +1634,9 @@ fn committed_removals_reach_their_background_file_participants() {
                 .collect::<Vec<_>>(),
             remaining.into_iter().collect::<Vec<_>>()
         );
-        let mut recipients: Vec<_> = outcome
-            .replies()
-            .unwrap()
-            .into_iter()
-            .map(|reply| reply.address.recipient)
-            .collect();
+        let (replies, broadcast) = outcome.delivery().unwrap();
+        assert!(broadcast.is_none());
+        let mut recipients: Vec<_> = replies.into_iter().map(|reply| reply.address.recipient).collect();
         recipients.sort();
         let mut expected = vec![owner, reader, receiver, expected_holder];
         expected.sort();

@@ -1462,6 +1462,16 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
             && pair.outgoing.is_empty()),
         "reading history requires no room data grant or media flow"
     );
+    let (mut observer, observer_session, _) = connect(address, "invite", "Observer").await;
+    send_request(
+        &mut observer,
+        json!({"type":"browse", "roomId":"living", "active":true}),
+    )
+    .await;
+    state_when(&mut observer, |state| {
+        state.channel.rooms.iter().any(|room| room.id == "living" && room.reading)
+    })
+    .await;
     let signer = SessionSigner::from_seed([1; 32]);
     for index in 0..50 {
         let request_id = format!("message-{index}");
@@ -1506,6 +1516,22 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
         })
         .await
         .unwrap();
+        if index == 0 {
+            let live = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    if let Event::Conversation { packet } = event(&mut observer).await {
+                        break ConversationReply::verify(&packet, host_key).unwrap();
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(live.address.recipient, observer_session);
+            assert_eq!(live.address.binding_id, delivery.binding_id);
+            assert_eq!(live.address.request_id, request_id);
+            assert!(matches!(live.record, ConversationRecord::LiveMessage { message } if message.seq == 1));
+            observer.close(None).await.unwrap();
+        }
     }
     let packet = signer
         .sign(

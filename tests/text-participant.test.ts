@@ -336,12 +336,9 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
           if (confirmation.inserted) stored.set(key, JSON.stringify(confirmation.message));
           result = { Ok: { type: 'history', value: confirmation } };
         }
-        const { replies } = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
-        for (const reply of replies) {
-          const broadcast = JSON.parse(rust.conversation_broadcast(JSON.stringify(reply.record)));
-          if (broadcast?.type === 'live_message') broadcasts.push(broadcast.message);
-          if (reply.record.type === 'confirmed') original ??= reply.record.message;
-        }
+        const { replies, broadcast } = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+        if (broadcast?.record.type === 'live_message') broadcasts.push(broadcast.record.message);
+        for (const reply of replies) if (reply.record.type === 'confirmed') original ??= reply.record.message;
         if (loseConfirmation) { loseConfirmation = false; socket.terminate(); }
         else for (const reply of replies) socket.send(JSON.stringify({ type: 'conversation',
           packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));

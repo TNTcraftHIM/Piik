@@ -325,11 +325,6 @@ pub fn decode_control(bytes: &[u8]) -> Result<String, JsValue> {
     encode(&conversation::decode_control(bytes).map_err(error)?)
 }
 
-#[wasm_bindgen]
-pub fn conversation_broadcast(record: &str) -> Result<String, JsValue> {
-    encode(&parse::<conversation::ConversationRecord>(record)?.broadcast())
-}
-
 /// Browser bindings for the shared room dispatch; the core owns its pending turn.
 #[wasm_bindgen]
 pub struct RoomHost {
@@ -371,27 +366,35 @@ impl RoomHost {
         let address: ConversationAddress = parse(address)?;
         let result: Result<piik_channel_core::conversation::ConversationResult, String> =
             parse(result)?;
-        let (replies, projection) = match result {
+        let (replies, broadcast, projection_update) = match result {
             Ok(result) => {
                 let mut outcome = self.room.finish_peer(address, Ok(result)).map_err(error)?;
-                let projection = outcome.projection_update.take();
-                (outcome.replies(), projection)
+                let projection_update = outcome.projection_update.take();
+                let (replies, broadcast) = outcome.delivery().map_err(error)?;
+                (replies, broadcast, projection_update)
             }
-            Err(code) => (address.replies(Err(&code)), None),
+            Err(code) => (address.replies(Err(&code)).map_err(error)?, None, None),
         };
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct PeerOutput {
             replies: Vec<ConversationReply>,
+            broadcast: Option<ConversationReply>,
             projection_update: Option<piik_channel_core::host::HostOutput>,
         }
         encode(&PeerOutput {
-            replies: replies.map_err(error)?,
-            projection_update: projection,
+            replies,
+            broadcast,
+            projection_update,
         })
     }
-    pub fn current_readers(&self) -> Result<String, JsValue> {
-        encode(&self.room.current_readers())
+    pub fn broadcast_recipients(&self, requester: &str) -> Result<String, JsValue> {
+        let requester =
+            Uuid::parse_str(requester).map_err(|_| error("invalid_conversation_recipient"))?;
+        encode(
+            &conversation::other_readers(requester, self.room.current_readers())
+                .collect::<Vec<_>>(),
+        )
     }
     pub fn dispatch(&mut self, input: &str) -> Result<String, JsValue> {
         encode(
