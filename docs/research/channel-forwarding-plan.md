@@ -576,6 +576,10 @@ Other activities keep their independent flow leases.
 The deterministic planner supplies the baseline attempt order. Any later
 experiment with learned ordering uses only equivalent authorized candidates
 and measures the gain against that baseline on independent rooms.
+At the same connection and retry priority, a missing-pair candidate prefers
+the offered parent's shorter confirmed prefix, then endpoint identifiers.
+This orders new attempts; it does not move a healthy route or claim a shortest
+path through connections that have not been established.
 
 ## Implementation Owners
 
