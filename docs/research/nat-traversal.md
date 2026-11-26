@@ -66,7 +66,14 @@ Controlled results establish these separate improvements:
   First observed viewer playback was 12.553 s versus 15.133 s, including Browser
   startup and joining, so these are observation bounds, not exact decode-onset
   latency. Each arm ran once. They establish this controlled path, not public
-  success rates or an already-established TURN-to-direct migration.
+  success rates.
+- An established TURN-to-direct transport control retained the original RTC,
+  ICE credentials, DTLS certificates and bidirectional DataChannel while adopting
+  an authenticated socket. With coturn still available, the late video window
+  moved from TURN to the exact prepared tuple; withholding that socket kept the
+  control on TURN. All 72 VP8 frames decoded with source-matching hashes and
+  continuous RTP sequence numbers. This used two Native transports in an
+  isolated Linux namespace, not full App signaling, physical capture or public networks.
 
 The adapter also translates the selected ICE implementation's terminal boundary.
 The reviewed [is 0.11.1 source](https://docs.rs/crate/is/0.11.1/source/src/agent.rs)

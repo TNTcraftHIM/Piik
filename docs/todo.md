@@ -23,12 +23,12 @@ the feedback period; they do not delay that delivery.
   actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Room layout integration.** Match the chosen dock, typography and picture
-  composition with the shared component owners, then complete integrated visual
-  acceptance. Resolve removal of the room activity roster with the owner before
-  changing its established responsibility. Set the multi-room shortcut and
-  speaking-overlay targets before enabling them across rooms. Keep the product
-  entry and existing layout retirement on hold until the owner's replacement decision.
+- [ ] **Room layout integration.** Replace the two old entries with the full and
+  minimal living-room layouts. Show room membership through the room row's
+  leading disclosure; faces are a preview, not a navigation control. Remove the
+  replaced activity roster and unused layout paths together. Complete integrated
+  visual acceptance, and settle the multi-room shortcut and speaking-overlay
+  targets before enabling them across rooms.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
@@ -42,10 +42,6 @@ the feedback period; they do not delay that delivery.
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a
   product timeout change from that result.
-- [ ] **Current-attempt route feedback.** Project the planner's confirmed
-  retry outcome through the existing status owner. A failed physical trial
-  followed by scheduled retry is not an exhausted watching operation. Keep
-  path selection and exhaustion with the planner rather than a second graph check.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
   changing the selected device. Check audible message alerts with the App in
@@ -282,9 +278,6 @@ the feedback period; they do not delay that delivery.
   Keep image restoration owned by each physical connection. Any generated types
   must replace their old owner and retain runtime validation, omission and null
   semantics.
-- [ ] **Room record fan-out.** Share broadcast eligibility and recipient
-  expansion through the conversation outcome. Keep the Browser's current-binding
-  check and the Native request processor's local-session filter in their adapters.
 - [ ] **App configuration ownership.** Consolidate startup environment reads
   where their meanings and lifetimes match, retaining consent scope and cache namespaces.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
@@ -293,10 +286,10 @@ the feedback period; they do not delay that delivery.
 - [ ] **Connection attempt deadlines.** Trace ordinary and prepared attempts,
   signaling recovery and data-channel readiness. Consolidate deadlines by their
   actual owner while retaining the intended retry and resource-release behavior.
-- [ ] **Prepared-path migration after TURN.** Verify selected-path and decoded
-  media continuity when preparation completes after an existing TURN route has
-  connected. Preserve that RTC and its credentials; unknown candidate provenance
-  remains bounded preparation, not a claim that the selected path is direct.
+- [ ] **Prepared-path migration after TURN.** Extend the verified Native
+  transport handoff to full App signaling and independent networks. Correlate
+  selected-path traffic with picture and sound continuity; unknown candidate
+  provenance remains bounded preparation, not a claim that the path is direct.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.
