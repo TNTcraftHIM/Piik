@@ -12921,7 +12921,7 @@ test('App viewer preparation has an independent lifetime from the same room shar
 });
 
 test('webpage sharing commits the current top-level URL delivered before selection confirmation', async () => {
-  const { session } = await setup(1000, false);
+  const { session, socket } = await setup(1000, false);
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
   vi.spyOn(HTMLVideoMedia.prototype, 'ready').mockResolvedValue();
   const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID();
@@ -12934,7 +12934,6 @@ test('webpage sharing commits the current top-level URL delivered before selecti
   const app = { preparePage: vi.fn(async () => page), stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
   vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue(app);
   (session as unknown as { app: appLink.ChannelApp }).app = app;
-  const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
   try {
     await session.prepareWatchPage('first', 'https://video.test/landing');
     page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/film', candidates: [
@@ -12946,8 +12945,11 @@ test('webpage sharing commits the current top-level URL delivered before selecti
       { pageURL: 'https://video.test/film?chosen=1', id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 },
     ] });
     confirm({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.source).toEqual({ kind: 'website', url: 'https://video.test/film?chosen=1', mediaUrl: 'https://media.test/film.mp4' });
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
     await expect(selecting).resolves.toBe(true);
-    expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film?chosen=1', mediaUrl: 'https://media.test/film.mp4' });
     expect(session.watchPage('first')).toBeUndefined();
   } finally { session.close(); }
 });
@@ -13390,7 +13392,7 @@ test('active original-page settings reuse discovery and retire it without closin
     expect(session.getSnapshot().watchPlayers.get(id)?.media.page).toBe(page);
     await session.watchMediaChoices(id, reopened.signal, published);
     const beforeClose = discover.mock.calls.length;
-    page.close();
+    page.receive({ type: 'page_closed', pageId: page.id });
     page.receive({ type: 'page_media_changed', pageId: page.id });
     await Promise.resolve();
     expect(discover).toHaveBeenCalledTimes(beforeClose);
@@ -13694,7 +13696,7 @@ test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback:
     source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } }];
   const failure = fault === "cancel" ? new DOMException("Cancelled", "AbortError")
     : new Error(fault === "source" ? "watch_unavailable" : fault === "candidate" ? "watch_source_unavailable" : "watch_media_access_denied");
-  const candidate = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/retry.mp4", "file"), bytes, false);
+  const candidate = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/retry.mp4", "file"), bytes, null);
   const closeCandidate = vi.spyOn(candidate, "close");
   vi.spyOn(candidate, "ready").mockRejectedValue(failure);
   vi.spyOn(media, "retryCandidate").mockImplementation(() => { if (fault === "candidate") throw failure; return candidate; });
@@ -14001,8 +14003,9 @@ test('committing a portable webpage source retires its original page only after 
   } finally { session.close(); }
 });
 
-test('a rejected portable room confirmation retires its Page and candidate without stopping the incumbent', async () => {
+test.each(['media readiness', 'room confirmation'] as const)('portable failure at %s retires its Page and candidate without stopping the incumbent', async failure => {
   const { session, page, socket, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  const releasePage = vi.spyOn(page, 'close');
   const originalVideo = new WatchTestVideo(), candidateVideo = new WatchTestVideo();
   let nextVideo = originalVideo;
   vi.stubGlobal('document', { createElement: () => nextVideo });
@@ -14013,24 +14016,62 @@ test('a rejected portable room confirmation retires its Page and candidate witho
   try {
     page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
       candidates: [{ pageURL: page.url, id: candidateId, title: 'Film', url: 'https://media.test/new.mp4', duration: 60 }] });
+    if (failure === 'media readiness') vi.spyOn(WatchPlayer.prototype, 'ready').mockRejectedValueOnce(new Error('watch_media_failed'));
     const selecting = session.selectWatchPage('first', candidateId);
-    const rejected = expect(selecting).rejects.toThrow('room_host_unavailable');
-    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
-    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
-    expect(dispose).not.toHaveBeenCalled();
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_patch', patch: { paused: true } }), expect.any(AbortSignal));
-    // The media can close before the pending start reply reaches this page.
-    candidateVideo.dispatchEvent(new Event('closed'));
-    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'error', code: 'room_host_unavailable' } });
+    const rejected = expect(selecting).rejects.toThrow(failure === 'media readiness' ? 'watch_media_failed' : 'room_host_unavailable');
+    let activityId: unknown;
+    if (failure === 'room confirmation') {
+      await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+      const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+      activityId = start.id;
+      expect(dispose).not.toHaveBeenCalled();
+      // The media can close before the pending start reply reaches this page.
+      candidateVideo.dispatchEvent(new Event('closed'));
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'error', code: 'room_host_unavailable' } });
+    }
     await rejected;
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_patch', patch: { paused: true } }), expect.any(AbortSignal));
+    expect(releasePage).toHaveBeenCalledOnce();
     expect(dispose).toHaveBeenCalledOnce();
     expect(candidateVideo.src).toBe('');
     expect(session.watchPage('first')).toBeUndefined();
     expect(session.getSnapshot().watchPlayers.get('retained-watch')).toBe(incumbent);
     expect(incumbentClose).not.toHaveBeenCalled();
     expect(originalVideo.src).toBe('https://media.test/current.mp4');
-    expect(socket.sent.filter(command => command.type === 'stop_watch').map(command => command.id)).toEqual([start.id]);
+    expect(socket.sent.filter(command => command.type === 'stop_watch').map(command => command.id)).toEqual(activityId ? [activityId] : []);
   } finally { session.close(); }
+});
+
+test('an initiating watch survives snapshots before publication and retires when its activity is removed', async () => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo();
+  let finishPlayback!: () => void;
+  const playback = new Promise<void>(resolve => { finishPlayback = resolve; });
+  const play = vi.spyOn(WatchPlayer.prototype, 'play').mockReturnValueOnce(playback);
+  vi.stubGlobal('document', { createElement: () => video });
+  try {
+    const empty = session.getSnapshot().state!;
+    const opening = session.startWatch('first', 'https://media.test/video.mp4');
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    const id = start.id as string;
+    const player = session.getSnapshot().watchPlayers.get(id)!;
+    socket.receive({ type: 'state', state: empty });
+    expect(session.getSnapshot().watchPlayers.get(id)).toBe(player);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+    socket.receive({ type: 'state', state: empty });
+    expect(session.getSnapshot().watchPlayers.get(id)).toBe(player);
+    socket.receive({ type: 'state', state: { ...empty, watchActivities: [{
+      id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback,
+    }] } });
+    expect(session.getSnapshot().watchPlayers.get(id)).toBe(player);
+    socket.receive({ type: 'state', state: empty });
+    expect(session.getSnapshot().watchPlayers.has(id)).toBe(false);
+    expect(player.signal.aborted).toBe(true);
+    finishPlayback();
+    await opening;
+  } finally { finishPlayback(); session.close(); }
 });
 
 test('recovery cancels a disconnected watch candidate once using its Welcome activity', async () => {
