@@ -10,7 +10,7 @@ use super::{
     qp, vp8, CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use anyhow::Result;
-use std::{mem, slice, sync::Arc, time::Instant};
+use std::{slice, sync::Arc, time::Instant};
 use windows::Win32::Graphics::Direct3D11::*;
 
 struct AccessUnit {
@@ -134,23 +134,14 @@ pub(super) fn run(
                 if let Some(bitrate) = state.bitrate.take() {
                     break Work::Bitrate(bitrate);
                 }
-                if let Some(raw) = &state.latest {
-                    let accept = match timing {
-                        FrameTiming::Capture => {
-                            state.force_keyframe
-                                || (last_capture != Some(raw.qpc) && cadence.accept(raw.qpc))
-                        }
-                        FrameTiming::Source => {
-                            last_capture != Some(raw.qpc)
-                                && presentation.last_qpc().is_none_or(|last| raw.qpc > last)
-                                && (state.force_keyframe
-                                    || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
-                        }
-                    };
-                    if accept {
-                        let frame = raw.clone();
-                        break Work::Frame(frame, mem::take(&mut state.force_keyframe));
-                    }
+                if let Some((frame, force)) = state.admit_frame(
+                    timing,
+                    last_capture,
+                    &presentation,
+                    frame_limit,
+                    &mut cadence,
+                ) {
+                    break Work::Frame(frame, force);
                 }
                 shared.request_frame(&mut state);
                 state = shared.changed.wait(state).unwrap();

@@ -1,7 +1,7 @@
 //! One encoder worker and its ordered access units, independent of other outputs.
 use super::{
-    frames::RawFrame, mf, software, CaptureClock, EncodingExecution, FrameTiming, Settings,
-    VideoCodec,
+    cadence::Cadence, frames::RawFrame, mf, software, CaptureClock, EncodingExecution, FrameTiming,
+    Settings, VideoCodec,
 };
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
@@ -33,6 +33,28 @@ pub(super) struct State {
     pub bitrate: Option<u32>,
     raw_requested: bool,
     output: VecDeque<EncodedFrame>,
+}
+impl State {
+    pub fn admit_frame(
+        &mut self,
+        timing: FrameTiming,
+        last_capture: Option<i64>,
+        presentation: &Presentation,
+        frame_limit: Option<u32>,
+        cadence: &mut Cadence,
+    ) -> Option<(RawFrame, bool)> {
+        let raw = self.latest.as_ref()?;
+        let fresh = last_capture != Some(raw.qpc);
+        let accepted = match timing {
+            FrameTiming::Capture => self.force_keyframe || (fresh && cadence.accept(raw.qpc)),
+            FrameTiming::Source => {
+                fresh
+                    && presentation.last_qpc().is_none_or(|last| raw.qpc > last)
+                    && (self.force_keyframe || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
+            }
+        };
+        accepted.then(|| (raw.clone(), std::mem::take(&mut self.force_keyframe)))
+    }
 }
 pub(super) struct Shared {
     pub state: Mutex<State>,
@@ -103,7 +125,7 @@ pub(super) struct Presentation {
     last: Option<(i64, i64)>,
 }
 impl Presentation {
-    pub fn last_qpc(&self) -> Option<i64> {
+    fn last_qpc(&self) -> Option<i64> {
         self.last.map(|(_, qpc)| qpc)
     }
 
