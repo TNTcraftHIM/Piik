@@ -6,7 +6,7 @@ use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{conversation::SessionSigner, wire::CHANNEL_PROTOCOL};
 use serde_json::json;
 use std::{io::Write, net::SocketAddr};
-use tokio::sync::{mpsc::error::TrySendError, oneshot};
+use tokio::sync::oneshot;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -21,7 +21,7 @@ struct Probe {
     full_rejections: usize,
     first_full: Option<(Instant, String)>,
     host: bool,
-    sender: mpsc::WeakSender<Event>,
+    sender: crate::outbox::Sender,
     close: watch::Sender<bool>,
 }
 
@@ -32,7 +32,7 @@ pub(super) fn record(
     connection: Uuid,
     client: &Client,
     host_input: bool,
-    sent: &Result<(), TrySendError<Event>>,
+    sent: &Result<(), crate::outbox::Full>,
 ) {
     let sender = &client.events;
     let mut probe = PROBE.lock().unwrap();
@@ -44,7 +44,7 @@ pub(super) fn record(
         full_rejections: 0,
         first_full: None,
         host: false,
-        sender: sender.downgrade(),
+        sender: sender.clone(),
         close: client.close.clone(),
     });
     entry.host |= host_input;
@@ -54,17 +54,17 @@ pub(super) fn record(
             entry.host_inputs += usize::from(host_input);
             entry.max_depth = entry
                 .max_depth
-                .max(sender.max_capacity() - sender.capacity())
+                .max(sender.depth())
         }
-        Err(TrySendError::Full(event)) => {
+        Err(_) if sender.gone() => {}
+        Err(_) => {
             entry.full_rejections += 1;
             if entry.first_full.is_none() {
-                let kind = serde_json::to_value(event).unwrap()["type"].to_string();
-                entry.first_full = Some((Instant::now(), kind));
+                let kind = if host_input { "host_input" } else { "other" };
+                entry.first_full = Some((Instant::now(), kind.to_string()));
             }
-            entry.max_depth = sender.max_capacity();
+            entry.max_depth = sender.bound();
         }
-        Err(TrySendError::Closed(_)) => {}
     }
 }
 
@@ -74,8 +74,8 @@ fn host_depth() -> usize {
         .unwrap()
         .values()
         .filter(|probe| probe.host)
-        .filter_map(|probe| probe.sender.upgrade())
-        .map(|sender| sender.max_capacity() - sender.capacity())
+        .filter(|probe| !probe.sender.gone())
+        .map(|probe| probe.sender.depth())
         .max()
         .unwrap_or(0)
 }
@@ -373,7 +373,7 @@ async fn drive(address: SocketAddr, rooms: usize, clients: usize, pattern: Patte
         }
         if pattern == Pattern::Kick {
             for probe in probe.values() {
-                if probe.host && probe.sender.upgrade().is_some() {
+                if probe.host && !probe.sender.gone() {
                     let _ = probe.close.send(true);
                 }
             }

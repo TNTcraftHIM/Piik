@@ -128,6 +128,20 @@ impl Sender {
     }
 }
 
+#[cfg(test)]
+impl Sender {
+    /// Measurement only: places taken, the bound, and whether the reader is gone.
+    pub(crate) fn depth(&self) -> usize {
+        self.queue.max_capacity() - self.queue.capacity()
+    }
+    pub(crate) fn bound(&self) -> usize {
+        self.queue.max_capacity()
+    }
+    pub(crate) fn gone(&self) -> bool {
+        self.queue.is_closed()
+    }
+}
+
 impl Receiver {
     pub(crate) async fn recv(&mut self) -> Option<Event> {
         let item = self.queue.recv().await?;
