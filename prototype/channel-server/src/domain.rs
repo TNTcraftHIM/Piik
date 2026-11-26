@@ -500,6 +500,7 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
     };
     let connection = Uuid::new_v4();
     let (events, mut queue) = crate::outbox::channel(64);
+    let replies = events.clone();
     let (close, mut closing) = watch::channel(false);
     let close_writer = close.clone();
     {
@@ -546,6 +547,10 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
         }));
         let reading = async {
             loop {
+                // A burst of requests is read at the rate its replies are taken.
+                if !replies.half_free(Duration::from_secs(20)).await {
+                    break;
+                }
                 let incoming = match tokio::time::timeout(Duration::from_secs(20), reader.next()).await {
                     Ok(incoming) => incoming,
                     Err(_) => break,

@@ -9,13 +9,19 @@
 //! Without it one admission queues an input for every room a host serves and a
 //! snapshot for every session, each a full copy of what the previous one said.
 //! A burst of admissions then closed a healthy host for a full queue.
+//!
+//! The queue also paces its own connection: the next request is read once half
+//! the places are free, so that a burst of requests is answered at the rate its
+//! replies are taken. A host that registers thirty-two rooms is owed four events
+//! for each, more than the queue holds.
 
 use piik_channel_core::wire::{Event, Subject};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    time::Duration,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Notify};
 
 enum Item {
     Edge(Event),
@@ -78,11 +84,13 @@ impl Levels {
 pub(crate) struct Sender {
     queue: mpsc::Sender<Item>,
     levels: Arc<Mutex<Levels>>,
+    taken: Arc<Notify>,
 }
 
 pub(crate) struct Receiver {
     queue: mpsc::Receiver<Item>,
     levels: Arc<Mutex<Levels>>,
+    taken: Arc<Notify>,
 }
 
 #[derive(Debug)]
@@ -92,14 +100,17 @@ pub(crate) struct Full;
 pub(crate) fn channel(capacity: usize) -> (Sender, Receiver) {
     let (sender, receiver) = mpsc::channel(capacity);
     let levels = Arc::<Mutex<Levels>>::default();
+    let taken = Arc::new(Notify::new());
     (
         Sender {
             queue: sender,
             levels: levels.clone(),
+            taken: taken.clone(),
         },
         Receiver {
             queue: receiver,
             levels,
+            taken,
         },
     )
 }
@@ -126,6 +137,22 @@ impl Sender {
         }
         Ok(())
     }
+
+    /// Resolves once half the places are free. `false` when nothing was taken
+    /// for `patience`: whoever reads this queue has stopped.
+    pub(crate) async fn half_free(&self, patience: Duration) -> bool {
+        loop {
+            let taken = self.taken.notified();
+            tokio::pin!(taken);
+            taken.as_mut().enable();
+            if self.queue.capacity() * 2 >= self.queue.max_capacity() {
+                return true;
+            }
+            if tokio::time::timeout(patience, taken).await.is_err() {
+                return false;
+            }
+        }
+    }
 }
 
 impl Receiver {
@@ -140,6 +167,7 @@ impl Receiver {
     }
 
     fn event(&self, item: Item) -> Event {
+        self.taken.notify_waiters();
         match item {
             Item::Edge(event) => event,
             Item::Level(slot) => self.levels.lock().unwrap().take(slot),
@@ -263,6 +291,30 @@ mod tests {
             drain(&mut receiver),
             [("a".to_string(), 2), ("x".to_string(), 0)]
         );
+    }
+
+    #[tokio::test]
+    async fn the_next_request_waits_until_half_the_places_are_free() {
+        let (sender, mut receiver) = channel(4);
+        let patience = Duration::from_secs(5);
+        for id in ["a", "b"] {
+            assert!(sender.try_send(ack(id)).is_ok());
+        }
+        assert!(sender.half_free(patience).await);
+        assert!(sender.try_send(ack("c")).is_ok());
+        let waiting = tokio::spawn({
+            let sender = sender.clone();
+            async move { sender.half_free(patience).await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        assert!(receiver.recv().await.is_some());
+        assert!(waiting.await.unwrap());
+        // A reader that takes nothing is not waited for beyond the patience.
+        for id in ["d", "e"] {
+            assert!(sender.try_send(ack(id)).is_ok());
+        }
+        assert!(!sender.half_free(Duration::from_millis(20)).await);
     }
 
     #[tokio::test]
