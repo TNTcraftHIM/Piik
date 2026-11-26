@@ -297,7 +297,7 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
     })
     .await;
     process.kill().await.unwrap();
-    let app_open = Domain::open(&hosted_data, OWNER_KEY, origin, None, vec![]);
+    let app_open = Domain::open(&hosted_data, Some(OWNER_KEY), origin, None, vec![]);
     assert_eq!(
         app_open.err().unwrap().to_string(),
         "hosted_channel_requires_server"

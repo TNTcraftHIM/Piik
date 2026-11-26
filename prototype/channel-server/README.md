@@ -421,8 +421,8 @@ site reuses its data; returning with the same domain account restores its rooms
 without restarting personal activities.
 
 The App's own local entry is approved for its current runtime. `app.sqlite` retains
-approved origins, startup settings, the initial local-site bootstrap seed and its
-permission namespace. `domain/channel.sqlite` owns the site's active identity,
+approved origins, startup settings and the local permission namespace.
+`domain/channel.sqlite` owns the site's identity from creation onward,
 user credentials, owner key and directory; room databases stay under `rooms/`. A new local
 port or public tunnel address does not select another copy of those rooms.
 External sites retain their separate exact-origin approval boundary.

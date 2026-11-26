@@ -29,10 +29,8 @@ pub(super) enum StartupIntent {
 const APPROVAL_SCOPE: i64 = 2;
 
 #[derive(Deserialize, Serialize)]
-pub(super) struct LocalIdentity {
-    // Seeds for first creation only. The opened Domain owns its active keys.
-    pub owner: String,
-    pub namespace: Uuid,
+struct LocalNamespace {
+    namespace: Uuid,
 }
 
 impl Sites {
@@ -136,7 +134,7 @@ impl Sites {
             .and_then(|value| serde_json::from_str(&value).ok())
             .unwrap_or_default())
     }
-    pub fn local_identity(&self) -> Result<LocalIdentity> {
+    pub fn local_namespace(&self) -> Result<Uuid> {
         let saved: Option<String> = self
             .0
             .query_row(
@@ -146,17 +144,16 @@ impl Sites {
             )
             .optional()?;
         if let Some(saved) = saved {
-            return Ok(serde_json::from_str(&saved)?);
+            return Ok(serde_json::from_str::<LocalNamespace>(&saved)?.namespace);
         }
-        let identity = LocalIdentity {
-            owner: Uuid::new_v4().to_string(),
+        let local = LocalNamespace {
             namespace: Uuid::new_v4(),
         };
         self.0.execute(
             "INSERT INTO app_setting(key,value) VALUES('domain',?1)",
-            [serde_json::to_string(&identity)?],
+            [serde_json::to_string(&local)?],
         )?;
-        Ok(identity)
+        Ok(local.namespace)
     }
     pub fn set_startup(&self, startup: &StartupIntent) -> Result<()> {
         if let StartupIntent::External(site) = startup {
@@ -215,6 +212,40 @@ impl Sites {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_namespace_retains_existing_data_without_storing_an_owner_key() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let sites = Sites::open(directory.path())?;
+        let namespace = sites.local_namespace()?;
+        let saved: String = sites.0.query_row(
+            "SELECT value FROM app_setting WHERE key='domain'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&saved)?,
+            serde_json::json!({"namespace": namespace}),
+        );
+        let existing = serde_json::json!({
+            "owner": "unused-bootstrap-seed",
+            "namespace": namespace,
+        }).to_string();
+        sites.0.execute(
+            "UPDATE app_setting SET value=?1 WHERE key='domain'",
+            [&existing],
+        )?;
+        drop(sites);
+        let sites = Sites::open(directory.path())?;
+        assert_eq!(sites.local_namespace()?, namespace);
+        let retained: String = sites.0.query_row(
+            "SELECT value FROM app_setting WHERE key='domain'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(retained, existing);
+        Ok(())
+    }
 
     #[test]
     fn bookmarks_reopen_edit_and_delete_without_changing_approval_or_startup() -> Result<()> {
@@ -301,14 +332,14 @@ mod tests {
     }
 
     #[test]
-    fn long_data_directory_retains_approval_and_identity_after_reopen() -> Result<()> {
+    fn long_data_directory_retains_approval_and_namespace_after_reopen() -> Result<()> {
         let root = tempfile::tempdir()?;
         let directory = root
             .path()
             .join("app-data-".repeat(16))
             .join("room-data-".repeat(16));
         let site = "https://channel.example";
-        let (namespace, identity) = {
+        let (namespace, local_namespace) = {
             let mut sites = Sites::open(&directory)?;
             let namespace = sites.approve(site, true, false)?;
             sites.set_startup(&StartupIntent::External(site.into()))?;
@@ -323,13 +354,13 @@ mod tests {
             );
             assert!(sites.domain_port()?.is_none());
             sites.set_domain_port(NonZeroU16::new(31337).unwrap())?;
-            (namespace, serde_json::to_value(sites.local_identity()?)?)
+            (namespace, sites.local_namespace()?)
         };
         let sites = Sites::open(&directory)?;
         assert_eq!(sites.approved()?.get(site), Some(&namespace));
         assert!(matches!(sites.startup()?, StartupIntent::External(origin) if origin == site));
         assert_eq!(sites.domain_port()?.unwrap().get(), 31337);
-        assert_eq!(serde_json::to_value(sites.local_identity()?)?, identity);
+        assert_eq!(sites.local_namespace()?, local_namespace);
         Ok(())
     }
 }
