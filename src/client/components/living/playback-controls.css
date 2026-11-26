@@ -119,7 +119,7 @@
   .lr-playback .lr-btn { width: clamp(24px, 8.5cqw, var(--control-compact-size)); }
   .lr-playback-menu .lr-btn { width: auto; }
   .lr-playback > .lr-playback-main > .lr-playback-view > .lr-playback-picture-actions { display: none; }
-  .lr-playback-compact-picture { display: block; }
+  .lr-playback .lr-playback-compact-picture { display: block; }
   .lr-playback-more.is-compact-only { display: inline-flex; }
   .lr-playback-watch { gap: 4px; }
   .lr-playback-volume { flex: 1 1 80px; }
