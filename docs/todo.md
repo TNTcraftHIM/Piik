@@ -23,21 +23,15 @@ the feedback period; they do not delay that delivery.
   actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Room layout integration.** Replace the two old entries with the full and
-  minimal living-room layouts. Show room membership through the room row's
-  leading disclosure; faces are a preview, not a navigation control. Remove the
-  replaced activity roster and unused layout paths together. Complete integrated
-  visual acceptance, and settle the multi-room shortcut and speaking-overlay
-  targets before enabling them across rooms.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
   keep cross-flow allocation separate from SDK congestion control and frame admission.
-- [ ] **Room-writer progress.** Bound unanswered host work at the binding owner.
-  A controlled unresponsive writer leaves requests and route wakes outstanding
-  while its room remains available. Set the progress budget and recovery scope
-  before adding a deadline; compare the existing fresh-binding handshake with
-  connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
+- [ ] **Room-writer progress.** Decide the outcome of a silent writer on a live
+  carrier. Caller deadlines and the 64-reply bound do not retire an unanswered
+  initial Sync or RouteWake. Keep active media separate from a slow request;
+  a binding-wide timeout is not accepted. Verify scoped notification of an
+  already retired binding and retain unknown outcomes for unconfirmed writes.
 - [ ] **Native preparation test under load.** If the completed-success refusal
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a
@@ -283,7 +277,7 @@ the feedback period; they do not delay that delivery.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
-- [ ] **Connection attempt deadlines.** Trace ordinary and prepared attempts,
+- [ ] **Connection attempt deadlines.** Trace pair establishment, concurrent UDP preparation,
   signaling recovery and data-channel readiness. Consolidate deadlines by their
   actual owner while retaining the intended retry and resource-release behavior.
 - [ ] **Prepared-path migration after TURN.** Extend the verified Native
@@ -312,8 +306,7 @@ the feedback period; they do not delay that delivery.
   entry and native dialogs before offering page-only control.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
-  retain manual download. Reclaim an abandoned download through its update owner,
-  preserving active installations and the retained handoff record. The
+  retain manual download. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data

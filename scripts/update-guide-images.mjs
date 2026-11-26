@@ -11,7 +11,7 @@ const scenes = new Set((values.only ?? 'room,invitation,source,quality').split('
 if (positionals.length > 1 || [...scenes].some(scene => !['room', 'invitation', 'source', 'quality'].includes(scene)))
   throw new Error('Usage: node scripts/update-guide-images.mjs [dev-origin] [--only room,invitation,source,quality]');
 const preview = new URL('/__tooltip-preview', positionals[0] || 'http://127.0.0.1:8787');
-const roomPreview = new URL('?channel-room&image', preview);
+const roomPreview = new URL('?channel-room', preview);
 const output = fileURLToPath(new URL('../docs/assets/guide/', import.meta.url));
 const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
