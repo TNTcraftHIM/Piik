@@ -5,75 +5,70 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `46a13860`, merged in `50975dc5`. On this branch `tsc -b`
-passes, the web suite passes (2,442 tests), the Server's library suite passes
-(122), and the Native library suite passes on Windows 11 at the default timer
-tick with `--no-default-features`, run twice: 208 pass, 2 are ignored. Core
+Reviewed through `c71dd781`, merged in `3bd10b6d`. On this branch `tsc -b`
+passes, the web suite passes (2,447 tests), the Server's library suite passes
+(123), and the Native library suite passes on Windows 11 at the default timer
+tick with `--no-default-features`, run twice: 213 pass, 2 are ignored. Core
 is unchanged.
 
 ## Settled, removed
 
-The attachment descriptor repair and the push-to-talk expectation. The visual
-rejection, with your candidate starting from the prototype's composition.
+The four Native findings and their repair, the two notes on earlier fixes, the
+harness, ADR-0020, and the parallel survey as the direction of your
+experiment.
 
-**The harness: your decline is right, and it is out of this branch**
-(`eb5f6f97`). A comparison that passes on an empty run and a reference with no
-record of what produced it are not repository infrastructure. It stays my
-local tool; I will keep sending you numbers and captures from it, and you
-measure with your own.
+## Your living shell `beeb5d1d`: the composition is right, and seven things on screen are not
 
-## Native per-room execution: sound at its core, one way to wait forever
+I rendered the merged head beside the prototype with my own driver, the same
+states at the same sizes. The arrangement matches and so does what it buys:
+the picture's share of the window is within half a point of the prototype's in
+eight of the ten states with pictures (38.4% and 38.4% with one picture at
+1360 by 860, 37.4% and 37.4% with four, 52.0% and 51.9% with two on a phone),
+and a point larger with one picture at 1920 by 945. So the structure is
+taken. These are what I see, each with the state it is in:
 
-It runs here: the Native suite twice at the default tick, 208 of 208. A first
-pass by a separate reviewer traced ownership, order and retirement and found
-them to hold: one owner of each room's host and lock, one writer of the wire,
-a room's work in order, old-binding and retired-room replies dropped at
-delivery, release that can be cancelled and run again. It found four things. I
-read the code behind the first.
+1. **Four pictures on a laptop lose two fifths of their area.** At 1366 by
+   650 with four pictures the pictures take 12.1% of the window; the prototype
+   gives them 20.7%. Your tiles are about 220 by 95 with the grid using half
+   the stage's width, and in the first tile the caption's controls run into
+   each other. This is the one state where the fit differs.
+2. **My share control has a hole in it in the dock.** At 1360 by 860 with no
+   picture, its box is 207 wide (33 to 240). The main part ends at 141 and the
+   chevron starts at 196: 55 px of bare frame between the two halves of one
+   button. The same with voice in two rooms.
+3. **In the rail it runs past the rail.** With one picture the rail ends at
+   93; the control's two parts are 44 each from 25 to 113, so the chevron is
+   cut at the rail's edge. The prototype shows one square there.
+4. **Leave has no fill beside two controls that have one.** Its background is
+   transparent in the dock, the rail and on a phone, where the microphone and
+   listening beside it are tonal. Three controls of one row are one kind.
+5. **A picture's tile has no edge.** The prototype draws a hairline around
+   `.c3-monitor-tile` (a ring of 1 px in the line colour). Yours has none, so
+   with one picture at 1360 by 860 the picture is told from the stage only by
+   the two arcs of its upper corners.
+6. **Voice in two rooms says "语音已加入" twice**, once above each room, and
+   the first room's row is inside a filled pill while the second is bare. The
+   prototype says it once and then lists rooms, each the same row.
+7. **A rule stands between the room's name and its invitation link** in the
+   top row. Those two are one thing: the room and how to bring someone into
+   it.
 
-1. **A skipped turn drops the answer the Session is waiting to give.**
-   `room_owner.rs:165-176` replaces the work of a turn whose room has retired
-   with an empty finish. For some requests the finish is the only thing that
-   answers the caller. The registration acknowledgement is one:
-   `session.rs:1817-1843` posts a turn whose finish completes the opening's
-   replies. If the room retires between the post and the turn, as when the
-   bind fails and removes the room, the turn is skipped, the opening stays,
-   and whoever opened, copied or restored waits until the next reconnect or
-   shutdown. Before this change that caller got `room_unavailable` at once.
-   The reviewer gives a second path to the same end: a Welcome on a new
-   session reserves every room before the cleanup check, and a pending open
-   whose file then fails to open is never answered (`session.rs:1503-1537`,
-   `:1586`).
-   The general rule: a turn that is not run still settles what was waiting on
-   it. Let the skip carry the request's own failure to its finish, in place of
-   an empty one. Then every caller is answered by the path that already
-   exists, and no second place has to remember who was waiting.
-2. **Readiness may never be published.** `hosting_ready` needs every slot
-   bound (`session.rs:2609`), and slots now include reservations for rooms
-   still opening. The paths that remove a reservation after a failure or a
-   retired deletion (`:1795`, `:2672`, `:2755`, `:3087`) do not check
-   readiness again, so a removal that races the last registration after a
-   reconnect leaves `ready` empty and `App::hello` waiting with no deadline
-   (`app.rs:266`). The mechanism is read; the timing is not shown.
-3. Welcome still opens every room's SQLite file on the Session's task
-   (`:1406`, `:1431`). On a resumed session that now runs while room tasks may
-   be committing, so the session can sit out SQLite's busy timeout. Plausible,
-   not run.
-4. The incoming byte budget now lives for the whole session (`:318`, `:788`),
-   so bytes held by a stuck room carry into the next connection. It bounds
-   itself; the comment on `SIGNALING_QUEUE_BYTES` no longer describes it.
+Also, two type sizes outside the four: 10 px after leaving voice at 1360 by
+860, and 11 px in the file card beside a picture.
 
-On the tests: the sibling test posts a hook closure and not events through the
-session loop, and the test helper drains every pending turn before the next
-event, so the suite replays the old order and cannot reach the first two
-findings. The commit message's control over a real WebSocket, B committing
-while A is inside SQLite, is not in the tree.
+None of these is a matter of taste, and I think they share a cause worth
+naming: your checks assert what is in the tree and what moved, and nothing
+looks at the picture. I am not asking for my harness back. I am saying that a
+change to the shell is not checked until someone has looked at these states,
+and I will keep doing that and sending you numbers.
 
-The five small commits read sound: `338d92a4`, `56a5cd0c`, `4cab83da`,
-`61549590`, `d381d8b7`. Two notes. `61549590` works in the App's router only
-because of where the layer sits (`app.rs:515`), and that router has no test.
-For `d381d8b7`, the platform treats a renderer's exit as recoverable by
-reload, so retiring the page is a product choice and worth saying as one.
+## What the owner has and has not decided
+
+You have asked the owner yourself about the rooms column; that is right, and
+I have told the owner that you are waiting. What I sent you was the owner's
+own sentences, and nothing in them is mine. The replacement of the two present
+layouts is different: that reading is mine, I said so, and I have put it to
+the owner as a question. Until there is an answer, keep both.
 
 ## The rooms column: the owner has answered
 
@@ -178,58 +173,23 @@ No rule about who pressed what, no gate, nothing shown or hidden at the
 one-room boundary, and other people see each room's own state. The state is S
 and the order of joining. Listening is the same rule on the listening buttons.
 
-## ADR-0020
+## The voice shortcut: the check you named
 
-Re-read. Your narrower reading is what the record already decides: no point
-becomes a type without a second consumer, no registry, and a part interface is
-credited only with what it removes beyond the extraction. `49c9a10d` adds the
-two things it left implicit: the ADR-0015 extraction comes first and stands by
-itself, and a participant program attaches at no point, so the SDK is no
-evidence for a registry.
+The set is read from what the microphones are, never from what was asked.
+While any room's microphone is on, S is the set of rooms whose microphone is
+on. So:
 
-## The parallel survey: the design, for you to build
+- The key turns S on, room A accepts and room B refuses. The microphones now
+  on are A alone, so S is A. B is out of the set by the definition, with no
+  record of the refusal. The key does not ask B again; B's own button does.
+- Every room refuses. None is on, so S keeps its last value and the next
+  press asks again.
+- A room in S is left. S is read against the rooms I am in, so it is gone
+  from the set. If that empties the set, the key turns on the room joined
+  last.
 
-One change: **the responder surveys when it receives the grant, not when it
-receives the Offer.**
-
-Today (`preparation.rs:177-229`) the initiator surveys and sends the Offer,
-and only then does the responder build its `Preparation` from the Offer's
-secret and survey. The survey does not use the secret: it binds one socket and
-asks three STUN destinations in turn (`:323-376`). So the two surveys can run
-at once, and the responder can answer as soon as the Offer arrives.
-
-- **What moves.** The survey takes the local address, the three destinations
-  and the deadline, and no secret. The responder starts it on the grant, holds
-  its result, and builds the `Preparation` when the Offer brings the secret.
-  The Offer, the Answer, their validation at the relay and everything after
-  `check` are untouched.
-- **What it gains.** One survey's duration off every preparation: three STUN
-  round trips in turn, bounded at 1.5 s. It also shortens the time between the
-  initiator's survey and its first probe by the same amount, which is the
-  staleness a sequential mapping's prediction suffers from.
-- **What it costs.** A responder whose Offer never comes has spent one socket
-  and three requests. It releases them at the deadline or on Unavailable, as
-  the initiator does today. A grant comes from the authority, so no peer can
-  cause a survey.
-- **What I am not proposing.** Sending the three bindings without waiting for
-  each answer. The sequential class is read from the order of the mapped
-  ports, and waiting for each answer is what keeps that order true when a
-  request is lost before the mapping exists. That saving is not worth a wrong
-  class.
-
-Checks, on loopback with three local responders that answer after a fixed
-delay D:
-
-1. Both observations are known within 3D plus a signaling hop of the grant,
-   where today it takes 6D plus two.
-2. The classes are unchanged for a stable, a sequential and an irregular
-   responder set.
-3. The secret still travels only in the Offer, and a responder's observation
-   is sent only in its Answer.
-4. A responder whose Offer never arrives holds no socket after the deadline.
-
-Whether it raises success on a sequential mapping is a question for your
-namespace routers, not for loopback.
+Remembered membership and what succeeded cannot diverge, because only what
+succeeded is remembered.
 
 ## Preparation on the same pair: the design, for you to build
 
@@ -323,15 +283,10 @@ other traffic behind the same NAT. Beside the engine it becomes the usual
 case.
 
 The model is "a fixed step for each new flow, and other flows may come in
-between". Test the model:
-
-- all three equal: `Stable`;
-- both differences non-zero, of one sign, each within 64, and their greatest
-  common divisor within 16: `Sequential` with that divisor as the step;
-- anything else: `Irregular`.
-
-The equal-steps rule is the case with nothing in between. This is small,
-stands alone, and can go first.
+between". I proposed a rule that tests that model (one sign, bounded
+differences, their greatest common divisor as the step). You deferred it with
+reasons I accept, and the number in it is withdrawn; see my answers below. The
+condition stands: whatever rule is kept is measured with the engine alive.
 
 ### What I am not proposing
 
@@ -359,9 +314,8 @@ survey against each other.
 
 ### Checks
 
-1. The classifier, as a unit: (40000, 40001, 40002) is sequential by 1;
-   (40000, 40003, 40004) is sequential by 1; (40000, 40002, 40006) by 2;
-   (40000, 51234, 40007) is irregular; three equal ports are stable.
+1. The classifier that is kept, on the sequential profile with the engine
+   alive: a sequential mapping is still read as sequential.
 2. An easy pair on loopback: the engine connects, preparation is closed on
    both ends, and no socket beyond the engine's remains.
 3. The sequential kernel-NAT profile with the engine alive: the pair delivers
@@ -380,16 +334,175 @@ survey against each other.
 
 ### Order
 
-The classifier first, by itself. The Runtime command second, with your
+The classifier's comparison first. The Runtime command second, with your
 control as its test, and no caller. The contract last and in one change, core
 and Driver together, because a core that still replaces the pair beside a
 Driver that prepares at creation would prepare twice. That change also
 updates `channel-network-design.md` where it records the replacement and its
 second deadline, and closes "Prepared socket adoption" in the ledger.
 
-## Still owed by me
+## Preparation: my answers
 
-The comparison for the long first-picture tail. Not started.
+**The early stop: I accept the bounded unknown.** No new SDK interface. The
+rule, in the terms you have:
+
+- With a STUN-only configuration there is no relay, so a selected pair is a
+  direct path and preparation ends on it.
+- Where TURN is enabled, the path is known to be direct when the selected
+  local address is not this end's allocation and the selected remote address
+  is not one the peer signaled as a relay candidate. Preparation ends then.
+- Where the remote address has no provenance yet, do nothing. Preparation
+  runs to its own 5 s. If you can look again when a remote candidate arrives
+  without adding state, do; if that needs anything of its own, leave it out.
+
+What that costs is bounded: one preparation run to its end on a pair that did
+not need it, and one extra socket on that engine. Count how often it happens
+in a fixture with TURN before deciding whether it deserves more.
+
+**The classifier: I accept the deferral, and withdraw the number.** You are
+right that 64 is new and that a false `Sequential` beside `Stable` replaces a
+search that would have worked. What I keep is the condition, not the rule:
+the comparison has to run with the engine alive. On a quiet host the present
+rule looks fine, and beside an engine a sequential mapping is interleaved by
+the engine's own flows as a matter of course. If equal steps passes the
+sequential profile with the engine alive, the classifier stays as it is and I
+have nothing more to say about it.
+
+**The migration.** Agreed on both points: no deferral of the ordinary SDP
+exchange, and a failure of the preparation's queue is not the pair's failure.
+Preparation that is optional cannot end an engine that is healthy.
+
+## A second trial for a viewer behind full members: measured, for your decision
+
+The long first-picture tail was the one comparison I still owed. It is on
+`origin/test/placement-study` at `194f4617` (study feature only; off, the
+default and `sqlite` suites are unchanged and the earlier base rows reproduce
+exactly).
+
+**Where the limit is.** Not in the transport book. A viewer whose direct pair
+is confirmed has one attempt pending, and `ENDPOINT_ATTEMPT_LIMIT` allows two.
+The planner never asks for the second: a repair record holds one trial
+(`channel/discovery.rs:14`), `repair` takes the single best suggestion
+(`:564-617`), and `finish_admission` stops at the first one admitted (`:192`).
+
+**What was measured.** P3: a waiting viewer that has a confirmed pair into the
+tree prefix, so those members are full, also asks for the next-best
+unconfirmed crossing, through the same admission limits. 36 settings (warm
+and cold arrival; three models; failure 5 and 20 s; 8, 16 and 32 viewers),
+the seeds of the earlier run.
+
+| | present | P3 |
+| --- | --- | --- |
+| Arrivals over 5 s, base model, warm (mean of six rows) | 9.3% | 6.7% |
+| The same, cold | 14.9% | 10.9% |
+| The same, pessimistic, warm | 20.0% | 17.2% |
+| p90 at 16 and 32 viewers, base, warm, failure 20 s | 12.7 and 14.4 s | 1.5 s |
+| Median | unchanged in every row | |
+| Pair attempts | | 5 to 14% more |
+| Failed attempts | | 1 to 14% fewer in most rows |
+| Peak in flight, per endpoint and per channel | 2 and 4 | 2 and 4 |
+| Ticks with the channel at its limit, worst row | 4.6% | 7.8% |
+
+The share over 5 s falls in all 36 rows. Over 20 s it falls or holds in 35 and
+rises in one (2.0 to 2.1%). The worst case holds in 26 rows, falls in 9 and
+rises in one.
+
+**The general form does not earn its place.** I had the plainer rule measured
+as well, P4: any waiting viewer with a first trial asks for a second, with no
+condition. It differs from P3 only for a viewer whose direct pair failed and
+that has no confirmed pair into the tree. Row by row it moves the share over
+5 s by -0.5 to +1.0 points with no direction (11 better, 14 worse, 11 equal),
+costs 0.2 to 1.7 points more attempts, and the worst case rises in all four
+pessimistic rows at 32 viewers. So the condition is not decoration. A viewer
+with a confirmed pair has shown it can connect and lacks only a free slot. A
+viewer whose direct pair failed has shown the opposite, and a second trial for
+it spends a shared slot on a likely failure.
+
+**What it does not fix.** After P3, 64% of the waits over 5 s belong to
+viewers with no confirmed pair into the tree. Most of those are still waiting
+for their direct pair, where repair makes no trial at all. That wait is the
+length of a failing attempt, which is the transport's to shorten and not the
+planner's. Of the waits still behind full members, the second trial was in
+flight for 90% at the 5 s mark and refused by admission for 3%; at most two
+thirds had two or more trials fail (the count includes standby pairs).
+
+**Limits of the evidence.** One run for each setting, no intervals. An
+attempt's cost is counted and not modelled. The switch is about 60 lines in
+`discovery.rs`; it derives the second trial afresh on each reconcile and keeps
+a pending one ranked ahead of fresh ones.
+
+I think P3 is worth taking: it removes a limit the planner holds beside the
+one the transport already owns. Yours to take, decline or defer.
+
+## The eleven fixes: one low defect, two risks, and three tests that do not hold their fix
+
+A separate reviewer read all eleven. I read the code behind the first item.
+
+**`0d03a7b9`, the room completion.** It does what I asked. Every way the
+acknowledgement's query can be skipped, rejected or left undelivered now ends
+in the callers' own failure; no late answer reaches a replacement room through
+the acknowledgement; readiness is derived on every path that removes a
+reservation; and the three new tests route events while turns are pending, so
+they reach what the old ones could not.
+
+1. **Defect, low. A registration the authority acknowledged is reported as
+   failed when the carrier drops before the room's turn.** `session.rs:1846`
+   posts the query and its finish answers only `if delivery.connected`
+   (`:1852`). The sequence: `HostRegister` is sent, its `Ack` arrives and the
+   opening is removed, the carrier drops, the turn finishes with the carrier
+   down, the replies are dropped, and the caller is told `room_unavailable`.
+   The session resumes and the room is hosted and bound. Before this commit
+   the opening survived and the caller got its success after the resume. The
+   callers are local, and the acknowledgement is the authority's answer.
+   Whether the carrier is still up when the room's turn runs does not change
+   what was acknowledged. Answer from what the room is.
+2. **Risk, not shown. A new open can join a stale registration.** Openings
+   are matched to rooms by id (`register_room` at `:3121`, `settle_hosting` at
+   `:2623`), not by the slot that owns them. If a room is retired on a path
+   with no settle after it (the reviewer names `set_forwarding_limit`, whose
+   `state()` drops bound rooms missing from the last snapshot) and the same id
+   is opened again before any settle, the new caller joins the old
+   registration, no `HostRegister` goes out for the new slot, and both callers
+   fail. Whether the server can deliver a binding before the snapshot that
+   lists the room, I do not know, and nor does the reviewer.
+3. **Risk, not shown.** Welcome reuses identity for current slots that have a
+   file path. A room still retiring is not covered, so its file can still be
+   opened while it is locked, and no test in the tree holds the claim that it
+   is not.
+4. A note: the connection check in `admitted` repeats what the check for a
+   writer already decides, and with it the settling of an old connection's
+   completions depends on the resumed Welcome queueing behind them.
+
+**The others.** `36ddeb1a`, `d0365f3c`, `ccdd9e77`, `ca00f338`, `55612ad8`,
+`e5fa12c2`, `5523a63f` and `398abcae` read sound. Four notes:
+
+- `5523a63f`: the header check is right. The shared peer fixture kept a
+  zero-size keyframe header until `0d03a7b9` corrected it, so peer VP8 tests
+  probably fail at this commit by itself. That matters only to a bisect.
+- `e5fa12c2`: a writer's result is matched by its type. A deletion's result
+  for another message would complete a pending deletion. Is one deletion in
+  flight for a room at a time?
+- `65e996b6`: its TypeScript test exercises the client alone and would pass
+  without the change, and the Rust test checks only the new helper. The
+  change on the server has nothing holding it.
+- `09919e0e` and `398abcae` have no test. For the second that is fine.
+
+Native here: 213 pass and 2 are ignored, twice, where you report 214. I have
+not looked for the one.
+
+## Art: three small things
+
+From a pass over the art with the rendered product in front of me. The mark,
+the couch and the figures hold in both themes and need nothing.
+
+- Seven icons have no caller: `textSize`, `trophy`, `gift`, `flag`, `bulb`,
+  `zap`, `server`.
+- `more` is drawn solid and is not flagged `solid` like `play`, `pause` and
+  `stop`.
+- Inside a button the icon's size comes from `--button-icon-size`, and what
+  is rendered is 16 or 18 everywhere I measured. The `size` passed there is
+  dead, and the 40 different values in the source are mostly that. Remove
+  them where a button decides.
 
 ## Holds
 
