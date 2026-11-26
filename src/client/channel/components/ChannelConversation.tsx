@@ -313,8 +313,10 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     setJumpFailed(false); readingAnchor.current = null; setFollowing(false);
     const request = { scope: conversationScope, seq };
     jumpRequest.current = request; setJump(request);
-    if (committedMessages.current.some(message => message.seq === seq)) return;
-    try { if (!onMessage) throw new Error("unavailable"); await onMessage(roomId, seq); }
+    try {
+      if (onMessage) await onMessage(roomId, seq);
+      else if (!committedMessages.current.some(message => message.seq === seq)) throw new Error("unavailable");
+    }
     catch { if (jumpRequest.current === request) { setJump(null); setJumpFailed(true); } }
   }, [cancelUnreadLookup, conversationScope, onMessage, roomId, setFollowing]);
   async function jumpToUnread() {
@@ -433,6 +435,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     void submitDraft(draftReply === quote ? draft : { ...draft, reply: undefined });
   }
   async function submitDraft(submitted: Draft) {
+    cancelUnreadLookup();
     setFollowing(true);
     setFailedSend(undefined);
     const request = identityLifetime.current!;

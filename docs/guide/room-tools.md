@@ -8,21 +8,19 @@ Choose a room you can enter from the sidebar to read chat, join voice, share you
 The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. The site owner needs access to open a private room in Piik. The site operator can read the chat text and inline images the site forwards. A Server-hosted room also stores its records on the operator's machine.
 
 - **The couch** shows who is in the current room, including people who are just reading chat. Select a person to open their reaction palette. Their headset shows their voice state.
-- **Room activity**, under a room name on the left, lists people in voice, sharing, watching or transferring files. The icons beside their names show what they are doing.
-- **The people list on the right** in the full workspace covers the whole site. It groups people into **This room**, **Online** and **Offline**. Select **More people** to see more offline members, or type `@` in chat to search by name.
+- **People in a room** appear beside its name in the room list. Expand the arrow to see their names, including people who are reading chat.
+- **Users** opens the site-wide list on the right. It groups people into **This room**, **Online** and **Offline**. Select **More people** to see more offline members, or type `@` in chat to search by name.
 
 Use **Edit profile** beside your name to change your nickname or picture.
-The same picture appears on your little person's body in chat, voice and the couch.
+The same picture appears in chat, room lists, voice and the couch.
 Choose **Remove picture** to return to the plain coloured person.
 
 ## Choose your interface
 
-**Full workspace** is the default. If you already use another voice app and only
-need Piik for screen sharing, choose **More options → Interface → Simple sharing**.
-Select **Start sharing**, choose a source, then copy the invitation below the picture.
-The picture, playback controls and couch stay central; **Interact** opens the room tool.
-**Join voice** stays beside the couch; after joining, its voice controls include
-mute, listening and leave. Opening the inline interaction panel leaves the couch in place.
+**Full** is the default. Choose **More options → Interface → Minimal** to keep the picture central.
+Use **Start sharing** from the site overview, select a source, then open the
+invitation beside the room name. The room list and chat open on demand.
+Both layouts keep controls for joined voice and the room tool.
 Several people can share at once: select **Watch** on each picture you want,
 then choose grid or focus. The grid arranges separate screens to fit the window;
 focus keeps the other pictures available. Stopping one picture keeps the others playing.
@@ -163,25 +161,26 @@ browser's site storage and are not sent to the room.
 2. Use the persistent voice controls to mute your microphone, pause listening
    or **Leave voice**. **Voice settings** selects the input and noise/echo processing.
 
-![Room chat with an image thumbnail and joined voice controls below the conversation.](../assets/guide/channel-room.en.png#gh-light-mode-only)
-![Room chat with an image thumbnail and joined voice controls below the conversation.](../assets/guide/channel-room.en.dark.png#gh-dark-mode-only)
+![The room list and voice controls on the left, the conversation and couch in the middle, and the site-wide people list on the right.](../assets/guide/channel-room.en.png#gh-light-mode-only)
+![The room list and voice controls on the left, the conversation and couch in the middle, and the site-wide people list on the right.](../assets/guide/channel-room.en.dark.png#gh-dark-mode-only)
 
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
-The arrow beside a room folds or expands its **Room activity** list.
 Microphone and listening controls do not change the shared picture's sound.
 Room managers can change **Room voice bitrate** in voice settings.
 The microphone's green fill follows your voice level. Friends' microphone booms
 light up as their voices arrive; an unfolded boom by itself means the microphone is on.
 
-You can join voice in more than one room. When several are joined, use the voice
-room selector to choose which room's microphone, listening and leave controls
-you are changing. Switching the conversation or stopping a picture does not
-leave those voice rooms. Leave each room when you are finished.
+You can join voice in more than one room. Each joined room has its own
+microphone, listening and leave controls. On a narrow screen, open the
+headphones button with a count to see the other joined rooms. Switching the
+conversation or stopping a picture does not leave those voice rooms.
 
 **Ctrl+Shift+M** toggles your microphone; **Ctrl+Shift+D** toggles listening.
-On macOS, use **Command** instead of Ctrl. Both act on the room selected in the
-voice controls. Change or clear a binding in **Voice settings → Keyboard shortcuts**;
+On macOS, use **Command** instead of Ctrl. With several voice rooms joined,
+the key turns off the microphones or listening that are on; press again to
+restore them. Use a room's own buttons to change only that room.
+Change or clear a binding in **Voice settings → Keyboard shortcuts**;
 press Esc to cancel recording. Page shortcuts work while Piik or its room tool
 has focus. Text entry and remote keyboard control take priority.
 With a supported Windows App connected, enable **Allow shortcuts in other apps**.
@@ -212,17 +211,16 @@ voices playing in your browser. See [sharing sound controls](./sharing.md#exclud
 
 ## Keep the room beside a picture or game
 
-In the full workspace, select **Pop out room** beside the couch to move its conversation, people and
+In either layout, select **Pop out room** in the room toolbar to move its conversation, people and
 voice controls directly into an always-on-top window. Other browsers use the
 movable **Room panel** inside the page. Keep the original page open; closing
 the small window, or pressing the same room-window button again, returns its
 controls and drafts to the page.
-In simple sharing, **Interact** first opens the inline panel while the couch
-stays visible. Its picture-in-picture action can then move the room tool to a small window.
 
 On a site hosted by your own Windows Piik App, join voice in the App and choose
 **Open voice overlay** in the voice controls. The compact overlay stays on top,
-shows who is speaking and lets clicks reach the app beneath it.
+shows who is speaking and lets clicks reach the app beneath it. To show another
+joined voice room, select its name in the voice controls.
 Choose **Adjust voice overlay** in Piik to drag or resize the overlay, then choose
 **Pin voice overlay** or press Esc. To dismiss it while pinned, choose **Close**
 in Piik’s voice controls. While adjusting, you can also close it from its title bar.

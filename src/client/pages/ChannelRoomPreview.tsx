@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ChannelRoomPage, type RoomLayout } from "./ChannelPage";
+import type { RoomLayout } from "../lib/room-preferences";
+import { ChannelRoomPage } from "./ChannelPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { Btn, Chip } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
@@ -58,7 +59,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         id: "10000000-0000-4000-8000-000000000007", name: "Other film" },
         catalog: { ...mpdTracks[0].catalog!, sourceId: "10000000-0000-4000-8000-000000000008" } }] : [])];
   const { lang } = useCopy(), zh = lang === "zh";
-  const sample = useChannelGuideSample({ multiRoom: true, multiVoice: new URLSearchParams(location.search).get("voice-rooms") === "2" });
+  const sample = useChannelGuideSample({ multiRoom: true, multiVoice: new URLSearchParams(location.search).get("voice-rooms") === "2",
+    showSampleAttachment: new URLSearchParams(location.search).has("image") });
+  const rosterSample = firstUse ? null : new URLSearchParams(location.search).get("room-people");
   const guestPreview = new URLSearchParams(location.search).has("guest");
   const [roomCreationPolicy, setRoomCreationPolicy] = useState<RoomCreationPolicy>(() => {
     const requested = roomCreationPolicySchema.safeParse(new URLSearchParams(location.search).get("creation-policy"));
@@ -67,10 +70,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const invitedRoom = new URLSearchParams(location.search).get("invite-preview") === "studio" ? "studio" : null;
   const [layout, setLayout] = useState<RoomLayout>(() => {
     const requested = new URLSearchParams(location.search).get("layout");
-    return requested === "quick" || requested === "living" ? requested : "workspace";
+    return requested === "minimal" ? "minimal" : "full";
   });
   const [offerLayout, setOfferLayout] = useState(firstUse);
-  const [minimalForm, setMinimalForm] = useState(() => new URLSearchParams(location.search).has("minimal"));
   const changeLayout = (value: RoomLayout) => { setLayout(value); setOfferLayout(false); };
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => firstUse || new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
@@ -258,13 +260,17 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
     rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined, serviceRelay: undefined, picture: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
+      ...(rosterSample === "unadmitted" && room.id === "studio" ? { authorized: false, canManage: false, reading: false } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
       fileActivity: fileSample && room.id === "friday" && !hostOffline ? [
         { sessionId: "sample-ada-session", sending: true, receiving: false },
         { sessionId: "sample-dora-session", sending: false, receiving: true },
       ] : [],
-      participantSessionIds: hostOffline && room.id === "friday" ? [] : [...new Set([
+      participantSessionIds: (hostOffline && room.id === "friday") || (rosterSample === "empty" && room.id === "studio") ? [] : [...new Set([
         ...room.participantSessionIds,
+        ...(room.id === "friday" && (rosterSample === "crowded" || rosterSample === "four")
+          ? ["sample-ada-app-session", "sample-eli-session", ...(rosterSample === "crowded" ? ["sample-finn-session", "sample-gia-session"] : [])]
+          : []),
         ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)]),
         ...(watchActivity?.roomId === room.id ? watchSessions : []),
       ])] })),
@@ -483,11 +489,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
           <fieldset><legend>{zh ? "界面入口" : "Interface entry"}</legend><div className="c3-room-preview-tools">
-            {layout === "living" && <Chip title={zh ? "极简布局" : "Minimal layout"} selected={minimalForm} onClick={() => setMinimalForm(!minimalForm)}>{zh ? "极简布局" : "Minimal layout"}</Chip>}
-            <Chip title={zh ? "客厅布局" : "Living room layout"} selected={layout === "living"}
-              onClick={() => changeLayout(layout === "living" ? "workspace" : "living")}>{zh ? "客厅布局" : "Living room layout"}</Chip>
             <Btn icon="sidebar" quiet size="compact" cap={{ text: zh ? "首次使用提示" : "First-use suggestion" }}
-              title={{ text: zh ? "首次使用提示" : "First-use suggestion" }} onClick={() => { optionsPanel.current?.hidePopover(); setRoomCount(0); setCreatedRooms([]); setCount(0); setSharingRoom(null); setSelected(""); setLayout("workspace"); setOfferLayout(true); }} />
+              title={{ text: zh ? "首次使用提示" : "First-use suggestion" }} onClick={() => { optionsPanel.current?.hidePopover(); setRoomCount(0); setCreatedRooms([]); setCount(0); setSharingRoom(null); setSelected(""); setLayout("full"); setOfferLayout(true); }} />
             {rooms.some(room => room.id === "studio") && <Btn icon="link" quiet size="compact" cap={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }}
               title={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }} onClick={() => { optionsPanel.current?.hidePopover(); setSelected("studio"); }} />}
           </div></fieldset>
@@ -528,7 +531,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     </div>
   </>;
   return <div className="c3-room-preview">
-    <ChannelRoomPage channel={channel} layout={layout} minimalForm={minimalForm} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
+    <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
       appControl={<AppConnectionButton discovery={previewAppDiscovery} connected={channel.appConnected} wakeURL={null} />} previewOptions={previewOptions} />
     <span className="visually-hidden" role="status">{sample.notice}</span>
   </div>;

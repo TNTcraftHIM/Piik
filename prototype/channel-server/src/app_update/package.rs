@@ -102,6 +102,9 @@ impl Installation {
 }
 
 pub(super) struct Prepared {
+    #[cfg(windows)]
+    pub directory: super::windows::DownloadWorkspace,
+    #[cfg(not(windows))]
     pub directory: tempfile::TempDir,
     pub selection: Selection,
     pub operation: uuid::Uuid,

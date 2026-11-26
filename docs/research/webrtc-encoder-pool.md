@@ -202,6 +202,15 @@ the output when published afterward. With decoded-source timing, a request
 after the last frame had been submitted waited for a new texture and produced
 an IDR at its original timestamp. All four runs joined the worker.
 
+A Linux x264 control found that a static refresh advanced ordinary frame
+admission and skipped the next due capture. Admission now uses raw capture time;
+forced frames leave that cadence unchanged. Successful submissions retain both
+capture and presentation times, so an unsent frame is not treated as a replay.
+Local presentation advances by at least one 90 kHz RTP tick; decoded-source
+timing keeps its source timestamps. Independent decoding recovered the missing
+image in both late-delivery cases. Worker regressions also cover sub-tick capture
+spacing and a budget-dropped image later submitted by a keyframe request.
+
 ## Pinned Baseline
 
 The initial review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc

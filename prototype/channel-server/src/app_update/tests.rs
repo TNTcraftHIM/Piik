@@ -343,6 +343,34 @@ async fn wait_state(client: &reqwest::Client, origin: &str, expected: &str) -> s
 async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
     // The first operation chooses AtomGit. Later responses stay open for cancel and shutdown.
     let fixture = fixture([Some(0..=usize::MAX), Some(1..=usize::MAX)], [false; 2]).await;
+    let Config::Enabled(options) = &fixture.config.update else {
+        unreachable!()
+    };
+    let installation = package::Installation::inspect(options, &fixture.config).unwrap();
+    let parent = installation.root.parent().unwrap();
+    let operation = Uuid::new_v4();
+    let abandoned = parent.join(format!(".piik-update-{operation}-download"));
+    fs::create_dir(&abandoned).unwrap();
+    fs::write(abandoned.join("package.zip"), b"unfinished package").unwrap();
+    let pending = installation.data_root.join("update-download.json");
+    fs::write(
+        &pending,
+        serde_json::to_vec(&serde_json::json!({
+            "operation": operation, "workspace": abandoned,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let retained = installation.data_root.join("update-workspace.json");
+    let operation = Uuid::new_v4();
+    let previous = parent.join(format!(".piik-update-{operation}-retained"));
+    fs::create_dir(&previous).unwrap();
+    fs::write(previous.join("result.json"), b"retained result").unwrap();
+    let retained_record = serde_json::to_vec(&serde_json::json!({
+        "operation": operation, "workspace": previous,
+    }))
+    .unwrap();
+    fs::write(&retained, &retained_record).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let (stop, stopped) = oneshot::channel();
@@ -368,6 +396,17 @@ async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
         Some(ready),
     ));
     started.await.unwrap();
+    assert!(
+        !abandoned.exists(),
+        "Restart reclaims the recorded partial package"
+    );
+    assert_eq!(fs::read(&retained).unwrap(), retained_record);
+    assert_eq!(
+        fs::read(previous.join("result.json")).unwrap(),
+        b"retained result"
+    );
+    assert_eq!(fs::read(&options.executable).unwrap(), b"old executable");
+    assert!(!pending.exists());
     let client = download::client().unwrap();
     let selection = serde_json::json!({"action":"download","version":"v3.0.1","revision":SOURCE});
     let remote = client
@@ -440,9 +479,10 @@ async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
     );
     assert_eq!(
         fs::read_dir(fixture._directory.path()).unwrap().count(),
-        2,
+        3,
         "Cancelled operation removes only its workspace"
     );
+    assert!(!pending.exists());
     tokio::time::timeout(Duration::from_secs(5), async {
         while fixture
             .providers
@@ -474,9 +514,10 @@ async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
         .unwrap();
     assert_eq!(
         fs::read_dir(fixture._directory.path()).unwrap().count(),
-        2,
+        3,
         "App shutdown cancels the response and cleans its unfinished package"
     );
+    assert!(!pending.exists());
 }
 
 #[tokio::test]
@@ -636,6 +677,146 @@ async fn local_archive_write_error_does_not_retry_the_mirror() {
     assert_eq!(fixture.providers[0].requests.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.providers[1].requests.load(Ordering::SeqCst), 1);
 }
+#[tokio::test]
+#[cfg(windows)]
+async fn locked_abandoned_download_record_fails_only_the_update_and_can_retry() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let fixture = fixture([None, None], [false; 2]).await;
+    let Config::Enabled(options) = &fixture.config.update else {
+        unreachable!()
+    };
+    let installation = package::Installation::inspect(options, &fixture.config).unwrap();
+    let operation = Uuid::new_v4();
+    let abandoned = installation
+        .root
+        .parent()
+        .unwrap()
+        .join(format!(".piik-update-{operation}-download"));
+    fs::create_dir(&abandoned).unwrap();
+    fs::write(abandoned.join("package.zip"), b"unfinished package").unwrap();
+    let pending = installation.data_root.join("update-download.json");
+    fs::write(
+        &pending,
+        serde_json::to_vec(&serde_json::json!({
+            "operation": operation, "workspace": abandoned,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let locked = fs::File::options()
+        .read(true)
+        .share_mode(3)
+        .open(&pending)
+        .unwrap();
+    let _data_owner = super::super::lock_directory(&fixture.config.data_root).unwrap();
+    let (closing, observer) = watch::channel(false);
+    let owner = Owner::new(&fixture.config, closing.clone());
+    assert!(owner.supported());
+    assert!(!abandoned.exists());
+    assert!(pending.exists());
+    let request = || Request::Download {
+        version: "v3.0.1".into(),
+        revision: SOURCE.into(),
+    };
+    owner.request(request()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while owner.view().state == "downloading" {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(owner.view().error, Some("download-failed"));
+    assert!(!observer.has_changed().unwrap());
+
+    drop(locked);
+    owner.request(request()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while owner.view().state == "downloading" {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(owner.view().state, "ready");
+    closing.send_replace(true);
+    owner.shutdown().await;
+    assert!(!pending.exists());
+}
+
+#[tokio::test]
+#[cfg(windows)]
+async fn relocated_app_retires_downloads_from_its_previous_installation_parent() {
+    for directory_exists in [true, false] {
+        let mut fixture = fixture([None, None], [false; 2]).await;
+        let Config::Enabled(options) = &mut fixture.config.update else {
+            unreachable!()
+        };
+        let old_parent = fs::canonicalize(fixture._directory.path()).unwrap();
+        let old_root = old_parent.join("app");
+        let operation = Uuid::new_v4();
+        let abandoned = old_parent.join(format!(".piik-update-{operation}-download"));
+        if directory_exists {
+            fs::create_dir(&abandoned).unwrap();
+            fs::write(abandoned.join("package.zip"), b"unfinished package").unwrap();
+        }
+        let pending = fixture.config.data_root.join("update-download.json");
+        fs::write(
+            &pending,
+            serde_json::to_vec(&serde_json::json!({
+                "operation": operation, "workspace": abandoned,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let new_parent = old_parent.join("portable");
+        fs::create_dir(&new_parent).unwrap();
+        let new_root = new_parent.join("app");
+        fs::rename(&old_root, &new_root).unwrap();
+        options.executable = new_root.join("piik-app.exe");
+        fixture.config.assets = new_root.join("web");
+        fixture.config.cloudflared = new_root.join("runtime/tunnel/cloudflared.exe");
+        let _data_owner = super::super::lock_directory(&fixture.config.data_root).unwrap();
+        let closing = watch::channel(false).0;
+        let owner = Owner::new(&fixture.config, closing.clone());
+        assert!(
+            !pending.exists(),
+            "The previous workspace existed: {directory_exists}"
+        );
+        assert!(!abandoned.exists());
+
+        owner
+            .request(Request::Download {
+                version: "v3.0.1".into(),
+                revision: SOURCE.into(),
+            })
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while owner.view().state == "downloading" {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(owner.view().state, "ready");
+        closing.send_replace(true);
+        owner.shutdown().await;
+
+        assert!(!pending.exists());
+        assert_eq!(
+            fs::read(new_root.join("piik-app.exe")).unwrap(),
+            b"old executable"
+        );
+        assert_eq!(
+            fs::read(fixture.config.data_root.join("retained.txt")).unwrap(),
+            b"identity and history"
+        );
+    }
+}
+
 #[tokio::test]
 #[cfg(windows)]
 async fn unmanaged_directories_and_data_inside_the_bundle_stay_manual() {

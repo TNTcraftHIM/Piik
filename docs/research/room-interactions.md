@@ -318,7 +318,7 @@ sharing. Its README and [status](../status.md) own the runnable boundary.
 The selected direction presents one site with rooms, without an additional domain
 chooser or invitation gate. [Visual language](../standards/visual-language.md#30-room-workspace)
 owns the current workspace composition, control placement and responsive rules;
-its [quick-sharing section](../standards/visual-language.md#30-quick-sharing) owns
+its [layout choice section](../standards/visual-language.md#30-room-layout-choice) owns
 the optional screen-centred view. The network/data owners retain identity,
 directory, private-room admission and activity lifetimes.
 
@@ -335,8 +335,16 @@ mute and deafen still apply per room. Different endpoints remain separate,
 including those of one user.
 
 Voice shortcuts work in the focused Piik page or detached room
-tool. Ctrl+Shift+M toggles the microphone and Ctrl+Shift+D toggles listening in
-the room shown in the voice dock. macOS uses Command in place of Ctrl. Both keys
+tool. Ctrl+Shift+M toggles the microphone across this endpoint's joined rooms.
+When any microphones are on, the key mutes them together and cancels pending opens.
+A press while only opens are pending cancels those opens, including the first
+join while the page has keyboard focus. Once all are off,
+the key restores the rooms in which microphones were last actually on. If
+none of those rooms remain, it tries the current member room the user most
+recently chose to join, in request order. Local
+buttons affect their own room. Leaving removes that membership from memory.
+Ctrl+Shift+D follows the same rule independently for local room listening.
+macOS uses Command in place of Ctrl. Both keys
 can be reassigned or cleared. Text entry, IME composition, shortcut recording
 and remote keyboard control have priority. A held key toggles once.
 
@@ -344,6 +352,11 @@ Windows also supports opt-in background shortcuts. While the user
 has joined voice, the App registers the keys with Windows and sends each action
 to one user-selected, approved App connection. The page applies the same dock
 action. If background registration is unavailable, page shortcuts remain usable.
+
+The speaking overlay and compact voice row follow the selected joined voice
+room. Selecting its name in the voice controls changes that target; ordinary
+room navigation preserves it. Leaving the target selects a remaining joined
+room, and leaving the last one closes the overlay.
 
 ### Identity And Share Titles
 

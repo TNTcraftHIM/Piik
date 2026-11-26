@@ -44,8 +44,7 @@
   > .c3-mini-message { position: relative; inset: auto; flex: 1; min-height: 0; padding: 8px; overflow-y: auto; pointer-events: auto; }
   > .c3-watch-controls { position: relative; inset: auto; flex: none; align-self: center; margin-block-end: 10px; }
 }
-.c3-shell:not([data-layout="quick"]) .c3-watch-player[data-external]:not([data-native-page], :fullscreen) { contain: size; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player[data-standalone]:not(:fullscreen),
+.c3-shell .c3-watch-player[data-external]:not([data-native-page], :fullscreen) { contain: size; }
 .c3-video.c3-watch-player[data-diagnosis]:not(:fullscreen) {
   aspect-ratio: auto;
   grid-template-rows: minmax(160px, auto) auto;
@@ -245,13 +244,6 @@
   flex-wrap: wrap;
   flex: none;
   margin: 8px auto;
-}
-
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-video:is([data-embed], [data-native-page]):not(:fullscreen) {
-  display: flex;
-  aspect-ratio: auto;
-  min-height: 200px;
-  > .c3-mini-message { position: static; }
 }
 
 .c3-watch-embed-preview { min-width: 200px; min-height: 200px; aspect-ratio: 16 / 9; }

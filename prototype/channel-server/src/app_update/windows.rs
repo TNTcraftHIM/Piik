@@ -17,6 +17,7 @@ use std::{
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 const RECORD: &str = "update-workspace.json";
+const PENDING_DOWNLOAD: &str = "update-download.json";
 const HELPER: &str = "apply-update.exe";
 
 #[derive(Deserialize, Serialize)]
@@ -148,6 +149,131 @@ fn matching_workspace_path(
     Ok(())
 }
 
+fn download_name(operation: uuid::Uuid) -> String {
+    format!(".piik-update-{operation}-download")
+}
+
+fn download_workspace(installation: &Installation, operation: uuid::Uuid) -> Result<PathBuf> {
+    let parent = installation
+        .root
+        .parent()
+        .context("App has no installation parent")?;
+    Ok(parent.join(download_name(operation)))
+}
+
+pub(super) fn retire_download(installation: &Installation) -> Result<()> {
+    let pending = installation.data_root.join(PENDING_DOWNLOAD);
+    if !pending.try_exists()? {
+        return Ok(());
+    }
+    let record: Record = read_json(&pending)?;
+    // Portable installs can move while retaining the same locked data directory.
+    let workspace = record.workspace;
+    let expected_name = download_name(record.operation);
+    ensure!(
+        workspace.is_absolute()
+            && workspace.file_name() == Some(std::ffi::OsStr::new(&expected_name))
+            && package::outside(&workspace, &installation.data_root)
+            && package::outside(&workspace, &installation.root)
+            && package::outside(&installation.root, &workspace),
+        "Invalid pending download workspace"
+    );
+    if let Ok(retained) = read_json::<Record>(&installation.data_root.join(RECORD)) {
+        ensure!(
+            !package::same_path(&workspace, &retained.workspace),
+            "Pending download matches the retained update"
+        );
+    }
+    match fs::symlink_metadata(&workspace) {
+        Ok(metadata) => ensure_directory(&metadata)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::remove_file(pending)?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    }
+    ensure!(
+        package::same_path(&workspace, &fs::canonicalize(&workspace)?),
+        "Pending download workspace path changed"
+    );
+    let allowed = ["update.json", "update.json.sig", "package.zip", "plan.json"];
+    for entry in fs::read_dir(&workspace)? {
+        let entry = entry?;
+        ensure!(
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| allowed.contains(&name))
+                && package::entry_kind(&fs::symlink_metadata(entry.path())?)?
+                    == package::EntryKind::File,
+            "Pending download contains unknown files",
+        );
+    }
+    fs::remove_dir_all(&workspace)?;
+    fs::remove_file(pending)?;
+    Ok(())
+}
+
+pub(super) struct DownloadWorkspace {
+    path: PathBuf,
+    record: Option<PathBuf>,
+}
+
+impl DownloadWorkspace {
+    pub(super) fn create(installation: &Installation, operation: uuid::Uuid) -> Result<Self> {
+        retire_download(installation)?;
+        let path = download_workspace(installation, operation)?;
+        ensure!(
+            package::outside(&path, &installation.data_root),
+            "Update directory contains App data"
+        );
+        let record = installation.data_root.join(PENDING_DOWNLOAD);
+        // Record the workspace before creating it, so termination cannot orphan the archive.
+        write_new(
+            &record,
+            &Record {
+                operation,
+                workspace: path.clone(),
+            },
+        )?;
+        if let Err(error) = fs::create_dir(&path) {
+            let _ = fs::remove_file(&record);
+            return Err(error.into());
+        }
+        Ok(Self {
+            path,
+            record: Some(record),
+        })
+    }
+
+    pub(super) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn transfer(&mut self, record: PathBuf) -> Result<()> {
+        // The App holds its data-directory lock and retired the previous handoff.
+        fs::rename(self.record.as_ref().unwrap(), &record)?;
+        self.record = Some(record);
+        Ok(())
+    }
+
+    fn keep(mut self) {
+        self.record = None;
+    }
+}
+
+impl Drop for DownloadWorkspace {
+    fn drop(&mut self) {
+        if let Some(record) = &self.record {
+            if let Err(error) =
+                fs::remove_dir_all(&self.path).and_then(|()| fs::remove_file(record))
+            {
+                log::warn!(target: "piik.update", "Remove update workspace: {error}");
+            }
+        }
+    }
+}
+
 fn retire_previous(installation: &Installation) -> Result<()> {
     let record_path = installation.data_root.join(RECORD);
     if !record_path.exists() {
@@ -211,7 +337,7 @@ fn retire_previous(installation: &Installation) -> Result<()> {
 pub(super) async fn handoff(
     options: &Options,
     installation: &Installation,
-    prepared: Prepared,
+    mut prepared: Prepared,
     mut closing: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
     ensure!(!*closing.borrow(), "App is closing");
@@ -238,16 +364,18 @@ pub(super) async fn handoff(
         layout: options.layout.clone(),
     };
     matching_workspace(&workspace, &plan)?;
+    // A pre-handoff crash leaves a known file in the pending download workspace.
+    let mut plan_file = File::options()
+        .write(true)
+        .create_new(true)
+        .open(workspace.join("plan.json"))?;
+    serde_json::to_writer(&mut plan_file, &plan)?;
+    plan_file.sync_all()?;
+    drop(plan_file);
+    prepared
+        .directory
+        .transfer(installation.data_root.join(RECORD))?;
     fs::copy(&options.executable, workspace.join(HELPER))?;
-    write_new(&workspace.join("plan.json"), &plan)?;
-    let record = installation.data_root.join(RECORD);
-    write_new(
-        &record,
-        &Record {
-            operation: plan.operation,
-            workspace: workspace.clone(),
-        },
-    )?;
 
     let mut command = tokio::process::Command::new(workspace.join(HELPER));
     command
@@ -258,13 +386,7 @@ pub(super) async fn handoff(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .creation_flags(0x08000000);
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = fs::remove_file(&record);
-            return Err(error).context("Start update helper");
-        }
-    };
+    let mut child = command.spawn().context("Start update helper")?;
     let launch = async {
         let mut output = BufReader::new(child.stdout.take().context("Update helper stdout")?);
         let mut line = String::new();
@@ -291,7 +413,7 @@ pub(super) async fn handoff(
     .await;
     match launch {
         Ok(()) => {
-            let _ = prepared.directory.keep();
+            prepared.directory.keep();
             Ok(())
         }
         Err(error) => {
@@ -299,7 +421,6 @@ pub(super) async fn handoff(
             // Reap it before its workspace is removed; never terminate the App.
             let _ = child.kill().await;
             let _ = child.wait().await;
-            let _ = fs::remove_file(record);
             Err(error)
         }
     }

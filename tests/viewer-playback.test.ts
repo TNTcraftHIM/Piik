@@ -12,6 +12,10 @@ import { en } from "../src/client/locales/en";
 import { useHostPreviewPlayback } from "../src/client/components/living/use-host-preview-playback";
 
 const previewHooks = vi.hoisted(() => ({ active: false, cleanup: [] as (() => void)[] }));
+vi.mock("../src/client/components/living/HostRemoteControl", () => ({
+  HostRemoteControl: () => createElement("button", { id: "input-permission" }),
+}));
+
 vi.mock("react", async importOriginal => {
   const react = await importOriginal<typeof import("react")>();
   return { ...react,
@@ -43,15 +47,17 @@ describe("Playback audio controls", () => {
       kind: "screen", id: "screen", userId: "self", name: "Me", roomName: "Room",
       source: { kind: "screen", name: "Own screen" }, title: null, owned: true, audience: [], subscribed: true,
       localSource: true, paused: false, stream: {} as MediaStream, shareControls: () => createElement("button", { id: "share-settings" }),
+      remoteControl: { mode: "ask", platform: "windows", canSetStopShortcut: false, requests: [] },
     };
     const render = (hidden: boolean) => renderToStaticMarkup(createElement(ChannelStage, {
-      theaterMode: [false, vi.fn()], sources: [{ ...source, hidden }], focusedId: null, canSubscribe: true,
+      companion: "none", theaterMode: [false, vi.fn()], sources: [{ ...source, hidden }], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn(),
     }));
     expect(render(false)).toContain('id="share-settings"');
     const background = render(true);
     expect(background).not.toContain('id="share-settings"');
+    expect(background).toContain('id="input-permission"');
     expect(background).toContain('data-publication-id="screen"');
     expect(background).toContain("<video");
   });
@@ -62,7 +68,7 @@ describe("Playback audio controls", () => {
     const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, canMute: true, onChange: vi.fn() };
     const source = { kind: "screen" as const, id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: "Own screen" },
       title: null, owned: true, localSource: true, audience: [], subscribed: true, paused: false, stream };
-    const render = (sound = sourceAudio) => renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()],
+    const render = (sound = sourceAudio) => renderToStaticMarkup(createElement(ChannelStage, { companion: "none", theaterMode: [false, vi.fn()],
       sources: [{ ...source, sourceAudio: sound }], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn(),
@@ -166,7 +172,7 @@ describe("Local source playback", () => {
     expect(html).not.toContain("No audio in this share");
     const source = { kind: "screen" as const, id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: null },
       title: null, owned: false, localSource: true, audience: [], subscribed: true, paused: false, stream };
-    const props: ChannelStageProps = { theaterMode: [false, vi.fn()], sources: [source], focusedId: null, canSubscribe: true,
+    const props: ChannelStageProps = { companion: "none", theaterMode: [false, vi.fn()], sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() };
     const local = renderToStaticMarkup(createElement(ChannelStage, props));
@@ -185,7 +191,7 @@ describe("Screen delivery result", () => {
     setCopy({ lang: "en" });
     const source = { kind: "screen" as const, audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false,
       subscribed: true, paused: false, deliveryFailed: true };
-    const props: ChannelStageProps = { theaterMode: [false, vi.fn()], sources: [source], focusedId: null, canSubscribe: true,
+    const props: ChannelStageProps = { companion: "none", theaterMode: [false, vi.fn()], sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() };
     const failed = renderToStaticMarkup(createElement(ChannelStage, props));
@@ -231,7 +237,7 @@ describe("Picture surface between flows", () => {
   const source = { kind: "screen" as const, audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room",
     source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false, subscribed: true, paused: false, waitingForInput: true };
   const render = (patch: Partial<ChannelStageProps["sources"][number]>) => renderToStaticMarkup(createElement(ChannelStage, {
-    theaterMode: [false, vi.fn()], sources: [{ ...source, ...patch } as ChannelStageProps["sources"][number]], focusedId: null, canSubscribe: true,
+    companion: "none", theaterMode: [false, vi.fn()], sources: [{ ...source, ...patch } as ChannelStageProps["sources"][number]], focusedId: null, canSubscribe: true,
     onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onRetryPicture: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
     onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn(),
   }));

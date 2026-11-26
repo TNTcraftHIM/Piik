@@ -1,6 +1,6 @@
 # Quiet Topology Improvement: Evidence And Independent Designs
 
-- Date: 2026-11-25
+- Date: 2026-11-26
 - Status: evidence for [ADR-0018](../adr/0018-quiet-topology-improvement.md),
   not a decision.
 
@@ -260,6 +260,32 @@ in a cold, slow-failure cell. The workload removes relays selected from each
 policy's resulting tree, so it can remove different participants after the
 policies diverge. This supports the local depth tie-break; it does not establish
 unchanged reachability, lower real playback latency or cost-free live movement.
+
+## Bounded Second Trial: Runtime Control
+
+A Chrome 156 control used the current planner and real UDP/WebRTC with one
+unreachable preferred crossing. With ordinary standby enabled in both arms,
+one waiting viewer reached its first presented frame in 17.069 s with serial
+trials and 2.279 s with the conditional second trial. Both existing viewers kept
+their selected streams. The alternate relay sent 19,130 and 18,924 RTP bytes per
+second of actual presentation respectively.
+
+A separate four-slot control gave another viewer's first attempt priority over
+the second trial. Both arms disabled standby to hold that competition fixed.
+
+| First presented frame from Watch | Serial | Conditional second trial |
+| --- | ---: | ---: |
+| Viewer V | 17.699 s | 4.677 s |
+| Viewer W | 3.587 s | 3.844 s |
+| Sum | 21.286 s | 8.522 s |
+
+All waiting viewers completed, and both arms stayed within four concurrent
+attempts. W reclaimed V's new fourth-slot trial after 239 ms; that crossing was
+later allocated twice more before succeeding. Existing streams kept their
+identity, but maximum presentation gaps varied, so unchanged continuity is not
+established. These are single paired runs on one Windows host with controlled
+UDP bridges. Reverse order, independent networks and fourth-slot competition
+with ordinary standby remain unmeasured. The production policy is unchanged.
 
 ## Voice Fan-out Measured
 

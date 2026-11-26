@@ -608,7 +608,7 @@ async fn run(
     let mut last_rate_update_ms = 0;
     let mut current = settings;
     let mut previous = None;
-    let mut presentation = None;
+    let mut submitted: Option<(Instant, Instant)> = None;
     loop {
         let changed = shared.changed.notified();
         tokio::pin!(changed);
@@ -648,18 +648,23 @@ async fn run(
             || raw.buffer.flags().contains(gst::BufferFlags::DISCONT);
         let repeated = previous == Some(raw.time);
         previous = Some(raw.time);
-        let time = if capture_timing && force && presentation.is_some_and(|last| raw.time <= last) {
-            clock.now()?
-        } else {
-            raw.time
-        };
-        if presentation.is_some_and(|last| time <= last) {
+        let timestamp = (clock.timestamp(raw.time)?.nseconds() / 100).try_into()?;
+        if !force && frame_limit.is_some() && !cadence.accept(timestamp) {
             continue;
         }
-        let timestamp = (clock.timestamp(time)?.nseconds() / 100).try_into()?;
-        let admitted = frame_limit.is_none() || cadence.accept(timestamp);
-        if !force && !admitted {
-            continue;
+        let capture = raw.time;
+        let mut time = capture;
+        if let Some((last_capture, last_pts)) = submitted {
+            if capture_timing {
+                if force && capture == last_capture {
+                    time = clock.now()?;
+                }
+                const RTP_TICK: std::time::Duration =
+                    std::time::Duration::from_nanos(1_000_000_000_u64.div_ceil(90_000));
+                time = time.max(last_pts + RTP_TICK);
+            } else if time <= last_pts {
+                continue;
+            }
         }
         let force = std::mem::take(&mut shared.state.lock().unwrap().force) || force;
         let restrictions = {
@@ -677,7 +682,7 @@ async fn run(
         if next_limit != frame_limit {
             frame_limit = next_limit;
             cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
-            if frame_limit.is_some() {
+            if frame_limit.is_some() && !force {
                 cadence.accept(timestamp);
             }
             admission_rate = AdmissionRate::default();
@@ -760,7 +765,7 @@ async fn run(
                 },
             }
         }
-        presentation = Some(time);
+        submitted = Some((capture, time));
     }
 }
 
@@ -773,6 +778,15 @@ mod tests {
         Ok(gst::ElementFactory::make("x264enc").build()?)
     }
     fn publish(frames: &Frames, width: u32, height: u32, index: u8) -> Result<Instant> {
+        publish_at(frames, width, height, index, frames.clock().now()?)
+    }
+    fn publish_at(
+        frames: &Frames,
+        width: u32,
+        height: u32,
+        index: u8,
+        time: Instant,
+    ) -> Result<Instant> {
         let info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Bgra, width, height)
             .fps(gst::Fraction::new(30, 1))
             .build()?;
@@ -780,7 +794,6 @@ mod tests {
         for (offset, pixel) in pixels.chunks_exact_mut(4).enumerate() {
             pixel.copy_from_slice(&[offset as u8, index, (offset >> 8) as u8, 255]);
         }
-        let time = frames.clock().now()?;
         let mut buffer = gst::Buffer::from_mut_slice(pixels);
         buffer.make_mut().set_pts(frames.clock().timestamp(time)?);
         let caps = info.to_caps()?;
@@ -924,6 +937,95 @@ mod tests {
             "source stop did not finish its encoding"
         );
         stop(healthy).await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn static_refresh_preserves_the_next_due_capture() -> Result<()> {
+        gst::init()?;
+        for offset_us in [10_000, -20_000, 1] {
+            let frames = Frames::new(FrameTiming::Capture)?;
+            let settings = Settings {
+                degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
+                width: 160,
+                height: 96,
+                fps: 10,
+                bitrate: 1_000_000,
+            };
+            let mut encoding =
+                Encoding::start_with_encoder(frames.clone(), settings, software_encoder()?)?;
+            let first = frames.clock().now()? - Duration::from_secs(1);
+            publish_at(&frames, 160, 96, 0, first)?;
+            ensure!(next(&mut encoding).await?.presentation_time == first);
+            encoding.control().force_keyframe()?;
+            let refresh = next(&mut encoding).await?;
+            ensure!(refresh.keyframe && refresh.presentation_time > first);
+            let raw = if offset_us < 0 {
+                refresh.presentation_time - Duration::from_micros((-offset_us) as u64)
+            } else {
+                refresh.presentation_time + Duration::from_micros(offset_us as u64)
+            };
+            let expected = raw.max(refresh.presentation_time + Duration::from_nanos(11_112));
+            tokio::time::sleep_until(tokio::time::Instant::from_std(raw)).await;
+            publish_at(&frames, 160, 96, 1, raw)?;
+            let fresh = next(&mut encoding)
+                .await
+                .context("first due capture after static refresh")?;
+            ensure!(fresh.presentation_time == expected, "source offset {offset_us} us");
+            if offset_us == 10_000 {
+                // A normal frame that follows before the next deadline still gets skipped.
+                let early = raw + Duration::from_millis(1);
+                tokio::time::sleep_until(tokio::time::Instant::from_std(early)).await;
+                publish_at(&frames, 160, 96, 2, early)?;
+                ensure!(tokio::time::timeout(Duration::from_millis(150), encoding.recv())
+                    .await
+                    .is_err());
+                let due = frames.clock().now()?;
+                publish_at(&frames, 160, 96, 3, due)?;
+                ensure!(next(&mut encoding).await?.presentation_time == due);
+            }
+            frames.finish(None);
+            stop(encoding).await?;
+        }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keyframe_request_recovers_a_budget_dropped_capture() -> Result<()> {
+        gst::init()?;
+        let frames = Frames::new(FrameTiming::Capture)?;
+        let settings = Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
+            width: 160,
+            height: 96,
+            fps: 10,
+            bitrate: 1_000,
+        };
+        let mut encoding =
+            Encoding::start_with_encoder(frames.clone(), settings, software_encoder()?)?;
+        let first = frames.clock().now()? - Duration::from_millis(300);
+        publish_at(&frames, 160, 96, 0, first)?;
+        next(&mut encoding).await?;
+        encoding.control().force_keyframe()?;
+        let refresh = next(&mut encoding).await?;
+        let late = refresh.presentation_time - Duration::from_millis(20);
+        publish_at(&frames, 160, 96, 1, late)?;
+        ensure!(
+            tokio::time::timeout(Duration::from_millis(150), encoding.recv()).await.is_err(),
+            "constrained worker emitted the ordinary picture"
+        );
+        encoding.control().force_keyframe()?;
+        let recovered = next(&mut encoding).await?;
+        ensure!(recovered.keyframe);
+        ensure!(
+            recovered.presentation_time == refresh.presentation_time + Duration::from_nanos(11_112),
+            "first submission of the dropped capture used the PLI clock"
+        );
+        let requested = frames.clock().now()?;
+        encoding.control().force_keyframe()?;
+        ensure!(next(&mut encoding).await?.presentation_time >= requested);
+        frames.finish(None);
+        stop(encoding).await?;
         Ok(())
     }
 }

@@ -570,15 +570,15 @@ counters appear under the same number in `events.ndjson`.
 
 ## UI previews
 
-The full workspace is the default. An empty site without a saved interface choice
-offers an optional simple-sharing view below **Create your first room**. Choosing
+The full room layout is the default. An empty site without a saved interface choice
+offers the optional minimal layout below **Create your first room**. Choosing
 or skipping saves the preference in this Browser origin; invitations and existing
 rooms remain direct. Change it later under **More options → Interface**.
 
 Open `/__tooltip-preview` on the Vite service for the shared controls catalogue,
 including room management, invitations, App connection and error states.
 `/__tooltip-preview?channel-room` renders the production room view with local
-sample data. Add `&screens=4` for multiple pictures, `&no-rooms` for first-room
+sample data. Add `&layout=minimal` for the minimal view, `&screens=4` for multiple pictures, `&no-rooms` for first-room
 creation, or `&empty-chat` for an empty conversation.
 `/__tooltip-preview?channel-entry` shows the current first-use controls with local
 sample state; it does not change actual saved preferences.

@@ -278,8 +278,8 @@ where
     bail!("three distinct IPv4 STUN destinations unavailable")
 }
 
-/// Owned by one authorized pair attempt. Dropping its future drops all work:
-/// no detached readers, workers, or deadlines survive socket transfer.
+/// This task prepares one extra candidate on an authorized, live pair.
+/// Dropping its future releases the outstanding checks and sockets.
 pub struct Preparation {
     pair: Uuid,
     secret: [u8; 32],
@@ -1072,7 +1072,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finished_preparation_keeps_ordinary_fallback_when_peer_signal_arrives() -> Result<()> {
+    async fn failed_preparation_preserves_the_live_pair_when_a_late_offer_arrives() -> Result<()> {
         use super::super::*;
         let (mut driver, _events, mut commands, _stop) = tests::driver();
         driver.session = Uuid::from_u128(u128::MAX);
@@ -1082,7 +1082,7 @@ mod tests {
             peer_id: Uuid::new_v4(),
             udp_preparation: Some(piik_channel_core::wire::UdpPreparation::Available),
             can_receive_video_layers: false,
-            rooms: vec!["prep-fallback".into()],
+            rooms: vec!["prep-failure".into()],
             incoming: vec![],
             outgoing: vec![],
         };
@@ -1153,7 +1153,7 @@ mod tests {
         }
         ensure!(
             driver.preparings.contains_key(&pair),
-            "late preparation signal retired the pair before its ordinary fallback"
+            "late offer retired the completed preparation"
         );
         let (finished, result) = next(&mut driver.preparings).await.unwrap();
         assert_eq!(finished, pair);
@@ -1161,11 +1161,11 @@ mod tests {
         driver.prepared(pending, result).await;
         anyhow::ensure!(
             driver.preparings.is_empty() && driver.pairs.contains_key(&pair),
-            "survey failure lost ordinary pair fallback"
+            "survey failure retired the live pair"
         );
         anyhow::ensure!(
             driver.pairs[&pair].plan.udp_preparation == plan.udp_preparation,
-            "fallback changed its authorized pair lease"
+            "survey failure changed the pair grant"
         );
         assert_eq!(
             driver.pairs[&sibling.id]
@@ -1238,7 +1238,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completed_success_refusal_uses_ordinary_fallback_and_releases_prepared_socket(
+    async fn peer_refusal_after_completion_releases_the_winner_and_preserves_the_pair(
     ) -> Result<()> {
         use super::super::*;
         let (mut driver, _events, _commands, _stop) = tests::driver();
@@ -1354,14 +1354,8 @@ mod tests {
         let (id, result) = next(&mut driver.preparings).await.unwrap();
         let pending = driver.preparings.remove(&id).unwrap();
         driver.prepared(pending, result).await;
-        let ordinary = driver
-            .pairs
-            .get(&pair)
-            .context("refusal lost ordinary fallback")?;
-        ensure!(
-            ordinary.candidates.is_empty(),
-            "refusal adopted completed preparation tuple"
-        );
+        driver.pairs.get(&pair).context("refusal retired the live pair")?
+            .pc.connection_metrics().await?;
         let rebound = UdpSocket::bind(first_address)
             .await
             .context("refused prepared socket retained")?;

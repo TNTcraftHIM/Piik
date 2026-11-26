@@ -6,14 +6,14 @@ import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-b
 const unbound: VoiceToggleShortcuts = { microphone: null, listening: null };
 
 export function useBackgroundVoiceShortcuts(port: BackgroundVoiceShortcuts | undefined, bindings: VoiceToggleShortcuts,
-  roomId: string | undefined, recording: boolean, onShortcut: (action: VoiceToggleAction) => void) {
+  sessionId: string | undefined, recording: boolean, onShortcut: (action: VoiceToggleAction) => void) {
   const [claim, setClaim] = useState<BackgroundVoiceShortcuts>();
   const [lifecycle, setLifecycle] = useState({ frozen: false });
   const awaitingResume = useRef(false);
   const enabled = Boolean(port && claim === port);
-  // A new Dock target waits for an ordered App reply before accepting actions.
-  const request = useMemo(() => ({ port, enabled, bindings: recording ? unbound : bindings, lifecycle, roomId }),
-    [port, enabled, bindings, recording, lifecycle, roomId]);
+  // A new voice session waits for an ordered App reply before accepting actions.
+  const request = useMemo(() => ({ port, enabled, bindings: recording ? unbound : bindings, lifecycle, sessionId }),
+    [port, enabled, bindings, recording, lifecycle, sessionId]);
   const [response, setResponse] = useState<{ request: typeof request; report?: NativeVoiceShortcutsReport; error?: "in_use" | "failed" }>();
   const current = enabled && response?.request === request ? response : undefined;
   const report = current?.report;

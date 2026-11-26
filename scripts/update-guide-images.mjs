@@ -11,6 +11,7 @@ const scenes = new Set((values.only ?? 'room,invitation,source,quality').split('
 if (positionals.length > 1 || [...scenes].some(scene => !['room', 'invitation', 'source', 'quality'].includes(scene)))
   throw new Error('Usage: node scripts/update-guide-images.mjs [dev-origin] [--only room,invitation,source,quality]');
 const preview = new URL('/__tooltip-preview', positionals[0] || 'http://127.0.0.1:8787');
+const roomPreview = new URL('?channel-room', preview);
 const output = fileURLToPath(new URL('../docs/assets/guide/', import.meta.url));
 const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
@@ -47,7 +48,7 @@ async function capture(selector, name) {
       .map(animation => animation.finished.catch(() => {})));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
-  const isolation = selector === '.c3-guide-room' ? null : (await evaluate(`(() => {
+  const isolation = selector === '.c3-room-preview' ? null : (await evaluate(`(() => {
     const guide = document.querySelector('#channel-guide-preview');
     const target = document.querySelector(${JSON.stringify(selector)});
     const previous = [guide, target].map(node => [node.style.getPropertyValue('visibility'), node.style.getPropertyPriority('visibility')]);
@@ -88,7 +89,6 @@ try {
         document.head.append(style); scrollTo(0, 0);
       })()`);
       const suffix = `${locale}${theme === 'dark' ? '.dark' : ''}`;
-      if (scenes.has('room')) await capture('.c3-guide-room', `channel-room.${suffix}`);
       if (scenes.has('invitation')) {
         await run('click', '.c3-guide-title .c3-room-invitation-entry button');
         await run('wait', '.c3-room-invitation:popover-open .c3-invitation-link input');
@@ -104,6 +104,15 @@ try {
       if (scenes.has('quality')) {
         await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Share settings' : '分享设置', '--exact');
         await capture('.c3-quality-picker:popover-open', `channel-quality.${suffix}`);
+      }
+      if (scenes.has('room')) {
+        await run('set', 'viewport', '1280', '760');
+        await run('open', roomPreview.href);
+        await run('wait', '.c3-room-preview .c3-voice-dock-rooms');
+        await run('click', '.c3-room-item[data-selected] .c3-room-voice-toggle button');
+        await run('click', '#c3-people-trigger');
+        await capture('.c3-room-preview', `channel-room.${suffix}`);
+        await run('set', 'viewport', '1280', '900');
       }
     }
   }

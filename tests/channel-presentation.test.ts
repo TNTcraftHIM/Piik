@@ -157,19 +157,18 @@ it("shows each person's room activity across endpoints and keeps chat presence i
     ownedScreens: new Set(), readByRoom: { room: 0 }, watchPlayers: new Map() } as unknown as ChannelController;
   const render = () => renderToStaticMarkup(createElement(ChannelRoomListItem, { channel, room, selected: true, settingsOpen: false, onSelect() {}, onManage() {} }));
   const renderPeople = () => renderToStaticMarkup(createElement(ChannelPeople, { channel, roomId: "room", active: true, onBack() {} }));
-  for (const html of [render(), renderPeople()]) {
-    const rows = html.split('data-user-id="');
-    const owner = rows.find(row => row.startsWith('self"'));
-    const member = rows.find(row => row.startsWith('route"'));
-    expect(owner).toContain('<small>' + say("channel.user.roomOwner") + '</small>');
-    expect(owner?.match(/<button[^>]*class="c3-participant-status"/g)).toHaveLength(1);
-    const ownerStatus = owner?.match(/class="c3-participant-status" aria-label="([^"]+)"/)?.[1];
-    for (const key of ["voice.microphoneInactive", "voice.listeningPaused", "channel.roomParticipants.sharing", "screen.pictureReceived", "channel.roomParticipants.sendingFiles"] as const) {
-      expect(ownerStatus).toContain(say(key));
-    }
-    expect(member).not.toContain(say("channel.user.roomOwner"));
-    expect(member).toContain(say("channel.roomParticipants.receivingFiles"));
+  expect(render()).toContain(say("room.item.showParticipants", { count: "2" }));
+  const rows = renderPeople().split('data-user-id="');
+  const owner = rows.find(row => row.startsWith('self"'));
+  const member = rows.find(row => row.startsWith('route"'));
+  expect(owner).toContain('<small>' + say("channel.user.roomOwner") + '</small>');
+  expect(owner?.match(/<button[^>]*class="c3-participant-status"/g)).toHaveLength(1);
+  const ownerStatus = owner?.match(/class="c3-participant-status" aria-label="([^"]+)"/)?.[1];
+  for (const key of ["voice.microphoneInactive", "voice.listeningPaused", "channel.roomParticipants.sharing", "screen.pictureReceived", "channel.roomParticipants.sendingFiles"] as const) {
+    expect(ownerStatus).toContain(say(key));
   }
+  expect(member).not.toContain(say("channel.user.roomOwner"));
+  expect(member).toContain(say("channel.roomParticipants.receivingFiles"));
   const navigationDescriptions = () => {
     const html = render();
     const ids = html.match(/<button[^>]*aria-label="Room"[^>]*aria-describedby="([^"]+)"/)?.[1];
@@ -190,16 +189,13 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   picture.audience[0].state = "active";
   state.sessions.find(session => session.id === "self-helper")!.online = false;
   state.sessions.find(session => session.id === "route-peer")!.online = false;
-  expect(render()).toContain('class="c3-user" data-user-id="self"');
   expect(renderPeople()).toContain('class="c3-user" data-user-id="self"');
-  expect(render()).toContain('class="c3-user is-offline" data-user-id="route"');
   expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="route"');
   state.sessions.find(session => session.id === "self-page")!.online = false;
-  expect(render()).toContain('class="c3-user is-offline" data-user-id="self"');
   expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="self"');
   room.fileActivity = [];
   expect(activities().map(user => user.id)).toEqual(["self"]);
-  expect(render()).not.toContain('data-user-id="route"');
+  expect(render()).toContain(say("room.item.showParticipants", { count: "2" }));
   expect(renderPeople()).toContain('data-user-id="route"');
   expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["self", "chat"]);
   // A disconnected chat reader has no live media to keep them in the room.
@@ -213,9 +209,9 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   state.subscriptions.push("voice");
   streams.set("voice", {} as MediaStream);
   const listenLabel = say("voice.listenPerson");
-  for (const surface of [render, renderPeople]) expect(surface()).toContain(`aria-label="${listenLabel}"`);
+  expect(renderPeople()).toContain(`aria-label="${listenLabel}"`);
   streams.clear();
-  for (const surface of [render, renderPeople]) expect(surface()).not.toContain(`aria-label="${listenLabel}"`);
+  expect(renderPeople()).not.toContain(`aria-label="${listenLabel}"`);
   state.publications = [];
   state.voice = [];
   expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["chat"]);

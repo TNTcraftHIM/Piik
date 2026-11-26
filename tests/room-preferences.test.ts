@@ -17,13 +17,12 @@ function storage() {
 it("keeps independent room-tool choices across reads without storing private runtime fields", () => {
   const values = storage();
   expect(readRoomPreferences().previewAutoPause).toBe(true);
-  expect(readRoomPreferences().sharingView).toBe(false);
-  expect(readRoomPreferences().interfaceLayout).toBeUndefined();
+  expect(readRoomPreferences().roomLayout).toBeUndefined();
   expect(readRoomPreferences().remoteTouchMode).toBe("direct");
-  saveRoomPreferences({ sharingView: true, interfaceLayout: "quick", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text", combineKeys: true });
+  saveRoomPreferences({ roomLayout: "minimal", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text", combineKeys: true });
   saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
-  expect(readRoomPreferences()).toMatchObject({ sharingView: true, interfaceLayout: "quick", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text",
+  expect(readRoomPreferences()).toMatchObject({ roomLayout: "minimal", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text",
     combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
@@ -66,19 +65,33 @@ it("isolates nested preferences across reads and observes external edits after a
 it("keeps layout undecided until an explicit choice, independently of other preferences", () => {
   const values = storage();
   expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .5 } })).toBe(true);
-  expect(readRoomPreferences().interfaceLayout).toBeUndefined();
-  expect(JSON.parse(values.get("piik:room-preferences:v1")!)).not.toHaveProperty("interfaceLayout");
-  for (const layout of ["workspace", "quick"] as const) {
-    expect(saveRoomPreferences({ interfaceLayout: layout })).toBe(true);
+  expect(readRoomPreferences().roomLayout).toBeUndefined();
+  expect(JSON.parse(values.get("piik:room-preferences:v1")!)).not.toHaveProperty("roomLayout");
+  for (const layout of ["full", "minimal"] as const) {
+    expect(saveRoomPreferences({ roomLayout: layout })).toBe(true);
     expect(saveRoomPreferences({ overlayEnabled: true })).toBe(true);
-    expect(readRoomPreferences().interfaceLayout).toBe(layout);
-    expect(JSON.parse(values.get("piik:room-preferences:v1")!).interfaceLayout).toBe(layout);
+    expect(readRoomPreferences().roomLayout).toBe(layout);
+    expect(JSON.parse(values.get("piik:room-preferences:v1")!).roomLayout).toBe(layout);
   }
+});
+
+it.each(["workspace", "quick"])("retires the %s layout while retaining independent preferences", retired => {
+  const values = storage();
+  const key = "piik:room-preferences:v1";
+  const retained = { roomListFolded: true, pictureFit: "cover", voiceListeningVolume: .6 };
+  values.set(key, JSON.stringify({ interfaceLayout: retired, sharingView: true, ...retained }));
+  expect(readRoomPreferences()).toMatchObject(retained);
+  expect(readRoomPreferences().roomLayout).toBeUndefined();
+  expect(saveRoomPreferences({ roomLayout: "minimal" })).toBe(true);
+  const written = JSON.parse(values.get(key)!);
+  expect(written).toMatchObject({ ...retained, roomLayout: "minimal" });
+  expect(written).not.toHaveProperty("interfaceLayout");
+  expect(written).not.toHaveProperty("sharingView");
 });
 
 it("adds stick defaults to existing preferences and persists only normalized positions", () => {
   const values = storage();
-  const previous = { interfaceLayout: "quick", pictureFit: "cover", remoteTouchMode: "trackpad" };
+  const previous = { roomLayout: "minimal", pictureFit: "cover", remoteTouchMode: "trackpad" };
   values.set("piik:room-preferences:v1", JSON.stringify(previous));
   expect(readRoomPreferences()).toMatchObject({
     ...previous, virtualSticksEnabled: true, stickPositions: {}, touchOnlySticks: false,

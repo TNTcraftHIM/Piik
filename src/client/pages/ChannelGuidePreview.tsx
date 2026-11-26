@@ -247,6 +247,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     connectionMetrics: async () => ({ samples: [], unavailable: false }),
     appConnectionMetrics: async roomId => ({ sessionId: appSessionId, bindingId: `sample-binding-${roomId}`, connections: [] }),
     canUnmute: () => true, voiceMicrophonePending: () => false, voiceBusy: () => false,
+    toggleVoiceShortcut: () => { received(); return true; },
     setMuted: async (roomId: string, muted: boolean) => setVoiceByRoom(previous => previous[roomId]
       ? { ...previous, [roomId]: { ...previous[roomId], muted } } : previous),
     setDeafened: async (roomId: string, deafened: boolean) => setVoiceByRoom(previous => previous[roomId]
@@ -323,9 +324,8 @@ export function ChannelGuidePreview({ shareVariant }: { shareVariant?: Component
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
-      {voiceRooms ? <ChannelVoiceDock presentation="rooms" channel={channel} browsingRoomId="friday"
+      <ChannelVoiceDock channel={channel} browsingRoomId="friday"
         renderingBySpeaker={new Map()} density={voiceView === "rail" ? "rail" : "rows"} onBrowse={received} />
-        : <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />}
       </div>
     </div>
     {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)}

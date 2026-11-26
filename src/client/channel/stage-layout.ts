@@ -4,22 +4,16 @@ function containedWidth(width: number, height: number, ratio: number) {
 
 /** Choose the grid with the largest total contained picture area after source controls. */
 // Geometry-based selection: https://github.com/jitsi/jitsi-meet/blob/master/react/features/filmstrip/functions.web.ts
-export function stageColumns(width: number, height: number, ratios: readonly number[], gap: number, footer: number, minimumWidth: number,
-  natural?: { ratio: number; insetX: number; insetY: number; minHeight: number }, border = 2): number {
+export function stageColumns(width: number, height: number, ratios: readonly number[], gap: number, footer: number, minimumWidth: number): number {
   const count = ratios.length;
   let selected = 1, largest = 0, empty = Infinity;
   const maximum = Math.min(count, Math.max(1, Math.floor((width + gap) / (Math.min(width, minimumWidth) + gap))));
-  if (natural) selected = maximum;
   for (let columns = 1; columns <= maximum; columns++) {
     const rows = Math.ceil(count / columns);
-    const cellWidth = (width - (columns - 1) * gap) / columns - border;
-    const videoHeight = natural
-      ? Math.max(natural.minHeight, natural.ratio ? (cellWidth - natural.insetX) / natural.ratio : 0)
-      : (height - (rows - 1) * gap) / rows - footer;
-    // Intrinsic rows cannot shrink to the bounded height assumed by a media grid.
-    if (natural && rows * (videoHeight + natural.insetY + footer) + (rows - 1) * gap > height) continue;
+    const cellWidth = (width - (columns - 1) * gap) / columns;
+    const videoHeight = (height - (rows - 1) * gap) / rows - footer;
     const area = ratios.reduce((total, ratio) => {
-      const pictureWidth = containedWidth(cellWidth - (natural?.insetX ?? 0), videoHeight, ratio);
+      const pictureWidth = containedWidth(cellWidth, videoHeight, ratio);
       return total + pictureWidth * pictureWidth / ratio;
     }, 0);
     const unused = rows * columns - count;
@@ -34,7 +28,7 @@ export interface StageTile { width: number; height: number }
 
 /** A fitted card uses just the drawn picture and its footer. */
 export function fittedStage(width: number, height: number, ratios: readonly number[], gap: number, footer: number, minimumWidth: number) {
-  const columns = stageColumns(width, height, ratios, gap, footer, minimumWidth, undefined, 0);
+  const columns = stageColumns(width, height, ratios, gap, footer, minimumWidth);
   const rows = Math.ceil(ratios.length / columns);
   const cellWidth = (width - (columns - 1) * gap) / columns;
   const pictureHeight = (height - (rows - 1) * gap) / rows - footer;
