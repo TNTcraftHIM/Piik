@@ -20,14 +20,12 @@ vi.mock("../scripts/app-package-targets.mjs", async original => ({
   ...await original<typeof import("../scripts/app-package-targets.mjs")>(),
   CLOUDFLARED_SOURCE_SHA256: createHash("sha256").update("fixture upstream").digest("hex"),
 }));
-vi.mock("../scripts/build-channel-web.mjs", async original => {
-  const builder = await original<typeof import("../scripts/build-channel-web.mjs")>();
-  return { ...builder, buildChannelWeb: (root: string, options: { web?: string; version: string; revision: string }) => {
-    if (options.web !== undefined) return builder.buildChannelWeb(root, options);
+vi.mock("../scripts/build-channel-web.mjs", () => ({
+  buildChannelWeb: () => {
     source.webBuilds++;
     return source.web;
-  } };
-});
+  },
+}));
 vi.mock("node:child_process", () => ({
   execFileSync: (command: string, args: string[]) => {
     if (command === "git" && args[0] === "rev-parse") return source.revision;

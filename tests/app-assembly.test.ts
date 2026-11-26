@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { recordChannelWeb, verifyChannelWeb } from "../scripts/channel-web-artifact.mjs";
+import { recordChannelWeb } from "../scripts/channel-web-artifact.mjs";
 
 const source = vi.hoisted(() => ({
   revision: "a".repeat(40), built: false, finalState: "clean", output: "", machine: 0x3e,
@@ -62,8 +62,7 @@ vi.mock("node:fs", async (original) => {
 });
 vi.mock("../scripts/package-licenses.mjs", () => ({ writeAppLicenseNotices: () => undefined }));
 vi.mock("../scripts/build-channel-web.mjs", () => ({
-  buildChannelWeb: (root: string, options: { web?: string; version: string; revision: string }) => {
-    if (options.web) return verifyChannelWeb(options.web, options);
+  buildChannelWeb: (root: string) => {
     source.webBuilds++;
     return join(root, "build", "channel-web");
   },
