@@ -33,8 +33,8 @@ interface ActivityBadge {
   status?: GlyphName;
 }
 
-export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFiles, receivingFiles }: PersonActivity) {
-  const copy = useCopy();
+/** What a person is doing in a room, the most particular first. A seated figure wears the first that is not voice. */
+export function personActivityBadges({ voice, sharing, viewing, sendingFiles, receivingFiles }: PersonActivity, copy: Copy): ActivityBadge[] {
   const { t } = copy;
   const badges: ActivityBadge[] = [];
   if (voice) badges.push({
@@ -42,13 +42,19 @@ export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFile
     label: personVoiceLabel(voice, copy),
   });
   if (sharing) badges.push({ icon: "cast", label: t("channel.roomParticipants.sharing") });
+  const file = sendingFiles && receivingFiles ? fileBadges.both : sendingFiles ? fileBadges.sending : receivingFiles ? fileBadges.receiving : undefined;
+  if (file) badges.push({ icon: file.icon, label: t(file.label) });
   if (viewing) {
     const appearance = viewingAppearance[viewing];
     const status = viewing === "preparing" || viewing === "failed" ? appearance.icon : undefined;
     badges.push({ icon: status ? "eye" : appearance.icon, label: participantViewingLabel(viewing, t), viewing, status });
   }
-  const file = sendingFiles && receivingFiles ? fileBadges.both : sendingFiles ? fileBadges.sending : receivingFiles ? fileBadges.receiving : undefined;
-  if (file) badges.push({ icon: file.icon, label: t(file.label) });
+  return badges;
+}
+
+export function ChannelActivityIndicators(activity: PersonActivity) {
+  const copy = useCopy();
+  const badges = personActivityBadges(activity, copy);
   if (!badges.length) return null;
   const labels = badges.map(badge => badge.label);
   return <Tooltip toggleOnClick text={labels.join("\n")}>

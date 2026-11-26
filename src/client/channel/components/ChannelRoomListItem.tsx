@@ -7,12 +7,17 @@ import type { ChannelController } from "../types";
 import type { ChannelRoom } from "../protocol";
 import { ChannelRoomItem } from "./ChannelRoomItem";
 import { ChannelRoomParticipants } from "./ChannelRoomParticipants";
+import { ChannelUser } from "./ChannelUser";
+import { Tooltip } from "../../components/living/Tooltip";
 import { roomActivityPeople, roomHasUnread, roomPeople, roomSessionViewing } from "../presentation";
+
+/** As many faces as fit beside a room's name. With more people, the last place is given to the count of the rest. */
+const PILE_FACES = 4;
 
 /** Folding the participant roster changes presentation, never room activities. */
 export function ChannelRoomListItem({ channel, room, selected, settingsOpen, unopened, onSelect, onManage, ordering, pile = false, nameHint = false }: {
   channel: ChannelController; room: ChannelRoom; selected: boolean; settingsOpen: boolean; unopened?: boolean;
-  /** Show the people present as a small pile of figures and a count; their rows live on the couch. */
+  /** Show the people present as a few faces. Pressing them lists who is in the room, and nothing about what they do. */
   pile?: boolean;
   /** The list is folded to a rail: the room name appears on hover and focus. */
   nameHint?: boolean;
@@ -20,7 +25,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
   ordering?: { index: number; total: number; onMove(direction: -1 | 1): void; onDrag(): void; onDrop(): void; onEnd(): void; active: boolean };
 }) {
   const { t, lang } = useCopy();
-  const [open, setOpen] = useState(true), id = useId();
+  const [open, setOpen] = useState(!pile), id = useId();
   const state = channel.state;
   const voices = state?.voice.filter(voice => voice.roomId === room.id) ?? [];
   const people = state && !ordering && !pile ? roomActivityPeople(state, room.id, channel.profiles, channel) : [];
@@ -28,6 +33,12 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
   const screens = state?.publications.filter(source => source.roomId === room.id && source.kind === "screen") ?? [];
   const watches = state?.watchActivities.filter(source => source.roomId === room.id) ?? [];
   const [over, setOver] = useState(false);
+  const shown = present.length > PILE_FACES ? PILE_FACES - 1 : present.length;
+  const names = joinItems(lang, present.map(person => person.name));
+  const faces = <>
+    {present.slice(0, shown).map(person => <PawnSvg key={person.userId} centered color={participantColor(person.userId)} identity={person.userId} avatar={person.avatar} />)}
+    {present.length > shown && <span aria-hidden="true">+{present.length - shown}</span>}
+  </>;
   useEffect(() => { if (!ordering?.active) setOver(false); }, [ordering?.active]);
   return <div className="c3-room-list-item" data-ordering={!!ordering || undefined} data-drop={over && ordering?.active || undefined}
     onDragOver={event => { if (ordering?.active) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setOver(true); } }}
@@ -51,10 +62,16 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         sharing={screens.some(source => channel.ownedScreens.has(source.id)) || watches.some(source => source.sessionId === channel.sessionId)}
         viewing={state && room.authorized && room.available ? roomSessionViewing(screens, watches, state.subscriptions, channel) : undefined}
         onSelect={onSelect} onManage={onManage} />
-    {pile ? present.length > 0 && <span className="c3-room-pile" role="img" aria-label={joinItems(lang, present.map(person => person.name))}>
-      {present.slice(0, 3).map(person => <PawnSvg key={person.userId} centered color={participantColor(person.userId)} identity={person.userId} avatar={person.avatar} />)}
-      <span aria-hidden="true">{present.length}</span>
-    </span>
+    {pile ? present.length > 0 && <>
+      {nameHint ? <span className="c3-room-pile" role="img" aria-label={names}>{faces}</span>
+        : <Tooltip className="c3-room-pile-entry" text={names}><button type="button" className="lr-btn is-quiet c3-room-pile" aria-expanded={open} aria-controls={id}
+          aria-label={t(open ? "room.item.hideParticipants" : "room.item.showParticipants", { count: String(present.length) })}
+          onClick={() => setOpen(!open)}>{faces}<Glyph name="chevron" size={12} /></button></Tooltip>}
+      {!nameHint && <div id={id} className="c3-room-people" role="group" aria-label={names} hidden={!open}>
+        {open && present.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
+          self={person.userId === channel.self?.id} owner={!!person.owner} online />)}
+      </div>}
+    </>
       : <div id={id} hidden={!open}>{open && people.length > 0 && <ChannelRoomParticipants channel={channel} room={room} people={people} />}</div>}
   </div>;
 }

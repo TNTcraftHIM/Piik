@@ -62,10 +62,11 @@ test("an offline person's row retains simultaneous activities and local playback
   };
   const html = renderToStaticMarkup(createElement(ChannelUser, person));
   expect(html).toContain('class="c3-user is-offline"');
-  const label = "Joined voice; Microphone off; Sharing; Connecting picture; Sending and receiving files";
+  // The most particular comes first: the first after voice is what a seated figure wears.
+  const label = "Joined voice; Microphone off; Sharing; Sending and receiving files; Connecting picture";
   expect(activityButtonGlyphs(html, label)).toEqual([
-    glyph("microphoneOff"), glyph("cast"), glyph("eye"),
-    renderToStaticMarkup(createElement(Glyph, { name: "loader", size: 10 })), glyph("fileTransfer"),
+    glyph("microphoneOff"), glyph("cast"), glyph("fileTransfer"), glyph("eye"),
+    renderToStaticMarkup(createElement(Glyph, { name: "loader", size: 10 })),
   ]);
   expect(html).toContain('data-viewing="preparing"');
   expect(html).not.toContain("Picture received");
@@ -87,7 +88,7 @@ test.each([
   expect(render({ sendingFiles: true, receivingFiles: true })).toContain(`aria-label="${both}"`);
 });
 
-test("compact couch keeps its pawn voice appearance without duplicating the voice badge", () => {
+test("a seated figure wears its voice and its first activity, and the seat says the rest", () => {
   setCopy({ lang: "en" });
   const html = renderToStaticMarkup(createElement(ChannelCouch, {
     people: [{ userId: "owned-person", name: "A friend", voice: { microphone: true, deafened: true },
@@ -96,8 +97,9 @@ test("compact couch keeps its pawn voice appearance without duplicating the voic
   }));
   expect(html).toContain('class="lr-person-headset"');
   expect(html).toContain('data-voice="" data-deafened="true" data-microphone="true"');
-  expect(activityButtonGlyphs(html, "Sharing; Picture received; Sending and receiving files")).toEqual([
-    glyph("cast"), glyph("eye"), glyph("fileTransfer"),
-  ]);
-  expect(html).toContain('<span class="visually-hidden">Joined voice; Microphone on; Listening paused</span>');
+  // No tag stands beside the figure: a seat is as wide as a person.
+  expect(html).not.toContain("c3-participant-status");
+  expect(html).toContain('data-emblem=""');
+  expect(html.match(/class="lr-person-emblem".*?(<svg\b.*?<\/svg>)/s)?.[1]).toBe(glyph("cast"));
+  expect(html).toContain('<span class="visually-hidden">Joined voice; Microphone on; Listening paused; Sharing; Sending and receiving files; Picture received</span>');
 });

@@ -503,6 +503,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     ? t("channel.previewPage.connecting") : connection === "reconnecting" ? t("channel.previewPage.reconnecting") : t("channel.previewPage.disconnected");
 
   // The living layout's top bar is one row: the room's heading sits in it, between the site and the tools.
+  // Its tools are two groups. What changes how this room is seen (the pictures' arrangement, people, chat) stays
+  // with the room's name and comes and goes with the room's state. What is always there (connections, the small
+  // window, the App) ends the row, so it never moves when the first group changes.
+  const connections = room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />;
+  const standingTools = <>{connections}{!phone && <span ref={setToolHome} className="c3-living-tool" hidden={!room?.authorized} />}</>;
   const RoomHeading = living ? "div" : "header";
   const roomHeading = <RoomHeading className="c3-room-heading" data-tooltip-controls>
           <div className="c3-room-name">{layout !== "quick" && (!living || bare) && <span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
@@ -520,8 +525,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {living && <span ref={setViewHome} className="c3-living-view" />}
-            {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
-            {living && !phone && <span ref={setToolHome} className="c3-living-tool" hidden={!room?.authorized} />}
+            {!living && connections}
             {living && state && !overview && !roomToolOpen && <>
               <Btn icon="users" size="dense" quiet textTooltip title="channel.people.users" controls="c3-living-people"
                 expanded={livingPane === "people"} pressed={livingPane === "people"} onClick={() => togglePanel("people")} />
@@ -540,7 +544,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // My preferences are mine, not the room's: the living layout keeps them with my name. The App link is the
   // window's, so on a desktop it ends the top row with its word, where such a link is looked for.
   const myTools = (withApp: boolean) => <div className="lr-top c3-global-tools">
-    <HeaderControls appControl={withApp ? appControl : undefined} personalControls={<>
+    {withApp && living && standingTools}<HeaderControls appControl={withApp ? appControl : undefined} personalControls={<>
       {onLayoutChange && layout !== "living" && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
       <PlaybackDeviceSelect />
       <ChannelFeedbackSounds channel={channel} />
@@ -603,7 +607,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {layout === "quick" && <Btn id="c3-rooms-trigger" icon="couch" quiet size="compact"
           title={{ text: t("channel.previewPage.roomList") }} cap={{ text: t("channel.previewPage.rooms") }} hint="hint-room-list"
           controls="c3-room-list" expanded={mobilePane === "rooms"} onClick={showRooms} />}
-      </div>{living && roomHeading}{living && !bare ? <div className="c3-living-app">{appControl}</div> : myTools(true)}</header>
+      </div>{living && roomHeading}{living && !bare ? <div className="c3-living-app">{standingTools}{appControl}</div> : myTools(true)}</header>
       <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}>
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
@@ -657,22 +661,22 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />}</div>}
         {living && bare && !overview && (hasPictures || minimal) && <Btn className="c3-living-chat" icon="chat" size="compact" quiet title="conversation.chat" cap={minimal && !phone ? "conversation.chat" : undefined}
           controls="c3-chat" expanded={panel === "chat"} pressed={panel === "chat"} onClick={() => togglePanel("chat")} />}
-        {living && !bare && voiceActivity && <button type="button" className="c3-living-voice-name" data-here={voiceActivity.roomId === roomId || undefined}
-          onClick={() => selectRoom(voiceActivity.roomId)}>{nameOfRoom(voiceActivity.roomId)}</button>}
+        {living && !bare && voiceActivity && <button type="button" className="lr-btn is-quiet c3-living-voice-name" data-here={voiceActivity.roomId === roomId || undefined}
+          onClick={() => selectRoom(voiceActivity.roomId)}><span>{nameOfRoom(voiceActivity.roomId)}</span></button>}
         {/* Every other room my voice is in is a row of its own, with its own microphone, listening and leaving. */}
         {living && !bare && voiceActivity && myVoice.length > 1 && <div className="c3-living-voices">
           {myVoice.filter(value => value.roomId !== voiceActivity.roomId).map(value => {
             const controls = resolveVoiceDockControls(channel, value.roomId);
             return <div key={value.roomId} className="c3-living-voice">
-              <button type="button" className="c3-living-voice-name" data-here={value.roomId === roomId || undefined}
-                onClick={() => { selectRoom(value.roomId); setVoiceFocus(value.roomId); }}>{nameOfRoom(value.roomId)}</button>
+              <button type="button" className="lr-btn is-quiet c3-living-voice-name" data-here={value.roomId === roomId || undefined}
+                onClick={() => { selectRoom(value.roomId); setVoiceFocus(value.roomId); }}><span>{nameOfRoom(value.roomId)}</span></button>
               <VoiceMicrophoneButton active={!value.muted} disabled={controls.microphoneDisabled} cancelPending={controls.microphonePending} quiet
                 onClick={() => controls.toggle("microphone")} />
               <VoiceListeningButton deafened={value.deafened} quiet onClick={() => controls.toggle("listening")} />
               <Btn icon="door" title="voice.leave" size="compact" quiet onClick={() => run(channel.leaveVoice(value.roomId))} />
             </div>;
           })}
-          <button type="button" className="c3-living-voices-more" aria-label={t("channel.previewPage.roomList")} onClick={toggleRoomList}>+{myVoice.length - 1}</button>
+          <button type="button" className="lr-btn is-quiet c3-living-voices-more" aria-label={t("channel.previewPage.roomList")} onClick={toggleRoomList}>+{myVoice.length - 1}</button>
         </div>}
         {living && !bare && myTools(false)}
       </div>

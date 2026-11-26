@@ -8,10 +8,10 @@ import { RoomReactionEffects } from "../../components/living/RoomReaction";
 import { Tooltip } from "../../components/living/Tooltip";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useElementWidth } from "../../lib/use-element-width";
-import { useCopy } from "../../ui/copy";
+import { joinSentences, useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelActivityIndicators, ChannelUser, personVoiceLabel } from "./ChannelUser";
+import { ChannelUser, personActivityBadges, personVoiceLabel } from "./ChannelUser";
 import type { ParticipantActivity } from "../presentation";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import "./channel-couch.css";
@@ -82,24 +82,27 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   function seat(person: ChannelCouchPerson, clipped = false) {
     const active = target?.userId === person.userId;
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
-    const voice = person.voice && personVoiceLabel(person.voice, copy);
+    // What the person is doing is worn by the figure, so a seat is as wide as a person and no wider.
+    const doing = personActivityBadges({ sharing: person.sharing, viewing: person.viewing,
+      sendingFiles: person.sendingFiles, receivingFiles: person.receivingFiles }, copy);
+    const states = [...(person.voice ? [personVoiceLabel(person.voice, copy)] : []), ...doing.map(badge => badge.label)];
+    const status = joinSentences(copy.lang, states);
     const inner = <>
       <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner} seated
-        avatar={person.avatar} voice={person.voice} collaboration={person.collaboration} />
+        avatar={person.avatar} voice={person.voice} collaboration={person.collaboration}
+        activity={doing[0] && (doing[0].status ?? doing[0].icon)} />
       <span className="lr-pawn-name">{person.name}</span>
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;
     const overflow = { text: person.name, selector: ".lr-pawn-name" };
-    const hint = session ? { kind: "hint-reaction-picker" as const, text: voice ? `${action}\n${voice}` : action, overflow } : { text: voice, overflow };
+    const hint = session ? { kind: "hint-reaction-picker" as const, text: [action, ...states].join("\n"), overflow } : { text: states.join("\n") || undefined, overflow };
     return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId} data-pawn-clipped={clipped || undefined}>
       <Tooltip {...hint} disabled={active}>
-        {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={voice}
+        {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={status || undefined}
           aria-expanded={active} aria-controls={pickerId}
           onClick={event => setTarget({ userId: person.userId, trigger: event.currentTarget })}>{inner}</button>
-          : <span className={pawnClass}>{inner}{voice && <span className="visually-hidden">{voice}</span>}</span>}
+          : <span className={pawnClass}>{inner}{status && <span className="visually-hidden">{status}</span>}</span>}
       </Tooltip>
-      <span className="c3-couch-activity"><ChannelActivityIndicators sharing={person.sharing} viewing={person.viewing}
-        sendingFiles={person.sendingFiles} receivingFiles={person.receivingFiles} /></span>
     </span>;
   }
   return <section className={`c3-couch ${className}`} aria-label={t("channel.couch.friendsInThisRoom")}

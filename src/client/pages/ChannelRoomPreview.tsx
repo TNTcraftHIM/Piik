@@ -266,6 +266,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       ] : [],
       participantSessionIds: hostOffline && room.id === "friday" ? [] : [...new Set([
         ...room.participantSessionIds,
+        // people=N: that many of the sample's people are in the first room.
+        ...(room.id === "friday" ? users.slice(0, Number(new URLSearchParams(location.search).get("people") ?? 0)).map(user => `${user.id}-session`) : []),
         ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)]),
         ...(watchActivity?.roomId === room.id ? watchSessions : []),
       ])] })),
