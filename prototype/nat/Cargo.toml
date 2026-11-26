@@ -1,0 +1,23 @@
+[package]
+name = "piik-nat"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+publish = false
+description = "A NAT's port allocator read from a survey, the search it allows, and a small tool that measures both in the field."
+
+# No dependencies: the model is pure arithmetic and the tool needs only the standard library's sockets.
+[dependencies]
+
+[lib]
+name = "piik_nat"
+
+[[bin]]
+name = "piik-nat-lab"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"

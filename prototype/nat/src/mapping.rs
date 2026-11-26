@@ -93,6 +93,14 @@ pub enum Allocator {
     Set(PortSet),
 }
 
+impl Allocator {
+    /// The allocator behind new mappings, each given as its time in milliseconds and its port, in
+    /// the order they were made: a counter when they rise or fall in small steps, or else a set.
+    pub fn of(allocations: &[(u32, u16)]) -> Self {
+        counter(allocations).unwrap_or_else(|| Self::Set(port_set(allocations)))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Model {
     pub address: Ipv4Addr,
@@ -143,8 +151,7 @@ impl Model {
                 allocations.push((sample.sent_ms, sample.mapped.port()));
             }
         }
-        let allocator = counter(&allocations).unwrap_or_else(|| Allocator::Set(port_set(&allocations)));
-        Ok(Self { address, allocator })
+        Ok(Self { address, allocator: Allocator::of(&allocations) })
     }
 
     /// Where the next mappings will be when they are made `lead_ms` after the survey began.
@@ -370,7 +377,8 @@ fn port_set(allocations: &[(u32, u16)]) -> PortSet {
             continue;
         }
         let free = 16 - offset - length;
-        let psid = (allocations[0].1 >> free) & ((1 << length) - 1);
+        let Some(&(_, sample)) = allocations.first() else { break };
+        let psid = (sample >> free) & ((1 << length) - 1);
         let set = PortSet::Shared { offset, length, psid };
         if ports().all(|port| set.contains(port)) {
             return set;

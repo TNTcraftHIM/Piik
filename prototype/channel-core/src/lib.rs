@@ -18,7 +18,6 @@ pub mod history;
 pub mod host;
 mod identity;
 pub mod input;
-pub mod mapping;
 mod publication;
 mod remote;
 mod room;
