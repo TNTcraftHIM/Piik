@@ -27,11 +27,6 @@ the feedback period; they do not delay that delivery.
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
   keep cross-flow allocation separate from SDK congestion control and frame admission.
-- [ ] **Room-writer progress.** Decide the outcome of a silent writer on a live
-  carrier. Caller deadlines and the 64-reply bound do not retire an unanswered
-  initial Sync or RouteWake. Keep active media separate from a slow request;
-  a binding-wide timeout is not accepted. Verify scoped notification of an
-  already retired binding and retain unknown outcomes for unconfirmed writes.
 - [ ] **Native preparation test under load.** If the completed-success refusal
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a

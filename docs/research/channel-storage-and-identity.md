@@ -211,6 +211,14 @@ It settles committed local work after disconnect, discards obsolete wire replies
 and joins retiring tasks before reopening the same room. Shutdown preserves the
 first error while finishing started work and releasing resources.
 
+The room writer owns its room's time and progress. An unanswered turn remains
+with that binding until the writer responds or the binding retires. Each binding
+retains at most 64 reply owners, including its deduplicated route wake; the
+initial synchronization belongs to the binding itself. A room without its first
+projection is unavailable. Callers end their own waits, and an unconfirmed write
+has an unknown outcome. A slow request does not revoke a binding or interrupt
+its working media.
+
 Participants synchronize from the room writer through the existing domain
 WebSocket. No peer connection is needed to read or send conversation. The domain
 forwards the authenticated response; it does not confirm it.
