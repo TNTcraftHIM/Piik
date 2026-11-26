@@ -71,7 +71,10 @@ holds what survived both.
    through an authenticated act; an ordinary credential cannot show whether a
    person or software holds it. Current history reads require an admitted
    session and room access; they do not require the separate Browse state.
-   Any stronger visible-reading rule needs its own product decision.
+   Any stronger visible-reading rule needs its own product decision. A program
+   gets its verbs through the core and the room's writer, as a person's client
+   does. It attaches at no point, so it is not the second consumer that turns
+   a point into a type, and it is no evidence for a registry.
 6. **Providers stay on the operator's side, compiled in**, behind internal
    contracts where interchangeable implementations really exist. Planner and
    transport interfaces are not published without a consumer.
@@ -79,9 +82,10 @@ holds what survived both.
    internal, and becomes a promise when independent consumers use it, a
    conformance test exists and its absence has a defined result. The
    compatibility of the wire and of stored data stays with its present owner.
-8. **A paired experiment before any part interface.** Apply the same
-   ADR-0015 extraction to two arms of one feature, starting at watch media or
-   at the stage's handoff. Credit the part interface only with the mappings
+8. **Extract the owner first, then a paired experiment before any part
+   interface.** The ADR-0015 extraction stands by itself and is done first.
+   Then apply the same extraction to two arms of one feature, starting at
+   watch media or at the stage's handoff. Credit the part interface only with the mappings
    and dependencies it removes beyond that extraction. Check that sibling uses
    survive and leases are returned. An abstraction that does not earn its
    place is not kept.
