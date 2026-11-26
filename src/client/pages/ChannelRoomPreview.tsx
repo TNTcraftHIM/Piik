@@ -383,7 +383,17 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     watchEmbedPreparation: () => undefined, cancelWatchPage: () => setPageSample(undefined),
     leaveWatch: async (_id, report) => { setWatchPlayers(new Map()); await watchFailure("watch-leave", report); setWatchMode("available"); setPageSample(undefined); },
     stopWatch: async (_id, report) => { setWatchPlayers(new Map()); await watchFailure("watch-stop", report); setWatchActivity(null); },
-    resumeWatch: async id => { actionFails("watch-resume"); const player = watchPlayers.get(id); if (player) { player.blockedReason = null; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
+    resumeWatch: async id => {
+      const player = watchPlayers.get(id);
+      if (!player) return;
+      try {
+        actionFails("watch-resume");
+        player.blockedReason = null; await player.play();
+      } catch (error) {
+        player.error = error instanceof Error ? error.message : "watch_media_failed";
+        throw error;
+      } finally { setWatchPlayers(new Map(watchPlayers)); }
+    },
     setWatchPlayback: async (_id, patch) => {
       actionFails("watch-playback");
       setWatchActivity(previous => previous && ({ ...previous, playback: { ...previous.playback, ...patch } }));
