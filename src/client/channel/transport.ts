@@ -101,6 +101,7 @@ export class ChannelTransport {
   private linearCandidates: LinearCandidateAdmission | null = new LinearCandidateAdmission();
   private operations: Promise<void> = Promise.resolve();
   private deadline: ReturnType<typeof setTimeout> | null;
+  private established = false;
   private closed = false;
   private releaseDebug: () => void;
   private rooms = new Set<string>();
@@ -142,7 +143,7 @@ export class ChannelTransport {
         return flowId ? [{ flowId, trackIds: stream.getTracks().map(track => track.id) }] : [];
       }); },
     });
-    this.deadline = setTimeout(() => this.timeout(), TRANSPORT_PREPARE_MS);
+    this.deadline = setTimeout(() => this.fail(), TRANSPORT_PREPARE_MS);
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) options.send({ candidate: candidate.toJSON() });
     };
@@ -152,6 +153,10 @@ export class ChannelTransport {
     };
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
+        if (!this.established) {
+          this.established = true;
+          this.clearDeadline();
+        }
         if (this.inputEnabled) {
           if (this.input) options.input?.(this.input);
           else this.reopenInput();
@@ -362,18 +367,10 @@ export class ChannelTransport {
   }
 
   private syncDeadline(): void {
-    if (this.pc.connectionState === "connected" && (!this.rooms.size || this.roomDataFailed || this.channel?.readyState === "open")) {
+    if (!this.established || this.closed) return;
+    if (!this.rooms.size || this.roomDataFailed || this.channel?.readyState === "open") {
       this.clearDeadline();
-    } else if (this.rooms.size && !this.roomDataFailed && this.channel?.readyState !== "open" && this.deadline === null) {
-      this.deadline = setTimeout(() => this.timeout(), TRANSPORT_PREPARE_MS);
-    }
-  }
-
-  private timeout(): void {
-    this.deadline = null;
-    if (this.closed) return;
-    if (this.pc.connectionState === "connected") this.failRoomData();
-    else this.fail();
+    } else this.deadline ??= setTimeout(() => this.failRoomData(), TRANSPORT_PREPARE_MS);
   }
 
   setOutgoing(streams: ReadonlyMap<string, OutgoingMedia>, resourcesReleased = false): boolean {
