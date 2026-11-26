@@ -1,168 +1,203 @@
-//! The platform's precise clock: a wake-up at an instant, to about a millisecond.
+//! The pump owns one deadline and may replace a pending wait by polling a
+//! future for a new instant. On Windows, a cancelled future can leave the
+//! timer armed until it fires, is rearmed, or the owner drops.
 //!
-//! Callers state the instant and assume nothing about how fine a timer is. This
-//! module is the one place that knows which platform can keep that promise with
-//! the runtime's own timer and which cannot.
-//!
-//! Linux, macOS and Android can. A tokio timer on Windows fires on the system
-//! tick: 15.6 ms unless a process has raised it, and Windows 11 does not keep a
-//! raised period for a process that is neither visible nor audible, which is an
-//! App sharing a game while minimized. There one thread sleeps on the caller's
-//! behalf with `std::thread::sleep`, which uses a high-resolution waitable
-//! timer on Windows 10 1803 and later.
-//!
-//! The first caller is the engine pump. The SDK's pacer and bandwidth probes
-//! need their deadlines met: with the default tick a Native sender's estimate
-//! stayed near 240 kbit/s on loopback, and with deadlines met it passed
-//! 11 Mbit/s in two seconds.
+//! Windows uses a high-resolution waitable timer and joins its worker on
+//! drop. Other platforms use Tokio. Timer precision and the scheduling
+//! latency of the worker and async task are separate.
 
-use std::time::Instant;
+use std::{io, time::Instant};
 
-#[cfg(windows)]
-use std::{
-    sync::{Arc, Condvar, Mutex},
-    time::Duration,
-};
+#[cfg(not(windows))]
+pub(crate) struct Deadline;
 
-/// A coarse wait can return a tick or two late; the precise part starts here.
-#[cfg(windows)]
-const COARSE: Duration = Duration::from_millis(32);
-/// How late an instant that replaces a later one can be noticed.
-#[cfg(windows)]
-const SLICE: Duration = Duration::from_millis(1);
-
-#[cfg(windows)]
-#[derive(Default)]
-struct State {
-    at: Option<Instant>,
-    stop: bool,
-}
-
-#[cfg(windows)]
-#[derive(Default)]
-struct Shared {
-    state: Mutex<State>,
-    armed: Condvar,
-    reached: tokio::sync::Notify,
-}
-
-/// One owner per pump. Dropping it ends and joins its thread within a slice.
-pub(crate) struct Deadline {
-    #[cfg(windows)]
-    shared: Arc<Shared>,
-    #[cfg(windows)]
-    thread: Option<std::thread::JoinHandle<()>>,
-}
-
+#[cfg(not(windows))]
 impl Deadline {
-    pub(crate) fn new() -> Self {
-        #[cfg(windows)]
-        {
-            let shared = Arc::new(Shared::default());
-            let run = shared.clone();
-            let thread = std::thread::Builder::new()
-                .name("piik-deadline".into())
-                .spawn(move || sleep_for(&run))
-                .expect("spawn the deadline thread");
-            Self {
-                shared,
-                thread: Some(thread),
-            }
-        }
-        #[cfg(not(windows))]
-        Self {}
+    pub(crate) fn new() -> io::Result<Self> {
+        Ok(Self)
     }
 
-    /// Returns once `at` has passed. One waiter at a time, which the exclusive borrow
-    /// enforces. Dropping the future and waiting for another
-    /// instant, earlier or later, replaces the one in effect.
-    pub(crate) async fn wait(&mut self, at: Instant) {
-        #[cfg(windows)]
-        while Instant::now() < at {
-            self.shared.state.lock().unwrap().at = Some(at);
-            self.shared.armed.notify_one();
-            // A wake-up for an instant this one replaced is checked against the clock.
-            self.shared.reached.notified().await;
-        }
-        #[cfg(not(windows))]
+    pub(crate) async fn wait(&mut self, at: Instant) -> io::Result<()> {
         if Instant::now() < at {
             tokio::time::sleep_until(at.into()).await;
         }
+        Ok(())
     }
 }
 
 #[cfg(windows)]
-fn sleep_for(shared: &Shared) {
-    let mut state = shared.state.lock().unwrap();
-    while !state.stop {
-        let Some(at) = state.at else {
-            state = shared.armed.wait(state).unwrap();
-            continue;
-        };
-        let now = Instant::now();
-        if now >= at {
-            state.at = None;
+pub(crate) use platform::Deadline;
+
+#[cfg(windows)]
+mod platform {
+    use super::*;
+    use std::{
+        os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
+        sync::{Arc, OnceLock},
+        thread::{Builder, JoinHandle},
+    };
+    use tokio::sync::Notify;
+    use windows::{
+        core::PCWSTR,
+        Win32::{
+            Foundation::{HANDLE, WAIT_OBJECT_0},
+            System::Threading::{
+                CreateEventW, CreateWaitableTimerExW, SetEvent, SetWaitableTimer,
+                WaitForMultipleObjects, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE,
+                SYNCHRONIZATION_SYNCHRONIZE, TIMER_MODIFY_STATE,
+            },
+        },
+    };
+
+    struct Shared {
+        timer: OwnedHandle,
+        stop: OwnedHandle,
+        reached: Notify,
+        failed: OnceLock<io::Error>,
+    }
+
+    pub(crate) struct Deadline {
+        shared: Arc<Shared>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl Deadline {
+        pub(crate) fn new() -> io::Result<Self> {
+            // Each successful API call returns a fresh handle. Transfer its
+            // ownership immediately so subsequent creation failures close it.
+            let timer = unsafe {
+                let timer = CreateWaitableTimerExW(
+                    None,
+                    PCWSTR::null(),
+                    CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                    SYNCHRONIZATION_SYNCHRONIZE.0 | TIMER_MODIFY_STATE.0,
+                )
+                .map_err(io::Error::other)?;
+                OwnedHandle::from_raw_handle(timer.0)
+            };
+            let stop = unsafe {
+                let stop = CreateEventW(None, true, false, PCWSTR::null())
+                    .map_err(io::Error::other)?;
+                OwnedHandle::from_raw_handle(stop.0)
+            };
+            let shared = Arc::new(Shared {
+                timer,
+                stop,
+                reached: Notify::new(),
+                failed: OnceLock::new(),
+            });
+            let worker = shared.clone();
+            let thread = Builder::new()
+                .name("piik-deadline".into())
+                .spawn(move || run(&worker))?;
+            Ok(Self {
+                shared,
+                thread: Some(thread),
+            })
+        }
+
+        pub(crate) async fn wait(&mut self, at: Instant) -> io::Result<()> {
+            loop {
+                if let Some(error) = self.shared.failed.get() {
+                    return Err(io::Error::other(error.to_string()));
+                }
+                let remaining = at.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Ok(());
+                }
+                // A negative count of 100 ns units is relative. Round up so
+                // sub-unit waits do not become zero, and cap the conversion.
+                let due = -(remaining.as_nanos().div_ceil(100).min(i64::MAX as u128) as i64);
+                // The Arc keeps the timer open across rearm and worker waits.
+                unsafe {
+                    SetWaitableTimer(
+                        HANDLE(self.shared.timer.as_raw_handle()),
+                        &due,
+                        0,
+                        None,
+                        None,
+                        false,
+                    )
+                    .map_err(io::Error::other)?;
+                }
+                // An old notification can still be pending after a rearm.
+                self.shared.reached.notified().await;
+            }
+        }
+    }
+
+    fn run(shared: &Shared) {
+        let handles = [
+            HANDLE(shared.stop.as_raw_handle()),
+            HANDLE(shared.timer.as_raw_handle()),
+        ];
+        loop {
+            // Shared owns both handles for the worker's lifetime. Stop is
+            // first so it wins when both objects are signaled.
+            let result = unsafe { WaitForMultipleObjects(&handles, false, INFINITE) };
+            if result == WAIT_OBJECT_0 {
+                return;
+            }
+            if result.0 != WAIT_OBJECT_0.0 + 1 {
+                let _ = shared.failed.set(io::Error::last_os_error());
+                shared.reached.notify_one();
+                return;
+            }
             shared.reached.notify_one();
-        } else if at - now > COARSE {
-            // Far away: wait where a new instant can interrupt.
-            state = shared.armed.wait_timeout(state, at - now - COARSE).unwrap().0;
-        } else {
-            drop(state);
-            std::thread::sleep((at - now).min(SLICE));
-            state = shared.state.lock().unwrap();
+        }
+    }
+
+    impl Drop for Deadline {
+        fn drop(&mut self) {
+            // The stop handle is owned and has event-modify access.
+            unsafe { SetEvent(HANDLE(self.shared.stop.as_raw_handle())) }
+                .expect("signal deadline stop event");
+            if let Some(thread) = self.thread.take() {
+                thread.join().expect("join deadline thread");
+            }
         }
     }
 }
 
-#[cfg(windows)]
-impl Drop for Deadline {
-    fn drop(&mut self) {
-        self.shared.state.lock().unwrap().stop = true;
-        self.shared.armed.notify_one();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
 
-#[cfg(test)]
+
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use std::time::Duration;
 
     #[tokio::test]
-    async fn a_near_instant_is_met_without_waiting_for_the_system_tick() {
-        let mut deadline = Deadline::new();
-        let wait = Duration::from_millis(2);
-        let mut late = Vec::new();
-        for _ in 0..100 {
-            let start = Instant::now();
-            deadline.wait(start + wait).await;
-            late.push(start.elapsed().saturating_sub(wait));
+    async fn replaces_pending_deadlines_in_both_directions() -> io::Result<()> {
+        let mut deadline = Deadline::new()?;
+        for (old, new) in [(30_000, 2), (2, 60)] {
+            tokio::select! {
+                biased;
+                result = deadline.wait(Instant::now() + Duration::from_millis(old)) => {
+                    panic!("old deadline completed: {result:?}");
+                }
+                _ = std::future::ready(()) => {}
+            }
+            let at = Instant::now() + Duration::from_millis(new);
+            tokio::time::timeout(Duration::from_secs(1), deadline.wait(at)).await??;
+            assert!(Instant::now() >= at);
         }
-        late.sort();
-        // A tokio timer on the default Windows tick is late by about 14 ms here.
-        assert!(
-            late[late.len() / 2] < Duration::from_millis(5),
-            "median lateness {:?}",
-            late[late.len() / 2]
-        );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn an_earlier_instant_replaces_a_later_one() {
-        let mut deadline = Deadline::new();
-        let start = Instant::now();
-        // Abandon a far wait, as a select does when another branch is ready.
+    async fn expired_deadline_returns_and_drop_joins_with_timer_armed() -> io::Result<()> {
+        let mut deadline = Deadline::new()?;
+        deadline.wait(Instant::now() - Duration::from_secs(1)).await?;
         tokio::select! {
-            _ = deadline.wait(start + Duration::from_secs(30)) => unreachable!(),
-            _ = tokio::task::yield_now() => {}
+            biased;
+            result = deadline.wait(Instant::now() + Duration::from_secs(3600)) => {
+                panic!("long deadline completed: {result:?}");
+            }
+            _ = std::future::ready(()) => {}
         }
-        deadline.wait(Instant::now() + Duration::from_millis(5)).await;
+        let start = Instant::now();
+        drop(deadline);
         assert!(start.elapsed() < Duration::from_secs(1));
-        // And a later one after it is still waited for in full.
-        let again = Instant::now();
-        deadline.wait(again + Duration::from_millis(60)).await;
-        assert!(again.elapsed() >= Duration::from_millis(60));
+        Ok(())
     }
 }

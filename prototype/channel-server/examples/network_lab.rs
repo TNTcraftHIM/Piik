@@ -51,7 +51,7 @@ async fn send(socket: &mut Socket, command: Command) -> Result<()> {
 }
 async fn domain(path: PathBuf) -> Result<()> {
     let ice = vec![
-        json!({"urls":["stun:198.51.100.1:3478","stun:198.51.100.1:3479","stun:198.51.100.1:3480"],"username":"","credential":""}),
+        json!({"urls":["stun:198.51.100.1:3478","stun:198.51.100.2:3478","stun:198.51.100.3:3478"],"username":"","credential":""}),
     ];
     let listener = TcpListener::bind((
         "0.0.0.0",
@@ -62,8 +62,8 @@ async fn domain(path: PathBuf) -> Result<()> {
     .await?;
     let domain = Domain::open(&path, OWNER, ORIGIN.into(), None, ice)?;
     let mut services = Vec::new();
-    for port in [3478, 3479, 3480] {
-        let socket = UdpSocket::bind(("198.51.100.1", port)).await?;
+    for address in ["198.51.100.1", "198.51.100.2", "198.51.100.3"] {
+        let socket = UdpSocket::bind((address, 3478)).await?;
         services.push(tokio::spawn(async move { app_stun::serve(&socket).await }));
     }
     emit(json!({"type":"domain-ready"}));

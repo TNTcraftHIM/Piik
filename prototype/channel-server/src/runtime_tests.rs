@@ -1986,9 +1986,13 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         "creatorId":Uuid::nil(),"access":"public","hidden":false,"hasPassword":false}}),
     )
     .await;
+    let mut other_creation_state: Option<Snapshot> = None;
     let other_room = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             match event(&mut creator).await {
+                Event::State { state } => {
+                    other_creation_state = Some(state);
+                }
                 Event::RoomCreated { room, .. } => break room,
                 Event::Error { code, .. } => panic!("creation failed: {code}"),
                 _ => {}
@@ -1998,14 +2002,17 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     .await
     .unwrap();
     let other_backup_path = format!("/prototype/channel/rooms/{}/backup", other_room.id);
-    state_when(&mut creator, |state| {
+    let other_ready = |state: &Snapshot| {
         state
             .channel
             .rooms
             .iter()
             .any(|room| room.id == other_room.id && room.available)
-    })
-    .await;
+    };
+    // The ready State can arrive before the correlated creation result.
+    if !other_creation_state.as_ref().is_some_and(other_ready) {
+        state_when(&mut creator, other_ready).await;
+    }
     let (status, wrong_room) =
         room_backup_http(address, &other_backup_path, &creator_credential, None).await;
     assert_eq!(status, 200);
@@ -3425,4 +3432,66 @@ async fn room_writer_work_does_not_spend_the_socket_read_timeout() {
     assert!(pings >= 4, "client answered the server's heartbeats during the writer wait");
     assert!(alive, "server work must not make the responsive client idle");
     assert_eq!(outcomes, ["create", "profile"], "commands remain ordered");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn buffered_room_registrations_drain_with_one_runtime_worker() {
+    use piik_channel_core::{host::RoomSummary, wire::RoomAccess};
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open(folder.path(), "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let service = tokio::spawn(domain.clone().serve(listener, Router::new(), async { let _ = stopped.await; }));
+    let (mut socket, session, _) = connect(address, "owner", "Owner").await;
+    let rooms: Vec<_> = (0..32).map(|index| RoomSummary::from_policy(&RoomState::new(
+        format!("room-{index}"), format!("Room {index}"), Default::default(),
+        domain.identity().1, RoomAccess::Public, false, None,
+    ).unwrap())).collect();
+    {
+        let mut hub = domain.hub.lock().unwrap();
+        let connection = hub.authority.current_connection(session).unwrap();
+        for room in &rooms {
+            let effects = hub.authority.handle(connection, Request::parse(&json!({
+                "type":"admit_room", "room":room,
+            }).to_string()).unwrap(), now());
+            assert!(effects.close.is_empty());
+            assert!(!effects.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
+        }
+    }
+    for (index, room) in rooms.iter().enumerate() {
+        socket.feed(Message::Text(json!({
+            "type":"host_register", "room":room, "requestId":format!("register-{index}"),
+        }).to_string().into())).await.unwrap();
+    }
+    socket.flush().await.unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut acknowledgements = Vec::new();
+        loop {
+            match socket.next().await {
+                Some(Ok(Message::Text(text))) => match serde_json::from_str::<Event>(&text).unwrap() {
+                    Event::Ack { request_id } if request_id.starts_with("register-") => {
+                        acknowledgements.push(request_id);
+                        if acknowledgements.len() == rooms.len() { break; }
+                    }
+                    Event::Error { code, .. } => panic!("registration error: {code}"),
+                    _ => {}
+                },
+                Some(Ok(Message::Ping(bytes))) => { let _ = socket.send(Message::Pong(bytes)).await; }
+                Some(Ok(Message::Pong(_))) => {}
+                terminal => {
+                    eprintln!("registration terminal: {terminal:?}");
+                    break;
+                }
+            }
+        }
+        acknowledgements
+    }).await;
+    let _ = socket.close(None).await;
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), service).await.unwrap().unwrap().unwrap();
+    let acknowledgements = result.unwrap();
+    eprintln!("single-worker buffered registration: acknowledgements={}/32", acknowledgements.len());
+    assert_eq!(acknowledgements, (0..32).map(|index| format!("register-{index}")).collect::<Vec<_>>());
 }

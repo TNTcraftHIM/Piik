@@ -759,7 +759,10 @@ impl Authority {
             self.deliver(session, event, effects);
         }
         if accepted.projection_applied {
-            self.broadcast(None, effects);
+            self.publish_input_states(effects);
+            if accepted.state_changed {
+                self.broadcast_state(None, effects);
+            }
         }
         for reply in accepted.replies {
             self.room_reply(room_id, reply, effects);
@@ -791,10 +794,18 @@ impl Authority {
         ));
     }
 
-    fn broadcast(&mut self, except: Option<Uuid>, effects: &mut Effects) {
+    fn publish_input_states(&mut self, effects: &mut Effects) {
         for (source, event) in self.channel.input_states() {
             self.deliver(source, event, effects);
         }
+    }
+
+    fn broadcast(&mut self, except: Option<Uuid>, effects: &mut Effects) {
+        self.publish_input_states(effects);
+        self.broadcast_state(except, effects);
+    }
+
+    fn broadcast_state(&mut self, except: Option<Uuid>, effects: &mut Effects) {
         for session in self
             .channel
             .identity

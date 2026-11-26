@@ -5,8 +5,10 @@ fn main() {
         && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
         && std::env::var_os("CARGO_FEATURE_CAPTURE").is_some()
     {
-        let icon =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cmd/piik-app/piik.ico");
+        let icon = std::path::PathBuf::from(
+            std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo manifest directory"),
+        )
+        .join("../../cmd/piik-app/piik.ico");
         println!("cargo:rerun-if-changed={}", icon.display());
         version_resource(&icon);
     }

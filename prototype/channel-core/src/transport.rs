@@ -32,7 +32,7 @@ enum DiscoveryRank {
 const DISCOVERY_TIMEOUT_MS: u64 = 20_000;
 const REQUIRED_RETRY_MS: u64 = 5_000;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Flow {
     pub id: Uuid,
@@ -47,7 +47,7 @@ pub struct Flow {
     pub presentation: bool,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 struct Directions {
     forward: BTreeMap<Uuid, FlowBinding>,
     reverse: BTreeMap<Uuid, FlowBinding>,
@@ -66,7 +66,7 @@ enum Attempt {
     Prepared,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Pair {
     id: Uuid,
     flows: Directions,
@@ -101,21 +101,21 @@ impl DiscoveryEdge {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Pending {
     edge: DiscoveryEdge,
     deadline: u64,
     restoring: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Failure {
     retry_after: u64,
     was_confirmed: bool,
 }
 
 /// Current physical attempts shared by flow, room and standby interests.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub struct TransportBook {
     discovery: BTreeMap<PairKey, Pending>,
     // Keep failures while the same demand and socket generations justify them.

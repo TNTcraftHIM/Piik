@@ -44,6 +44,7 @@ pub struct Channel {
 
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
+    pub state_changed: bool,
     pub repair_input: Option<(Uuid, Event)>,
     pub replies: Vec<RoomReply>,
     pub deleted_by: Option<Uuid>,
@@ -1466,6 +1467,7 @@ impl Channel {
             return Ok(HostAcceptance {
                 deleted_by: Some(member.user_id),
                 projection_applied: false,
+                state_changed: false,
                 repair_input: None,
                 replies: vec![reply.clone()],
             });
@@ -1975,6 +1977,9 @@ impl Channel {
                     || f.terminal.iter().any(|&(i,j)| i as usize >= f.after.len() || j as usize >= f.after.len() || !ordinary(&f.after[i as usize]))
             }) { return Err("invalid_room_projection"); }
         }
+        let current_projection = binding.applied_revision >= binding.projection_floor
+            && binding.applied_revision >= binding.scope_floor
+            && binding.applied_revision >= binding.read_floor;
         let room = self.remote.get_mut(id).unwrap();
         let previous_scope = room.planning_sessions(self.service_endpoint, None);
         let binding = room.binding.as_mut().unwrap();
@@ -1985,6 +1990,7 @@ impl Channel {
         if let Some(previous) = &room.projection {
             next.last_message_seq = next.last_message_seq.max(previous.last_message_seq);
         }
+        let unchanged_projection = current_projection && room.projection.as_ref() == Some(&next);
         // Public access alone applies to every visitor. Only a personal room
         // interaction, or the host's private grant, qualifies for offline status.
         room.known_sessions
@@ -2009,8 +2015,18 @@ impl Channel {
         for (first, second) in retired {
             invalidated |= room.failed_pair(first, second);
         }
+        // Even an unchanged writer projection must reconcile: other room views
+        // and the shared connection plan may still advance in this turn.
+        let unchanged = (unchanged_projection && !invalidated).then(|| (
+            self.transports.clone(),
+            self.remote.values().map(|room| room.projection.clone()).collect::<Vec<_>>(),
+        ));
         self.reconcile();
         let mut accepted = self.finish_host_output(id, output.revision, output.reply, true);
+        accepted.state_changed = unchanged.as_ref().is_none_or(|(transports, projections)| {
+            transports != &self.transports
+                || self.remote.values().map(|room| &room.projection).ne(projections.iter())
+        });
         // A room output can grant access to an already confirmed pair in another room.
         // A suspended planning scope likewise becomes visible on its covering output.
         let current_scope = self.remote[id].planning_sessions(self.service_endpoint, None);
@@ -2088,6 +2104,7 @@ impl Channel {
         HostAcceptance {
             deleted_by: None,
             projection_applied,
+            state_changed: projection_applied,
             repair_input: None,
             replies,
         }

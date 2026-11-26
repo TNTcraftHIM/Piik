@@ -497,7 +497,13 @@ impl Runtime {
                 None
             };
             let (network, mut incoming) = mpsc::channel::<Datagram>(256);
-            let mut deadline = crate::deadline::Deadline::new();
+            let mut deadline = match crate::deadline::Deadline::new() {
+                Ok(deadline) => deadline,
+                Err(error) => {
+                    log::error!("Native deadline creation failed: {error}");
+                    return;
+                }
+            };
             let mut gateway: Option<super::mapping::Mapping> = None;
             let mut mapped: Option<Candidate> = None;
             let mut sockets: Vec<Socket> = vec![];
@@ -621,7 +627,14 @@ impl Runtime {
                         }
                     },
                     // The SDK's pacer and probes need this instant met, not the next system tick.
-                    _=deadline.wait(next)=> {
+                    result=deadline.wait(next)=> {
+                        if let Err(error) = result {
+                            log::error!("Native deadline wait failed: {error}");
+                            for engine in engines.values_mut() {
+                                engine.fail();
+                            }
+                            break;
+                        }
                         let now=Instant::now();
                         for engine in engines.values_mut().filter(|e|e.deadline<=now) {
                             for endpoint in engine.turn.values_mut(){endpoint.timeout(now);}
