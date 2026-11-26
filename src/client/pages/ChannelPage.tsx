@@ -76,19 +76,11 @@ export function ChannelPage() {
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
-export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange, previewOptions, livingHead = "columns", livingControls = "bar", livingTone }: {
+export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange, previewOptions }: {
   channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
   layout?: RoomLayout; offerLayout?: boolean;
   onLayoutChange?: (value: InterfaceLayout) => void;
   previewOptions?: ReactNode;
-  /** Prototype: the living layout's header. "columns" gives the site to the rooms column and the room its own
-      header on the lit surface; "path" keeps one bar that reads site / room. */
-  livingHead?: "columns" | "path";
-  /** Prototype: where my voice and sharing controls sit on a desktop. "bar" is the row along the foot of the
-      room; "dock" stacks them under the rooms column, above my name. A phone always uses the bar. */
-  livingControls?: "bar" | "dock";
-  /** Prototype: a study of the dark palette, from the preview only. */
-  livingTone?: string;
 }) {
   const { t, lang } = useCopy();
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
@@ -534,6 +526,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               }} />}
           </div></div>
         </RoomHeading>;
+  // The App link and my preferences are mine, not the room's: the living layout keeps them with my name.
+  const myTools = <div className="lr-top c3-global-tools">
+    <HeaderControls appControl={appControl} personalControls={<>
+      {onLayoutChange && layout !== "living" && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
+      <PlaybackDeviceSelect />
+      <ChannelFeedbackSounds channel={channel} />
+      <ChannelForwardingSettings channel={channel} />
+      {previewOptions}
+    </>} />
+  </div>;
   return <LayerHistory.Provider value={sidebarsInline ? null : track}><div className="lr-app c3-app">
     {stageWatches.map(activity => {
       const media = channel.watchEmbedPreparation(activity.id);
@@ -574,8 +576,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     <main ref={workspaceElement} className={`c3-shell${living ? " c3-living" : ""}`} data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}
       data-sidebars={living ? phone ? "phone" : "inline" : sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-rooms={living ? roomsRail ? "rail" : "list" : undefined} data-stage={living ? visibleScreens.length ? "pictures" : "empty" : undefined}
-      data-chat={living ? livingChat : undefined} data-head={living ? livingHead : undefined}
-      data-controls={living ? phone ? "bar" : livingControls : undefined} data-tone={living ? livingTone : undefined}
+      data-chat={living ? livingChat : undefined}
+      // My controls are a dock under the rooms column; a phone has no such column and keeps them in a bar.
+      data-controls={living ? phone ? "bar" : "dock" : undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
@@ -587,15 +590,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {layout === "quick" && <Btn id="c3-rooms-trigger" icon="couch" quiet size="compact"
           title={{ text: t("channel.previewPage.roomList") }} cap={{ text: t("channel.previewPage.rooms") }} hint="hint-room-list"
           controls="c3-room-list" expanded={mobilePane === "rooms"} onClick={showRooms} />}
-      </div>{living && roomHeading}<div className="lr-top c3-global-tools">
-        <HeaderControls appControl={appControl} personalControls={<>
-          {onLayoutChange && layout !== "living" && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
-          <PlaybackDeviceSelect />
-          <ChannelFeedbackSounds channel={channel} />
-          <ChannelForwardingSettings channel={channel} />
-          {previewOptions}
-        </>} />
-      </div></header>
+      </div>{living && roomHeading}{!(living && !phone) && myTools}</header>
       <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}>
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
@@ -649,6 +644,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />}</div>}
         {living && phone && !overview && hasPictures && <Btn className="c3-living-chat" icon="chat" size="compact" quiet title="conversation.chat"
           controls="c3-chat" expanded={panel === "chat"} pressed={panel === "chat"} onClick={() => togglePanel("chat")} />}
+        {living && !phone && myTools}
       </div>
       <section className="c3-main" aria-label={room?.name ?? t("channel.previewPage.room")}>
         {!living && roomHeading}
