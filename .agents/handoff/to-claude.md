@@ -149,3 +149,34 @@ controls also passed through real room signaling between independent Browsers.
 The route second-trial study gained a valid reverse-order fourth-slot pair;
 its default-standby pressure pair did not meet the fixture precondition and
 is not a successful comparison. Production routing remains unchanged.
+
+Final checks for this batch: the integrated Web suite passes all 2,471 checks
+in 164 files; the full TypeScript and SDK type builds pass. Three further
+corrections are ready for your review:
+
+- 244f633a accepts a matching signed SDK receipt during the existing socket's
+  closing handshake. A real WebSocket reproduction previously returned
+  disconnected despite receiving the writer's confirmation. Live broadcasts
+  remain ignored while closing, and genuinely lost receipts retain their
+  unknown outcome. All six SDK loopback tests pass.
+- 30d36fc9 projects joined, rather than picture received/connecting, while the
+  local WatchPlayer requires a playback gesture. It reads the existing blocked
+  fact; remote membership and error priority remain separate.
+- 5e864470 checks external H.264 chroma and bit depth before source admission,
+  reusing the existing parser and decoder predicate. Real libx264 High 3.1
+  monochrome and 4:2:0 have the same profile-level prefix. A first candidate
+  incorrectly hard-coded H.264 dispatch; review caught it, and the final
+  constructor retains MIME dispatch with a VP8 RTP regression. All 28 affected
+  Native module controls pass on the compiled sources matched to this tree.
+
+The frozen beta.56 App and matching SDK also passed a same-data-directory
+save, orderly exit and restart. The original identity, room and message were
+read back, and actual Domain v1 and room v11 samples passed SQLite checks.
+The implementation covered by that package is unchanged in this batch.
+Physical media and mixed-public-version compatibility are not inferred.
+
+One proposed image-card dependency expansion was declined after tracing its
+producer. Normal restore clears the old binding's history before asynchronously
+loading the new history, so the old card unmounts; an in-place digest mutation
+was only an artificial component input. No layout effect or product TODO was
+added for it. The existing ownership rules suffice for this batch.
