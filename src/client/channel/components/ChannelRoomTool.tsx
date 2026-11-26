@@ -21,12 +21,14 @@ function move(node: HTMLElement, parent: HTMLElement | null) {
 }
 
 /** Three page slots share one room tool without remounting their content. */
-export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, onSurfaceChange, couch, conversation, voice, actions, preferPanel = false }: {
+export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, onSurfaceChange, couch, conversation, voice, actions, preferPanel = false, entryHome }: {
   title: string; voiceRoomName?: string; home: Slots; surface: RoomToolSurface; onSurfaceChange: (surface: RoomToolSurface) => void;
   caption?: string;
   couch: ReactNode; conversation: ReactNode; voice: ReactNode;
   actions?: ReactNode;
   preferPanel?: boolean;
+  /** Where the tool's opening control is shown when a layout places it away from the couch. */
+  entryHome?: HTMLElement | null;
 }) {
   const { t } = useCopy();
   const id = useId(), trigger = useRef<HTMLButtonElement>(null);
@@ -86,8 +88,7 @@ export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, 
     place(panelOpen, surface.document);
   });
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
-  return <>
-    <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
+  const entry = <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
       <Tooltip kind={panelOpen ? "hint-pip-exit" : inline || overlay ? "hint-chat-open" : "hint-window-detach"} text={label}>
         <button ref={trigger} type="button" className={`lr-btn is-dense is-quiet${panelOpen ? " is-on" : ""}`} aria-label={label}
           aria-haspopup="dialog" aria-expanded={panelOpen} popoverTarget={detached ? undefined : id}>
@@ -96,7 +97,9 @@ export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, 
         </button>
       </Tooltip>
       {actions}
-    </div>
+    </div>;
+  return <>
+    {entryHome === undefined ? entry : entryHome && createPortal(entry, entryHome)}
     <FloatingPanel onDetachedTrigger={overlay ? () => presentation("panel") : undefined} onNativeReady={setReadyDocument} closeOnReturn={overlay}
       windowControl={panel} id={id} trigger={trigger} title={overlay ? voiceRoomName ?? title : title}
       directWindow={!preferPanel} detachable={preferPanel} detachedAction="return" className={`c3-room-tool${overlay ? " is-voice-overlay" : ""}`}
