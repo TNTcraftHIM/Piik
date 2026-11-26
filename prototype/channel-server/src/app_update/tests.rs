@@ -23,6 +23,37 @@ use std::{
 
 const SOURCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+#[tokio::test]
+async fn cancel_after_a_disconnected_request_still_waits_for_the_worker() {
+    let (commands, mut incoming) = mpsc::channel(1);
+    let owner = Owner {
+        state: Arc::new(Mutex::new(State::Idle)),
+        commands: Some(commands),
+        version: Some("v3.0.0".into()),
+        ..Owner::disabled()
+    };
+    let operation_id = owner
+        .request(Request::Download {
+            version: "v3.0.1".into(),
+            revision: SOURCE.into(),
+        })
+        .await
+        .unwrap()
+        .operation_id
+        .unwrap();
+    let work = incoming.recv().await.unwrap();
+    let cancel = || owner.request(Request::Cancel { operation_id });
+    {
+        let mut disconnected = Box::pin(cancel());
+        assert!(futures_util::poll!(&mut disconnected).is_pending());
+    }
+    let mut retry = Box::pin(cancel());
+    assert!(futures_util::poll!(&mut retry).is_pending());
+    *owner.state.lock().unwrap() = State::Idle;
+    drop(work);
+    assert_eq!(retry.await.unwrap().state, "idle");
+}
+
 #[test]
 fn signed_update_metadata_accepts_new_descriptive_fields() {
     let key = Ed25519KeyPair::from_pkcs8(

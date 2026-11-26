@@ -786,3 +786,21 @@ test.each(['ready', 'loading', 'removed'] as const)('prepared page candidate own
     expect(incumbentEvents).toHaveBeenCalledTimes(receivedA);
   } finally { player.close(); incumbent.close(); page.close(); }
 });
+
+test("App 27 receives a surviving popup and its retirement while the opener has no navigable URL", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const address = page.url, id = crypto.randomUUID();
+    const popup = { id, pageURL: "https://popup.test/episode", title: "Episode", url: null, duration: null };
+    const opaque = { ...popup, id: crypto.randomUUID(), pageURL: null };
+    const send = (candidates: object[]) => socket.receive({ type: "page_candidates", pageId: page.id, url: address, candidates });
+    send([popup, opaque]);
+    expect(page.candidatePageURL(id)).toBe(popup.pageURL);
+    expect(page.candidatePageURL(opaque.id)).toBeNull();
+    send([]);
+    expect(page.candidates).toEqual([]);
+    expect(() => page.candidatePageURL(id)).toThrow("watch_page_unavailable");
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});

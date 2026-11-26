@@ -103,6 +103,7 @@ export class ChannelConversation {
       if (!isCurrent(reply)) return;
       this.options.send(JSON.parse(signer.sign(sessionId, JSON.stringify(reply))), reply.requestId);
     };
+    await Promise.allSettled(replies.map(send));
     const broadcasts: ConversationReply[] = [];
     for (const reply of replies) {
       const record = JSON.parse(runtime.conversation_broadcast(JSON.stringify(reply.record))) as ConversationReply["record"] | null;
@@ -110,10 +111,7 @@ export class ChannelConversation {
         broadcasts.push({ ...reply, recipient, record });
       }
     }
-    await Promise.allSettled([
-      (async () => { for (const reply of replies) await send(reply); })(),
-      ...broadcasts.map(send),
-    ]);
+    await Promise.allSettled(broadcasts.map(send));
   }
 
   close(): void {

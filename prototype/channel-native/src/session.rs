@@ -51,7 +51,7 @@ type Writer<'a> = dyn futures_util::Sink<Message, Error = tokio_tungstenite::tun
     + Unpin
     + 'a;
 
-// Raw backlog policy: admits one maximum wire frame; decoded state is not queued.
+// Session-wide across reconnects. Raw frames and admitted room turns retain the same byte budget.
 const SIGNALING_QUEUE_BYTES: usize = 4 * 1024 * 1024;
 
 struct Incoming {
@@ -66,7 +66,7 @@ async fn read_messages(
     > + Unpin),
     messages: mpsc::Sender<Incoming>,
 ) -> Result<()> {
-    // Pending frames and the active raw permit share this connection's byte budget.
+    // Test reader with one isolated signaling budget.
     read_budgeted(reader, messages, signaling_budget()).await
 }
 fn signaling_budget() -> Arc<tokio::sync::Semaphore> {
@@ -294,6 +294,7 @@ pub struct Config {
 
 /// Trusted paths supplied by the explicit hosting caller. Existing files restore
 /// their policy; a missing file creates a public room for the admitted identity.
+#[derive(Clone)]
 pub struct RoomFile {
     pub path: PathBuf,
     pub id: String,
@@ -320,6 +321,7 @@ struct Session {
     local_slots: Option<Arc<tokio::sync::Semaphore>>,
     forwarding_limit: Option<u8>,
     snapshot_job: Option<SnapshotJob>,
+    room_discovery: Option<tokio::task::JoinHandle<Result<WelcomeFiles>>>,
     config: Config,
     service_admission: Option<mpsc::Sender<ServiceAdmission>>,
     files: Vec<RoomFile>,
@@ -381,13 +383,27 @@ impl<T> Drop for LocalAnswer<T> {
 }
 struct OpeningReply {
     _local: room_owner::Admission,
-    result: oneshot::Sender<Result<RoomSummary, String>>,
+    result: LocalAnswer<Result<RoomSummary, String>>,
     committed_error: Option<&'static str>,
 }
 impl OpeningReply {
+    fn new(
+        local: room_owner::Admission,
+        result: oneshot::Sender<Result<RoomSummary, String>>,
+        committed_error: Option<&'static str>,
+    ) -> Self {
+        Self {
+            _local: local,
+            result: LocalAnswer::new(
+                result,
+                Err(committed_error.unwrap_or("room_unavailable").into()),
+            ),
+            committed_error,
+        }
+    }
     fn finish(self, result: Result<RoomSummary, String>) {
         let result = result.map_err(|code| self.committed_error.map(str::to_owned).unwrap_or(code));
-        let _ = self.result.send(result);
+        let _ = self.result.take().send(result);
     }
 }
 impl OpeningRoom {
@@ -751,8 +767,8 @@ pub struct Hosting {
 }
 
 impl Hosting {
-    fn forwarding_limit(&self) -> Result<Option<u8>> {
-        match std::fs::File::open(self.directory.join("forwarding-limit.json")) {
+    fn forwarding_limit(directory: &std::path::Path) -> Result<Option<u8>> {
+        match std::fs::File::open(directory.join("forwarding-limit.json")) {
             Ok(file) => {
                 let value: Option<u8> = serde_json::from_reader(file)?;
                 anyhow::ensure!(
@@ -800,6 +816,8 @@ pub async fn run_host(
         pending_captures: BTreeMap::new(),
 
         snapshot_job: None,
+
+        room_discovery: None,
     };
     let mut stop = std::pin::pin!(stop);
     let result = session.drive(&mut stop).await;
@@ -837,7 +855,11 @@ impl Session {
             .get(&done.id)
             .is_some_and(|s| Arc::ptr_eq(&s.identity, &done.identity));
         let connected = writer.is_some() && done.carrier.load(Ordering::Acquire) && current;
+        let admitted = writer.is_some() && done.carrier.load(Ordering::Acquire);
         let writes = (done.result?)(self, room_owner::Delivery { current, connected })?;
+        if admitted {
+            self.settle_hosting();
+        }
         let online = writer.is_some();
         if let Some(writer) = writer.filter(|_| connected) {
             for (cmd, id) in writes {
@@ -933,6 +955,12 @@ impl Session {
             snapshot.join().await;
         }
         self.snapshot_job = None;
+        if let Some(job) = self.room_discovery.as_mut() {
+            if let Err(error) = job.await {
+                self.release_error.get_or_insert_with(|| error.into());
+            }
+        }
+        self.room_discovery = None;
         self.release_error.take().map_or(Ok(()), Err)
     }
 
@@ -1380,6 +1408,11 @@ impl Session {
         })
     }
     async fn route_event(&mut self, event: Event, socket: &mut Writer<'_>) -> Result<()> {
+        self.apply_event(event, socket).await?;
+        self.settle_hosting();
+        Ok(())
+    }
+    async fn apply_event(&mut self, event: Event, socket: &mut Writer<'_>) -> Result<()> {
         match event {
             Event::Welcome {
                 credential,
@@ -1394,49 +1427,54 @@ impl Session {
                     .find(|session| session.id == session_id)
                     .ok_or_else(|| anyhow!("welcome omitted current session"))?
                     .user_id;
-                let service_hosts_room = service_hosts_rooms(self.service_admission.is_some(), &state);
-                let mut ambiguous = BTreeSet::new();
-                if let Some(hosting) = &self.hosting {
-                    if hosting.identity != (state.channel.id, user) {
-                        bail!("owner_mismatch");
-                    }
-                    // No local room is opened until the actual domain admission agrees.
-                    std::fs::create_dir_all(&hosting.directory)?;
-                    self.forwarding_limit = hosting.forwarding_limit()?;
-                    for (id, file) in available_room_files(&hosting.directory)? {
-                        let Ok(file) = file else {
-                            eprintln!("Native room {id} unavailable: duplicate room id");
-                            ambiguous.insert(id);
-                            continue;
-                        };
-                        if !self.files.iter().any(|known| known.path == file.path) {
-                            self.files.push(file);
-                        }
-                    }
+                let service_hosts_room =
+                    service_hosts_rooms(self.service_admission.is_some(), &state);
+                if self
+                    .hosting
+                    .as_ref()
+                    .is_some_and(|hosting| hosting.identity != (state.channel.id, user))
+                {
+                    bail!("owner_mismatch");
                 }
-                self.config.credential = Some(credential);
                 let resumed = self
                     .live
                     .as_ref()
                     .is_some_and(|live| live.session == session_id);
-                let mut creating = Vec::new();
                 if !resumed {
                     self.release().await?;
+                }
+                let owned = self
+                    .live
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|l| l.room.rooms.iter())
+                    .filter_map(|(id, slot)| slot.source.clone().map(|path| (path, id.clone())))
+                    .collect();
+                let directory = self.hosting.as_ref().map(|h| h.directory.clone());
+                let files = self.files.clone();
+                self.room_discovery = Some(tokio::task::spawn_blocking(move || {
+                    welcome_files(files, directory, owned, resumed)
+                }));
+                let discovered = self.room_discovery.as_mut().unwrap().await;
+                self.room_discovery = None;
+                let WelcomeFiles {
+                    candidates,
+                    ambiguous,
+                    forwarding_limit,
+                } = discovered??;
+                if self.hosting.is_some() {
+                    self.forwarding_limit = forwarding_limit;
+                }
+                self.config.credential = Some(credential);
+                let mut creating = Vec::new();
+                if !resumed {
+                    self.files.clear();
                     let mut rooms = Rooms::from(BTreeMap::new());
                     rooms.admission = self.turn.clone();
                     let room_open_failures = BTreeMap::new();
-                    for mut file in std::mem::take(&mut self.files) {
-                        let initial = match std::fs::metadata(&file.path) {
-                            Ok(_) => {
-                                let policy = match stored_room_policy(&file.path) {
-                                    Ok(Some(policy)) => policy,
-                                    Ok(None) => continue,
-                                    Err(error) => {
-                                        eprintln!("Native room {} unavailable: {error}", file.id);
-                                        continue;
-                                    }
-                                };
-                                file.id = policy.id;
+                    for (file, creator) in candidates {
+                        let initial = match creator {
+                            Some(creator) => {
                                 if ambiguous.contains(&file.id) {
                                     continue;
                                 }
@@ -1448,16 +1486,16 @@ impl Session {
                                     self.files.push(file);
                                     continue;
                                 }
-                                if !service_hosts_room && policy.creator_id != user {
-                                    eprintln!("Native room data unavailable: {}: owner_mismatch", file.path.display());
+                                if !service_hosts_room && creator != user {
+                                    eprintln!(
+                                        "Native room data unavailable: {}: owner_mismatch",
+                                        file.path.display()
+                                    );
                                     continue;
                                 }
-                                (policy.creator_id, None)
+                                (creator, None)
                             }
-                            Err(error)
-                                if error.kind() == std::io::ErrorKind::NotFound
-                                    && !file.name.is_empty() && !ambiguous.contains(&file.id) =>
-                            {
+                            None if !file.name.is_empty() && !ambiguous.contains(&file.id) => {
                                 let policy = match RoomState::new(
                                     file.id.clone(),
                                     file.name.clone(),
@@ -1490,11 +1528,7 @@ impl Session {
                                 }
                                 (policy.creator_id, Some(policy))
                             }
-                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                            Err(error) => {
-                                eprintln!("Native room {} unavailable: {error}", file.id);
-                                continue;
-                            }
+                            None => continue,
                         };
                         let (creator, policy) = initial;
                         if rooms.contains_key(&file.id) {
@@ -1529,9 +1563,6 @@ impl Session {
                                         if ctx.current && in_use && s.hosting.is_some() {
                                             live.room_open_failures
                                                 .insert(id, NativeRoomOpenReason::InUse);
-                                        }
-                                        if ctx.connected {
-                                            s.hosting_ready();
                                         }
                                         Ok(vec![])
                                     }))
@@ -1572,6 +1603,8 @@ impl Session {
                         commands: receiver,
                         pairs: BTreeSet::new(),
                     });
+                } else {
+                    self.files = candidates.into_iter().map(|(file, _)| file).collect();
                 }
                 let mut retired = BTreeSet::new();
                 if let Some(live) = &mut self.live {
@@ -1581,13 +1614,6 @@ impl Session {
                         if let Some(binding) = live.room.rooms.remove(&id).and_then(|room| room.binding()) {
                             retired.insert((id, binding));
                         }
-                    }
-                    // Retained writers can lose their file identity during recovery.
-                    for (_, opening) in self.opening.extract_if(.., |id, opening| {
-                        matches!(opening.work, OpeningWork::Register { .. })
-                            && !live.room.rooms.contains_key(id)
-                    }) {
-                        opening.fail("room_unavailable");
                     }
                     live.forwarding_budget.reconnected();
                 }
@@ -1678,7 +1704,6 @@ impl Session {
                 for (request_id, room) in restoring {
                     write(socket, &Command::AdmitRoom { room }, Some(&request_id)).await?;
                 }
-                self.hosting_ready();
                 eprintln!(
                     "Native session admitted ({})",
                     if resumed { "resumed" } else { "new" }
@@ -1743,7 +1768,6 @@ impl Session {
                                     None,
                                 ));
                             }
-                            session.hosting_ready();
                             Ok(writes)
                         }))
                     })?;
@@ -1808,55 +1832,40 @@ impl Session {
                     .iter()
                     .find_map(|(room, opening)| (opening.request_id == id).then(|| room.clone()));
                 if let Some(room_id) = room_id {
-                    if matches!(self.opening[&room_id].work, OpeningWork::Register { .. })
-                        && self
-                            .live
-                            .as_ref()
-                            .is_some_and(|l| l.room.rooms.contains_key(&room_id))
-                    {
-                        let room = room_id.clone();
-                        self.live.as_mut().unwrap().room.rooms.post(
-                            &room_id,
-                            false,
-                            false,
-                            move |host| {
+                    match self.opening.remove(&room_id).unwrap().work {
+                        OpeningWork::Register { replies, .. } => {
+                            let Some(live) = self
+                                .live
+                                .as_mut()
+                                .filter(|l| l.room.rooms.contains_key(&room_id))
+                            else {
+                                return Ok(());
+                            };
+                            // The Ack owns exactly these callers from this point on. A retired or
+                            // rejected mailbox drops their LocalAnswers with their original error.
+                            live.room.rooms.post(&room_id, false, false, move |host| {
                                 let summary = host
                                     .as_ref()
                                     .filter(|h| h.binding().is_some())
                                     .map(HostedRoom::summary);
-                                Ok(Box::new(move |s, current| {
-                                    if current.connected
-                                        && s.opening.get(&room).is_some_and(|o| o.request_id == id)
-                                    {
-                                        if let OpeningWork::Register { replies, .. } =
-                                            s.opening.remove(&room).unwrap().work
-                                        {
-                                            for reply in replies {
-                                                reply.finish(
-                                                    summary
-                                                        .clone()
-                                                        .ok_or_else(|| "room_unavailable".into()),
-                                                );
-                                            }
+                                Ok(Box::new(move |_, delivery| {
+                                    if delivery.connected {
+                                        for reply in replies {
+                                            reply.finish(
+                                                summary
+                                                    .clone()
+                                                    .ok_or_else(|| "room_unavailable".into()),
+                                            );
                                         }
                                     }
                                     Ok(vec![])
                                 }))
-                            },
-                        )?;
-                    } else {
-                        let opening = self.opening.remove(&room_id).unwrap();
-                        match opening.work {
-                            OpeningWork::AdmitRestore(request, local) => {
-                                self.install_room_backup(request, local, socket).await?
-                            }
-                            OpeningWork::Register { replies, .. } => {
-                                for r in replies {
-                                    r.finish(Err("room_unavailable".into()));
-                                }
-                            }
-                            OpeningWork::Create(_) => {}
+                            })?;
                         }
+                        OpeningWork::AdmitRestore(request, local) => {
+                            self.install_room_backup(request, local, socket).await?
+                        }
+                        OpeningWork::Create(_) => {}
                     }
                 }
             }
@@ -2043,7 +2052,7 @@ impl Session {
                                             s.files.retain(|file| file.path != path);
                                         }
                                         for reply in replies {
-                                            let _ = reply.result.send(Err(rejected.clone()));
+                                            let _ = reply.result.take().send(Err(rejected.clone()));
                                         }
                                         Ok(vec![])
                                     }))
@@ -2051,10 +2060,9 @@ impl Session {
                                 rooms.remove(&target);
                             } else {
                                 for reply in replies {
-                                    let _ = reply.result.send(Err(rejected.clone()));
+                                    let _ = reply.result.take().send(Err(rejected.clone()));
                                 }
                             }
-                            self.hosting_ready();
                             return Ok(());
                         }
                         OpeningWork::Register { .. } => {}
@@ -2089,7 +2097,6 @@ impl Session {
                     if let Some(opening) = self.opening.remove(id) {
                         opening.fail(&code);
                     }
-                    self.hosting_ready();
                     return Ok(());
                 }
                 eprintln!("Channel error: {code}");
@@ -2606,15 +2613,26 @@ impl Session {
         Ok(())
     }
 
-    fn hosting_ready(&self) {
+    fn settle_hosting(&mut self) {
+        let Some(live) = &self.live else {
+            return;
+        };
+        if live.room.snapshot.borrow().is_none() {
+            return;
+        }
+        for (_, opening) in self.opening.extract_if(.., |id, opening| {
+            matches!(opening.work, OpeningWork::Register { .. })
+                && !live.room.rooms.contains_key(id)
+        }) {
+            opening.fail("room_unavailable");
+        }
         if let Some(hosting) = &self.hosting {
             if hosting.ready.borrow().is_none()
-                && self.live.as_ref().is_some_and(|live| {
-                    live.room
-                        .rooms
-                        .values()
-                        .all(|host| host.binding().is_some())
-                })
+                && live
+                    .room
+                    .rooms
+                    .values()
+                    .all(|host| host.binding().is_some())
             {
                 hosting.ready.send_replace(Some(Ok(())));
             }
@@ -2763,11 +2781,11 @@ impl Session {
                         let _ = answer.take().send(Ok(summary));
                         return Ok(vec![]);
                     }
-                    let reply = OpeningReply {
-                        _local: local,
-                        result: answer.take(),
-                        committed_error: copied.then_some("room_created_connection_failed"),
-                    };
+                    let reply = OpeningReply::new(
+                        local,
+                        answer.take(),
+                        copied.then_some("room_created_connection_failed"),
+                    );
                     if !ctx.connected {
                         reply.finish(Err("hosting_unavailable".into()));
                         return Ok(vec![]);
@@ -3071,11 +3089,11 @@ impl Session {
                 match restored {
                     Ok((summary, previous, path)) => {
                         s.installed_file(&target, path, &summary, ctx.current);
-                        let reply = OpeningReply {
-                            _local: local,
-                            result: answer.take(),
-                            committed_error: Some("room_restored_connection_failed"),
-                        };
+                        let reply = OpeningReply::new(
+                            local,
+                            answer.take(),
+                            Some("room_restored_connection_failed"),
+                        );
                         if !ctx.connected {
                             reply.finish(Err("hosting_unavailable".into()));
                             return Ok(vec![]);
@@ -3306,6 +3324,93 @@ fn service_hosts_rooms(service_admitted: bool, state: &Snapshot) -> bool {
     service_admitted && state.channel.hosting_mode == piik_channel_core::wire::HostingMode::Hosted
 }
 
+struct WelcomeFiles {
+    candidates: Vec<(RoomFile, Option<Uuid>)>,
+    ambiguous: BTreeSet<String>,
+    forwarding_limit: Option<u8>,
+}
+
+fn welcome_files(
+    mut files: Vec<RoomFile>,
+    directory: Option<PathBuf>,
+    owned: BTreeMap<PathBuf, String>,
+    resumed: bool,
+) -> Result<WelcomeFiles> {
+    let mut policies = BTreeMap::new();
+    let mut ambiguous = BTreeSet::new();
+    let mut forwarding_limit = None;
+    if let Some(directory) = directory {
+        std::fs::create_dir_all(&directory)?;
+        forwarding_limit = Hosting::forwarding_limit(&directory)?;
+        let catalog = discover_room_ids(
+            &directory,
+            |path| {
+                if let Some(id) = owned.get(path) {
+                    return Ok(Some(id.clone()));
+                }
+                let Some(policy) = stored_room_policy(path)? else {
+                    return Ok(None);
+                };
+                if !resumed {
+                    policies.insert(path.to_owned(), (policy.id.clone(), policy.creator_id));
+                }
+                Ok(Some(policy.id))
+            },
+            |path, error| {
+                eprintln!("Native room data unavailable: {}: {error}", path.display());
+                Ok(())
+            },
+        )?;
+        for (id, file) in catalog {
+            if let Ok(file) = file {
+                if !files.iter().any(|known| known.path == file.path) {
+                    files.push(file);
+                }
+            } else {
+                eprintln!("Native room {id} unavailable: duplicate room id");
+                ambiguous.insert(id);
+            }
+        }
+    }
+    let candidates = files
+        .into_iter()
+        .filter_map(|mut file| {
+            if resumed {
+                return Some((file, None));
+            }
+            let identity = if let Some(id) = policies.remove(&file.path) {
+                Some(id)
+            } else {
+                match std::fs::metadata(&file.path) {
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => {
+                        eprintln!("Native room {} unavailable: {e}", file.id);
+                        return None;
+                    }
+                    Ok(_) => match stored_room_policy(&file.path) {
+                        Ok(Some(policy)) => Some((policy.id, policy.creator_id)),
+                        Ok(None) => return None,
+                        Err(e) => {
+                            eprintln!("Native room {} unavailable: {e}", file.id);
+                            return None;
+                        }
+                    },
+                }
+            };
+            let creator = identity.map(|(id, creator)| {
+                file.id = id;
+                creator
+            });
+            Some((file, creator))
+        })
+        .collect();
+    Ok(WelcomeFiles {
+        candidates,
+        ambiguous,
+        forwarding_limit,
+    })
+}
+
 /// Physical names are local storage, not room identities. Imported named rooms
 /// use random filenames; the durable policy remains their one identity owner.
 type DiscoveredRooms = BTreeMap<String, Result<RoomFile, &'static str>>;
@@ -3325,6 +3430,17 @@ fn stored_rooms(directory: &std::path::Path) -> Result<DiscoveredRooms> {
 
 fn discover_rooms(
     directory: &std::path::Path,
+    on_file_error: impl FnMut(&std::path::Path, anyhow::Error) -> Result<()>,
+) -> Result<DiscoveredRooms> {
+    discover_room_ids(
+        directory,
+        |p| Ok(stored_room_policy(p)?.map(|policy| policy.id)),
+        on_file_error,
+    )
+}
+fn discover_room_ids(
+    directory: &std::path::Path,
+    mut identity: impl FnMut(&std::path::Path) -> Result<Option<String>>,
     mut on_file_error: impl FnMut(&std::path::Path, anyhow::Error) -> Result<()>,
 ) -> Result<DiscoveredRooms> {
     let mut paths = std::fs::read_dir(directory)?
@@ -3339,22 +3455,25 @@ fn discover_rooms(
             }
             continue;
         }
-        let policy = match stored_room_policy(&path) {
-            Ok(Some(policy)) => policy,
+        let id = match identity(&path) {
+            Ok(Some(id)) => id,
             Ok(None) => continue,
             Err(error) => {
                 on_file_error(&path, error)?;
                 continue;
             }
         };
-        files.entry(policy.id.clone())
+        files
+            .entry(id.clone())
             .and_modify(|file| *file = Err("room_unavailable"))
-            .or_insert_with(|| Ok(RoomFile {
-                path,
-                id: policy.id,
-                name: String::new(),
-                bootstrap: false,
-            }));
+            .or_insert_with(|| {
+                Ok(RoomFile {
+                    path,
+                    id,
+                    name: String::new(),
+                    bootstrap: false,
+                })
+            });
     }
     Ok(files)
 }

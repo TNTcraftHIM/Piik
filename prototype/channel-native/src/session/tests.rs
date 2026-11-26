@@ -1050,6 +1050,8 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         pending_captures: BTreeMap::new(),
 
         snapshot_job: None,
+
+        room_discovery: None,
     };
     let mut welcome = state.clone();
     // A fresh Native endpoint has no view of this already-authorized hidden room.
@@ -1419,6 +1421,8 @@ async fn capture_command_completes_only_on_the_correlated_room_reply() {
         pending_captures: BTreeMap::new(),
 
         snapshot_job: None,
+
+        room_discovery: None,
     };
     for result in [
         RoomResult::Done,
@@ -1548,6 +1552,8 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 pending_captures: BTreeMap::new(),
 
                 snapshot_job: None,
+
+                room_discovery:None,
             };
             session
                 .event(
@@ -1674,12 +1680,12 @@ async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_res
         directory: directory.path().into(), identity: (state.channel.id, state.sessions[0].user_id),
         commands: received, ready: watch::channel(None).0, desktop: None,
     });
-    assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), None);
+    assert_eq!(Hosting::forwarding_limit(&session.hosting.as_ref().unwrap().directory).unwrap(), None);
     for capacity in [Some(0), Some(3), None] {
         let (answer, response) = oneshot::channel();
         session.relay_capacity(RelayCapacityRequest::Set { session_id, capacity }, answer, &mut socket).await.unwrap();
         assert_eq!(response.await.unwrap().unwrap().relay_override, capacity);
-        assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), capacity);
+        assert_eq!(Hosting::forwarding_limit(&session.hosting.as_ref().unwrap().directory).unwrap(), capacity);
         let frame = tokio::time::timeout(Duration::from_secs(2), remote.next()).await.unwrap().unwrap().unwrap();
         let request = piik_channel_core::wire::Request::parse(frame.to_text().unwrap()).unwrap();
         assert!(matches!(request.command, Command::RelayCapacity { room_id, capacity: sent }
@@ -1689,7 +1695,7 @@ async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_res
         let (answer, response) = oneshot::channel();
         session.relay_capacity(RelayCapacityRequest::Set { session_id: expected, capacity }, answer, &mut socket).await.unwrap();
         assert!(response.await.unwrap().is_err());
-        assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), None);
+        assert_eq!(Hosting::forwarding_limit(&session.hosting.as_ref().unwrap().directory).unwrap(), None);
     }
 }
 

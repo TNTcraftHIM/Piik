@@ -328,6 +328,18 @@ pub(crate) struct Vp8 {
     builder: AccessUnit<Vp8Frame>,
     waiting: bool,
 }
+// RFC 6386 section 9.1. The high two dimension bits are scaling hints.
+fn has_vp8_keyframe_header(frame: &[u8]) -> bool {
+    let [tag, mid, high, 0x9d, 0x01, 0x2a, w0, w1, h0, h1, partitions @ ..] = frame else {
+        return false;
+    };
+    let size = u32::from_le_bytes([*tag, *mid, *high, 0]) >> 5;
+    size > 0
+        && size as usize <= partitions.len()
+        && u16::from_le_bytes([*w0, *w1]) & 0x3fff != 0
+        && u16::from_le_bytes([*h0, *h1]) & 0x3fff != 0
+}
+
 impl Vp8 {
     #[cfg(test)]
     fn new(now: Instant, timestamp: u32, report: SourceReport) -> Self {
@@ -356,6 +368,13 @@ impl Vp8 {
                 continue;
             };
             let keyframe = first & 1 == 0;
+            if keyframe && !has_vp8_keyframe_header(&sample.data) {
+                if !self.waiting {
+                    self.video.request_keyframe();
+                }
+                self.waiting = true;
+                continue;
+            }
             if sample.discontinuity && !keyframe {
                 self.waiting = true;
                 self.video.request_keyframe();
@@ -539,6 +558,47 @@ mod vp8_tests {
     use rtc_rtp::Header;
 
     #[test]
+    fn keyframe_admission_waits_for_a_usable_header() -> Result<()> {
+        let key = super::super::vp8::KEYFRAME_16X16;
+        let mut input = Vp8::new(Instant::now(), 0, Default::default());
+        let requests = input.video.requests();
+        let mut sequence = 0u16;
+        let mut send = |input: &mut Vp8, bytes: &[u8]| {
+            sequence += 1;
+            let timestamp = u32::from(sequence) * 3000;
+            input.push(
+                sequence.into(),
+                timestamp.into(),
+                Packet {
+                    header: Header {
+                        sequence_number: sequence,
+                        timestamp,
+                        marker: true,
+                        ..Default::default()
+                    },
+                    payload: [&[0x10][..], bytes].concat().into(),
+                },
+            );
+            input.pop()
+        };
+        for bytes in [&key[..3], &key[..10], &[1, 0, 0]] {
+            assert!(send(&mut input, bytes)?.is_none());
+            assert!(input.video.codec().is_none());
+        }
+        for offset in [3, 6, 8] {
+            let mut invalid = key.to_vec();
+            invalid[offset] = 0;
+            assert!(send(&mut input, &invalid)?.is_none());
+        }
+        assert_eq!(send(&mut input, key)?.unwrap().bytes, key);
+        assert!(!send(&mut input, &[1, 0, 0])?.unwrap().keyframe);
+        assert!(send(&mut input, &key[..3])?.is_none());
+        assert!(*requests.borrow() > 0);
+        assert!(send(&mut input, &[1, 0, 0])?.is_none());
+        assert!(send(&mut input, key)?.unwrap().keyframe);
+        Ok(())
+    }
+    #[test]
     fn complete_frames_keep_partitions_and_recover_after_missing_head_or_tail() -> Result<()> {
         for missing_head in [true, false] {
             let now = Instant::now();
@@ -552,7 +612,12 @@ mod vp8_tests {
                 (93001, false, false),
                 (96001, true, false),
             ] {
-                let bytes = [vec![if keyframe { 0 } else { 1 }], vec![0x55; 700]].concat();
+                let head = if keyframe {
+                    super::super::vp8::KEYFRAME_16X16
+                } else {
+                    &[1]
+                };
+                let bytes = [head, &[0x55; 700]].concat();
                 let payloads = payloader.payload(200, &bytes.clone().into())?;
                 let last = payloads.len() - 1;
                 for (index, payload) in payloads.into_iter().enumerate() {
@@ -632,14 +697,16 @@ mod partition_head_test {
                     marker: true,
                     ..Default::default()
                 },
-                payload: vec![0x10, 0, 0x66, 0x66].into(),
+                payload: [&[0x10][..], super::super::vp8::KEYFRAME_16X16]
+                    .concat()
+                    .into(),
             },
         );
         let frame = input
             .pop()?
             .expect("partition-zero keyframe recovers after the reorder window");
         assert!(frame.keyframe);
-        assert_eq!(frame.bytes, vec![0, 0x66, 0x66]);
+        assert_eq!(frame.bytes, super::super::vp8::KEYFRAME_16X16);
         Ok(())
     }
 }

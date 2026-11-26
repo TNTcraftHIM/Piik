@@ -179,14 +179,18 @@ impl ReleaseResult {
     }
 }
 
-fn build_version() -> &'static str {
-    option_env!("PIIK_BUILD_VERSION").unwrap_or("development")
+fn build_identity() -> (&'static str, &'static str) {
+    (
+        option_env!("PIIK_BUILD_VERSION").unwrap_or("development"),
+        option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),
+    )
 }
 
 pub async fn check_build(endpoint: &str) -> ReleaseResult {
+    let (version, revision) = build_identity();
     check(
-        build_version(),
-        option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),
+        version,
+        revision,
         endpoint,
         (endpoint == GITHUB_API).then_some(MIRROR_API),
         &std::env::var("GITHUB_TOKEN").unwrap_or_default(),
@@ -195,7 +199,9 @@ pub async fn check_build(endpoint: &str) -> ReleaseResult {
 }
 
 pub fn startup_notice() {
-    if version(build_version()).is_none() {
+    let (running_version, revision) = build_identity();
+    println!("Piik Server build {running_version} ({revision})");
+    if version(running_version).is_none() {
         return;
     }
     // One process-owned thread keeps HTTP/DNS off startup and the server runtime's

@@ -64,6 +64,14 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
     await receive(click);
     expect(sent.map(packet => JSON.parse(packet.payload).record)).toEqual([record]);
     expect(host.currentReaders).toHaveBeenCalledTimes(1);
+
+    record = broadcast = { type: "reaction", nonce: 2, event, snapshot };
+    sent.length = 0;
+    vi.mocked(host.currentReaders).mockRejectedValueOnce(new Error("readers unavailable"));
+    await expect(receive({ ...click, nonce: 2 })).rejects.toThrow("readers unavailable");
+    expect(sent.map(packet => JSON.parse(packet.payload))).toEqual([
+      expect.objectContaining({ recipient: "source", requestId: "original-id", record }),
+    ]);
   } finally { conversation.close(); }
 });
 

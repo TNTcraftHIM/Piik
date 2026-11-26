@@ -300,6 +300,7 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
         snapshot_job: None,
+        room_discovery: None,
     }
 }
 fn addressed_input(core: &mut CoreBurst, index: usize, name: &str) -> Result<Event> {
@@ -536,4 +537,264 @@ async fn cancelled_release_finishes_sibling_storage_and_returns_first_error() ->
         crate::hosted_room::try_lock_file(&lock)?;
     }
     Ok(())
+}
+
+fn room_review_session() -> Result<(
+    CoreBurst,
+    Session,
+    tempfile::TempDir,
+    watch::Receiver<Option<Result<(), String>>>,
+    Event,
+)> {
+    let mut core = CoreBurst::new()?;
+    let welcome = core
+        .recovery()?
+        .into_iter()
+        .find(|e| matches!(e, Event::Welcome { .. }))
+        .context("missing state")?;
+    let Event::Welcome { state, .. } = &welcome else {
+        unreachable!()
+    };
+    let state = state.clone();
+    let identity = (state.channel.id, core.user);
+    let mut native = session(&mut core, state);
+    let dir = tempfile::tempdir()?;
+    let (ready, status) = watch::channel(None);
+    let (_sender, commands) = mpsc::channel(4);
+    native.hosting = Some(Hosting {
+        directory: dir.path().into(),
+        identity,
+        ready,
+        commands,
+        desktop: None,
+    });
+    Ok((core, native, dir, status, welcome))
+}
+
+async fn receive_one_room(native: &mut Session, sink: &mut RecordedSink) -> Result<()> {
+    let done = time::timeout(
+        Duration::from_secs(3),
+        native.live.as_mut().unwrap().room.rooms.finished.recv(),
+    )
+    .await?
+    .context("room stopped")?;
+    native.finish_room(done, Some(sink)).await
+}
+
+#[tokio::test]
+async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result<()> {
+    let (core, mut native, _dir, _ready, _welcome) = room_review_session()?;
+    let id = Uuid::new_v4().to_string();
+    let policy = RoomState::new(
+        id.clone(),
+        "test".into(),
+        Default::default(),
+        core.user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let mut sink = RecordedSink::default();
+    let (reply, mut old) = oneshot::channel();
+    native
+        .open_room(
+            OpenRoom {
+                policy: policy.clone(),
+                result: reply,
+            },
+            None,
+            &mut sink,
+        )
+        .await?;
+    receive_one_room(&mut native, &mut sink).await?;
+    let registration = native.opening[&id].request_id.clone();
+    native
+        .route_event(
+            Event::HostBound {
+                room_id: id.clone(),
+                binding_id: Uuid::new_v4(),
+            },
+            &mut sink,
+        )
+        .await?;
+    receive_one_room(&mut native, &mut sink).await?;
+    let (resume, wait) = std::sync::mpsc::channel();
+    let (entered, started) = oneshot::channel();
+    native
+        .live
+        .as_mut()
+        .unwrap()
+        .room
+        .rooms
+        .post(&id, true, false, move |_| {
+            let _ = entered.send(());
+            wait.recv_timeout(Duration::from_secs(4))?;
+            Ok(Box::new(|_, _| Ok(vec![])))
+        })?;
+    started.await?;
+    native
+        .route_event(
+            Event::Ack {
+                request_id: registration.clone(),
+            },
+            &mut sink,
+        )
+        .await?;
+    let state = native
+        .live
+        .as_ref()
+        .unwrap()
+        .room
+        .snapshot
+        .borrow()
+        .clone()
+        .unwrap();
+    native
+        .route_event(Event::State { state }, &mut sink)
+        .await?;
+    let (reply, mut new) = oneshot::channel();
+    native
+        .open_room(
+            OpenRoom {
+                policy,
+                result: reply,
+            },
+            None,
+            &mut sink,
+        )
+        .await?;
+    resume.send(())?;
+    // Process the held turn, stale Ack, and replacement open before asking the new writer to bind.
+    for _ in 0..3 {
+        receive_one_room(&mut native, &mut sink).await?;
+    }
+    ensure!(
+        matches!(old.try_recv(),Ok(Err(code)) if code=="room_unavailable"),
+        "retired registration still owns the old opener"
+    );
+    ensure!(matches!(
+        new.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
+    let next = native.opening[&id].request_id.clone();
+    ensure!(next != registration);
+    native
+        .route_event(
+            Event::HostBound {
+                room_id: id.clone(),
+                binding_id: Uuid::new_v4(),
+            },
+            &mut sink,
+        )
+        .await?;
+    native
+        .route_event(Event::Ack { request_id: next }, &mut sink)
+        .await?;
+    for _ in 0..2 {
+        receive_one_room(&mut native, &mut sink).await?;
+    }
+    ensure!(new.await?.map_err(anyhow::Error::msg)?.id == id);
+    native.release().await
+}
+
+#[tokio::test]
+async fn room_review_failing_reservation_releases_last_ready_waiter() -> Result<()> {
+    let (core, mut native, dir, ready, _welcome) = room_review_session()?;
+    let id = Uuid::new_v4().to_string();
+    let policy = RoomState::new(
+        id.clone(),
+        "other writer".into(),
+        Default::default(),
+        core.user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let _other_writer =
+        HostedRoom::create(&dir.path().join(format!("{id}.sqlite")), policy.clone())?;
+    let mut sink = RecordedSink::default();
+    let (reply, result) = oneshot::channel();
+    native
+        .open_room(
+            OpenRoom {
+                policy,
+                result: reply,
+            },
+            None,
+            &mut sink,
+        )
+        .await?;
+    native
+        .route_event(
+            Event::HostBound {
+                room_id: core.room_ids[0].clone(),
+                binding_id: Uuid::new_v4(),
+            },
+            &mut sink,
+        )
+        .await?;
+    // Both turns are posted. Deliver the successful bind first, whichever task completed first.
+    let rooms = &mut native.live.as_mut().unwrap().room.rooms;
+    let a = rooms.finished.recv().await.unwrap();
+    let b = rooms.finished.recv().await.unwrap();
+    let (bind, failed) = if a.id == id { (b, a) } else { (a, b) };
+    native.finish_room(bind, Some(&mut sink)).await?;
+    ensure!(ready.borrow().is_none());
+    native.finish_room(failed, Some(&mut sink)).await?;
+    ensure!(result.await?.is_err());
+    ensure!(
+        matches!(&*ready.borrow(), Some(Ok(()))),
+        "last reservation disappeared without publishing ready"
+    );
+    native.release().await
+}
+
+#[tokio::test]
+async fn room_review_fresh_welcome_settles_saved_registration_when_open_fails() -> Result<()> {
+    let (core, mut native, dir, ready, mut welcome) = room_review_session()?;
+    let id = Uuid::new_v4().to_string();
+    let policy = RoomState::new(
+        id.clone(),
+        "stored".into(),
+        Default::default(),
+        core.user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let mut sink = RecordedSink::default();
+    let (reply, mut pending) = oneshot::channel();
+    native
+        .open_room(
+            OpenRoom {
+                policy,
+                result: reply,
+            },
+            None,
+            &mut sink,
+        )
+        .await?;
+    receive_one_room(&mut native, &mut sink).await?;
+    ensure!(native.opening.contains_key(&id));
+    native.release().await?;
+    let _taken = HostedRoom::open(&dir.path().join(format!("{id}.sqlite")), &id, core.user)?;
+    let Event::Welcome { state, .. } = &mut welcome else {
+        unreachable!()
+    };
+    let mut entry = state.channel.rooms[0].clone();
+    entry.id = id.clone();
+    entry.creator_id = core.user;
+    state.channel.rooms = vec![entry];
+    native.route_event(welcome, &mut sink).await?;
+    ensure!(matches!(
+        pending.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
+    receive_one_room(&mut native, &mut sink).await?;
+    ensure!(matches!(pending.try_recv(),Ok(Err(code)) if code=="room_unavailable"));
+    ensure!(!native.opening.contains_key(&id) && matches!(&*ready.borrow(), Some(Ok(()))));
+    native.release().await
 }

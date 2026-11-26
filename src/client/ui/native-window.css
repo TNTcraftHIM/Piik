@@ -1,5 +1,5 @@
 /* Top-layer surfaces share the caption's existing metric, independent of page scroll. */
-html[data-piik-native-window="integrated"] { --surface-inset-top: var(--native-caption-height); }
+html[data-piik-native-window="integrated"] { --surface-inset-top: var(--native-caption-height); --living-top-size: auto; }
 html[data-piik-native-window="integrated"]:is(:fullscreen, :has(:fullscreen)) { --surface-inset-top: 0px; }
 html[data-piik-native-window] .c3-app { --c3-content-width: 100%; padding: 0; }
 html[data-piik-native-window] [data-app-shell] { align-self: stretch; width: 100%; max-width: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }

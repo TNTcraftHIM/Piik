@@ -385,7 +385,7 @@ export const ja = {
   "channel.user.avatar": "{name}のアバター",
   "channel.voiceDock.voiceControls": "通話の操作",
   "channel.voiceDock.openOverlay": "通話オーバーレイを開く",
-  "channel.voiceDock.voiceRoomCount": "参加中の通話ルーム（{count}）",
+  "channel.voiceDock.otherVoiceRoomCount": "ほかの参加中の通話ルーム（{count}）",
   "channel.voiceDock.openRoomOverlay": "{name}の通話オーバーレイを開く",
   "channel.voiceDock.adjustOverlay": "通話オーバーレイを調整",
   "channel.voiceDock.pinOverlay": "通話オーバーレイを固定",

@@ -19,5 +19,61 @@
   align-items: center;
   gap: 4px;
 }
-.c3-voice-rooms-compact .lr-btn .lr-cap { font-variant-numeric: tabular-nums; }
+:is(.c3-voice-room-layout[data-density="rows"], [data-density="rail"] .c3-voice-room-row[data-direct]) .c3-voice-room-name > button {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.c3-voice-room-layout[data-density="rows"] .c3-voice-room-actions { gap: 2px; }
+.c3-voice-room-layout[data-density="rows"] .c3-voice-room-actions .lr-btn.is-compact {
+  --button-size: var(--control-dense-size);
+  width: var(--button-size);
+  padding-inline: 0;
+}
+.c3-voice-dock-rooms { min-width: 0; max-width: 100%; }
+.c3-voice-room-layout[data-density="bar"] {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+.c3-voice-room-row[data-direct] {
+  grid-template-columns: 1fr;
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+}
+.c3-voice-room-row[data-direct] .c3-voice-room-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  padding-inline: 4px;
+}
+.c3-voice-room-row[data-direct] .c3-voice-room-name { order: -1; }
+.c3-voice-room-row[data-direct] .c3-voice-room-name > button { min-height: 24px; }
+.c3-voice-room-layout[data-density="bar"] > .c3-voice-room-disclosure { flex: none; }
+.c3-voice-room-layout[data-density="rail"] {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.c3-voice-room-layout[data-density="rail"] .c3-voice-room-row[data-direct] {
+  width: var(--control-compact-size);
+  gap: 4px;
+}
+.c3-voice-room-layout[data-density="rail"] .c3-voice-room-row[data-direct] :is(.c3-voice-room-info, .c3-voice-room-actions) {
+  display: grid;
+  justify-items: center;
+}
+.c3-voice-room-layout[data-density="rail"] .c3-voice-room-row[data-direct] .c3-voice-room-info {
+  padding: 0;
+  text-align: center;
+}
+.c3-voice-room-layout[data-density="rail"] .c3-voice-room-row[data-direct] .c3-voice-room-name > button { text-align: center; }
+.c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn { width: var(--control-compact-size); padding: 0; }
+.c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn > svg { display: none; }
+.c3-voice-room-disclosure > span .lr-btn .lr-cap { font-variant-numeric: tabular-nums; }
 .c3-voice-rooms-popover { width: min(320px, calc(100vw - 16px)); padding: 8px; overflow: auto; }

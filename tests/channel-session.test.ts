@@ -268,6 +268,36 @@ test.each(["latest", "message"] as const)("leaving a room retires a %s read stil
   } finally { session.close(); }
 });
 
+test.each(["delete_message", "clear_history"] as const)("a channel ack leaves %s waiting for its writer", async kind => {
+  const { session, socket, peer } = await setup();
+  try {
+    await peer.history([message(1)]);
+    const operation = kind === "delete_message"
+      ? session.deleteMessage("first", 1, message(1).id)
+      : session.purgeRoomHistory("first");
+    const request = await peer.next();
+    expect(request.type).toBe(kind);
+    socket.receive({ type: "ack", requestId: request.requestId });
+    const pending = Symbol("pending");
+    expect(await Promise.race([operation, new Promise(resolve => setTimeout(() => resolve(pending), 0))])).toBe(pending);
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1]);
+    peer.reply(request, kind === "delete_message" ? { type: "message_deleted", messageSeq: 1 } : { type: "history_cleared", throughSeq: 1 });
+    await expect(operation).resolves.toBeUndefined();
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([]);
+  } finally { session.close(); }
+});
+
+test("a contradictory writer result rejects the pending deletion", async () => {
+  const { session, peer } = await setup();
+  try {
+    await peer.history([message(1)]);
+    const operation = session.deleteMessage("first", 1, message(1).id);
+    peer.reply(await peer.next(), { type: "history_cleared", throughSeq: 1 });
+    await expect(operation).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1]);
+  } finally { session.close(); }
+});
+
 test("writer-confirmed moderation removes messages, quotations and transfers for both readers", async () => {
   const moderator = await setup();
   const reader = await setup();

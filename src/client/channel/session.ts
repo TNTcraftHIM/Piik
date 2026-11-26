@@ -115,6 +115,17 @@ function captureSource(track: MediaStreamTrack | undefined, camera = false): Scr
   return { kind: camera ? "camera" : "screen", name: name || null };
 }
 
+function signedConversationRequest(command: ChannelCommand) {
+  switch (command.type) {
+    case "chat": return { command, result: "confirmed" } as const;
+    case "history": return { command, result: "history_page" } as const;
+    case "history_seek": return { command, result: "history_seek_result" } as const;
+    case "react": return { command, result: "reaction" } as const;
+    case "delete_message": return { command, result: "message_deleted" } as const;
+    case "clear_history": return { command, result: "history_cleared" } as const;
+  }
+}
+
 function stored(key: string, value?: string): string | null {
   try {
     if (value !== undefined) localStorage.setItem(key, value);
@@ -186,7 +197,7 @@ export class ChannelSession {
   private roomId = selectedRoom();
   private requests = new Map<string, {
     kind: ChannelCommand["type"]; roomId?: string; bindingId?: string;
-    seekAfter?: number;
+    signedResult?: ConversationReply["record"]["type"]; seekAfter?: number;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
   private readonly hosting = new BrowserHosting({
@@ -508,6 +519,9 @@ export class ChannelSession {
   }
 
   private receive(event: ChannelEvent, skipRestoreRoom?: string, bootstrap?: OwnerBootstrap): void {
+    // A routed conversation can fail at the Domain, but only its writer confirms it.
+    if ("requestId" in event && event.requestId && this.requests.get(event.requestId)?.signedResult
+      && event.type !== "error" && !(event.type === "room_reply" && event.result.type === "error")) return;
     if (event.type === "welcome") {
       this.endRecovery();
       const resumed = this.view.sessionId === event.sessionId;
@@ -864,8 +878,7 @@ export class ChannelSession {
   } = {}): Promise<void> {
     const { signal, replaceHistory = false, refresh, bindingId } = options;
     const reading = roomId ? this.readings.get(roomId) : undefined, socket = this.socket;
-    const conversation = command.type === "chat" || command.type === "history" || command.type === "history_seek" || command.type === "react"
-      || command.type === "delete_message" || command.type === "clear_history";
+    const conversation = signedConversationRequest(command);
     const expectedBinding = conversation ? bindingId ?? this.conversationBinding(roomId) : undefined;
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     signal?.throwIfAborted();
@@ -886,7 +899,7 @@ export class ChannelSession {
     return new Promise<void>((resolve, reject) => {
       // Conversation includes image upload and its host-confirmed response.
       timer = setTimeout(() => { this.retireRequest(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
-      this.requests.set(requestId, { resolve, reject, roomId, kind: command.type,
+      this.requests.set(requestId, { resolve, reject, roomId, kind: command.type, signedResult: conversation?.result,
         result: event => {
           try {
             if (event.type === "room_reply") {
@@ -913,7 +926,7 @@ export class ChannelSession {
       if (command.type === "history") this.roomHistory(command.roomId).openPage(requestId, { bindingId: replyBinding, before: command.before, replace: replaceHistory,
         refresh, latestThrough: this.view.state?.channel.rooms.find(room => room.id === roomId)?.lastMessageSeq });
       signal?.addEventListener("abort", abort, { once: true });
-      if (conversation) void this.conversation.send(command, requestId, expectedBinding).catch(error => {
+      if (conversation) void this.conversation.send(conversation.command, requestId, expectedBinding).catch(error => {
         if (!this.retireRequest(requestId)) return;
         reject(error instanceof Error ? error : new Error(String(error)));
       });
@@ -931,6 +944,13 @@ export class ChannelSession {
 
   private receiveConversation(reply: ConversationReply): void {
     const record = reply.record;
+    const request = this.requests.get(reply.requestId);
+    const addressed = request?.signedResult && request.roomId === reply.roomId && request.bindingId === reply.bindingId;
+    if (addressed && record.type !== request.signedResult && record.type !== "error"
+      && record.type !== "live_message" && record.type !== "message_reactions") {
+      this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
+      return;
+    }
     if (record.type === "message_deleted" || record.type === "history_cleared") {
       if (!this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.authorized && room.delivery?.bindingId === reply.bindingId)) return;
       this.applyHistoryRemoval(reply.roomId, record);
@@ -976,8 +996,7 @@ export class ChannelSession {
       }
       return;
     }
-    const request = this.requests.get(reply.requestId);
-    if (!request || request.roomId !== reply.roomId || request.bindingId !== reply.bindingId) return;
+    if (!addressed) return;
     if (request.seekAfter !== undefined && record.type !== "error") {
       if (record.type !== "history_seek_result" || record.after !== request.seekAfter
         || (record.seq !== null && (!Number.isSafeInteger(record.seq) || record.seq <= record.after))) {
@@ -985,9 +1004,6 @@ export class ChannelSession {
         return;
       }
       request.result?.(record);
-    } else if (record.type === "history_seek_result") {
-      this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
-      return;
     }
     const history = this.histories.get(reply.roomId);
     if (record.type === "history_page" && history?.hasPage(reply.requestId)) {
@@ -1001,8 +1017,9 @@ export class ChannelSession {
       request.result?.(record);
       this.applyMessage(reply.roomId, record.message, record.inserted);
     }
-    this.receive(record.type === "error" ? { type: "error", requestId: reply.requestId, code: record.code }
-      : { type: "ack", requestId: reply.requestId });
+    this.retireRequest(reply.requestId);
+    if (record.type === "error") request.reject(new Error(record.code));
+    else request.resolve();
   }
 
   private applyHistoryRemoval(roomId: string, record: Extract<ConversationReply["record"], { type: "message_deleted" | "history_cleared" }>): void {

@@ -193,6 +193,7 @@ impl Drop for PageView {
 }
 struct Page {
     root: Uuid,
+    requested_url: String,
     views: Views,
     owner: Uuid,
     origin: String,
@@ -236,12 +237,11 @@ impl Page {
         let views = self.views.borrow();
         let page_urls = views.iter().filter_map(|(id, view)| view.view.url().ok()
             .filter(|url| page::valid_url(url)).map(|url| (*id, url))).collect::<BTreeMap<_, _>>();
-        let Some(url) = page_urls.get(&self.selected_view()) else { return };
         for (key, view) in views.iter() {
             let enabled = self.picker_document.is_some() && self.candidates.values().any(|candidate| candidate.view == *key);
             view.caption.share_picker(enabled);
         }
-        self.emit(json!({"type":"page_candidates","pageId":self.id,"url":url,"candidates":candidate_descriptions(&self.candidates, &page_urls)}));
+        self.emit(candidate_catalog(self.id, self.selected_view(), &self.requested_url, &self.candidates, &page_urls));
     }
     fn request(&mut self, candidate_id: Option<Uuid>, selecting: bool, patch: Option<page::Patch>, reply: Reply) {
         self.pending.retain(|_, pending| !pending.reply.is_closed());
@@ -849,6 +849,7 @@ impl Pages {
         views.borrow_mut().insert(key, view);
         Ok(Page {
             root: key,
+            requested_url: url,
             views,
             owner,
             origin: outgoing.origin.clone(),
@@ -1050,6 +1051,15 @@ impl Pages {
 fn media_candidate_id(candidates: &BTreeMap<Uuid, Candidate>, view: Uuid, frame: Uuid, media: Uuid) -> Option<Uuid> {
     candidates.iter().find_map(|(id, candidate)|
         (candidate.view == view && candidate.frame == frame && candidate.source.media == media).then_some(*id))
+}
+
+fn candidate_catalog(
+    page_id: Uuid, selected_view: Uuid, requested_url: &str,
+    candidates: &BTreeMap<Uuid, Candidate>, page_urls: &BTreeMap<Uuid, String>,
+) -> Value {
+    // The catalog keeps a display address while about:blank has no original-page action.
+    let url = page_urls.get(&selected_view).map(String::as_str).unwrap_or(requested_url);
+    json!({"type":"page_candidates","pageId":page_id,"url":url,"candidates":candidate_descriptions(candidates, page_urls)})
 }
 
 fn candidate_descriptions(candidates: &BTreeMap<Uuid, Candidate>, page_urls: &BTreeMap<Uuid, String>) -> Vec<Value> {
@@ -1513,6 +1523,9 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
         "closing the opener retired the selected popup"
     );
     assert_eq!(pages.pages.values().next().unwrap().selected_view(), child);
+    let catalog = events.try_recv().unwrap();
+    assert_eq!(catalog["type"], "page_candidates");
+    assert_eq!(catalog["candidates"][0]["id"], json!(candidate));
 
     let mut close = Box::pin(connection.request(Operation::PageClose { page_id }));
     assert!(futures_util::poll!(&mut close).is_pending());
@@ -1577,6 +1590,27 @@ mod candidate_tests {
         addresses.insert(popup, "https://popup.test/next".into());
         assert_eq!(describe(&addresses, b)["pageURL"], "https://popup.test/next");
         assert_eq!(describe(&addresses, a)["pageURL"], "https://site.test/home");
+    }
+    #[test]
+    fn blank_opener_publishes_popup_then_empty_catalog_when_popup_closes() {
+        let (page_id, opener, popup, id) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let requested_url = "https://site.test/open";
+        let popup_url = "https://popup.test/episode";
+        let candidate = Candidate {
+            view: popup, frame: Uuid::new_v4(), ancestors: vec![],
+            source: report(Uuid::new_v4(), "https://media.test/video.mp4"),
+        };
+        // about:blank is excluded from the per-window navigable addresses.
+        let mut addresses = BTreeMap::from([(popup, popup_url.to_owned())]);
+        let mut candidates = BTreeMap::from([(id, candidate)]);
+        let event = candidate_catalog(page_id, opener, requested_url, &candidates, &addresses);
+        assert_eq!(event["candidates"][0]["pageURL"], popup_url);
+        assert_eq!(event["url"], requested_url);
+
+        addresses.remove(&popup);
+        candidates.remove(&id);
+        let event = candidate_catalog(page_id, opener, requested_url, &candidates, &addresses);
+        assert_eq!(event, json!({"type":"page_candidates","pageId":page_id,"url":requested_url,"candidates":[]}));
     }
     #[test]
     fn media_events_require_an_observed_candidate_in_the_same_view_and_frame() {

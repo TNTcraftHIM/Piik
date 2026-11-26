@@ -295,6 +295,17 @@ mod shutdown_tests {
             .post("pending", false, false, |_| Ok(Box::new(|_, _| Ok(vec![]))))
             .unwrap();
         rooms.tasks.abort_all();
+        rooms["pending"].send.closed().await;
+        let (send, receive) = oneshot::channel();
+        let reply = OpeningReply::new(None, send, Some("room_restored_connection_failed"));
+        let rejected = rooms.post("pending", false, false, move |_| {
+            Ok(Box::new(move |_, _| {
+                reply.finish(Err("room_unavailable".into()));
+                Ok(vec![])
+            }))
+        });
+        assert!(rejected.is_err());
+        assert!(matches!(receive.await,Ok(Err(code)) if code=="room_restored_connection_failed"));
         rooms.stop();
         // The task exited before publishing its accepted request.
         assert!(time::timeout(Duration::from_secs(2), rooms.finished.recv())
