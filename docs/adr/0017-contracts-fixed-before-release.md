@@ -47,10 +47,15 @@ these boundaries:
    state. History uses one signed, bounded page containing messages and their
    reaction snapshots. A released client that reads an unknown outcome as success
    cannot be corrected from the domain.
-3. **Storage.** The first public format of each store is recorded as release
-   fixtures. A concrete transactional upgrade is added when a format actually
-   changes, and a store newer than the code is refused, with no general
-   migration framework. Every later upgrade starts from the released format.
+3. **Storage.** The baseline covers Domain and room stores, portable archives,
+   App settings, and Browser identity and read-position records. Retain inputs
+   produced by the released writers. Compatible upgrades preserve authority,
+   approved-origin scopes, data namespaces, identity credentials and valid
+   configuration. Missing or malformed optional local preferences may use
+   defaults; they never replace saved identity or restore authority. Add a
+   concrete transactional upgrade only when a representation changes, and
+   refuse a newer store before modification. No general migration framework
+   is required.
 4. **Restored history.** A restore gives the room's history a new lineage that
    invalidates old read positions, and a normal restart keeps them. A position
    a released reader saved without a lineage cannot later be told apart from

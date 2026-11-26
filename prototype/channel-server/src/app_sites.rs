@@ -27,6 +27,7 @@ pub(super) enum StartupIntent {
 // Approval covers room hosting and device capture. A narrower saved consent
 // must be approved again; its room-data namespace remains the same.
 const APPROVAL_SCOPE: i64 = 2;
+const FORMAT_VERSION: u32 = 0;
 
 #[derive(Deserialize, Serialize)]
 struct LocalNamespace {
@@ -59,6 +60,10 @@ impl Sites {
         std::fs::create_dir_all(directory)?;
         // Resolve the directory so SQLite can create journals beside long Windows paths.
         let db = Connection::open(std::fs::canonicalize(directory)?.join("app.sqlite"))?;
+        let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version != FORMAT_VERSION {
+            bail!("unsupported_storage_version");
+        }
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_site (
                origin TEXT PRIMARY KEY, data_id TEXT NOT NULL, allowed INTEGER NOT NULL);
@@ -212,6 +217,56 @@ impl Sites {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn newer_app_format_is_rejected_without_changing_data_or_schema() -> Result<()> {
+        for populated in [false, true] {
+            let directory = tempfile::tempdir()?;
+            let path = directory.path().join("app.sqlite");
+            if populated {
+                let mut sites = Sites::open(directory.path())?;
+                let site = "https://approved.example";
+                sites.approve(site, true, false)?;
+                sites.local_namespace()?;
+                sites.set_domain_port(NonZeroU16::new(12345).unwrap())?;
+                sites.set_startup(&StartupIntent::External(site.into()))?;
+                sites.save_bookmark(&Bookmark {
+                    id: Uuid::new_v4(),
+                    origin: "https://bookmark.example".into(),
+                    name: "Friend".into(),
+                })?;
+            }
+            let db = Connection::open(&path)?;
+            db.execute_batch(
+                "CREATE TABLE future_setting (value TEXT NOT NULL);
+                INSERT INTO future_setting VALUES('retained'); PRAGMA user_version=1;",
+            )?;
+            drop(db);
+            let before = std::fs::read(&path)?;
+            assert_eq!(
+                Sites::open(directory.path())
+                    .err()
+                    .expect("newer format opened")
+                    .to_string(),
+                "unsupported_storage_version"
+            );
+            assert_eq!(std::fs::read(&path)?, before);
+            let db = Connection::open(&path)?;
+            let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+            let tables: u32 = db.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'
+                AND name IN ('app_site','app_setting','app_bookmark')",
+                [],
+                |row| row.get(0),
+            )?;
+            let value: String =
+                db.query_row("SELECT value FROM future_setting", [], |row| row.get(0))?;
+            assert_eq!(version, 1);
+            assert_eq!(tables, if populated { 3 } else { 0 });
+            assert_eq!(value, "retained");
+        }
+        Ok(())
+    }
 
     #[test]
     fn local_namespace_retains_existing_data_without_storing_an_owner_key() -> Result<()> {

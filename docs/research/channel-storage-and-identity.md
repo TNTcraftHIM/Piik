@@ -222,9 +222,9 @@ including when the room-host binding stays the same. A reader browsing older
 history keeps that selected window. Refresh from the room writer's current result,
 including removals. Participants keep a bounded reading window in page memory;
 reloading or re-entering retrieves it from the room writer. Browser room authority
-and retained attachments use their existing IndexedDB stores; localStorage remains
-for small preferences. Original author departure does not erase
-confirmed messages.
+and retained attachments use their existing IndexedDB stores. localStorage holds
+origin-scoped admission credentials and personal reading/display preferences.
+Original author departure does not erase confirmed messages.
 
 The page retains a live conversation reader for its selected room and for rooms
 whose pictures it is sharing or watching. Each picture's chat overlay uses that
