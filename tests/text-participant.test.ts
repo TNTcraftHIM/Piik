@@ -100,8 +100,16 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     client.on('confirmed', value => receipts.push(value));
     await expect(client.deleteOwnMessage(confirmed)).rejects.toThrow('invalid_response');
     expect(receipts).toEqual([]);
+    // A signed receipt can arrive during the old socket's closing handshake.
+    const send = client.chat('notice');
+    const reconnect = client.reconnect();
+    const [result] = await Promise.allSettled([send, reconnect]);
+    await reconnect;
+    expect(result).toMatchObject({ status: 'fulfilled', value: { id: message.id } });
+    expect(receipts).toHaveLength(1);
+    expect(live.filter(entry => entry.text === 'live')).toHaveLength(1);
     await client.stop();
-    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'conversation', 'leave']);
+    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'conversation', 'conversation', 'join', 'browse', 'leave']);
     expect(errors).toEqual([]);
   } finally {
     await client.stop();

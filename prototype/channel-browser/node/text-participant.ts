@@ -363,13 +363,15 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         this.complete(event.requestId);
       return;
     }
-    if (event.type !== 'conversation' || !this.state || !this.sessionId || this.socket?.readyState !== WebSocket.OPEN)
+    if (event.type !== 'conversation' || !this.state || !this.sessionId)
       return;
     const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ConversationAddress | ConversationReply;
     if (reply.roomId !== this.roomId || !('record' in reply))
       throw new Error('invalid_conversation_sender');
     const record = reply.record;
     const pending = this.pending.get(reply.requestId);
+    // A closing socket can still deliver the writer's receipt for an in-flight request.
+    if (this.socket?.readyState !== WebSocket.OPEN && (!pending || record.type === 'live_message')) return;
     if (record.type === 'live_message') {
       this.emit('live', record.message);
       return;
