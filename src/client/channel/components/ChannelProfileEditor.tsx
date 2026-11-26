@@ -60,7 +60,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
         {open && <div className="c3-profile-picture" style={{ "--profile-color": color } as CSSProperties}>
           <ChannelIdentityImageInput value={picture} onChange={setPicture} disabled={!editable}
             busy={preparing} onBusyChange={setPreparing}
-            fallbackPreview={<span className="c3-profile-pawn"><PawnSvg color={color} /></span>} />
+            fallbackPreview={<span className="c3-profile-preview"><PawnSvg color={color} /></span>} />
         </div>}
         <label htmlFor={`${id}-name`}>{t("channel.profileEditor.nickname")}</label>
         <span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"

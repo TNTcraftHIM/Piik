@@ -475,10 +475,13 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     {/* A phone's header keeps the room's name, so the room's window opens from beside the couch it lifts out. */}
     {connections}{room?.authorized && !phone && <div ref={setToolTriggerHome} />}
   </div>;
-  const roomHeading = <div className="c3-room-heading" data-tooltip-controls>
-  <div className="c3-room-name">{bar && <span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
+  // In the bar forms the control that opens the room list begins the top row, before the site's cell, so it keeps
+  // its place when the list opens.
+  const paneNavigation = bar && <span className="c3-pane-navigation" data-tooltip-controls><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
     title={{ text: t("channel.previewPage.roomList") }} hint="hint-room-list" controls="c3-room-list" expanded={mobilePane === "rooms"}
-    onClick={toggleRoomList} /></span>}<ChannelIdentityMark icon={room?.icon ?? "couch"} picture={room?.picture} size={25} />
+    onClick={toggleRoomList} /></span>;
+  const roomHeading = <div className="c3-room-heading" data-tooltip-controls>
+  <div className="c3-room-name"><ChannelIdentityMark icon={room?.icon ?? "couch"} picture={room?.picture} size={25} />
     <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview")), selector: "h2" }}>
       <h2>{room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview"))}</h2>
     </Tooltip>
@@ -512,7 +515,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       <div ref={voiceSlot} className="c3-room-slot" />
       {room?.authorized && (stopOwnShare ? <Btn icon="stop" size="compact" tone="danger" title="host.stop"
         cap={phone || roomListCompact ? undefined : "host.stop"} disabled={!connected} busy={busy("stop", ownShareId)} onClick={stopOwnShare} />
-        : <ChannelShareControl variant={roomListCompact ? undefined : "split"} compact={phone || roomListCompact} channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)}
+        : <ChannelShareControl variant="split" compact={phone || roomListCompact} channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)}
             disabled={!connected || !room.available} openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} />)}
       {chatInBar && chatToggle}
     </div>
@@ -559,7 +562,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       data-sidebars={phone ? "phone" : roomListRail ? "rail" : "list"}
       data-minimal={minimal || undefined} data-main-chat={mainChatOpen && room?.authorized || undefined} data-room-list-open={roomListOpen || undefined} data-overview={overview || undefined}
       data-companion={visibleCompanion}>
-      <header className="c3-site-bar"><div className="c3-site-identity">
+      <header className="c3-site-bar">{paneNavigation}<div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
         <div className="c3-site-name">{self && self.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
           : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><span className="c3-site-name-readonly"><ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={22} /><strong>{state?.channel.name ?? "Piik"}</strong></span></Tooltip>}</div>
@@ -572,16 +575,17 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         hidden={bar && !roomListOpen} inert={bar && !roomListOpen || undefined}>
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
-          <div className="c3-section-label"><span id="c3-room-list-heading" tabIndex={-1} className={roomListCompact ? "visually-hidden" : "c3-section-caption"}><Cap k={{ text: t("channel.previewPage.rooms") }} /></span>
+          <div className="c3-section-label">
+            {!bar && <Btn id="c3-rooms-trigger" icon="sidebar" size="dense" quiet textTooltip
+              title={{ text: t("channel.previewPage.roomList") }} controls="c3-room-list"
+              expanded={!roomListCompact} onClick={toggleRoomList} />}
+            <span id="c3-room-list-heading" tabIndex={-1} className={roomListCompact ? "visually-hidden" : "c3-section-caption"}><Cap k={{ text: t("channel.previewPage.rooms") }} /></span>
             <div className="c3-room-list-actions">{!roomListCompact && self && (canOrderRooms || orderingRooms) && <Btn icon={orderingRooms ? "check" : "grip"} size="dense" quiet textTooltip
               title={orderingRooms ? "room.order.done" : "room.order.edit"} pressed={orderingRooms}
               onClick={() => { setOrderingRooms(!orderingRooms); setDraggedRoom(null); setOrderAnnouncement(""); }} />}
               {!roomListCompact && canCreateRoom && <Btn icon="plus" size="dense" quiet hint="hint-create-room"
               title={{ text: t("channel.previewPage.createRoom") }} cap={!rooms.length ? { text: t("channel.previewPage.createRoom") } : undefined}
               expanded={newRoom !== null} disabled={!connected} onClick={() => setNewRoom("")} />}
-              {!bar && <Btn id="c3-rooms-trigger" icon="sidebar" size="dense" quiet textTooltip
-                title={{ text: t("channel.previewPage.roomList") }} controls="c3-room-list"
-                expanded={!roomListCompact} onClick={toggleRoomList} />}
             </div>
           </div>
           {!roomListCompact && orderingRooms && <p id="c3-room-order-help" className="c3-room-order-help">{t("room.order.help")}</p>}

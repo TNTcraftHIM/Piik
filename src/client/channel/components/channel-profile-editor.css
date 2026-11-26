@@ -11,5 +11,6 @@
 .c3-profile-picture > .c3-identity-upload { gap: 8px; margin: 0; }
 .c3-profile-picture .c3-identity-upload-actions { display: grid; justify-items: start; }
 .c3-profile-picture .c3-identity-image-preview { background: var(--profile-color); }
-.c3-profile-pawn { display: grid; place-items: center; flex: none; width: 88px; height: 88px; }
-.c3-profile-pawn > .lr-person { width: 54px; height: 63px; }
+/* The picture’s preview in the editor. The trigger that shows my figure in the rail is c3-profile-pawn. */
+.c3-profile-preview { display: grid; place-items: center; flex: none; width: 88px; height: 88px; }
+.c3-profile-preview > .lr-person { width: 54px; height: 63px; }

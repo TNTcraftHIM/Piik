@@ -46,7 +46,7 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
     const showRoomInfo = !direct || !current || joined.length > 1 || status === "joining";
     return <ChannelVoiceRoomRow key={roomId} channel={channel} activity={activity} name={name}
       current={current} visible={visible} direct={direct} labelled={direct && density === "bar"} status={status} showRoomInfo={showRoomInfo}
-      shortcuts={roomId === shortcutRoomId ? shortcuts : undefined} toolsHome={direct && density === "bar" ? toolsHome : undefined}
+      shortcuts={roomId === shortcutRoomId ? shortcuts : undefined} toolsHome={direct ? toolsHome : undefined}
       onBrowse={() => { dismiss?.(); onBrowse(roomId); }} />;
   };
   const rows = (visible: boolean, dismiss?: () => void) => <div className="c3-voice-rooms">

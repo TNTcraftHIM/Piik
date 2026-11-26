@@ -66,9 +66,24 @@
 
 /* The room's name keeps a few characters whatever else is in the row. With the arrangement switch beside it
    in a narrow window, what is always there moves to a second line as one group; the name and its tools stay. */
-[data-layout="living"]:not([data-sidebars="phone"]) .c3-room-title { min-width: 4em; }
-@container living-heading (max-width: 44rem) {
-  .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { flex: 1 0 100%; justify-content: flex-end; min-height: 44px; border-inline-start: 0; }
+[data-layout="living"]:not([data-sidebars="phone"]) .c3-room-name { --room-name-min: calc(4 * 20px); min-width: calc(25px + var(--room-name-min) + var(--control-compact-size) + 2 * 8px); }
+/* The row is three places on a grid: the site, the room, and what is always there. With two lines the site's
+   cell keeps the column's full height, its content on the first line, and the room's name has the whole first line. */
+[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; }
+[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-pane-navigation { grid-column: 1; grid-row: 1; }
+[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-site-identity { grid-column: 2; grid-row: 1; }
+[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-room-heading { grid-column: 3; grid-row: 1; }
+[data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar > .c3-global-tools { grid-column: 4; grid-row: 1; }
+@container living-heading (max-width: 46rem) {
+  [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > :is(.c3-pane-navigation, .c3-site-identity) { grid-row: 1 / span 2; padding-block-end: var(--control-compact-size); }
+  [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > .c3-room-heading { grid-column: 3 / -1; }
+  [data-layout="living"]:not([data-sidebars="phone"]) > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { grid-column: 3 / -1; grid-row: 2; justify-content: flex-end; min-height: var(--control-compact-size); border-inline-start: 0; }
+}
+/* An open list takes the difference between the list and the rail from the row. */
+@container living-heading (max-width: 56rem) {
+  [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > :is(.c3-pane-navigation, .c3-site-identity) { grid-row: 1 / span 2; padding-block-end: var(--control-compact-size); }
+  [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > .c3-room-heading { grid-column: 3 / -1; }
+  [data-layout="living"]:is([data-sidebars="rail"], [data-minimal]):not([data-sidebars="phone"])[data-room-list-open] > .c3-site-bar:has(.c3-monitor-layout) > .c3-global-tools { grid-column: 3 / -1; grid-row: 2; justify-content: flex-end; min-height: var(--control-compact-size); border-inline-start: 0; }
 }
 
 [data-layout="living"] > .c3-sidebar { grid-area: rooms; border-inline-end: 1px solid var(--line); background: var(--surface-frame); }
@@ -78,7 +93,7 @@
 [data-layout="living"]:not([data-sidebars="phone"], [data-minimal]) .c3-site-identity {
   padding-inline-start: 14px;
   overflow: clip;
-  flex-basis: min(var(--room-list-edge), 42cqi);
+  width: min(var(--room-list-edge), 42cqi);
 }
 [data-layout="living"]:not([data-sidebars="phone"], [data-minimal]) > :is(.c3-sidebar, .c3-personal) {
   width: var(--room-list-edge);
@@ -93,19 +108,18 @@
   max-width: var(--room-rail);
   pointer-events: auto;
 }
-[data-layout="living"] .c3-room-navigation { padding-inline: 8px; }
-[data-layout="living"] .c3-room-navigation > .c3-section-label { min-height: 46px; }
-[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-room-navigation > .c3-section-label { justify-content: center; padding: 0; }
-
-/* Use the list inset for part of the disclosure target to keep room marks on the rail axis. */
-[data-layout="living"]:not([data-sidebars="phone"]) .c3-room-list-item {
-  --room-disclosure-width: 16px;
-  --room-icon-size: 24px;
-}
-[data-layout="living"]:not([data-sidebars="phone"]) .c3-room-voice-toggle .lr-btn {
-  width: 24px;
-  margin-inline-start: -8px;
-}
+/* The list's inset has a name because a room's row reaches into it: its disclosure's target and the bar of the
+   selected room. The heading begins with the control that folds the column, on the rail's axis, so that folding
+   and unfolding leave it under the pointer; what acts on the rooms ends the heading. */
+[data-layout="living"] .c3-room-navigation { --room-list-inset: 8px; padding-inline: var(--room-list-inset); }
+[data-layout="living"] .c3-room-navigation > .c3-section-label { display: grid; grid-template-columns: var(--room-text-start) minmax(0, 1fr) auto; gap: 0; min-height: 46px; padding-inline: 0 4px; }
+[data-layout="living"] .c3-room-navigation > .c3-section-label > :is(#c3-rooms-trigger, :has(> #c3-rooms-trigger)) { grid-column: 1; justify-self: start; margin-inline-start: calc((var(--room-rail) - var(--control-dense-size)) / 2 - var(--room-list-inset)); }
+[data-layout="living"] .c3-room-navigation > .c3-section-label > .c3-section-caption { grid-column: 2; justify-self: start; }
+[data-layout="living"] .c3-room-navigation > .c3-section-label > .c3-room-list-actions { grid-column: 3; }
+[data-layout="living"] :is(.c3-rooms > .c3-room-group-heading, .c3-room-list-empty) { padding-inline-start: var(--room-text-start); }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-room-navigation > .c3-section-label { display: flex; justify-content: center; padding: 0; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-room-navigation > .c3-section-label > :is(#c3-rooms-trigger, :has(> #c3-rooms-trigger)) { margin: 0; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-room-list-actions { display: none; }
 
 .c3-shell[data-layout="living"] .c3-main-body { grid-area: stage; container-type: inline-size; }
 .c3-shell[data-layout="living"][data-overview] .c3-main-body { grid-row-end: couch-end; }
@@ -159,12 +173,23 @@
 [data-layout="living"] .c3-room-tool-entry > small,
 [data-layout="living"] :is(.c3-chat-panel, .c3-workspace) .c3-chat-heading { display: none; }
 .c3-living-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
-[data-layout="living"][data-sidebars="list"]:not([data-minimal]) .c3-living-actions .lr-btn-split { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
-[data-layout="living"][data-sidebars="list"]:not([data-minimal]) .c3-living-actions .c3-share-actions { width: 100%; }
+[data-layout="living"]:is([data-sidebars="list"], [data-sidebars="rail"][data-room-list-open]):not([data-minimal]) .c3-living-actions .lr-btn-split { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
+[data-layout="living"]:is([data-sidebars="list"], [data-sidebars="rail"][data-room-list-open]):not([data-minimal]) .c3-living-actions .c3-share-actions { width: 100%; }
 .c3-living-actions .c3-voice-entry { padding: 0; }
-[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-personal { padding-inline: 4px; }
+/* The rail stacks every control, so in a short window my dock may take more of the column and the rooms scroll
+   first. What scrolls in the rail does so without a bar, which would take a sixth of it and push the marks off its axis. */
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-personal { max-height: 80cqh; padding-inline: 4px; scrollbar-width: none; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-sidebar-browse { scrollbar-width: none; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) :is(.c3-living-actions, .c3-identity) { align-items: center; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { justify-content: center; padding-inline: 0; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .c3-share-actions { justify-content: center; }
+/* In the rail the split stands on end: the action over its options, one shape with the same chevron. */
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split { flex-direction: column; align-items: stretch; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split .lr-btn.is-split-main { border-radius: 12px 12px 0 0; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split .lr-btn.is-split-more {
+  --button-size: 24px; width: 100%; border-radius: 0 0 12px 12px;
+  border-inline-start-color: transparent; border-block-start-color: color-mix(in srgb, currentColor 44%, transparent);
+}
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { flex-direction: column; }
 [data-layout="living"][data-sidebars="rail"] .c3-voice-room-row[data-direct] { width: calc(var(--room-rail) - 9px); }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity > .c3-identity-copy { display: none; }
@@ -220,10 +245,9 @@
 [data-layout="living"][data-sidebars="phone"] .c3-room-name h2 { font-size: 16px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-name > .c3-identity-mark { display: none; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-tools { gap: 0; }
-[data-layout="living"][data-sidebars="phone"] .c3-pane-navigation { display: inline-flex; }
-[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-name > :not(.c3-pane-navigation),
-[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-toolbar { display: none; }
-[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-heading { flex: none; }
+[data-layout="living"][data-sidebars="phone"] .c3-pane-navigation { display: inline-flex; align-items: center; padding-inline-start: 4px; }
+[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-heading { display: none; }
+[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-pane-navigation { background: var(--surface-frame); }
 [data-layout="living"][data-sidebars="phone"] .c3-global-tools { align-self: center; padding-inline-end: 4px; }
 /* The row's own buttons give up their words on a phone. What opens from the row is not the row. */
 [data-layout="living"][data-sidebars="phone"] .c3-global-tools .lr-btn:not([popover] .lr-btn, .lr-floating-panel .lr-btn) .lr-cap { display: none; }
@@ -238,7 +262,15 @@
 [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-identity:not(:focus-within, :has(.c3-name-popover:popover-open)),
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-living-actions { display: none; }
 [data-layout="living"][data-sidebars="phone"] .c3-identity { width: 100%; }
-[data-layout="living"][data-sidebars="phone"] .c3-living-actions { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; max-width: 100%; }
+[data-layout="living"][data-sidebars="phone"] .c3-living-actions { flex-direction: row; flex-wrap: wrap; align-items: flex-end; justify-content: center; max-width: 100%; }
+/* A phone's bar is as wide as the phone. With more than one voice room, the others stand on the line that names
+   the room, above the controls, so the controls keep the one line they have with a single room. The name's line
+   takes the controls' width and no more, whatever the room is called. */
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) > .c3-voice-room-row[data-direct] { display: contents; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) .c3-voice-room-row[data-direct] > .c3-voice-room-info { grid-column: 1; grid-row: 1; contain: inline-size; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) > .c3-voice-room-disclosure { grid-column: 2; grid-row: 1; }
+[data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"]:has(> .c3-voice-room-disclosure) .c3-voice-room-row[data-direct] > .c3-voice-room-actions { grid-column: 1 / -1; grid-row: 2; }
 .c3-shell[data-layout="living"][data-sidebars="phone"] .c3-workspace .c3-monitor { --stage-padding: 0px; padding: 0; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor:not(.is-theater) .c3-monitor-heading:has(.c3-monitor-layout) { display: flex; justify-content: flex-end; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor-heading > div:first-child { display: none; }
@@ -252,6 +284,7 @@
 @media (max-width: 360px) {
   .c3-shell[data-layout="living"][data-sidebars="phone"] { --living-top-size: auto; }
   [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-heading { display: contents; }
+  [data-layout="living"][data-sidebars="phone"] .c3-pane-navigation { min-height: 48px; }
   [data-layout="living"][data-sidebars="phone"] .c3-room-name { flex: 1 1 0; min-height: 48px; padding-inline-start: 4px; }
   [data-layout="living"][data-sidebars="phone"] .c3-global-tools { min-height: 48px; }
   [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { order: 1; flex: 1 0 100%; justify-content: end; padding: 0 4px 4px; }
@@ -307,7 +340,8 @@
 }
 
 [data-layout="living"]:not([data-sidebars="phone"]) .c3-site-home { height: var(--control-dense-size); }
-.c3-identity .c3-profile-pawn.lr-btn { --button-size: 34px; }
+/* In the rail my figure opens my profile, a target of the size of the controls above it. */
+.c3-identity .c3-profile-pawn.lr-btn { --button-size: var(--control-compact-size); }
 .c3-identity .c3-profile-pawn.lr-btn > .lr-person { width: 26px; height: 34px; }
 
 /* The row ends with what is always there, in every form: this room's standing tools, then the App and More,
@@ -325,9 +359,15 @@
   grid-template-rows: var(--living-top-size, minmax(48px, auto)) minmax(0, 1fr) auto auto;
   grid-template-areas: "top top top" "rooms stage side" "rooms couch side" "self self side";
 }
-[data-minimal]:not([data-sidebars="phone"]) .c3-pane-navigation { display: inline-flex; }
+/* The toggle stands on the rail’s axis, over the marks of the list it opens, where the other forms have it. */
+[data-minimal]:not([data-sidebars="phone"]) .c3-pane-navigation { display: inline-flex; align-items: center; padding-inline-start: calc((var(--room-rail) - var(--control-compact-size)) / 2); }
+[data-minimal]:not([data-sidebars="phone"]) .c3-room-heading { padding-inline-start: 8px; }
+[data-minimal][data-room-list-open]:not([data-sidebars="phone"]) .c3-pane-navigation { background: var(--surface-frame); }
 [data-minimal]:not([data-sidebars="phone"]):not([data-room-list-open]) .c3-site-identity { display: none; }
 [data-minimal][data-room-list-open]:not([data-sidebars="phone"]) > .c3-sidebar { width: var(--room-list); z-index: 3; }
+[data-minimal][data-room-list-open]:not([data-sidebars="phone"]) .c3-site-identity { width: calc(var(--room-list) - (var(--room-rail) + var(--control-compact-size)) / 2); padding-inline: 0 4px; }
+[data-minimal][data-room-list-open]:not([data-sidebars="phone"]) .c3-site-home { width: var(--control-dense-size); }
+[data-minimal][data-room-list-open]:not([data-sidebars="phone"]) .c3-room-heading { padding-inline-start: var(--room-inset); }
 /* The bar has three places: who I am at its start, my controls at its centre, and an equal place at its end
    that keeps them centred. They are tracks, so a narrow window moves the centre and overlaps nothing. */
 .c3-shell[data-minimal]:not([data-sidebars="phone"]) > .c3-personal { display: grid; grid-template-columns: minmax(96px, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 12px; min-height: 64px; border-inline-end: 0; padding: 6px var(--room-inset); container: living-bar / inline-size; }
@@ -336,7 +376,7 @@
   .c3-voice-room-actions .lr-btn .lr-cap { display: none; }
 }
 [data-minimal]:not([data-sidebars="phone"]) .c3-identity { grid-column: 1; justify-self: start; max-width: 100%; padding: 0; overflow: hidden; }
-[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { grid-column: 2; flex-direction: row; align-items: center; }
+[data-minimal]:not([data-sidebars="phone"]) .c3-living-actions { grid-column: 2; flex-direction: row; align-items: flex-end; }
 [data-minimal] .c3-identity .c3-profile-editor { min-width: 0; flex: 0 1 auto; }
 [data-minimal] .c3-profile-editor > .lr-comic-tip-wrap { min-width: 0; max-width: 100%; }
 [data-minimal] .c3-identity .c3-profile-editor .c3-profile-name {
@@ -357,7 +397,8 @@
 }
 
 @media (max-width: 360px) {
-  [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-name { flex-basis: 100%; }
+  /* The name has the first line with the control that opens the room list; the tools have the second. */
+  [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-name { flex-basis: calc(100% - var(--control-compact-size) - 24px); }
   [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { order: 0; flex: 1; padding-inline-end: 0; }
 }
 /* On the narrowest phones my bar stays one line: its controls give up four pixels each before one of them

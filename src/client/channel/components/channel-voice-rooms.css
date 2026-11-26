@@ -105,6 +105,8 @@
   text-align: center;
 }
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-row[data-direct] .c3-voice-room-name > button { text-align: center; }
+/* In the rail the voice tools stand in the column where they stand in the bar: after what they adjust. */
+.c3-voice-room-layout[data-density="rail"] .c3-voice-shared-tools { flex-direction: column; }
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn { width: var(--control-compact-size); padding: 0; }
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn > svg { display: none; }
 .c3-voice-room-disclosure > span .lr-btn .lr-cap { font-variant-numeric: tabular-nums; }
