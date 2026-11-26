@@ -23,10 +23,10 @@ the feedback period; they do not delay that delivery.
   actual resource owner; App-page acquisition and watch retirement now belong to Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Room layout integration.** Complete visual acceptance of the shared
-  frame, room and aside surfaces and paired controls, then implement the chosen
-  shell with the shared component owners. Keep existing layout retirement on
-  hold until the owner's workspace/screen-centred replacement decision.
+- [ ] **Room layout integration.** Complete the shared shell's integrated
+  visual acceptance. Set the multi-room shortcut and speaking-overlay targets
+  before enabling them across rooms. Keep the product entry and existing layout
+  retirement on hold until the owner's workspace/screen-centred replacement decision.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
@@ -40,18 +40,14 @@ the feedback period; they do not delay that delivery.
   owner over bounded shared execution. Preserve same-room order, storage locks,
   rebinding and shutdown; compare optimized carrier behavior before adopting
   additional concurrency.
-- [ ] **Host synchronization under concurrent admission.** Measure actual writer
-  draining and atomic first-Join admission at the supported room scale. Preserve
-  ordered host inputs, current bindings and revision order. Keep reader capacity
-  waits distinct from socket-idle detection and verify slow readers as well as
-  same-worker registration bursts.
 - [ ] **Native preparation test under load.** If the completed-success refusal
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a
   product timeout change from that result.
-- [ ] **Current-attempt route feedback.** Project known rejected or exhausted
-  route attempts through the existing status owner, with a specific recovery
-  action. New peers, access or forwarding changes may enable a later attempt.
+- [ ] **Current-attempt route feedback.** Project the planner's confirmed
+  retry outcome through the existing status owner. A failed physical trial
+  followed by scheduled retry is not an exhausted watching operation. Keep
+  path selection and exhaustion with the planner rather than a second graph check.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
   changing the selected device. Check audible message alerts with the App in
@@ -443,6 +439,9 @@ the feedback period; they do not delay that delivery.
 
 ## Parked Product Work
 
+- **First-Join pacing.** The supported-scale control showed no queue benefit.
+  Reopen only on an observed admission burst that closes a room writer; review
+  the directory visibility and synchronization contract before adding a queue.
 - **NDI and additional codecs (#535, #530).** Assess NDI through the existing
   OBS/DistroAV-to-WHIP input before considering another native dependency.
   VP9/AV1/SVC support needs a concrete interoperability and resource decision.

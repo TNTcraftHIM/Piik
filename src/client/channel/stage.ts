@@ -121,7 +121,10 @@ export class Stage {
     selection.controller.abort();
     selection.releaseBrowserCandidate?.();
     current.releasePage?.();
-    if (!selection.committing) selection.embed?.close();
+    if (!selection.committing) {
+      if (selection.watchCandidate) selection.watchCandidate.player.close();
+      else selection.embed?.close();
+    }
     if (this.share) this.forgetInactiveScreen(this.share.id);
   }
 

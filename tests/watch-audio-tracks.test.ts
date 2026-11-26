@@ -28,7 +28,7 @@ test("local audio changes refresh the owner UI without publishing shared playbac
   const main = { audioTracks: () => tracks, selectAudioTrack: select, read: async () => ({ position: 12, paused: true, rate: 1, readyState: 4, duration: 24, ended: false, buffered: [] }),
     ready: async () => {}, patch: vi.fn(), listen: (callback: (event: WatchMediaEvent) => void) => { notify = callback; return () => {}; }, close: vi.fn() } satisfies WatchMedia;
   const dispose = vi.fn(), page = new AppPage(crypto.randomUUID(), "https://fixture.test/page", vi.fn(), dispose, vi.fn());
-  const provider = new PageSuppliedMedia(page, main as unknown as HTMLVideoMedia, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" });
+  const provider = new PageSuppliedMedia(page, main as unknown as HTMLVideoMedia, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" }, () => page.close());
   const changed = vi.fn(), publish = vi.fn(async () => {}), player = new WatchPlayer("room", true, provider, changed);
   player.activate(publish);
   try {
