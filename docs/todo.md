@@ -17,8 +17,10 @@ the feedback period; they do not delay that delivery.
 ### Active work
 
 - [ ] **Browser session ownership.** Continue accepted
-  [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) from the confirmed
-  history owner toward follow-latest, interaction lifetime and operation feedback.
+  [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
+  interaction lifetime, operation feedback and the remaining Stage operations.
+  Source operations and three share-setting loops still belong to Session;
+  resource selection, promotion and retirement belong to each room's Stage.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
 - [ ] **Native optional-flow acceptance.** Complete capture-enabled admission
@@ -31,10 +33,10 @@ the feedback period; they do not delay that delivery.
   before adding a deadline; compare the existing fresh-binding handshake with
   connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
 - [ ] **Host synchronization under concurrent admission.** Measure actual writer
-  draining at the supported room scale before changing the outbound queue.
-  Deterministic queue controls reproduce pressure and show that replacing an old
-  Sync in place can reverse room revisions. Preserve intervening actions and
-  their order when considering coalescing.
+  draining and review level coalescing at the supported room scale. Preserve
+  intervening actions, current bindings and revision order. Keep reader capacity
+  waits distinct from socket-idle detection and verify slow readers as well as
+  same-worker registration bursts.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
@@ -253,8 +255,8 @@ the feedback period; they do not delay that delivery.
   recurs. The first production step is one leaf moved to a strictly better
   place with the present proof, then one more child tried on unmet demand.
   The [evidence](./research/topology-improvement-design.md) lists the
-  remaining comparisons. Compare voice-source fanout against explicit room
-  limits and Browser hop cost, including higher audio bitrates. Extend relay-exit controls to media-only loss while
+  remaining comparisons. Retain the room's explicit voice limit and compare
+  Native forwarding cost with the measured Browser hops. Extend relay-exit controls to media-only loss while
   signaling stays connected, and preserve healthy paths during control recovery.
   Reuse the matching-runtime recovery and late-proof controls when extending
   current operation ownership. Calibrate on independent networks before tuning
