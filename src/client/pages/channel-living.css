@@ -281,14 +281,6 @@
 [data-layout="living"][data-sidebars="phone"] .c3-room-presence { padding-bottom: 8px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-presence > .c3-room-tool-entry { position: absolute; z-index: 1; inset-block-start: 4px; inset-inline-end: 4px; }
 
-@media (max-width: 360px) {
-  .c3-shell[data-layout="living"][data-sidebars="phone"] { --living-top-size: auto; }
-  [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-heading { display: contents; }
-  [data-layout="living"][data-sidebars="phone"] .c3-pane-navigation { min-height: 48px; }
-  [data-layout="living"][data-sidebars="phone"] .c3-room-name { flex: 1 1 0; min-height: 48px; padding-inline-start: 4px; }
-  [data-layout="living"][data-sidebars="phone"] .c3-global-tools { min-height: 48px; }
-  [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { order: 1; flex: 1 0 100%; justify-content: end; padding: 0 4px 4px; }
-}
 
 .c3-shell[data-layout="living"][data-sidebars="phone"][data-main-chat] {
   grid-template-rows: var(--living-top-size, minmax(48px, auto)) auto minmax(0, 1fr) auto auto;
@@ -396,14 +388,16 @@
   position: static; transform: none;
 }
 
+/* The narrowest phones. The room's name has the top row's first line, with the control that opens the room list;
+   the room's tools and what is always there share the second. My bar stays one line: its controls give up four
+   pixels each before one of them moves to a line of its own. */
 @media (max-width: 360px) {
-  /* The name has the first line with the control that opens the room list; the tools have the second. */
+  .c3-shell[data-layout="living"][data-sidebars="phone"] { --living-top-size: auto; }
+  [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-heading { display: contents; }
+  [data-layout="living"][data-sidebars="phone"] :is(.c3-pane-navigation, .c3-global-tools) { min-height: 48px; }
+  [data-layout="living"][data-sidebars="phone"] .c3-room-name { flex: 1 1 0; min-height: 48px; padding-inline-start: 4px; }
   [data-layout="living"][data-sidebars="phone"]:not([data-room-list-open]) .c3-room-name { flex-basis: calc(100% - var(--control-compact-size) - 24px); }
-  [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { order: 0; flex: 1; padding-inline-end: 0; }
-}
-/* On the narrowest phones my bar stays one line: its controls give up four pixels each before one of them
-   moves to a line of its own. */
-@media (max-width: 360px) {
+  [data-layout="living"][data-sidebars="phone"] .c3-room-toolbar { flex: 1; justify-content: end; padding: 0 0 4px; padding-inline-start: 4px; }
   .c3-shell[data-layout="living"][data-sidebars="phone"] > .c3-personal { --control-compact-size: 40px; }
   [data-layout="living"][data-sidebars="phone"] .c3-living-actions { gap: 4px; }
   [data-layout="living"][data-sidebars="phone"] .c3-voice-room-layout[data-density="bar"] { gap: 4px; }
