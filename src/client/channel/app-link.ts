@@ -491,6 +491,14 @@ export class ChannelApp {
         if (!request) return;
         this.requests.delete(reply.id);
         failure = "consumer";
+        const success = "result" in reply;
+        const failed = "error" in reply;
+        if (reply.type !== undefined || success === failed
+          || (failed && (typeof reply.error !== "string" || !reply.error))
+          || (success && request.command.type === "hello" && reply.result !== null)) {
+          request.reject(new Error("invalid_app_response"));
+          return;
+        }
         if (reply.error) request.reject(reply.error === "input_authorization_cancelled" || reply.error === "capture_cancelled"
           ? new DOMException(reply.error, "AbortError") : new Error(reply.error));
         else request.resolve(reply.result);
