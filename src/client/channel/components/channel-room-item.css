@@ -73,7 +73,8 @@
 .c3-room-people .c3-user { min-height: 28px; padding: 0; }
 .c3-room-people .c3-person-identity { gap: 8px; }
 .c3-room-people .c3-person-identity :is(.lr-person, .c3-avatar-preview > .lr-person) { width: 18px; height: 22px; }
-.c3-room-people .c3-person-copy strong { font-size: 14px; font-weight: 500; }
+/* A person under a room is written in the room’s own size, a weight lighter than its name. */
+.c3-room-list-item .c3-room-people .c3-person-copy strong { font-size: 14px; font-weight: 500; }
 .c3-room-people .c3-person-copy small { display: none; }
 
 .c3-room-order-help { margin: 4px 0 8px; padding-inline: var(--room-text-start) 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }

@@ -195,7 +195,7 @@
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity > .c3-identity-copy { display: none; }
 [data-layout="living"][data-companion="people"] { --room-companion: 280px; }
 [data-layout="living"] :is(.c3-attachment-file strong, .c3-voice-entry strong, .c3-voice-room-name > button, .c3-monitor-source strong, .c3-room-start p) { font-size: 14px; }
-[data-layout="living"] :is(.c3-other-activity small, .c3-activity-room, .c3-attachment small, .c3-voice-entry small, .c3-section-label, .c3-voice-room-info small, .c3-people-panel h2 > span, .c3-rooms > h3, .c3-you, .c3-person-copy small, .c3-message-meta time, .c3-message-date,.lr-pawn-name) { font-size: 12px; }
+[data-layout="living"] :is(.c3-other-activity small, .c3-activity-room, .c3-attachment small, .c3-voice-entry small, .c3-section-label, .c3-voice-room-info small, .c3-people-panel h2 > span, .c3-rooms > h3, .c3-you, .c3-identity-copy small, .c3-person-copy small, .c3-message-meta time, .c3-message-date,.lr-pawn-name) { font-size: 12px; }
 [data-layout="living"] :is(.c3-message-content-body, .c3-message-meta strong, .c3-person strong) { font-size: 16px; }
 [data-layout="living"] .c3-message { position: relative; width: auto; margin-top: 8px; padding-block: 4px; }
 [data-layout="living"] .c3-message.is-continuation { margin-top: 0; }
