@@ -2,5 +2,5 @@
 .c3-participant-status:focus-visible { outline-offset: -1px; }
 .c3-participant-activity { display: inline-flex; flex: none; align-items: center; gap: 4px; line-height: 1; }
 .c3-participant-activity > span { display: inline-flex; align-items: center; justify-content: center; gap: 1px; }
-.c3-participant-activity [data-viewing="failed"] { color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
+.c3-participant-activity [data-viewing="failed"] { color: var(--danger-ink); }
 .c3-couch-activity .c3-participant-activity { gap: 2px; padding: 1px; border-radius: 4px; background: var(--paper); color: var(--ink); }

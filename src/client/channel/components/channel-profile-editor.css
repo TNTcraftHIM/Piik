@@ -7,7 +7,7 @@
 .c3-name-popover .lr-input input { width: 100%; }
 .c3-profile-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .c3-profile-status { margin: 0; color: var(--muted); font-size: 12px; }
-.c3-name-popover .c3-settings-error { margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.c3-name-popover .c3-settings-error { margin: 0; color: var(--danger-ink); font-size: 12px; overflow-wrap: anywhere; }
 .c3-profile-picture > .c3-identity-upload { gap: 8px; margin: 0; }
 .c3-profile-picture .c3-identity-upload-actions { display: grid; justify-items: start; }
 .c3-profile-picture .c3-identity-image-preview { background: var(--profile-color); }

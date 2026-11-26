@@ -1,7 +1,7 @@
 .cp-pawn-preview { margin: 24px 0; scroll-margin-top: 24px; }
 .cp-pawn-preview h3 { margin: 0; font-size: 16px; }
 .cp-pawn-preview > p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.cp-pawn-preview > .cp-input-error { color: var(--danger); }
+.cp-pawn-preview > .cp-input-error { color: var(--danger-ink); }
 .cp-pawn-preview > .cp-tools { flex-wrap: wrap; }
 .cp-pawn-avatar-file { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .cp-pawn-avatar-file input { max-width: 210px; min-width: 0; font: inherit; }
