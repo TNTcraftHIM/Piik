@@ -58,17 +58,30 @@ this nor the pacing defect appeared there. Windows 11 does not keep a raised
 period for a process that is neither visible nor audible, which is an App
 sharing a game while minimized, so I did not use it.
 
-**The correction is `c501215c`.** `peer/deadline.rs`: one thread per pump
-waits where a new instant can interrupt it while the instant is far, then
-sleeps in slices of a millisecond on the high-resolution timer that
-`std::thread::sleep` has used since Windows 10 1803. The pump calls
-`deadline.wait(next)` in place of the tokio timer. Other platforms keep the
-tokio timer. Two tests of its own; with it the recovery test passes here on
-every run and the whole suite is green. Not measured: the thread's CPU cost in
-a session. It wakes at most once a millisecond while a deadline is within
-32 ms. Please check the shape, and whether any other Native loop on Windows
-depends on a timer finer than the tick; I searched for short sleeps and found
-only the preparation pacing, already corrected.
+**The correction is `c501215c` and `65cac36d`.** `src/deadline.rs`, at the
+crate's top level beside `windows_job`: one thread per owner waits where a new
+instant can interrupt it while the instant is far, then sleeps in slices of a
+millisecond on the high-resolution timer that `std::thread::sleep` has used
+since Windows 10 1803. The pump calls `deadline.wait(next)` in place of the
+tokio timer, and `wait` takes exclusive access, so one deadline cannot have
+two waiters. Other platforms keep the tokio timer behind the same call. Two
+tests of its own state the contract on every platform. With it the recovery
+test passes here on every run and the whole suite is green. The thread costs
+about 570 wake-ups a second and 0.16% of one core while it slices, measured
+over ten seconds.
+
+The owner asked whether this is general or a platform piece, and it is a
+platform piece: I had first put it under `peer/`, which was the wrong owner,
+and moved it. The general part is a rule, which I propose for
+`docs/standards/engineering.md` beside the sentence on bounded queues:
+
+> Code with a time requirement states the instant it needs and assumes
+> nothing about how fine a timer is. A wait shorter than a system tick uses
+> the platform clock, and a paced sequence follows a schedule, not a sleep
+> for each item.
+
+Two defects found today are instances of it. Please check the shape of the
+module, and take or decline the sentence.
 
 ## Lifecycle: outcomes and the one comparison you asked for
 
@@ -127,17 +140,13 @@ Items 3, 6, 7 and 8 are settled as you took them, and I have removed them.
 
 ## Voice
 
-Both objections stand and the branch stays unmerged.
-
-- **The room limit.** The stored policy cannot tell a manager's 2 from the
-  default 2, since `relay_capacity` is one number with a default. Respecting a
-  manual lower limit therefore needs either a second stored fact or a decision
-  that the room's number is about pictures and relaying. That decision is the
-  owner's and I am putting it to the owner with your objection stated.
-- **The cost.** A count is the wrong unit when the rate can be 32 or 320
-  kbit/s. I am measuring what a Browser source pays for 3, 7, 15 and 31 direct
-  outputs at 64 and at 320 kbit/s, in processor time and bytes, and will
-  propose a bound in rate.
+**Decided by the owner: the room's number also bounds a speaker's own voice.**
+One control for pictures and speech, and less upload. `340ead9c` is withdrawn
+and will not be merged. ADR-0018 item 8 now states the rule with its measured
+cost, and the evidence note holds the planner count, both hop measurements and
+what a Browser source pays for direct copies: about 84 kbit/s a copy on the
+wire at the default setting, 285 at the highest, and about one and a half
+percent of a core for each output with its receiver. Nothing is asked of you.
 
 ## The interface, for your information
 

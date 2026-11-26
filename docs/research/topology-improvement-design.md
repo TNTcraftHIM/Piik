@@ -201,6 +201,51 @@ and undirected edges S–A, S–B, B–A and A–W, the tree S→A→B strands W
 S→B→A→W serves all three viewers. This is a static alternative; its transition
 must still respect the live operation's overlap and proof budget.
 
+## Voice Fan-out Measured
+
+The room planner was run with every pair confirmed and everyone in voice, and
+one speaker's flows were counted. Under the room default of two downstream
+connections the speaker sent to two listeners however many it could reach:
+
+| In voice | Listeners | Direct from the speaker | Deepest listener |
+| --- | --- | --- | --- |
+| 3 | 2 | 2 | 1 hop |
+| 4 | 3 | 2 | 2 hops |
+| 6 | 5 | 2 | 2 hops |
+| 8 | 7 | 2 | 3 hops |
+
+The delay of a Browser relay was measured in Chrome 158 in one page on one
+audio clock. A 20 ms tone burst once a second was sent as Opus over loopback
+connections, and its onset was timed where it was generated and where each
+receiver decoded it. A relay re-sent the track it received, as the Browser
+client does. Medians of 35 bursts, with the tenth and ninetieth percentiles
+within 3 ms of them:
+
+| Path | Onset delay | Added by the hop |
+| --- | --- | --- |
+| Direct | 40.9 ms | |
+| One Browser relay | 91.8 ms | 50.9 ms |
+| Two Browser relays | 139.4 ms | 47.6 ms |
+
+Each receiving connection reported a jitter-buffer delay of about 30 ms. This
+is a floor: loopback has no transit time, jitter or loss, and a real path adds
+its own transit and a larger buffer at every hop. A second measurement in
+Chrome 156 gave 43 to 55 ms a hop. Neither measures a Native forwarder, which
+forwards packets without decoding.
+
+What a speaker pays for direct copies was measured the same way: n loopback
+outputs of one noise-like track for ten seconds. Processor time covers every
+process of the browser and the n receiving connections in the same page, so it
+is an upper bound for a sender.
+
+| Outputs | On the wire at 64 kbit/s | At 320 kbit/s | Processor |
+| --- | --- | --- | --- |
+| 1 | 84 kbit/s | 285 kbit/s | 4 to 6% of a core |
+| 3 | 253 kbit/s | 853 kbit/s | 9 to 12% |
+| 7 | 590 kbit/s | 1,991 kbit/s | 12 to 14% |
+| 15 | 1,265 kbit/s | 4,266 kbit/s | 24 to 26% |
+| 31 | 2,616 kbit/s | 8,815 kbit/s | 47 to 51% |
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to
@@ -210,7 +255,8 @@ must still respect the live operation's overlap and proof budget.
    glitch at the cut.
 4. The cost of one re-encoding hop: delay, resolution, frame rate.
 5. Whether a node's proved capacity repeats from day to day.
-6. A hop chain for voice, with a Native forwarder and with a Browser.
+6. A hop chain for voice, with a Native forwarder. The Browser hop is
+   measured above.
 7. Idle audio connections on a phone, at 3, 7 and 19. On a desktop Browser,
    twenty idle pairs cost about 2.4 KiB/s per endpoint
    ([network lab](./network-lab.md#idle-physical-connection-cost)).

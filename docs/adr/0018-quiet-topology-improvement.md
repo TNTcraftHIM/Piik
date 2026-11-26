@@ -63,9 +63,13 @@ yet.
    of a room before density becomes a target.
 8. **Voice has no additional overlay.** It uses the shared planner, pool and
    allocator, with independent voice counts and explicit user limits. Keep
-   reachable multi-hop paths. The measured Chromium voice session did not
-   negotiate discontinuous transmission. DTX, priority and any fanout change
-   need their own comparisons.
+   reachable multi-hop paths. The room's number of downstream connections
+   bounds a speaker's own voice as it bounds a picture: one control for both,
+   and less upload for the speaker. Its
+   [measured cost](../research/topology-improvement-design.md#voice-fan-out-measured)
+   is about 50 ms for each Browser relay a listener sits behind. The measured
+   Chromium voice session did not negotiate discontinuous transmission. DTX
+   and priority need their own comparisons.
 9. **A lost parent is repaired through actual flow failure**, and each
    surviving branch needs its own entry. How long a viewer waits after a
    parent dies silently is not measured. Connection failure is one detection
