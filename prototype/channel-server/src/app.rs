@@ -2293,8 +2293,13 @@ async fn connection(
                         }
                     }
                     Operation::Page(page::Operation::PageMediaStop { page_id, candidate_id }) => {
-                        if let Some(candidate) = candidate_id { pages.cancel_candidate(page_id, candidate); pages.request(page::Operation::PageMediaStop { page_id, candidate_id }).await?; } else { pages.stop_media(page_id); }
-                        Ok(Value::Null)
+                        if let Some(candidate) = candidate_id {
+                            pages.cancel_candidate(page_id, candidate);
+                            pages.request(page::Operation::PageMediaStop { page_id, candidate_id }).await
+                        } else {
+                            pages.stop_media(page_id);
+                            Ok(Value::Null)
+                        }
                     }
                     Operation::Page(operation) => {
                         let source_page =
@@ -3559,7 +3564,9 @@ mod lifecycle_tests {
         };
         let (_retire, retired) = watch::channel(false);
         let dispatch: page::Dispatcher = Arc::new(move |command| {
-            if let page::Command::Media { reply, .. } = command {
+            if let page::Command::Request { operation: page::Operation::PageMediaStop { candidate_id: Some(_), .. }, reply, .. } = command {
+                let _ = reply.send(Err("page_player_closed".into()));
+            } else if let page::Command::Media { reply, .. } = command {
                 let _ = reply.send(Ok((page::MediaContext {
                     url: media_url.clone(),
                     request: None,
@@ -3715,6 +3722,8 @@ mod lifecycle_tests {
             .iter()
             .any(|v| v["id"] == pending.to_string() && v["error"] == "watch_read_cancelled"));
         timeout(Duration::from_secs(3), released_reads.recv()).await.unwrap().unwrap();
+        send!(json!({"id":"stop-closed","type":"page_media_stop","pageId":Uuid::new_v4(),"candidateId":Uuid::new_v4()}));
+        assert_eq!(receive!(), json!({"id":"stop-closed","error":"page_player_closed"}));
         send!(read(Uuid::new_v4(), 0, 1));
         assert!(receive!()["error"].is_null());
         send!(json!({"id":"stop","type":"page_media_stop","pageId":page}));
