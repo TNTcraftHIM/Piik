@@ -722,6 +722,7 @@ export class ChannelAttachments {
               this.invoke(runtime, () => runtime.delivery.written(JSON.stringify(key), BigInt(effect.offset), bytes.length));
             } else {
               // Complete is emitted only after shared Rust verifies the digest and written ranges.
+              entry.receive = undefined;
               entry.progress = { ...entry.progress, state: "finishing" }; this.changed();
               await sink.writer.close().catch(throwStorageError); sink.lifetime.signal.throwIfAborted();
               const file = await sink.file.getFile();

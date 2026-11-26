@@ -1020,3 +1020,45 @@ test("small and animated images retain their original file and send a separate t
     expect((await files.describe(selected)).every(entry => entry.inlineImage === undefined)).toBe(true);
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
+
+test("a late receive timeout preserves the completed session file until cache cleanup", async () => {
+  let rejectReceive!: (error: Error) => void;
+  const pending = new Promise<void>((_, reject) => { rejectReceive = reject; });
+  const command = vi.fn(async (event: ChannelCommand) => {
+    if (event.type === "file_receive" && event.enabled) await pending;
+  });
+  const files = setup(command);
+  const file = new File(["GIF89a"], attachment.name);
+  const removeEntry = vi.fn(async () => {});
+  stubTransferStorage({ getFileHandle: async () => ({
+    createWritable: async () => ({ write: async () => {}, close: async () => {}, abort: async () => {} }),
+    getFile: async () => file,
+  }), removeEntry });
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new DOMException("Quota exceeded", "QuotaExceededError"));
+  vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
+    ...await hosting.loadRoomHosting(),
+    FileDelivery: class {
+      start() { return []; } cancel() { return []; } update() { return []; } next_deadline() {} free() {}
+      control() { return [{ type: "write", key, offset: 0, bytes: new TextEncoder().encode("GIF89a") }]; }
+      written() { return [{ type: "complete", key }]; }
+    },
+  } as never);
+  try {
+    const signal = new AbortController().signal;
+    const read = files.content(key, attachment, signal);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: true }));
+    files.update("endpoint", { domainId: "domain", userId: "self" }, [{
+      roomId: key.roomId, messageSeq: key.messageSeq, attachment, authorId: "author",
+      sourceId: "source", upstream: "source", downstream: [], receiving: true,
+    }], [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
+    files.data("source", "control", "verified-range");
+    await expect(read).resolves.toBe(file);
+    rejectReceive(new Error("request_timeout"));
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    expect(removeEntry).not.toHaveBeenCalled();
+    await expect(files.content(key, attachment, signal)).resolves.toBe(file);
+    await files.clearLocalCache(key.roomId);
+    expect(removeEntry).toHaveBeenCalledOnce();
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
