@@ -21,7 +21,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 26;
+export const APP_PROTOCOL = 27;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
@@ -113,7 +113,7 @@ type AppCommand = { type: string; publicationId?: string; roomId?: string; [key:
 export class AppPage implements AppPagePort {
   candidates: readonly NativePageCandidate[] = [];
   private lifetime = new AbortController();
-  private listeners = new Set<(event: WatchMediaEvent) => void>();
+  private listeners = new Map<(event: WatchMediaEvent) => void, string | undefined>();
   private sourceListeners = new Set<() => void>();
   constructor(readonly id: string, public url: string, private request: (command: AppCommand, signal: AbortSignal) => Promise<unknown>,
     private dispose: () => void, private changed: () => void) {}
@@ -135,8 +135,14 @@ export class AppPage implements AppPagePort {
       window.ipc?.postMessage(JSON.stringify({ kind: "watchSharePicker", pageId: this.id, open: true }));
   }
   selectedCandidateId?: string;
+  candidatePageURL(candidateId = this.selectedCandidateId): string | null {
+    const candidate = this.candidates.find(value => value.id === candidateId);
+    if (!candidate) throw new Error("watch_page_unavailable");
+    return candidate.pageURL;
+  }
   async select(candidateId: string, originalPage = false, resourceId?: string): Promise<void> {
     nativePageStateSchema.parse(await this.command("page_select", { candidateId, ...(resourceId && { resourceId }), ...(originalPage && { originalPage }) }));
+    if (!this.candidates.some(candidate => candidate.id === candidateId)) throw new Error("watch_source_unavailable");
     this.selectedCandidateId = candidateId;
     this.changed();
   }
@@ -211,14 +217,37 @@ export class AppPage implements AppPagePort {
     return watchByteSourceSchema.extend({ format: z.literal("hls") }).parse(value);
   }
   async stopMedia(candidateId?: string): Promise<void> { await this.command("page_media_stop", { candidateId }); }
-  listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
+  listen(changed: (event: WatchMediaEvent) => void, candidateId?: string): () => void { this.listeners.set(changed, candidateId); return () => this.listeners.delete(changed); }
+  private emitMedia(event: WatchMediaEvent, candidateId?: string, selected = this.selectedCandidateId): void {
+    for (const [listener, candidate] of this.listeners)
+      if (event === "closed" || candidateId === (candidate ?? selected)) listener(event);
+  }
   listenMediaSources(changed: () => void): () => void { this.sourceListeners.add(changed); return () => this.sourceListeners.delete(changed); }
   receive(event: z.infer<typeof nativePageEventSchema>): void {
     if (event.type === "page_share_requested") { this.onSharePicker?.(); return; }
     if (event.type === "page_closed") { this.retire(); return; }
     if (event.type === "page_media_changed") { for (const listener of this.sourceListeners) listener(); return; }
-    if (event.type === "page_candidates") { this.url = event.url; this.candidates = event.candidates; this.changed(); return; }
-    for (const listener of this.listeners) listener(event.type === "page_blocked" ? "blocked" : event.event);
+    if (event.type === "page_selection_lost") {
+      this.candidates = this.candidates.filter(candidate => candidate.id !== event.candidateId);
+      const selected = this.selectedCandidateId;
+      if (selected === event.candidateId) this.selectedCandidateId = undefined;
+      this.emitMedia("source-unavailable", event.candidateId, selected);
+      if (selected === event.candidateId) {
+        for (const listener of this.sourceListeners) listener();
+      }
+      this.changed(); return;
+    }
+    if (event.type === "page_candidates") {
+      const removed = this.candidates.filter(candidate => !event.candidates.some(next => next.id === candidate.id));
+      this.url = event.url; this.candidates = event.candidates;
+      for (const candidate of removed) {
+        const selected = this.selectedCandidateId;
+        if (selected === candidate.id) this.selectedCandidateId = undefined;
+        this.emitMedia("source-unavailable", candidate.id, selected);
+      }
+      this.changed(); return;
+    }
+    this.emitMedia(event.type === "page_blocked" ? "blocked" : event.event, event.candidateId);
   }
   close(): void {
     if (!this.ownerReleased) { this.ownerReleased = true; this.releaseOwner(); }
@@ -230,7 +259,7 @@ export class AppPage implements AppPagePort {
     if (this.lifetime.signal.aborted) return;
     this.lifetime.abort(new Error("watch_page_closed"));
     this.dispose();
-    for (const listener of this.listeners) listener("closed");
+    this.emitMedia("closed");
     this.listeners.clear();
     this.sourceListeners.clear();
     this.changed();

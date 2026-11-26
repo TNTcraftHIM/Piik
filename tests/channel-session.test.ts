@@ -4864,7 +4864,7 @@ test("a rejected Native retirement rolls back the newly announced forwarding wat
     vi.spyOn(appLink.ChannelApp.prototype, "preparePage").mockResolvedValue(page);
     vi.spyOn(page, "prepareMedia").mockResolvedValue(resource);
     await session.prepareWatchPage("first", page.url);
-    page.receive({ type: "page_candidates", pageId, url: page.url, candidates: [{ id: candidateId, title: "Film", url: null, duration: 60 }] });
+    page.receive({ type: "page_candidates", pageId, url: page.url, candidates: [{ pageURL: page.url, id: candidateId, title: "Film", url: null, duration: 60 }] });
     await session.selectWatchPage("first", candidateId, undefined, false, "choose-source");
     const announcing = nextSocketCommand(socket, "start_watch");
     const rejection = expect(session.selectWatchForwardSource("first", choice.id)).rejects.toThrow("watch_identity_conflict");
@@ -12938,12 +12938,12 @@ test('webpage sharing commits the current top-level URL delivered before selecti
   try {
     await session.prepareWatchPage('first', 'https://video.test/landing');
     page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/film', candidates: [
-      { id: candidateId, title: 'Film', url: null, duration: 60 },
+      { pageURL: 'https://video.test/film', id: candidateId, title: 'Film', url: null, duration: 60 },
     ] });
     const selecting = session.selectWatchPage('first', candidateId);
     expect(confirm).toBeDefined();
     page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/film?chosen=1', candidates: [
-      { id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 },
+      { pageURL: 'https://video.test/film?chosen=1', id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 },
     ] });
     confirm({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] });
     await expect(selecting).resolves.toBe(true);
@@ -12971,8 +12971,8 @@ test.each(['original-page', 'choose-source'] as const)('selecting a child webpag
   try {
     await session.prepareWatchPage('first', page.url);
     const candidates = [
-      { id: crypto.randomUUID(), title: 'Homepage trailer', url: null, duration: 10 },
-      { id: candidateId, title: 'Child video', url: 'https://media.test/child.mp4', duration: 60 },
+      { id: crypto.randomUUID(), pageURL: page.url, title: 'Homepage trailer', url: null, duration: 10 },
+      { id: candidateId, pageURL: 'https://video.test/video/child', title: 'Child video', url: 'https://media.test/child.mp4', duration: 60 },
     ];
     expect(session.watchPage('first')?.candidates).toHaveLength(0);
     page.receive({ type: 'page_candidates', pageId, url: page.url, candidates });
@@ -13012,7 +13012,7 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   (session as unknown as { app: appLink.ChannelApp }).app = app;
   const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
   await session.prepareWatchPage('first', page.url);
-  page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Film', url: null, duration: 60 }] });
+  page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ pageURL: page.url, id: candidateId, title: 'Film', url: null, duration: 60 }] });
   return { ...setupResult, page, candidateId, commit, request, dispose };
 }
 
@@ -13096,7 +13096,7 @@ async function openMpdPage(session: ChannelSession, app: ChannelSocket, candidat
   const open = app.sent.at(-1)!;
   app.receive({ id: open.id, result: { pageId: open.pageId } });
   await preparing;
-  app.receive({ type: 'page_candidates', pageId: open.pageId, url, candidates: [{ id: candidate.id, title: 'Film', url: null, duration: 60 }] });
+  app.receive({ type: 'page_candidates', pageId: open.pageId, url, candidates: [{ pageURL: url, id: candidate.id, title: 'Film', url: null, duration: 60 }] });
   const selected = session.selectWatchPage('first', candidate.id);
   const state = { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
   for (const type of ['page_select', 'page_read', 'page_media_sources']) {
@@ -13191,8 +13191,8 @@ test.each([true, false])('a rejected webpage candidate keeps the live page with 
   const { session, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const secondId = crypto.randomUUID();
   page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [
-    { id: candidateId, title: 'Unavailable preview', url: null, duration: 60 },
-    { id: secondId, title: 'Child video', url: null, duration: 60 },
+    { pageURL: page.url, id: candidateId, title: 'Unavailable preview', url: null, duration: 60 },
+    { pageURL: page.url, id: secondId, title: 'Child video', url: null, duration: 60 },
   ] });
   const select = vi.spyOn(page, 'select').mockRejectedValueOnce(new Error('page_candidate_unavailable'));
   try {
@@ -13584,7 +13584,8 @@ test('local provider preparation failure releases only its reader and candidate,
 });
 
 test('closing forwarding settings during direct preparation releases the reader and keeps the original page', async () => {
-  const { session, page, socket, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  const { session, page, socket, dispose, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  await page.select(candidateId, true);
   const media = new AppPageMedia(page);
   await media.opening;
   installWatchPlayer(session, 'owned', new WatchPlayer('first', true, media, () => {}));
@@ -13607,7 +13608,8 @@ test('closing forwarding settings during direct preparation releases the reader 
 
 test.each(["before activation", "before publication", "after publication"])("a native page source change %s withdraws the retired grant", async timing => {
   let active: unknown = null;
-  const { session, page, socket } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: active }));
+  const { session, page, socket, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: active }));
+  await page.select(candidateId, true);
   const media = new AppPageMedia(page);
   await media.opening;
   const player = new WatchPlayer("first", true, media, () => {});
@@ -13637,7 +13639,8 @@ test.each(["before activation", "before publication", "after publication"])("a n
 test("foreground recovery cannot withdraw a replacement watch byte source", async () => {
   let completeRead!: (result: unknown) => void;
   const delayed = new Promise<unknown>(resolve => { completeRead = resolve; });
-  const { session, page, socket, request } = await websiteSourceSelection(() => delayed);
+  const { session, page, socket, request, candidateId } = await websiteSourceSelection(() => delayed);
+  await page.select(candidateId, true);
   const media = new AppPageMedia(page);
   await media.opening;
   const player = new WatchPlayer("first", true, media, () => {});
@@ -13780,7 +13783,7 @@ test.each([true, false])("App to browser embed handoff with moveBefore support %
     }
     await session.prepareWatchPage("first", url, id);
     const candidate = crypto.randomUUID();
-    page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ id: candidate, title: "Video", url: null, duration: 60 }] });
+    page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ pageURL: url, id: candidate, title: "Video", url: null, duration: 60 }] });
     const sentBeforeSelection = socket.sent.length;
     const selecting = session.selectWatchPage("first", candidate, id);
     const join = await vi.waitFor(() => {
@@ -13849,7 +13852,7 @@ test.each(["cancel", "select", "stopped"])("opening an original webpage preserve
     await session.prepareWatchPage("first", url, id);
     expect(session.getSnapshot().watchPlayers.get(id)?.video).toBe(video);
     if (outcome === "select") {
-      page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ id: candidateId, title: "Film", url: null, duration: 60 }] });
+      page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ pageURL: url, id: candidateId, title: "Film", url: null, duration: 60 }] });
       const selecting = session.selectWatchPage("first", candidateId, id);
       await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "join_watch")).toHaveLength(2));
       expect(session.getSnapshot().watchPlayers.get(id)?.video).toBe(video);
@@ -13905,7 +13908,7 @@ test.each(['select', 'select-ack-first', 'cancel'] as const)('an unselected view
   try {
     socket.receive({ type: 'state', state });
     await session.prepareWatchPage('first', url, id);
-    page.receive({ type: 'page_candidates', pageId: page.id, url, candidates: [{ id: candidateId, title: 'Film', url: null, duration: 60 }] });
+    page.receive({ type: 'page_candidates', pageId: page.id, url, candidates: [{ pageURL: url, id: candidateId, title: 'Film', url: null, duration: 60 }] });
     const foreground = session.resumeWatches();
     expect(socket.sent.filter(command => command.type === 'join_watch')).toEqual([]);
     await foreground;
@@ -13979,7 +13982,7 @@ test('committing a portable webpage source retires its original page only after 
   commit.mockRestore();
   try {
     page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
-      candidates: [{ id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 }] });
+      candidates: [{ pageURL: page.url, id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 }] });
     const selecting = session.selectWatchPage('first', candidateId);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
@@ -14009,7 +14012,7 @@ test('a rejected portable room confirmation retires its Page and candidate witho
   nextVideo = candidateVideo; commit.mockRestore();
   try {
     page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
-      candidates: [{ id: candidateId, title: 'Film', url: 'https://media.test/new.mp4', duration: 60 }] });
+      candidates: [{ pageURL: page.url, id: candidateId, title: 'Film', url: 'https://media.test/new.mp4', duration: 60 }] });
     const selecting = session.selectWatchPage('first', candidateId);
     const rejected = expect(selecting).rejects.toThrow('room_host_unavailable');
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
@@ -14068,7 +14071,7 @@ test.each([false, true])('webpage discovery requires an explicit source choice (
   const { session, page, candidateId, commit, request, socket } = await websiteSourceSelection(async () => ({ choices, indexedCandidates: [indexed], byteSource: null }));
   try {
     if (portable) page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [
-      { id: candidateId, title: 'Film', url: 'https://video.test/film.mp4', duration: 60 },
+      { pageURL: page.url, id: candidateId, title: 'Film', url: 'https://video.test/film.mp4', duration: 60 },
     ] });
     await expect(session.selectWatchPage('first', candidateId, undefined, false, portable ? 'choose-source' : undefined)).resolves.toBe(false);
     expect(session.watchPage('first')?.watchSources?.choices).toEqual(choices);
@@ -14110,7 +14113,7 @@ test.each(['direct', 'choice'] as const)('portable %s preparation failure retain
   vi.spyOn(HTMLVideoMedia.prototype, 'ready').mockRejectedValueOnce(new Error('watch_media_network_failed'));
   try {
     if (path === 'direct') page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
-      candidates: [{ id: candidateId, title: 'Film', url: choice.displayURL, duration: 60 }] });
+      candidates: [{ pageURL: page.url, id: candidateId, title: 'Film', url: choice.displayURL, duration: 60 }] });
     else await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
     const selecting = path === 'direct' ? session.selectWatchPage('first', candidateId) : session.selectWatchBrowserSource('first', choice.id);
     await expect(selecting).rejects.toThrow('watch_media_network_failed');
@@ -14143,7 +14146,7 @@ test('explicit file forwarding publishes the selected direct URL and retains the
   const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(byteSource);
   try {
     page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
-      candidates: [{ id: candidateId, title: 'Direct video', url: choice.displayURL, duration: 60 }] });
+      candidates: [{ pageURL: page.url, id: candidateId, title: 'Direct video', url: choice.displayURL, duration: 60 }] });
     await expect(session.selectWatchPage('first', candidateId, undefined, false)).rejects.toThrow('watch_source_inspection_unavailable');
     expect(discover).toHaveBeenCalledOnce();
     expect(session.watchPage('first')?.watchSources?.choices).toEqual([choice]);
@@ -14199,7 +14202,7 @@ test('webpage source discovery waits for loaded media and cancellation releases 
     expect(discover).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
     readyState = 2;
-    page.receive({ type: 'page_sample', pageId: page.id, event: 'loadeddata' });
+    page.receive({ type: 'page_sample', pageId: page.id, candidateId, event: 'loadeddata' });
     await expect(selecting).resolves.toBe(false);
     expect(discover).toHaveBeenCalledOnce();
     expect(session.watchPage('first')?.watchSources?.choices).toEqual(choices);
@@ -14212,7 +14215,7 @@ test('webpage source discovery waits for loaded media and cancellation releases 
     await session.cancelScreenSelection('first');
     await cancelled;
     readyState = 2;
-    page.receive({ type: 'page_sample', pageId: page.id, event: 'loadeddata' });
+    page.receive({ type: 'page_sample', pageId: page.id, candidateId, event: 'loadeddata' });
     expect(read).toHaveBeenCalledOnce();
     expect(discover).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
@@ -14237,7 +14240,7 @@ test.each([false, true])('cancelled source discovery cannot restore the candidat
     if (direct) {
       vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
       page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
-        candidates: [{ id: candidateId, title: 'Direct video', url: 'https://media.test/no-cors.mp4', duration: 60 }] });
+        candidates: [{ pageURL: page.url, id: candidateId, title: 'Direct video', url: 'https://media.test/no-cors.mp4', duration: 60 }] });
     }
     const selecting = session.selectWatchPage('first', candidateId);
     const cancelled = expect(selecting).rejects.toMatchObject({ name: 'AbortError' });
@@ -14261,7 +14264,7 @@ test.each(['cancel', 'page-close'] as const)('failed direct-source discovery ret
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
   try {
     page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
-      candidates: [{ id: candidateId, title: 'Direct video', url: choice.displayURL, duration: 60 }] });
+      candidates: [{ pageURL: page.url, id: candidateId, title: 'Direct video', url: choice.displayURL, duration: 60 }] });
     await expect(session.selectWatchPage('first', candidateId, undefined, false)).rejects.toThrow('watch_source_inspection_unavailable');
     expect(discover).toHaveBeenCalledOnce();
     page.receive({ type: 'page_media_changed', pageId: page.id });
@@ -16322,8 +16325,9 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     expect(session.watchPage("first")?.pageId).toBe(next.id);
     expect(session.watchPage("first", old.id as string)?.pageId).toBeUndefined();
     const otherId = crypto.randomUUID();
+    const otherPageURL = "https://popup.test/next-video";
     next.receive({ type: "page_candidates", pageId: next.id, url: page.url, candidates: [
-      { id: candidateId, title: "A", url: null, duration: 60 }, { id: otherId, title: "B", url: null, duration: 60 },
+      { pageURL: page.url, id: candidateId, title: "A", url: null, duration: 60 }, { pageURL: otherPageURL, id: otherId, title: "B", url: null, duration: 60 },
     ] });
     expect(page.selectedCandidateId).toBe(candidateId);
     expect(await session.selectWatchPage("first", otherId, undefined, false, "choose-source")).toBe(false);
@@ -16361,6 +16365,7 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     const start = await confirm(3);
     await replacement;
     expect(start.replaceId).toBe(old.id);
+    expect((start.source as { url: string }).url).toBe(otherPageURL);
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_select", candidateId: otherId,
       ...(mode === "forward" ? { resourceId: bytes.resourceId } : { originalPage: true }) }), expect.any(AbortSignal));
     expect(page.selectedCandidateId).toBe(otherId);
@@ -16401,8 +16406,8 @@ test("stopping a borrowed-page replacement before confirmation keeps it retired"
     page.receive({ type: "page_share_requested", pageId: page.id });
     const nextId = crypto.randomUUID();
     page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [
-      { id: candidateId, title: "A", url: null, duration: 60 },
-      { id: nextId, title: "B", url: null, duration: 60 },
+      { pageURL: page.url, id: candidateId, title: "A", url: null, duration: 60 },
+      { pageURL: page.url, id: nextId, title: "B", url: null, duration: 60 },
     ] });
     const ready = await page.read(), respond = request.getMockImplementation()!;
     request.mockImplementation(command => command.type === "page_select"
@@ -16514,5 +16519,198 @@ test("terminal candidate rejects unsupported room results only for their caller"
     const retry = session.updateRoom("first", { name: "updated" }, false);
     received("first", socket.sent.at(-1)!.requestId, "done");
     await retry;
+  } finally { session.close(); }
+});
+
+test('original-page navigation keeps the page and publishes its popup candidate URL after cancellation', async () => {
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
+  const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: source }));
+  commit.mockRestore();
+  const respond = request.getMockImplementation()!;
+  const nextId = crypto.randomUUID(), nextURL = 'https://next-video.test/episode';
+  const nextCandidate = { id: nextId, pageURL: nextURL, title: 'Next episode', url: null, duration: 60 };
+  request.mockImplementation(command => {
+    if (command.type === 'page_select' && (command as { candidateId?: string }).candidateId === nextId)
+      page.receive({ type: 'page_candidates', pageId: page.id, url: nextURL, candidates: [nextCandidate] });
+    return command.type === 'page_read' || command.type === 'page_select'
+      ? Promise.resolve({ position: 10, paused: false, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] }) : respond(command);
+  });
+  const confirm = async (count: number) => {
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(count));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch' && command.id === start.id)).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch' && command.id === start.id)!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    return start;
+  };
+  try {
+    const starting = session.selectWatchPage('first', candidateId, undefined, false, 'original-page');
+    const old = await confirm(1); await starting;
+    const base = structuredClone(session.getSnapshot().state!);
+    base.sessions.push({ ...base.sessions[0], id: source.sessionId });
+    const activity = { id: old.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', viewerSessionIds: ['viewer'], source: old.source, playback: old.playback, byteSource: source };
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [activity] } });
+    const player = session.getSnapshot().watchPlayers.get(String(old.id))!;
+    const before = socket.sent.length;
+    // A document can disappear before another HTTP URL or candidate list exists.
+    page.receive({ type: 'page_selection_lost', pageId: page.id, candidateId });
+    await vi.waitFor(() => expect(socket.sent.slice(before).some(command => command.type === 'update_watch')).toBe(true));
+    const pause = socket.sent.findLast(command => command.type === 'update_watch')!;
+    const withdraw = socket.sent.findLast(command => command.type === 'set_watch_byte_source')!;
+    expect(pause.playback).toMatchObject({ paused: true, rate: 1 });
+    expect((pause.playback as { position: number }).position).toBeGreaterThanOrEqual(10);
+    expect(withdraw).toMatchObject({ id: old.id, byteSource: null });
+    for (const command of [pause, withdraw]) socket.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result: { type: 'done' } });
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [{ ...activity, playback: pause.playback, byteSource: undefined }] } });
+    expect(player.signal.aborted).toBe(false);
+    expect(player.error).toBe('watch_source_unavailable');
+    expect(dispose).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === 'stop_watch')).toBe(false);
+
+    vi.stubGlobal('window', new EventTarget());
+    // Native's catalog still addresses root A until candidate B is selected after room confirmation.
+    page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [nextCandidate] });
+    page.receive({ type: 'page_share_requested', pageId: page.id });
+    await session.selectWatchPage('first', nextId, undefined, false, 'choose-source');
+    await session.cancelScreenSelection('first');
+    expect(dispose).not.toHaveBeenCalled();
+    expect(session.getSnapshot().watchPlayers.get(String(old.id))).toBe(player);
+    page.receive({ type: 'page_share_requested', pageId: page.id });
+    const changing = session.selectWatchPage('first', nextId, undefined, false, 'original-page');
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(2));
+    expect(page.url).not.toBe(nextURL);
+    expect(page.selectedCandidateId).toBeUndefined();
+    const next = await confirm(2); await changing;
+    expect(next).toMatchObject({ replaceId: old.id, source: { kind: 'website', url: nextURL } });
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [{ ...activity, id: next.id, source: next.source, playback: next.playback, byteSource: undefined }] } });
+    expect(player.signal.aborted).toBe(true);
+    expect(page.selectedCandidateId).toBe(nextId);
+    expect(dispose).not.toHaveBeenCalled();
+    expect(session.getSnapshot().watchPlayers.get(String(next.id))?.error).toBeNull();
+    page.receive({ type: 'page_closed', pageId: page.id });
+    const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
+    expect(stop.id).toBe(next.id);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
+    expect(dispose).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each(['portable', 'forward'] as const)('a webpage without its own navigable URL keeps an explicit %s media source', async mode => {
+  localProviderVideo();
+  const choice = { id: crypto.randomUUID(), displayURL: 'https://media.test/episode.mp4', name: 'Episode', format: 'file' as const };
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [choice], indexedCandidates: [], byteSource: null }));
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
+  vi.spyOn(page, 'prepareMedia').mockResolvedValue(source);
+  try {
+    page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
+      candidates: [{ id: candidateId, pageURL: null, title: 'Local player', url: choice.displayURL, duration: 60 }] });
+    await expect(session.selectWatchPage('first', candidateId, undefined, false, 'original-page')).rejects.toThrow('watch_page_unavailable');
+    expect(commit).not.toHaveBeenCalled(); expect(dispose).not.toHaveBeenCalled();
+    expect(page.candidates).toHaveLength(1);
+    await session.selectWatchPage('first', candidateId, undefined, false, 'choose-source');
+    expect(session.watchPage('first')?.watchSources?.choices).toEqual([choice]);
+    commit.mockRestore();
+    const publishing = mode === 'portable' ? session.selectWatchBrowserSource('first', choice.id) : session.selectWatchForwardSource('first', choice.id);
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.source).toEqual({ kind: 'website', mediaUrl: choice.displayURL });
+    expect(start.byteSource).toEqual(mode === 'forward' ? source : undefined);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await publishing;
+  } finally { session.close(); }
+});
+
+test.each(['indexed', 'mpd'] as const)('opaque webpage forwarding does not require an original locator (%s)', async kind => {
+  localProviderVideo();
+  const video = indexedInspection('video');
+  const mpd = mpdSelectionFixture();
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({
+    choices: [], indexedCandidates: kind === 'indexed' ? [video.candidate] : [], mpdCandidates: kind === 'mpd' ? [mpd.candidate] : [], byteSource: null,
+  }));
+  commit.mockRestore();
+  const grant = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: kind === 'indexed' ? 'hls' as const : 'dash' as const };
+  vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(grant as typeof grant & { format: 'hls' });
+  vi.spyOn(page, 'prepareMpdMedia').mockResolvedValue(grant as typeof grant & { format: 'dash' });
+  vi.spyOn(page, 'inspectMpd').mockResolvedValue(mpd.catalog);
+  try {
+    // The Native group catalog is root A; the opaque player is in an about:blank child B.
+    // Its media URL stays private, while the App has an actual-shaped admitted byte grant.
+    page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
+      candidates: [{ id: candidateId, pageURL: null, title: 'Popup film', url: null, duration: 60 }] });
+    await session.selectWatchPage('first', candidateId, undefined, false, 'choose-source');
+    if (kind === 'mpd') await session.inspectWatchMpdSource('first', mpd.candidate.id, new AbortController().signal);
+    let failure: unknown;
+    const publishing = (kind === 'indexed' ? session.selectWatchIndexedSource('first', video.candidate.id, undefined, false)
+      : session.selectWatchMpdSource('first', mpd.selected, false)).catch(error => { failure = error; });
+    await vi.waitFor(() => expect(failure !== undefined || socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    expect(failure).toBeUndefined();
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.source).toEqual({ kind: "website" });
+    expect(start.byteSource).toEqual(grant);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await publishing;
+    expect(session.getSnapshot().watchPlayers.get(String(start.id))?.media.retainedByteSource).toEqual(grant);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test('an App viewer follows a locator-free successor through its byte grant and can rejoin a renewed grant', async () => {
+  const { session, socket } = await setup(1000, false);
+  const joins = vi.spyOn(session, 'joinWatch');
+  vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
+  const app = { pagePlayer: true, connected: true, preparePage: vi.fn(), close() {}, stopCaptures() {} } as unknown as appLink.ChannelApp;
+  Object.assign(session, { app });
+  const connect = vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp');
+  const base = session.getSnapshot().state!;
+  const old = { id: 'old-addressed-video', roomId: 'first', sessionId: 'publisher', userId: 'other', viewerSessionIds: [],
+    source: { kind: 'media' as const, url: 'https://media.test/old.mp4' },
+    playback: { timeline: 'media' as const, position: 12, paused: true, rate: 1, anchorTime: 1000 } };
+  const next = { ...old, id: 'opaque-video', predecessor: { kind: 'watch' as const, id: old.id }, source: { kind: 'website' as const } };
+  const reader = vi.spyOn(watchMedia, 'createResourceWatchMedia').mockImplementation(() => new HTMLVideoMedia('https://fixture.test/local.mp4'));
+  const grant = () => ({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const });
+  const subscribed = (mode: 'direct' | 'peer', byteSource?: WatchByteSource) => ({ ...base,
+    watchActivities: [{ ...next, ...(byteSource && { byteSource }) }], watchSubscriptions: [{ id: next.id, mode }] });
+  try {
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [old] } });
+    const joined = session.joinWatch(old.id); confirmWatchJoinOrLeave(socket); await joined;
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [old], watchSubscriptions: [{ id: old.id, mode: 'direct' }] } });
+    socket.receive({ type: 'state', state: { ...base, watchActivities: [next] } });
+    expect(session.getSnapshot().pagePlayer).toBe(true);
+    expect(socket.sent.findLast(command => command.type === 'join_watch')).toMatchObject({ id: next.id, mode: 'direct' });
+    confirmWatchJoinOrLeave(socket);
+    socket.receive({ type: 'state', state: subscribed('direct') });
+    expect(session.getSnapshot().waitingWatchPages?.has(next.id)).toBe(true);
+    const first = grant();
+    socket.receive({ type: 'state', state: subscribed('direct', first) });
+    expect(reader).toHaveBeenCalledOnce();
+    expect(socket.sent.findLast(command => command.type === 'join_watch')).toMatchObject({ id: next.id, mode: 'peer' });
+    const joining = joins.mock.results.at(-1)!.value;
+    confirmWatchJoinOrLeave(socket);
+    await joining;
+    socket.receive({ type: 'state', state: subscribed('peer', first) });
+    expect(session.getSnapshot().waitingWatchPages?.has(next.id)).toBe(false);
+    await expect(session.prepareWatchPage('first', 'https://ignored.test/', next.id, false)).rejects.toThrow('watch_page_unavailable');
+    expect(connect).not.toHaveBeenCalled(); expect(app.preparePage).not.toHaveBeenCalled();
+    await expect(session.joinWatch(next.id, 'direct')).rejects.toThrow('watch_source_unavailable');
+    const previous = session.getSnapshot().watchPlayers.get(next.id)!;
+    socket.receive({ type: 'state', state: subscribed('peer') });
+    expect(previous.signal.aborted).toBe(true);
+    expect(session.getSnapshot().state?.watchSubscriptions).toEqual([{ id: next.id, mode: 'peer' }]);
+    const renewed = grant();
+    socket.receive({ type: 'state', state: subscribed('peer', renewed) });
+    const retry = session.joinWatch(next.id, 'peer'); confirmWatchJoinOrLeave(socket); await retry;
+    expect(reader.mock.lastCall?.[0]).toEqual(renewed);
+    expect(session.getSnapshot().watchPlayers.get(next.id)?.signal.aborted).toBe(false);
+    expect(app.preparePage).not.toHaveBeenCalled();
+    const leaving = session.leaveWatch(next.id); confirmWatchJoinOrLeave(socket); await leaving;
+    expect(session.getSnapshot().watchPlayers.has(next.id)).toBe(false);
   } finally { session.close(); }
 });

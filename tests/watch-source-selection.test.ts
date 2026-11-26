@@ -1,8 +1,26 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPage } from "../src/client/channel/app-link";
 import { ChannelSession } from "../src/client/channel/session";
+import { watchSourceSchema } from "../src/client/channel/protocol";
+import { canWatchInBrowser, originalWatchURL, sharedWatchEmbed } from "../src/client/channel/watch-embed-source";
 
 afterEach(() => vi.unstubAllGlobals());
+
+test("website locators are optional values and do not manufacture an original-page capability", () => {
+  const opaque = watchSourceSchema.parse({ kind: "website" });
+  expect(opaque).toEqual({ kind: "website" });
+  expect(originalWatchURL(opaque)).toBeUndefined();
+  expect(sharedWatchEmbed(opaque)).toBeNull();
+  expect(canWatchInBrowser(opaque)).toBe(false);
+  const portable = watchSourceSchema.parse({ kind: "website", mediaUrl: "https://media.test/film.mp4" });
+  expect(canWatchInBrowser(portable)).toBe(true);
+  expect(originalWatchURL(portable)).toBeUndefined();
+  for (const field of ["url", "mediaUrl"]) {
+    expect(watchSourceSchema.safeParse({ kind: "website", [field]: null }).success).toBe(false);
+    expect(watchSourceSchema.safeParse({ kind: "website", [field]: "javascript:invalid" }).success).toBe(false);
+  }
+  expect(watchSourceSchema.safeParse({ kind: "media" }).success).toBe(false);
+});
 
 test.each(["commit", "cancel"] as const)("source discovery survives preparation failure until %s", async finish => {
   vi.stubGlobal("window", { localStorage: { getItem: () => null } });
@@ -37,7 +55,7 @@ test.each(["commit", "cancel"] as const)("source discovery survives preparation 
   const changed = () => page.receive({ type: "page_media_changed", pageId: page.id });
   try {
     await session.prepareWatchPage("room", page.url);
-    page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [{ id: candidateId, url: null, title: "Player", duration: 20 }] });
+    page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [{ pageURL: page.url, id: candidateId, url: null, title: "Player", duration: 20 }] });
     expect(await session.selectWatchPage("room", candidateId)).toBe(false);
     const sources = session.watchPage("room")!.watchSources!;
     expect(sources.choices).toEqual([a]);

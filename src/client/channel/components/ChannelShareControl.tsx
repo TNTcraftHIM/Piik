@@ -419,6 +419,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const appPageAvailable = channel.appConnected && channel.pagePlayer;
   const openPage = appPageAvailable && !portableEmbed && !directFile;
   const pageSources = !activityId ? page?.watchSources : undefined;
+  const originalPageAvailable = !!page?.candidates.find(candidate => candidate.id === pageSources?.candidateId)?.pageURL;
   const allChoicesOriginFirst = !!pageSources?.choices.length && pageSources.choices.every(directForwardMediaURL);
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
   const pageInstruction = useRef<HTMLParagraphElement>(null);
@@ -480,11 +481,11 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         {pageSources.mpd.length > 0 && <WatchMpdSourcePicker choices={pageSources.mpd} busy={busy} mainPlayback
           onInspect={(choiceId, signal) => run(() => channel.inspectWatchMpdSource(roomId, choiceId, signal))}
           onConfirm={selected => { void run(() => channel.selectWatchMpdSource(roomId, selected, false), onClose); }} />}
-        <div className="c3-watch-source-choice c3-watch-source-alternative lr-embedded-actions">
+        {originalPageAvailable && <div className="c3-watch-source-choice c3-watch-source-alternative lr-embedded-actions">
           <Btn icon="globe" quiet size="compact" title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
             onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
           <p>{t("watch.browserSource.originalHelp")}</p>
-        </div>
+        </div>}
       </> : page.candidates.length ? <>
         <div className="lr-source-picker-list c3-watch-source-list" data-text-list>
           {page.candidates.map((candidate, index) => {
@@ -493,14 +494,14 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
               <CaptureSourceCard title={name} action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })}
                 icon="play" disabled={busy}
                 onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false, activityId ? undefined : "choose-source"), committed => { if (committed) onClose(); }); }} />
-              {!activityId && <div className="c3-share-title-actions lr-embedded-actions">
+              {!activityId && candidate.pageURL && <div className="c3-share-title-actions lr-embedded-actions">
                 <Btn icon="globe" quiet size="compact" title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
                   onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "original-page"), onClose); }} />
               </div>}
             </div>;
           })}
         </div>
-        {!activityId && <p>{t("watch.browserSource.originalHelp")}</p>}
+        {!activityId && page.candidates.some(candidate => candidate.pageURL) && <p>{t("watch.browserSource.originalHelp")}</p>}
       </> : <div className="lr-source-picker-status" role="status">{busy && <BrandLoader />}<span>{t("watch.waitForVideo")}</span></div>}
       <div className="c3-share-title-actions">
         <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void windowAction.run(() => channel.focusWatchPage(roomId, activityId)); }} />

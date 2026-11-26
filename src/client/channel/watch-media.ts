@@ -20,7 +20,7 @@ export interface WatchMediaState {
   live?: WatchLiveWindow;
 }
 export type WatchMediaPatch = Partial<Pick<WatchMediaState, "position" | "paused" | "rate">>;
-export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed" | "audiotracks" | "visibility-resumed";
+export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed" | "audiotracks" | "visibility-resumed" | "source-unavailable";
 
 /** Local player access only. Domain clocks and shared playback belong to WatchPlayer. */
 export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }
@@ -70,7 +70,7 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
         });
     };
     const unlisten = media.listen(event => {
-      if (event === "closed") finish(new Error("watch_media_failed"));
+      if (event === "closed" || event === "source-unavailable") finish(new Error(event === "closed" ? "watch_media_failed" : "watch_source_unavailable"));
       else {
         if (event === "error" && prepared) failed = true;
         check();
@@ -338,7 +338,7 @@ export interface AppPagePort {
   readonly selectedCandidateId?: string;
   read(candidateId?: string): Promise<WatchMediaState>;
   patch(value: WatchMediaPatch): Promise<void>;
-  listen(changed: (event: WatchMediaEvent) => void): () => void;
+  listen(changed: (event: WatchMediaEvent) => void, candidateId?: string): () => void;
   focus(): Promise<void>;
   close(): void;
 }
@@ -353,7 +353,8 @@ export class AppPageMedia implements WatchMedia {
     this.opening = Promise.resolve().then(() => typeof page === "function" ? page(this.lifetime.signal) : page).then(value => {
       if (this.lifetime.signal.aborted) { if (this.release) this.release(); else value.close(); throw new DOMException("Cancelled", "AbortError"); }
       this.page = value;
-      this.unlisten = value.listen(event => { for (const listener of this.listeners) listener(event); });
+      this.candidateId ??= value.selectedCandidateId;
+      this.unlisten = value.listen(event => { for (const listener of this.listeners) listener(event); }, this.candidateId);
       return value;
     });
     void this.opening.catch(() => {});

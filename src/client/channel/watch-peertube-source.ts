@@ -11,8 +11,8 @@ export function peerTubeId(raw: string): string | null {
   if (uuid.test(id) && (path === "/videos/watch/" + id || path === "/videos/embed/" + id)) return id;
   return shortId.test(id) && path === "/w/" + id ? id : null;
 }
-export function peerTubeSourceId(source: { kind: string; url: string }): string | null {
-  const id = peerTubeId(source.url);
+export function peerTubeSourceId(source: { kind: string; url?: string }): string | null {
+  const id = source.url ? peerTubeId(source.url) : null;
   return source.kind === "website" && id && source.url === peerTubeOrigin + "/videos/embed/" + id ? id : null;
 }
 export async function publicPeerTubeURL(id: string, signal: AbortSignal): Promise<string> {

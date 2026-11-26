@@ -306,7 +306,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   useEffect(() => {
     if (!browserSourcePending) return;
     const timer = window.setTimeout(() => {
-      setPageSample(page => page && ({ ...page, watchSources: { choices: browserSourceChoices, indexed: [], mpd: [] } }));
+      setPageSample(page => page?.watchSources ? { ...page, watchSources: { ...page.watchSources, choices: browserSourceChoices } } : page);
       setBrowserSourcePending(null);
     }, 3500);
     return () => window.clearTimeout(timer);
@@ -329,34 +329,34 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
     prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ pageId: crypto.randomUUID(), url, activityId,
-      candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
+      candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", pageURL: url, title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => { actionFails("watch-focus"); sample.received(); },
     cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
-    selectWatchPage: async (roomId, _candidateId, activityId) => {
+    selectWatchPage: async (roomId, candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
       if (!activityId && (query.has("browser-source") || query.has("indexed-tracks") || query.has("mpd-tracks"))) {
         if (query.has("mpd-tracks")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) } });
+          setPageSample({ ...pageSample!, watchSources: { candidateId, choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) } });
           return false;
         }
         if (query.has("indexed-tracks")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: indexedTracks, mpd: [] } });
+          setPageSample({ ...pageSample!, watchSources: { candidateId, choices: [], indexed: indexedTracks, mpd: [] } });
           return false;
         }
         if (query.has("browser-source-pending")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: [] } });
+          setPageSample({ ...pageSample!, watchSources: { candidateId, choices: [], indexed: [], mpd: [] } });
           setBrowserSourcePending(roomId);
           return false;
         }
         if (query.has("browser-source-failed")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: [], error: "watch_source_unavailable" } });
+          setPageSample({ ...pageSample!, watchSources: { candidateId, choices: [], indexed: [], mpd: [], error: "watch_source_unavailable" } });
           return false;
         }
         if (!query.has("empty-browser-sources")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: browserSourceChoices, indexed: [], mpd: [] } });
+          setPageSample({ ...pageSample!, watchSources: { candidateId, choices: browserSourceChoices, indexed: [], mpd: [] } });
           return false;
         }
-        setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: [] } });
+        setPageSample({ ...pageSample!, watchSources: { candidateId, choices: [], indexed: [], mpd: [] } });
         return false;
       }
       commitPageSelection(roomId, activityId);

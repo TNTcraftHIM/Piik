@@ -106,6 +106,7 @@ struct Candidate {
 }
 struct Pending {
     view: Uuid,
+    candidate_id: Uuid,
     reply: Reply,
     frame: Uuid,
     selecting: bool,
@@ -209,24 +210,37 @@ impl Page {
     fn record_retirement(&self, reason: &'static str) {
         piik_channel_native::diagnostics::app_retired(self.owner, Some(self.id), reason);
     }
-    fn candidates(&self) {
+    fn release_selection(&mut self, view_key: Uuid) -> bool {
+        if !self.original_page { return false; }
+        let Some(candidate_id) = self.selected else { return true };
+        let mut views = self.views.borrow_mut();
+        let view = views.get_mut(&view_key).unwrap();
+        let mounted = view.mounted.is_some();
+        if view.release_mount().is_err() { return false; }
+        view.media.borrow_mut().clear_selection();
+        if mounted { view.window.set_visible(true); }
+        self.root = view_key;
+        self.selected = None;
+        self.pending.retain(|_, pending| pending.candidate_id != candidate_id);
+        self.emit(json!({"type":"page_selection_lost","pageId":self.id,"candidateId":candidate_id}));
+        true
+    }
+    fn candidates(&mut self) {
+        self.pending.retain(|_, pending| self.candidates.contains_key(&pending.candidate_id));
         let views = self.views.borrow();
-        let Some(url) = views
-            .get(&self.selected_view())
-            .and_then(|view| view.view.url().ok())
-            .filter(|url| page::valid_url(url))
-        else {
-            return;
-        };
+        let page_urls = views.iter().filter_map(|(id, view)| view.view.url().ok()
+            .filter(|url| page::valid_url(url)).map(|url| (*id, url))).collect::<BTreeMap<_, _>>();
+        let Some(url) = page_urls.get(&self.selected_view()) else { return };
         for (key, view) in views.iter() {
             let enabled = self.picker_document.is_some() && self.candidates.values().any(|candidate| candidate.view == *key);
             view.caption.share_picker(enabled);
         }
-        self.emit(json!({"type":"page_candidates","pageId":self.id,"url":url,"candidates":self.candidates.iter().map(|(id,c)|json!({"id":id,"title":c.source.title,"url":c.source.url,"duration":c.source.duration})).collect::<Vec<_>>()}));
+        self.emit(json!({"type":"page_candidates","pageId":self.id,"url":url,"candidates":candidate_descriptions(&self.candidates, &page_urls)}));
     }
     fn request(&mut self, candidate_id: Option<Uuid>, selecting: bool, patch: Option<page::Patch>, reply: Reply) {
         self.pending.retain(|_, pending| !pending.reply.is_closed());
-        let Some(candidate) = candidate_id.or(self.selected).and_then(|id| self.candidates.get(&id)) else {
+        let Some((id, candidate)) = candidate_id.or(self.selected)
+            .and_then(|id| self.candidates.get(&id).map(|candidate| (id, candidate))) else {
             let _ = reply.send(Err("page_candidate_unavailable".into()));
             return;
         };
@@ -259,6 +273,7 @@ impl Page {
                     request,
                     Pending {
                         view: candidate.view,
+                        candidate_id: id,
                         reply,
                         frame: candidate.frame,
                         selecting,
@@ -469,7 +484,7 @@ impl Pages {
             return;
         };
         let page = self.pages.get_mut(&key).unwrap();
-        if page.selected.is_some() && page.selected_view() == view {
+        if page.selected.is_some() && page.selected_view() == view && !page.release_selection(view) {
             self.retire_page(key, "selected_view_navigated");
         } else {
             let mut views = page.views.borrow_mut();
@@ -891,6 +906,7 @@ impl Pages {
                 if page
                     .selected
                     .is_some_and(|id| !page.candidates.contains_key(&id))
+                    && !page.release_selection(view_key)
                 {
                     self.retire_page(key, "selected_frame_removed");
                 } else {
@@ -924,7 +940,7 @@ impl Pages {
                     &message.ancestors,
                     candidates,
                     &removed,
-                ) {
+                ) && !page.release_selection(view_key) {
                     self.retire_page(key, "selected_candidate_changed");
                     return;
                 }
@@ -936,35 +952,27 @@ impl Pages {
                 revision,
                 event,
             } => {
-                let Some(candidate) = page
-                    .selected
-                    .and_then(|id| page.candidates.get_mut(&id))
-                    .filter(|c| {
-                        c.view == view_key && c.frame == message.frame && c.source.media == media
-                    })
-                else {
-                    return;
-                };
+                let Some(candidate_id) = media_candidate_id(&page.candidates, view_key, message.frame, media) else { return };
                 if resource.len() > MAX_CANDIDATE_RESOURCE_BYTES {
                     return;
                 }
-                if !candidate.source.observe_resource(revision, &resource, page.original_page, || {
-                    page.views.borrow()[&view_key].media.borrow_mut().clear_selection();
-                }) {
-                    self.retire_page(key, "selected_resource_changed");
-                    return;
+                let candidate = page.candidates.get_mut(&candidate_id).unwrap();
+                if page.selected == Some(candidate_id) {
+                    if !candidate.source.observe_resource(revision, &resource, page.original_page, || {
+                        page.views.borrow()[&view_key].media.borrow_mut().clear_selection();
+                    }) {
+                        self.retire_page(key, "selected_resource_changed");
+                        return;
+                    }
+                } else {
+                    candidate.source.revision = revision;
+                    candidate.source.resource = resource;
                 }
-                page.emit(json!({"type":"page_sample","pageId":page.id,"event":event}));
+                page.emit(json!({"type":"page_sample","pageId":page.id,"candidateId":candidate_id,"event":event}));
             }
             PageEvent::Blocked { media } => {
-                if page
-                    .selected
-                    .and_then(|id| page.candidates.get(&id))
-                    .is_some_and(|c| {
-                        c.view == view_key && c.frame == message.frame && c.source.media == media
-                    })
-                {
-                    page.emit(json!({"type":"page_blocked","pageId":page.id}));
+                if let Some(candidate_id) = media_candidate_id(&page.candidates, view_key, message.frame, media) {
+                    page.emit(json!({"type":"page_blocked","pageId":page.id,"candidateId":candidate_id}));
                 }
             }
             PageEvent::Reply {
@@ -1021,6 +1029,18 @@ impl Pages {
             PageEvent::Document => {}
         }
     }
+}
+
+fn media_candidate_id(candidates: &BTreeMap<Uuid, Candidate>, view: Uuid, frame: Uuid, media: Uuid) -> Option<Uuid> {
+    candidates.iter().find_map(|(id, candidate)|
+        (candidate.view == view && candidate.frame == frame && candidate.source.media == media).then_some(*id))
+}
+
+fn candidate_descriptions(candidates: &BTreeMap<Uuid, Candidate>, page_urls: &BTreeMap<Uuid, String>) -> Vec<Value> {
+    candidates.iter().map(|(id, candidate)| {
+        json!({"id":id,"pageURL":page_urls.get(&candidate.view),"title":candidate.source.title,
+            "url":candidate.source.url,"duration":candidate.source.duration})
+    }).collect()
 }
 
 fn retire_changed_candidate(
@@ -1086,9 +1106,7 @@ fn update_candidates(
             || candidate.frame != frame
             || !removed.contains(&candidate.source.media)
     });
-    if selected.is_some_and(|id| !current.contains_key(&id)) {
-        return false;
-    }
+    let selected_present = selected.is_none_or(|id| current.contains_key(&id));
     for mut source in candidates {
         source.title = source.title.chars().take(256).collect();
         if source.url.as_ref().is_some_and(|url| !page::valid_url(url)) {
@@ -1127,7 +1145,7 @@ fn update_candidates(
         );
     }
 
-    true
+    selected_present
 }
 
 fn allows_page_navigation(url: &str) -> bool {
@@ -1491,6 +1509,39 @@ mod candidate_tests {
         }
     }
     #[test]
+    fn candidate_page_urls_follow_the_native_view_without_hiding_unaddressable_players() {
+        let (root, popup, transient, frame) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let (a, b, c) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let candidates = BTreeMap::from([(a, root), (b, popup), (c, transient)].map(|(id, view)| (id, Candidate {
+            view, frame, ancestors: vec![], source: report(Uuid::new_v4(), "https://media.test/video.mp4"),
+        })));
+        let mut addresses = BTreeMap::from([(root, "https://site.test/home".into()), (popup, "https://popup.test/episode".into())]);
+        let describe = |addresses: &BTreeMap<Uuid, String>, id| candidate_descriptions(&candidates, addresses)
+            .into_iter().find(|value| value["id"] == json!(id)).unwrap();
+        assert_eq!(describe(&addresses, b)["pageURL"], "https://popup.test/episode");
+        assert_eq!(describe(&addresses, b)["url"], "https://media.test/video.mp4");
+        assert!(describe(&addresses, c)["pageURL"].is_null());
+        assert_eq!(describe(&addresses, c)["url"], "https://media.test/video.mp4");
+        addresses.insert(popup, "https://popup.test/next".into());
+        assert_eq!(describe(&addresses, b)["pageURL"], "https://popup.test/next");
+        assert_eq!(describe(&addresses, a)["pageURL"], "https://site.test/home");
+    }
+    #[test]
+    fn media_events_require_an_observed_candidate_in_the_same_view_and_frame() {
+        let (view, popup, frame, media) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        let mut candidates = BTreeMap::from([(a, view), (b, popup)].map(|(id, view)| (id, Candidate {
+            view, frame, ancestors: vec![], source: report(media, "https://media.test/video.mp4"),
+        })));
+        assert_eq!(media_candidate_id(&candidates, view, frame, media), Some(a));
+        assert_eq!(media_candidate_id(&candidates, popup, frame, media), Some(b));
+        assert_eq!(media_candidate_id(&candidates, popup, Uuid::new_v4(), media), None);
+        assert_eq!(media_candidate_id(&candidates, popup, frame, Uuid::new_v4()), None);
+        candidates.remove(&b);
+        assert_eq!(media_candidate_id(&candidates, popup, frame, media), None);
+        assert_eq!(media_candidate_id(&candidates, view, frame, media), Some(a));
+    }
+    #[test]
     fn bounded_batches_preserve_first_selection_and_retire_only_its_actual_removal() {
         let (view, frame, sibling) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
         let mut candidates = BTreeMap::new();
@@ -1550,7 +1601,20 @@ mod candidate_tests {
             vec![],
             &[media[0]]
         ));
-        assert!(!candidates.contains_key(&selected)); // false takes the existing Page drop/reader-retirement path.
+        assert!(!candidates.contains_key(&selected));
+    }
+    #[test]
+    fn removed_selection_keeps_the_replacement_candidate_in_the_same_batch() {
+        let (view, frame, old, next) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut candidates = BTreeMap::new();
+        assert!(update_candidates(&mut candidates, None, view, frame, &[], vec![report(old, "https://media.test/old")], &[]));
+        let selected = *candidates.keys().next().unwrap();
+        assert!(!update_candidates(&mut candidates, Some(selected), view, frame, &[], vec![report(next, "https://media.test/next")], &[old]));
+        assert!(!candidates.contains_key(&selected));
+        let replacement = candidates.values().next().unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(replacement.source.media, next);
+        assert_eq!(replacement.source.resource, "https://media.test/next");
     }
     #[test]
     fn repeated_resource_observations_revoke_once() {
@@ -1600,7 +1664,7 @@ mod candidate_tests {
             let (reply, receiver) = oneshot::channel();
             let mut receiver = Some(receiver);
             requests.insert(request, Pending {
-                view, frame, reply, selecting: true, promote: Some((candidate, staged.clone())), patch: false,
+                view, candidate_id: candidate, frame, reply, selecting: true, promote: Some((candidate, staged.clone())), patch: false,
             });
             if cancelled { drop(receiver.take()); }
             if let Some(pending) = Pending::take_reply(&mut requests, request, view, frame) {

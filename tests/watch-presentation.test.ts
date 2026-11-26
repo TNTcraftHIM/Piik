@@ -213,8 +213,8 @@ describe("Webpage watch presentation", () => {
   it.each([true, false])("offers original-page sharing with access guidance for a direct candidate=%s", direct => {
     setCopy({ lang: "en" });
     const channel = { appConnected: true, pagePlayer: true, pending: new Set(), watchEmbed: () => undefined,
-      sourceSelectionCommitting: () => false, watchPage: () => ({ url: "https://video.test/player", candidates: [],
-        watchSources: { choices: direct ? [{ id: "video", name: "Owned video", displayURL: "https://video.test/video.mp4", format: "file" }] : [], indexed: [], mpd: [] } }),
+      sourceSelectionCommitting: () => false, watchPage: () => ({ url: "https://video.test/player", candidates: [{ id: "player", pageURL: "https://video.test/player" }],
+        watchSources: { candidateId: "player", choices: direct ? [{ id: "video", name: "Owned video", displayURL: "https://video.test/video.mp4", format: "file" }] : [], indexed: [], mpd: [] } }),
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
     expect(html).toContain(t("en", "watch.browserSource.originalHelp"));
@@ -224,6 +224,21 @@ describe("Webpage watch presentation", () => {
     expect(html.includes(`aria-label="${t("en", "watch.forward.direct")}"`)).toBe(direct);
     expect(html.includes(`aria-label="${t("en", "watch.forward.shareFile")}"`)).toBe(direct);
     expect(html.includes(t("en", "watch.forward.shareFileHelp"))).toBe(direct);
+  });
+
+  it.each([false, true])("a candidate without a webpage locator retains media choices after inspection=%s", inspected => {
+    setCopy({ lang: "en" });
+    const candidate = { id: "player", pageURL: null, title: "Popup video", url: null, duration: 60 };
+    const page = { url: "https://root.test/", candidates: [candidate], ...(inspected && { watchSources: {
+      candidateId: candidate.id, choices: [{ id: "file", name: "Video", displayURL: "https://media.test/film.mp4", format: "file" }], indexed: [], mpd: [],
+    } }) };
+    const channel = { appConnected: true, pagePlayer: true, pending: new Set(), watchEmbed: () => undefined,
+      sourceSelectionCommitting: () => false, watchPage: () => page } as unknown as ChannelController;
+    const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
+    expect(html).not.toContain('aria-label="Sync video on its webpage"');
+    expect(html).not.toContain(t("en", "watch.browserSource.originalHelp"));
+    expect(html).toContain(inspected ? `aria-label="${t("en", "watch.forward.shareFile")}"` : 'aria-label="Select video Popup video"');
+    if (inspected) expect(html).toContain(`aria-label="${t("en", "watch.forward.direct")}"`);
   });
 
 

@@ -13,9 +13,12 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 test('main media owns state and events while its page owns only resource lifetime', async () => {
   const video = new Video();vi.stubGlobal('document', { createElement: () => video });
   const dispose = vi.fn(), page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), dispose, vi.fn());
+  const candidateId = page.selectedCandidateId = crypto.randomUUID(), pageEvent = vi.fn();
+  page.listen(pageEvent);
   const media = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), {sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
   const changed = vi.fn();media.listen(changed);
-  page.receive({type:'page_sample',pageId:page.id,event:'seeked'});
+  page.receive({type:'page_sample',pageId:page.id,candidateId,event:'seeked'});
+  expect(pageEvent).toHaveBeenCalledWith('seeked');
   expect(changed).not.toHaveBeenCalled();expect((await media.read()).position).toBe(12);
   await media.patch({position:20,paused:false});expect(video.currentTime).toBe(20);expect(video.paused).toBe(false);
   video.dispatchEvent(new Event('seeked'));expect(changed).toHaveBeenCalledWith('seeked');

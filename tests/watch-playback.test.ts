@@ -574,3 +574,35 @@ test.each(["pause", "close", "play"])("waits for the selected output before firs
     expect(video.play).toHaveBeenCalledTimes(action === "play" ? 1 : 0);
   } finally { blocker(); release(); complete?.(); media.close(); await choosing; await playbackOutput.choose(""); }
 });
+
+test.each(['resolve', 'reject'] as const)('source retirement freezes the owned clock across a pending page read (%s)', async completion => {
+  vi.useFakeTimers();
+  let now = 0, changed: (event: WatchMediaEvent) => void = () => {};
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  const state: WatchMediaState = { position: 10, paused: false, rate: 2, duration: 120, readyState: 4, ended: false, buffered: [[0, 120]] };
+  const read = vi.fn(async () => ({ ...state })), close = vi.fn();
+  const media: WatchMedia = { read, patch: vi.fn(), ready: async () => {}, close, listen: listener => { changed = listener; return () => {}; } };
+  const player = new WatchPlayer('room', true, media, vi.fn()), publish = vi.fn(async (_playback: unknown) => {});
+  try {
+    player.calibrate(5000, 0, 0); await player.ready(); player.activate(publish);
+    await player.publish(true); publish.mockClear();
+    let resolve!: (state: WatchMediaState) => void, reject!: (error: Error) => void;
+    read.mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    changed('playing');
+    await vi.advanceTimersByTimeAsync(0);
+    now = 2000; changed('source-unavailable');
+    if (completion === 'resolve') resolve({ ...state, position: 80 });
+    else reject(new Error('page_player_closed'));
+    await player.serialize(async () => {});
+    expect(publish.mock.lastCall?.[0]).toEqual({ timeline: 'media', position: 14, paused: true, rate: 2, anchorTime: 7000 });
+    expect(player.mediaState).toMatchObject({ position: 14, paused: true, readyState: 0 });
+    expect(player.error).toBe('watch_source_unavailable');
+    const reads = read.mock.calls.length;
+    now = 8000; await vi.advanceTimersByTimeAsync(6000);
+    await player.publish(true);
+    expect(read).toHaveBeenCalledTimes(reads);
+    expect(publish.mock.lastCall?.[0]).toMatchObject({ position: 14, paused: true, anchorTime: 13000 });
+    expect(close).not.toHaveBeenCalled();
+  } finally { player.close(); }
+  expect(close).toHaveBeenCalledOnce();
+});

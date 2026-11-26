@@ -278,16 +278,16 @@ export function ChannelGuidePreview() {
   const watchChannel: ChannelController = {
     ...channel, pagePlayer: true, watchPage: () => watchPage,
     prepareWatchPage: async (_roomId, url) => setWatchPage({ pageId: crypto.randomUUID(), url, candidates: [
-      { id: "10000000-0000-4000-8000-000000000001", title: zh ? "山径漫步完整版" : "Mountain trail walk — full film",
+      { id: "10000000-0000-4000-8000-000000000001", pageURL: url, title: zh ? "山径漫步完整版" : "Mountain trail walk — full film",
         url: "https://media.example/films/mountain-trail.mp4", duration: 1480 },
-      { id: "10000000-0000-4000-8000-000000000002", title: zh ? "幕后花絮" : "Behind the scenes",
+      { id: "10000000-0000-4000-8000-000000000002", pageURL: url, title: zh ? "幕后花絮" : "Behind the scenes",
         url: null, duration: 206 },
     ] }),
     selectWatchPage: async (_roomId, candidateId, _activityId, _reportError, mode) => {
       const candidate = watchPage?.candidates.find(item => item.id === candidateId);
       if (!watchPage || !candidate) throw new Error("watch_page_unavailable");
       if (mode === "original-page" || (candidate.url && mode !== "choose-source")) { received(); return true; }
-      setWatchPage({ ...watchPage, watchSources: { choices: [
+      setWatchPage({ ...watchPage, watchSources: { candidateId, choices: [
         { id: "20000000-0000-4000-8000-000000000001", name: candidate.title, format: "file",
           displayURL: candidate.url ?? "https://media.example/films/behind-the-scenes.mp4" },
         { id: "20000000-0000-4000-8000-000000000002", name: zh ? "自适应高清播放列表" : "Adaptive HD playback",

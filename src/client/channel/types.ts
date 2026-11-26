@@ -143,7 +143,7 @@ export interface ChannelActions {
   confirmWatchEmbed(roomId: string, reportError?: boolean): Promise<void>;
   watchEmbed(roomId: string): WatchMedia | undefined;
   prepareWatchPage(roomId: string, url: string, activityId?: string, reportError?: boolean): Promise<void>;
-  watchPage(roomId: string, activityId?: string): { pageId: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
+  watchPage(roomId: string, activityId?: string): { pageId: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources & { candidateId: string } } | undefined;
   selectWatchPage(roomId: string, candidateId: string, activityId?: string, reportError?: boolean, mode?: "choose-source" | "original-page"): Promise<boolean>;
   selectWatchBrowserSource(roomId: string, choiceId: string | null, reportError?: boolean): Promise<void>;
   focusWatch(id: string): Promise<void>;

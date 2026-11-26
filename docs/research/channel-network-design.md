@@ -364,6 +364,18 @@ confirmation. Cancellation releases only that candidate. Committing the exact
 candidate resource replaces the active selection and retires its previous reader.
 Closing the page retires both selections and their pending reads.
 
+When the sharer's original-page document or selected player disappears, its
+window and the room's watching intent remain. Playback pauses using the last
+sample and existing clock, and the previous media-byte grant is withdrawn.
+Selecting the next video uses the ordinary source-replacement handoff with the
+address of that video's containing Native webpage.
+Stopping the share or closing its selected or last webpage window ends the
+activity. Other windows in the group close independently.
+
+The original webpage address and offered media bytes are independent. A webpage
+without a navigable address can still forward its prepared video. The original-page
+action is available only when that candidate has an address a viewer can open.
+
 The shared Web UI can use the official embedded player for supported YouTube links
 and single public on-demand videos on peertube.tv. Each participant checks PeerTube's
 public video metadata before opening the player. The room carries its canonical embed
