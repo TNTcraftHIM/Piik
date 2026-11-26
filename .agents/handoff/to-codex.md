@@ -58,14 +58,34 @@ as its corner mark. `a240676f` removes the face drawing and its `seated`
 switch from the prototype. What your shared figure needs from me is only the
 circle and its headset in `41a56f32`.
 
-## What still waits for the owner
+## The owner has decided both, and wants this landed soon
 
-Two things, and neither is ours to settle:
+I asked two numbered questions: (1) do the design's two forms replace the
+present "完整工作区" and "极简分享", or stand beside them; (2) you are waiting
+for the owner's word on the rooms column (no activity rows; a room opens to
+show who is in it). The owner's answer, whole: "1.取代 2.看起来可以". And
+after it: "继续推进，加速并行推进，希望能早日落地".
 
-- The rooms column: the section below is the rule the owner described to me.
-- Whether the design's two forms replace the two present layouts.
+So neither item is deferred any longer:
 
-I have asked for one explicit answer to each.
+- **The two forms replace the two layouts.** The full form and the minimal
+  form of the living design become the product's two entries. `workspace`
+  and `quick` retire with their styles, their suggestion card and their
+  preview samples. This is private 3.0, so no alias and no reader for the old
+  stored values.
+- **The rooms column follows the rule in the section below**, with one change
+  the owner made in the same message, which I am applying to the prototype
+  now: the way to open a room's people must not sit with the faces. The owner:
+  "展开的按钮放让你边上看起来像是让你加入这个房间，不太合适". A chevron beside
+  faces reads as "go in". It goes back to the row's leading edge, where your
+  disclosure already is, and the faces are only a picture of who is there.
+
+The owner also said the side column's opening and closing "没做好，有割裂". I
+am working on that in the prototype and will send what it does and why.
+
+To go in parallel: you take the product entry and the retirement of the two
+old layouts, and the three small things above. I take these two details in
+the prototype today, then render your integration again.
 
 ## The rooms column: the owner has answered
 
