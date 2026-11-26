@@ -50,6 +50,9 @@ advances in send order with a receive-time watermark, while older ACKs repair
 counts without rewinding it. Reset reseeds that delay baseline without discarding
 delivery history. Piik's shared
 forwarding package uses this copy for both individual transports and publications.
+The copy carries the send-side settle correction from [upstream #5247](https://github.com/livekit/livekit/pull/5247).
+Native transport also measures the probe duration in the same monotonic clock
+as the LiveKit prober's creation timestamp.
 Two recovery policies accompany those corrections. Inconclusive probes use
 existing backoff from completion without growing the next probe or reporting
 measured congestion. Delay inference tolerates clock-rate skew using RFC 6817 A.2's
@@ -90,10 +93,11 @@ the next packet's delta or indexing past the feedback array.
 
 Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
 the root module replaces LiveKit with the immutable
-[1e1593e6 revision](https://github.com/TNTcraftHIM/livekit/commit/1e1593e6b0fc64ccf2088de88fb74143a5840cd0),
+[3fb53ddc revision](https://github.com/TNTcraftHIM/livekit/commit/3fb53ddcdd0f9b2539e9dea54a6692276dba9051),
 based on [upstream v1.13.11](https://github.com/livekit/livekit/tree/385aa40f9292fe1db8caad87301e4b285b7c198a).
 The patch adds optional local encoder demand to `StreamAllocator` and regression
 tests. Native publication uses that input. Ordinary forwarding leaves it unset.
+Probe pacing and elapsed logging use the same monotonic clock as their start time.
 The tag includes [upstream #5055](https://github.com/livekit/livekit/pull/5055),
 which permits concurrent retransmission reads. The existing allocator still
 owns probe timing, congestion response and allocation; encoder demand does not

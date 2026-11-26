@@ -135,7 +135,7 @@ require (
 )
 
 // Local-encoder demand hook pending upstream #5016; see internal/thirdparty/README.md.
-replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261125010649-1e1593e6b0fc
+replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261126062904-3fb53ddcdd0f
 
 // Equivalent H.264 profiles pending upstream #3668; see internal/thirdparty/README.md.
 replace github.com/pion/webrtc/v4 => github.com/TNTcraftHIM/pion-webrtc/v4 v4.0.0-20261125002455-94d7bae66f92
