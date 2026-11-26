@@ -7,13 +7,13 @@ struct Endpoint {
     id: Uuid,
     user: Uuid,
     session: Uuid,
-    events: mpsc::Receiver<Event>,
+    events: crate::outbox::Receiver,
 }
 
 impl Endpoint {
     fn connect(hub: &mut Hub) -> Self {
         let id = Uuid::new_v4();
-        let (events, queue) = mpsc::channel(64);
+        let (events, queue) = crate::outbox::channel(64);
         let (close, _) = watch::channel(false);
         hub.clients.insert(id, Client { events, close });
         Self {
@@ -62,7 +62,7 @@ impl Endpoint {
     }
 
     fn drain(&mut self) -> Vec<Value> {
-        std::iter::from_fn(|| self.events.try_recv().ok())
+        std::iter::from_fn(|| self.events.try_recv())
             .map(|event| serde_json::to_value(event).unwrap())
             .collect()
     }
@@ -413,7 +413,7 @@ fn complete_host_turn(
     host: &mut piik_channel_core::host::RoomHost,
     room_store: &mut storage::Storage,
 ) -> piik_channel_core::host::HostOutput {
-    let input = std::iter::from_fn(|| endpoint.events.try_recv().ok())
+    let input = std::iter::from_fn(|| endpoint.events.try_recv())
         .find_map(|event| match event {
             Event::HostInput { input, .. } => Some(input),
             _ => None,
@@ -647,7 +647,7 @@ fn stored_turn(
     endpoint: &mut Endpoint,
     host: &mut piik_channel_core::StoredRoomHost,
 ) -> Uuid {
-    let input = std::iter::from_fn(|| endpoint.events.try_recv().ok())
+    let input = std::iter::from_fn(|| endpoint.events.try_recv())
         .find_map(|event| {
             if let Event::HostInput { input, .. } = event {
                 Some(input)
@@ -716,13 +716,12 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
         observer.drain();
         // Keep this reader's writer paused until the next authority turn.
         let queue = &hub.clients[&reader.id].events;
-        while queue.capacity() > 0 {
-            queue
-                .try_send(Event::Ack {
-                    request_id: "queued".into(),
-                })
-                .unwrap();
-        }
+        while queue
+            .try_send(Event::Ack {
+                request_id: "queued".into(),
+            })
+            .is_ok()
+        {}
         (host, reader, observer, packet)
     };
 
@@ -739,7 +738,7 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
     if !completed {
         confirmation.await;
     }
-    let names: Vec<_> = std::iter::from_fn(|| observer.events.try_recv().ok())
+    let names: Vec<_> = std::iter::from_fn(|| observer.events.try_recv())
         .filter_map(|event| match event {
             Event::State { state } => state
                 .users
@@ -749,7 +748,10 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
             _ => None,
         })
         .collect();
-    assert_eq!(names, ["Friend", "Updated"]);
+    // The observer read nothing between the two turns, so the first turn's
+    // snapshot gave way to the second's. A snapshot queued out of turn would
+    // have taken its place and shown the old name here.
+    assert_eq!(names, ["Updated"]);
 }
 
 #[test]
@@ -3286,11 +3288,14 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
     }).to_string()).unwrap();
 
     for outcome in ["room_busy", "room_creation_unconfirmed", "success"] {
+        let creator = owner.id;
         let writer = async {
             let HostCommand::Open(open) = commands.recv().await.unwrap() else {
                 panic!("expected room open");
             };
             let id = open.policy.id.clone();
+            // What the creator is told while the writer still works.
+            let reserved = owner.drain();
             if outcome == "room_busy" {
                 assert!(open.result.send(Err(outcome.into())).is_ok());
             } else {
@@ -3302,10 +3307,11 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
                     drop(open.result);
                 }
             }
-            id
+            (id, reserved)
         };
-        let (_, id) = tokio::join!(create_room(&domain, owner.id, request()), writer);
-        let events = owner.drain();
+        let (_, (id, mut events)) =
+            tokio::join!(create_room(&domain, creator, request()), writer);
+        events.extend(owner.drain());
         let snapshots: Vec<_> = events.iter()
             .filter(|event| event["type"] == "state")
             .map(|event| event["state"]["channel"]["managedRoomIds"].as_array().unwrap())
