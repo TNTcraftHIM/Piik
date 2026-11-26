@@ -144,6 +144,7 @@
 [data-layout="living"][data-sidebars="rail"][data-room-list-open] > .c3-personal { width: var(--room-list); z-index: 3; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-personal { padding-inline: 4px; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) :is(.c3-living-actions, .c3-identity) { align-items: center; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .c3-share-actions { justify-content: center; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { flex-direction: column; }
 [data-layout="living"][data-sidebars="rail"] .c3-voice-room-row[data-direct] { width: calc(var(--room-rail) - 9px); }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity > :not(svg) { display: none; }
