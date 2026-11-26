@@ -505,7 +505,13 @@
 /* The waiting television: the room's picture when nobody shares. */
 .c3-living .c3-living-tv { flex: 1 1 0; min-height: 0; display: grid; place-items: center; padding: var(--lv-inset) var(--lv-inset) 4px; }
 .c3-living .c3-living-tv .lr-tv { width: min(100%, 880px); max-height: 100%; }
-.c3-living .c3-living-tv .c3-quick-start p { margin: 0; max-width: 28em; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; text-wrap: balance; }
+/* With no room yet the same television offers the one press that makes a room and opens the picker. */
+.c3-living[data-form="minimal"] .c3-site-overview:has(> .lr-tv) { box-sizing: border-box; height: 100%; display: grid; place-items: center; padding: var(--lv-inset); overflow: hidden; }
+/* With no room and no voice a phone has nothing to put in my bar, and an empty bar is not drawn. */
+.c3-shell.c3-living.c3-living[data-sidebars="phone"][data-overview] > .c3-personal:not([data-voice-elsewhere]) { display: none; }
+.c3-living[data-form="minimal"] .c3-site-overview > .lr-tv { width: min(100%, 880px); max-height: 100%; }
+.c3-living :is(.c3-living-tv, .c3-site-overview) .c3-quick-start { align-content: center; gap: 16px; }
+.c3-living :is(.c3-living-tv, .c3-site-overview) .c3-quick-start p { margin: 0; max-width: 28em; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; text-wrap: balance; }
 .c3-living[data-form="minimal"] .c3-workspace:not(.has-screens) > .c3-monitor { display: none; }
 
 /* A card opened from my dock starts on the dock's own content edge, inside the frame, and not at the window's. */

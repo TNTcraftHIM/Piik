@@ -714,7 +714,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           {!state ? <ChannelSiteEntry channel={channel} failure={failure} /> : unlistedRoom
             ? <ChannelUnlistedRoomEntry key={selected} channel={channel} roomId={selected} onBack={() => selectRoom("")} />
             : overview && <section className="c3-site-overview">
-            {layout === "quick" && canCreateRoom ? <StageTv hasEntry label={t("channel.previewPage.startSharing")}><div className="c3-quick-start">
+            {(layout === "quick" || minimal) && canCreateRoom ? <StageTv hasEntry label={t("channel.previewPage.startSharing")}><div className="c3-quick-start">
               <p>{t(creationPolicy === "invite_only" ? "channel.previewPage.quickInviteOnlyHint" : "channel.previewPage.quickStartHint")}</p>
               <div className="c3-quick-start-action"><Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
