@@ -121,7 +121,7 @@ Friends in different places can use a virtual LAN to connect their devices and s
 If something fails, start with the first failing step:
 
 - **Page will not open:** check [local invitations and firewall permissions](./troubleshooting.md#local-invitation-will-not-open) for that virtual network.
-- **The page opens but the picture won’t play.** The virtual LAN needs to carry both web traffic and UDP between devices. Check that everyone joined using the tool’s general LAN mode, then check [WebRTC settings in the browser](#browser-webrtc-restrictions).
+- **The page opens but the picture won’t play.** Ask the Host to [allow Piik’s UDP media through their firewall](./troubleshooting.md#local-invitation-will-not-open). Check that everyone joined using the tool’s general LAN mode and that it carries UDP between devices. If the picture still won’t play, check [WebRTC settings in the browser](#browser-webrtc-restrictions).
 - **Microphone or remote control is unavailable:** use the App-generated HTTPS invitation, confirm its certificate, then check [browser permissions](./troubleshooting.md#microphone-or-remote-controls-are-unavailable). Supporting browsers can use these features without a public tunnel, just as on an ordinary LAN.
 
 Join only with trusted friends.
