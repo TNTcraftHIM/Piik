@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"runtime"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"golang.org/x/sys/windows"
 )
 
@@ -198,6 +200,8 @@ func (s *windowsSink) sendOnDesktop(inputs ...winInput) (uintptr, error) {
 		if ok, _, restoreErr := setDesktop.Call(thread); ok == 0 {
 			result = errors.Join(result, fmt.Errorf("restore input thread desktop: %w", restoreErr))
 		}
+		slog.Debug("remote-input", "event", "desktop-retry", "initial", slog.GroupValue(diagnostics.Error(original)),
+			"totalAccepted", n+accepted, "operationSucceeded", result == nil)
 		return n + accepted, result
 	}
 	return n, nil
