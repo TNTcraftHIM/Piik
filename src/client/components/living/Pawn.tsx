@@ -2,11 +2,11 @@ import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from "re
 import { HostMark } from "./HostMark";
 import { bindParticipantMotion, participantMotion } from "./participant-motion";
 import { useSurfaceDocument } from "../../ui/panel-window";
-import { Glyph } from "../../ui/icons";
+import { Glyph, type GlyphName } from "../../ui/icons";
 import { microphoneLevelFill } from "../../room-voice/MicrophoneLevel";
 
 export interface PawnVoice { microphone: boolean; deafened?: boolean; level?: number }
-export interface PawnState { voice?: PawnVoice; collaboration?: boolean; host?: boolean }
+export interface PawnState { voice?: PawnVoice; collaboration?: boolean; host?: boolean; activity?: GlyphName }
 
 /** The accepted A silhouette, shared with the explanatory cast. */
 export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
@@ -26,11 +26,17 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
   </>;
 }
 
-function PawnAdornment({ voice, collaboration, host, avatar }: PawnState & { avatar?: boolean }) {
+function PawnAdornment({ voice, collaboration, activity, host, avatar }: PawnState & { avatar?: boolean }) {
+  const emblem = collaboration ? "mouse" : activity;
+  // Keep the last worn symbol visible during its exit.
+  const [lastEmblem, setLastEmblem] = useState(emblem);
+  if (emblem && emblem !== lastEmblem) setLastEmblem(emblem);
+  const drawn = emblem ?? lastEmblem;
+  const pointer = drawn === "mouse";
   return <g className="lr-person-status" data-voice={voice ? "" : undefined}
     data-deafened={voice?.deafened || undefined} data-microphone={voice?.microphone || undefined}
     style={voice?.microphone && voice.level !== undefined ? { "--voice-level": `${microphoneLevelFill(voice.level) * 100}%` } as CSSProperties : undefined}
-    data-collaboration={collaboration || undefined} color="var(--person-ink, #263b43)" fill="none"
+    data-emblem={emblem ? "" : undefined} color="var(--person-ink, #263b43)" fill="none"
     stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
     <g className="lr-person-headset">
       <g className="lr-person-neckband">
@@ -50,16 +56,17 @@ function PawnAdornment({ voice, collaboration, host, avatar }: PawnState & { ava
         <circle className="lr-person-mic-tip" r="1.2" fill="currentColor" stroke="none" />
       </g>
     </g>
-    <g className="lr-person-collaboration" color={avatar ? "var(--ink)" : undefined}>
+    <g className="lr-person-emblem" color={avatar ? "var(--ink)" : undefined}>
       {avatar && <circle cx="12" cy="47" r="7" fill="var(--paper)" stroke="none" />}
-      <g transform={avatar ? "translate(6.5 41.5) rotate(-45 5.5 5.5)" : "translate(16.5 32.5) rotate(-45 7.5 7.5)"}>
-        <Glyph name="mouse" size={avatar ? 11 : 15} />
+      <g transform={avatar ? `translate(6.5 41.5)${pointer ? " rotate(-45 5.5 5.5)" : ""}`
+        : pointer ? "translate(16.5 32.5) rotate(-45 7.5 7.5)" : "translate(17 33)"}>
+        {drawn && <Glyph name={drawn} size={avatar ? 11 : pointer ? 15 : 14} />}
       </g>
     </g>
   </g>;
 }
 
-export function PawnSvg({ color, host, identity, voice, collaboration, avatar, centered }: PawnState & {
+export function PawnSvg({ color, host, identity, voice, collaboration, activity, avatar, centered }: PawnState & {
   color: string; identity?: string; avatar?: string; centered?: boolean;
 }) {
   const avatarClip = useId();
@@ -90,7 +97,7 @@ export function PawnSvg({ color, host, identity, voice, collaboration, avatar, c
           preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} onError={() => setFailedAvatar(picture)} />
         {host && <HostMark x={18} y={frameTop} width={12} />}
       </> : <PersonShape host={host} />}
-      <PawnAdornment host={host} voice={voice} collaboration={collaboration} avatar={!!picture} />
+      <PawnAdornment host={host} voice={voice} collaboration={collaboration} activity={activity} avatar={!!picture} />
     </g></g>
   </svg>;
 }

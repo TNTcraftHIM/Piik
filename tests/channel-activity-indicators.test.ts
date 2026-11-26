@@ -8,7 +8,7 @@ import { setCopy, type Lang } from "../src/client/ui/copy";
 
 type Activity = Parameters<typeof ChannelActivityIndicators>[0];
 const render = (activity: Activity) => renderToStaticMarkup(createElement(ChannelActivityIndicators, activity));
-const glyph = (name: GlyphName) => renderToStaticMarkup(createElement(Glyph, { name, size: 14 }));
+const glyph = (name: GlyphName, size = 14) => renderToStaticMarkup(createElement(Glyph, { name, size }));
 afterEach(() => setCopy({ lang: "en" }));
 
 function activityButtonGlyphs(html: string, label: string) {
@@ -62,10 +62,9 @@ test("an offline person's row retains simultaneous activities and local playback
   };
   const html = renderToStaticMarkup(createElement(ChannelUser, person));
   expect(html).toContain('class="c3-user is-offline"');
-  const label = "Joined voice; Microphone off; Sharing; Connecting picture; Sending and receiving files";
+  const label = "Joined voice; Microphone off; Sharing; Sending and receiving files; Connecting picture";
   expect(activityButtonGlyphs(html, label)).toEqual([
-    glyph("microphoneOff"), glyph("cast"), glyph("eye"),
-    renderToStaticMarkup(createElement(Glyph, { name: "loader", size: 10 })), glyph("fileTransfer"),
+    glyph("microphoneOff"), glyph("cast"), glyph("fileTransfer"), glyph("eye"), glyph("loader", 10),
   ]);
   expect(html).toContain('data-viewing="preparing"');
   expect(html).not.toContain("Picture received");
@@ -87,18 +86,29 @@ test.each([
   expect(render({ sendingFiles: true, receivingFiles: true })).toContain(`aria-label="${both}"`);
 });
 
-test("compact couch keeps its pawn voice appearance without duplicating the voice badge", () => {
+test.each([
+  { collaboration: false, sharing: true, sendingFiles: true, emblem: "cast", size: 14 },
+  { collaboration: false, sharing: false, sendingFiles: true, emblem: "fileTransfer", size: 14 },
+  { collaboration: false, sharing: false, sendingFiles: false, emblem: "loader", size: 14 },
+  { collaboration: true, sharing: true, sendingFiles: true, emblem: "mouse", size: 15 },
+] as const)("compact couch wears $emblem while describing every activity from one control", ({
+  collaboration, sharing, sendingFiles, emblem, size,
+}) => {
   setCopy({ lang: "en" });
   const html = renderToStaticMarkup(createElement(ChannelCouch, {
-    people: [{ userId: "owned-person", name: "A friend", voice: { microphone: true, deafened: true },
-      sharing: true, viewing: "active", sendingFiles: true, receivingFiles: true }],
+    people: [{ userId: "owned-person", name: "A friend", voice: { microphone: true, deafened: true, level: 0.5 },
+      collaboration, sharing, viewing: "preparing", sendingFiles, receivingFiles: sendingFiles }],
     selfUserId: "owned-person", session: null, compact: true,
   }));
   expect(html).toContain('class="lr-person-headset"');
   expect(html).toContain('data-voice="" data-deafened="true" data-microphone="true"');
   expect(html.match(/<button\b/g)).toHaveLength(1);
   expect(html).toContain('aria-label="A friend"');
-  expect(html).toContain('aria-description="Joined voice; Microphone on; Listening paused; Sharing; Picture received; Sending and receiving files"');
-  for (const icon of ["cast", "eye", "fileTransfer"] as const) expect(html).toContain(glyph(icon));
-  expect(html).not.toContain(glyph("headphonesOff"));
+  expect(html).toContain("--voice-level:");
+  const description = ["Joined voice", "Microphone on", "Listening paused",
+    ...(sharing ? ["Sharing"] : []), ...(sendingFiles ? ["Sending and receiving files"] : []), "Connecting picture"];
+  expect(html).toContain(`aria-description="${description.join("; ")}"`);
+  expect(html).not.toContain("c3-couch-activity");
+  expect(html).toContain('data-emblem=""');
+  expect(html.match(/class="lr-person-emblem".*?(<svg\b.*?<\/svg>)/s)?.[1]).toBe(glyph(emblem, size));
 });

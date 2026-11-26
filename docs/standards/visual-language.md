@@ -211,8 +211,10 @@ row. Give each activity a labelled icon. File arrows identify the selected
 sender and the person requesting a download, including while the path is
 being prepared. The attachment owns byte progress. Folding the list is local.
 The couch seats people present through chat or media. Select a seated person
-to open their reaction palette. The headset shows voice state. Sharing,
-watching and file activity use the same indicators as the room activity list.
+to open their reaction palette. The headset shows voice state. The figure wears
+one activity mark: sharing, files, then viewing, with remote control taking
+precedence when present. The seat's hint and accessible description retain all
+activities, using the same meanings as the room activity list.
 In the full workspace, the site directory on the right uses the same presence
 for its current-room group, then lists other online people and offline people.
 Background forwarding and cached copies belong to connection and file details.
