@@ -135,6 +135,85 @@ held down. Say if you want any of it in the repository.
 - **The updater cleanup: your decline is accepted.**
 - The rest is settled and removed here.
 
+## Hole punching on hard networks: two corrections now, a census, and a design that is mine to write
+
+The owner asked for this by name: "困难网络nat打洞的算法是最重要的之一，你看看
+能不能原创一些新的预测算法或者思路？" I checked each idea in a simulation before
+writing it here, and one of mine failed that check and is not below.
+
+**The bound first, so nobody chases it.** A probe that creates a mapping bound
+to one destination port meets only a peer mapping aimed at exactly it. With
+M_A and M_B such mappings and allocators uniform over R_A and R_B ports, the
+expected number of meetings is M_A·M_B / (R_A·R_B). Two full-range random
+routers with address-and-port-dependent mapping and filtering need some
+65,000 mappings a side, whatever the order of search. That pair stays with
+the relay. Everything below is about routers that are hard without being
+that, which the present three classes fold into "irregular".
+
+**Two corrections that need no design** (simulated; yours to confirm on the
+namespace routers):
+
+1. **Sequential against sequential aims at the wrong position.**
+   `Observation::target` is `port + 4·step` (`wire.rs:732`) and each side
+   opens 8 sockets. Socket `i` lands at position `1 + k + i` after `k`
+   foreign allocations, so position 4 is covered for `k` in 0..3 and sockets
+   4 to 7 can never be the one. Aimed at position 8, the same 8 sockets cover
+   0..7 on each side. In the simulation, with a mean of 2 foreign allocations
+   a side 73% becomes 99.8%, and with a mean of 4, 19% becomes 90%.
+2. **Stable against sequential spends mappings where packets would do.** The
+   stable side sends to two positions (`+4`, `+8`) and the sequential side
+   opens 8 sockets; at a mean of 12 foreign allocations that reaches 9%. One
+   socket on the sequential side and the stable side sending once to each of
+   positions 1..64 from its retained socket reaches 100%, and 99% at a mean
+   of 48. A packet from the stable side costs no mapping.
+
+**A census I need from your routers, and from any real gateway you can
+reach.** The design depends on which allocators exist, and three samples from
+one socket cannot tell. For each gateway: two sockets, each asking every
+observer, and a second port on one observer's address where it answers; per
+request the socket, the destination, the send time and the mapped address.
+From that table I read: one port per socket, per destination address, or per
+address and port; a counter with other people's allocations between ours (the
+differences share one step and the quotients give their rate); otherwise the
+span of the ports, and whether they share the PSID bits of an RFC 7597 port
+set; and whether the local port is preserved. A counter under traffic is
+"irregular" to the present classifier, and gets 256 sockets and 1,024 probes
+where one socket and a short window would do.
+
+**What I will write, as a pure module in the core with its own tests, on a
+branch for your review before any wiring**: one model of an endpoint's
+allocator, built from such a table and kept with the network attachment, and
+one planner. The planner has no table of cases. For any plan the chance of
+success is `1 - exp(-Σ P(meet))` over its pairs of mapping and probe, and it
+picks the cheapest plan that reaches a target, or none. Its shapes:
+
+- a counter: the window that holds the Poisson mass of its measured rate,
+  placed on the mean (6.6·√mean + 1 positions hold 99.9%: 19 at a mean of 8,
+  29 at 16, 55 at 64, where a fixed window fails), and against another
+  counter every socket of a side aimed at one position, as in item 1;
+- a set: the search runs inside the span of the ports seen, or the port set,
+  before anything outside. On a full-range router that is never worse (98%
+  either way at 256 by 1,024). At a quarter of the budget it gives 44 to 67%
+  on ranges of 16,000 to 28,000 ports and 98 to 100% on blocks of 4,096 or
+  less, against 22% today; a 240-port set needs one mapping;
+- a mapping measured after it is made: observer, peer, observer, sent back to
+  back, pins the peer's mapping exactly in 96% of bursts at 100 foreign
+  allocations a second. It replaces a prediction made a signaling round trip
+  earlier and yields the rate for the window.
+
+The planner's number is also what the route planner lacks: a pair whose
+chance is under a per cent can go to a relay at once and not after five
+seconds, and pairs can be tried in the order of their chance. That contract
+I will bring to you as a proposal, not as code.
+
+Sources read: Takeda 2003 and Wei et al. 2008 for next-port prediction;
+GB2461322A for a candidate range from a differential; the traversal article
+our record cites for the full-range search; and Trautwein et al. 2026
+(arXiv:2604.12484), which measures 70% ± 7.1% for DCUtR and names birthday
+probing over 2^16 ports as future work. I did not find the rate-centred
+window, the measurement after the fact, or a search bounded by the observed
+span or port set; say so if you know of one.
+
 ## The six commits through `077a9d66`: no defect shown, two questions
 
 A separate reviewer read them and removed each fix in a copy of the tree: the
