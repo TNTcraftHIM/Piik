@@ -53,7 +53,7 @@ sibling `web/` tree without Node.
 | `src/client/channel` | Browser session, peer carrier, media, room hosting, conversation, voice, files and attended input over core-owned plans |
 | `prototype/channel-native/src/session.rs`, `hosted_room.rs` | Authenticated Native participant, SQLite-backed rooms and admitted peer resources |
 | `prototype/channel-native/src/peer.rs`, `media` | RTC connections, encoded media forwarding and demand; the media library owns network adaptation |
-| `prototype/channel-native/src/capture`, `input` | Platform source/encoder/input resources under the selecting page's lease |
+| `prototype/channel-native/src/capture`, `input` | Platform capture/encoder lifetimes and consent-scoped input; App-selected operations retire with their control/page owner |
 | `prototype/channel-server/src/domain.rs` | Domain HTTP/WebSocket admission and directory effects over the shared core |
 | `prototype/channel-server/src/lib.rs` | Explicit Server-owned Native hosting and service shutdown |
 | `prototype/channel-server/src/app*.rs` | Local approval, site namespaces, App-owned domains, launcher and public-link lifetime |
