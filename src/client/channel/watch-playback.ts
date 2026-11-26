@@ -80,8 +80,8 @@ export class WatchPlayer {
         void this.align(true);
       }
       if (!owner) {
-        // The original page reports events over the App link. Read its current buffering state.
-        if (this.presentation.kind === "external" && (event === "waiting" || event === "playing" || event === "loadeddata"))
+        // Without a local video element, picture readiness comes from the player's latest sample.
+        if (!this.video && (event === "waiting" || event === "playing" || event === "loadeddata"))
           void this.align();
         return;
       }
