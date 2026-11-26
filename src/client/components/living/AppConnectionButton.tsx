@@ -110,7 +110,10 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     const verifyApproval = async (reported = false) => {
       if (!approval || approving || signal.aborted) return;
       approving = true;
-      const health = await native?.discoverNativeHealth({ signal, port: approval.port, waitForPermission: !manage }).catch(() => null);
+      const health = await native?.discoverNativeHealth({ signal, port: approval.port, waitForPermission: !manage }).catch(error => {
+        if (!signal.aborted && native && error instanceof native.NativeCompatibilityError) finish("incompatible");
+        return null;
+      });
       if (signal.aborted) return;
       approving = false;
       if (manage) {
