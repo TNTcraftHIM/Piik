@@ -12,8 +12,8 @@ import {
 
 const modifiers = new Set(["Control", "Alt", "Shift", "Meta"]);
 
-export function ChannelVoiceShortcutSettings({ open, pushToTalk, bindings, mac, save, reset, recording, setRecording, background }:
-  { open: boolean; pushToTalk: boolean } & ReturnType<typeof useVoiceShortcuts>) {
+export function ChannelVoiceShortcutSettings({ pushToTalk, bindings, mac, save, reset, recording, setRecording, background }:
+  { pushToTalk: boolean } & ReturnType<typeof useVoiceShortcuts>) {
   const { t } = useCopy();
   const surface = useSurfaceDocument();
   const id = useId();
@@ -22,14 +22,16 @@ export function ChannelVoiceShortcutSettings({ open, pushToTalk, bindings, mac, 
     t(action === "microphone" ? "host.device.microphone" : action === "listening" ? "voice.listening" : "voice.mode.push");
   const finish = () => { setRecording(null); setFeedback(null); };
   useEffect(() => {
-    if (!open) finish();
     const view = surface?.defaultView;
     view?.addEventListener("blur", finish);
-    return () => view?.removeEventListener("blur", finish);
-  }, [open, surface]);
+    return () => {
+      view?.removeEventListener("blur", finish);
+      setRecording(null);
+    };
+  }, [surface, setRecording]);
 
   const record = (event: KeyboardEvent<HTMLSpanElement>, action: VoiceShortcutAction) => {
-    if (!open || recording !== action || event.key === "Tab" || isComposingOrAltGraph(event.nativeEvent)) return;
+    if (recording !== action || event.key === "Tab" || isComposingOrAltGraph(event.nativeEvent)) return;
     event.preventDefault();
     if (event.repeat || modifiers.has(event.key)) return;
     if (event.key === "Escape") { finish(); return; }
@@ -45,7 +47,7 @@ export function ChannelVoiceShortcutSettings({ open, pushToTalk, bindings, mac, 
 
   return <section className="c3-voice-shortcuts" aria-labelledby={id}>
     <header>
-      <strong id={id}>{t("voice.shortcuts.title")}</strong>
+      <h3 id={id}>{t("voice.shortcuts.title")}</h3>
       <Btn icon="refresh" title="voice.shortcuts.reset" textTooltip quiet size="compact" onClick={reset} />
     </header>
     {background.available ? <>
@@ -59,7 +61,7 @@ export function ChannelVoiceShortcutSettings({ open, pushToTalk, bindings, mac, 
       const name = actionName(action);
       const binding = bindings[action];
       const native = action === "talk" ? undefined : background.report?.[action];
-      const editing = open && recording === action;
+      const editing = recording === action;
       const current = binding ? voiceShortcutLabel(binding, mac) : t("voice.shortcuts.unbound");
       const editLabel = t("voice.shortcuts.edit", { action: name, shortcut: current });
       const buttonId = `${id}-${action}`;

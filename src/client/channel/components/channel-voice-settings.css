@@ -1,11 +1,9 @@
-.c3-voice-settings { width: min(360px, calc(100vw - 16px)); max-height: calc(100dvh - 24px); padding: 16px; overflow-y: auto; }
-.c3-voice-settings > strong { display: block; margin-bottom: 14px; font-size: var(--control-label-size); }
-.c3-voice-settings > p { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.c3-voice-settings > .lr-switch-item { margin-block-start: 6px; }
+.c3-voice-settings { display: flex; flex-direction: column; gap: 16px; }
+.c3-voice-settings > section, .c3-voice-settings > .lr-audio-settings { flex: none; }
+.c3-voice-settings > section:not(.c3-voice-shortcuts) { display: grid; gap: 8px; }
+.c3-voice-settings > section + section { border-top: 1px solid var(--line); padding-top: 12px; }
 .c3-voice-settings .lr-switch-item .lr-cap { white-space: normal; }
-.c3-voice-shortcuts { margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--control-edge); }
 .c3-voice-shortcuts > header { display: flex; align-items: center; justify-content: space-between; }
-.c3-voice-shortcuts strong { font-size: var(--control-label-size); }
 .c3-voice-shortcuts p { margin: 4px 0 6px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .c3-voice-shortcuts .c3-voice-shortcut-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; row-gap: 2px; padding: 0; }
 .c3-voice-shortcut-row + .c3-voice-shortcut-row { margin-block-start: 10px; }
@@ -14,11 +12,14 @@
 .c3-voice-shortcut-row kbd { padding: 2px 5px; border: 1px solid var(--control-edge); border-radius: 4px; font: 11px var(--mono); }
 .c3-voice-shortcut-row > p { flex-basis: 100%; margin: 0; }
 .c3-voice-shortcut-row > p:empty { position: absolute; }
-.c3-voice-mode { display: grid; gap: 8px; margin-bottom: 14px; }
+.c3-voice-mode { display: grid; gap: 8px; }
 .c3-voice-mode > span { color: var(--muted); font-size: 12px; }
-/* Mode names differ widely in length between languages, so the choices stack. */
 .c3-voice-mode > .lr-toggle { --selection-item-min-width: 100%; }
 .c3-voice-mode > .lr-toggle > label > span { justify-content: flex-start; }
+@media (min-width: 460px) {
+  .c3-voice-mode > .lr-toggle { --selection-item-min-width: 30%; }
+  .c3-voice-mode > .lr-toggle > label > span { justify-content: center; text-align: center; }
+}
 .c3-voice-mode > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 /* The meter shares the slider's scale; the inset keeps it under the thumb's travel. */
 .c3-voice-activation-meter { display: block; height: 6px; margin-inline: 8px; border-radius: 999px; background: var(--wall-2); overflow: hidden; }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChannelVoiceSettings } from "../src/client/channel/components/ChannelVoiceSettings";
+import { ChannelVoiceSettingsForm } from "../src/client/channel/components/ChannelVoiceSettings";
 import type { ChannelController } from "../src/client/channel/types";
 import { useVoiceShortcuts } from "../src/client/channel/use-voice-shortcuts";
 import { setCopy, t } from "../src/client/ui/copy";
@@ -178,7 +178,7 @@ describe("microphone mode settings", () => {
       background: { available: false, enabled: false, enable: vi.fn(), report: undefined, error: undefined, pending: false, recordReady: true },
     } as ReturnType<typeof useVoiceShortcuts>;
     setCopy({ lang: "en" });
-    return renderToStaticMarkup(createElement(ChannelVoiceSettings, { channel, roomId: "room", available: true, shortcuts }));
+    return renderToStaticMarkup(createElement(ChannelVoiceSettingsForm, { channel, roomId: "room", available: true, shortcuts }));
   };
   const talkRow = t("en", "voice.shortcuts.edit", { action: t("en", "voice.mode.push"), shortcut: "Ctrl + Shift + V" });
 
