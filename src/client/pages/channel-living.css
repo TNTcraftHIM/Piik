@@ -98,6 +98,46 @@
 [data-layout="living"] .c3-room-navigation > .c3-section-label { min-height: 46px; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-room-navigation > .c3-section-label { justify-content: center; padding: 0; }
 
+/* The existing leading disclosure opens the identities below the room row. */
+.c3-rooms .c3-room-voice-toggle .lr-btn { --button-icon-size: 16px; }
+.c3-rooms .c3-room-list-item > .c3-room-item:has(> .c3-room-faces) {
+  grid-template-columns: var(--room-disclosure-width) calc(var(--room-icon-size) + var(--room-content-gap)) minmax(0, 1fr) auto auto;
+}
+.c3-rooms .c3-room-item:has(> .c3-room-faces) .c3-room-label { grid-column: 2 / 5; grid-template-columns: subgrid; }
+.c3-rooms .c3-room-item:has(> .c3-room-faces) .c3-room-link {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding-inline: 0;
+  column-gap: 0;
+}
+.c3-rooms .c3-room-item:has(> .c3-room-faces) .c3-room-link strong { grid-column: 2 / -1; }
+.c3-rooms .c3-room-item:has(> .c3-room-faces) .c3-room-manage { grid-column: 5; }
+.c3-rooms .c3-room-item:has(> .c3-room-faces) .c3-room-activity {
+  display: inline-flex;
+  min-height: 20px;
+}
+.c3-room-faces {
+  display: flex;
+  grid-area: 2 / 4;
+  z-index: 1;
+  align-items: center;
+  align-self: center;
+  justify-self: end;
+  padding-inline: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.c3-room-faces > .lr-person { width: 16px; height: 20px; }
+.c3-room-faces > .lr-person + .lr-person { margin-inline-start: -5px; }
+.c3-room-faces > span { margin-inline-start: 3px; }
+.c3-room-people { padding: 0 8px 6px calc(var(--room-disclosure-width) + var(--room-content-inset) + var(--room-icon-size) + var(--room-content-gap)); }
+.c3-room-people .c3-user { min-height: 28px; padding: 0; }
+.c3-room-people .c3-person-identity { gap: 8px; }
+.c3-room-people .c3-person-identity :is(.lr-person, .c3-avatar-preview > .lr-person) { width: 18px; height: 22px; }
+.c3-room-people .c3-person-copy strong { font-size: 14px; font-weight: 500; }
+.c3-room-people .c3-person-copy small { display: none; }
+
 .c3-shell[data-layout="living"] .c3-main-body { grid-area: stage; container-type: inline-size; }
 .c3-shell[data-layout="living"][data-overview] .c3-main-body { grid-row-end: couch-end; }
 [data-layout="living"] .c3-workspace { display: flex; flex-direction: column; min-height: 0; }
@@ -155,12 +195,13 @@
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .c3-share-actions { justify-content: center; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { flex-direction: column; }
 [data-layout="living"][data-sidebars="rail"] .c3-voice-room-row[data-direct] { width: calc(var(--room-rail) - 9px); }
-[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity > :not(svg) { display: none; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity > :not(svg, .lr-header-controls) { display: none; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity > .lr-header-controls { margin-inline: 0; }
 [data-layout="living"][data-companion="people"] { --room-companion: 280px; }
 [data-layout="living"] .c3-room-item[data-selected] { position: relative; box-shadow: none; }
 [data-layout="living"] .c3-room-item[data-selected]::before { content: ""; position: absolute; inset-inline-start: 0; height: 18px; width: 3px; border-radius: 2px; top: calc(50% - 9px); background: var(--primary); pointer-events: none; }
 [data-layout="living"] :is(.c3-attachment-file strong, .c3-voice-entry strong, .c3-voice-room-name > button, .c3-room-link strong, .c3-monitor-source strong, .c3-room-start p) { font-size: 14px; }
-[data-layout="living"] :is(.c3-attachment small, .c3-voice-entry small, .c3-room-activity, .c3-room-activity > span, .c3-section-label, .c3-voice-room-info small, .c3-people-panel h2 > span, .c3-rooms > h3, .c3-room-participants-label, .c3-you, .c3-person-copy small, .c3-message-meta time, .c3-message-date,.lr-pawn-name) { font-size: 12px; }
+[data-layout="living"] :is(.c3-attachment small, .c3-voice-entry small, .c3-room-activity, .c3-room-activity > span, .c3-section-label, .c3-voice-room-info small, .c3-people-panel h2 > span, .c3-rooms > h3, .c3-you, .c3-person-copy small, .c3-message-meta time, .c3-message-date,.lr-pawn-name) { font-size: 12px; }
 [data-layout="living"] :is(.c3-message-content-body, .c3-message-meta strong, .c3-person strong) { font-size: 16px; }
 [data-layout="living"] .c3-message { position: relative; width: auto; margin-top: 8px; padding-block: 4px; }
 [data-layout="living"] .c3-message.is-continuation { margin-top: 0; }

@@ -205,17 +205,13 @@ toolbar owns the single companion-pane toggle; the main body fills the released 
 Size the site bar from its own available width. Shorten the site name and use
 shared compact actions before wrapping identity and utilities as complete groups.
 Site maintenance is separate from a room's access settings.
-Under each room, show one row per person taking part in voice, sharing,
-watching or a file transfer. Combine their Browser and App activities on that
-row. Give each activity a labelled icon. File arrows identify the selected
-sender and the person requesting a download, including while the path is
-being prepared. The attachment owns byte progress. Folding the list is local.
+The room list shows who is present in each available room the viewer can enter. Combine a person’s Browser and App sessions into one identity. The arrow beside the room name reveals names, including people browsing chat. Folding it changes only the local presentation.
 The couch seats people present through chat or media. Select a seated person
 to open their reaction palette. The headset shows voice state. The figure wears
 one activity mark: sharing, files, then viewing, with remote control taking
 precedence when present. The seat's hint and accessible description retain all
-activities, using the same meanings as the room activity list.
-In the full workspace, the site directory on the right uses the same presence
+activities.
+The people panel on the right covers the whole site. It uses the same presence
 for its current-room group, then lists other online people and offline people.
 Background forwarding and cached copies belong to connection and file details.
 The couch anchors the bottom of the central body, aligned with the personal area's
@@ -285,7 +281,7 @@ This Piik convention extends [WCAG 3.2.3's relative-order and spatial-memory rat
 and [web.dev's guidance on unexpected movement and misclicks](https://web.dev/articles/cls).
 User-initiated mode changes are not thereby WCAG failures or necessarily CLS events.
 
-### 3.0 Quick Sharing
+### 3.0 Room Layout Choice
 
 An empty site with no saved interface choice offers a small inline suggestion
 below its primary room-creation action. Creation remains immediately usable.
@@ -295,18 +291,11 @@ continue directly. The ordinary **More options → Interface** control remains
 available afterward; both entrances share their option labels and controls.
 Changing or dismissing the suggestion returns focus to the next primary action.
 
-The complete 3.0 workspace remains the default. Its optional quick-sharing view
-serves people using Piik alongside their existing voice software. It centres on
-screen sharing and retains the 2.x composition: a single central television area, sharing and
-playback actions beside the picture, the couch below, and a compact room,
-identity and invitation area. Conversation and voice are supporting tools.
-Voice, remote control, concurrent sharing and selective multi-picture watching
-remain available. Keep their entrances beside the relevant picture or couch;
-the room directory and administration do not dominate this view. Room access
-settings remain reachable from the invitation panel. Opening the inline
-interaction panel keeps the main couch in place; detaching uses the existing
-single-content window owner.
-Use the current visual language and the same 3.0 room, media and tool components.
+Full is the default room layout. It keeps the room list and conversation in reach.
+Minimal puts sharing and playback first, with the room list and chat available on demand.
+Both use the same room header, media stage, couch, room tool and joined voice controls.
+The room tool opens in a separate window when available and in the page on other browsers.
+Room access settings remain reachable from the invitation panel.
 Changing the view never creates a room or starts, stops or reassigns an activity.
 Activities already in progress retain a visible status and an explicit exit.
 
@@ -610,7 +599,7 @@ silently become a broadcast-level control for a different role.
 
 The following Host-dock and single-room-voice composition describes **published
 2.x**. The [3.0 workspace](#30-room-workspace) and
-[quick-sharing view](#30-quick-sharing) retain their own spatial mapping and
+[Minimal layout](#30-room-layout-choice) retain their own spatial mapping and
 independent activity lifetimes.
 
 Sharing and local playback controls use the same quiet, compact button treatment.

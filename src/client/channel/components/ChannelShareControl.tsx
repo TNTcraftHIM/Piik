@@ -244,9 +244,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     // the controls and any remote-input draft mounted when their home changes.
     if (settingsOpen || open) return;
     const place = () => {
-      if (actionsHost.parentElement === target || actionsHost.querySelector(":popover-open")) return;
+      if (actionsHost.parentElement === target || actionsHost.querySelector(":popover-open:not([role=tooltip])")) return;
       if ("moveBefore" in target) target.moveBefore(actionsHost, null);
-      else (target as HTMLElement).append(actionsHost);
+      else {
+        const focused = actionsHost.ownerDocument.activeElement;
+        (target as HTMLElement).append(actionsHost);
+        if (focused instanceof HTMLElement && actionsHost.contains(focused)) {
+          (focused.checkVisibility() ? focused : settingsTrigger.current?.querySelector("button"))?.focus({ preventScroll: true });
+        }
+      }
     };
     place();
     actionsHost.addEventListener("toggle", place, true);
@@ -272,11 +278,12 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         trigger.current?.ownerDocument.defaultView?.requestAnimationFrame(() => trigger.current?.querySelector<HTMLButtonElement>("button")?.focus());
       }); }} />}
   </span>;
+  const panelHasActions = compactCaption && hasPublicationActions && !captureRequest && !cancellable;
   const settingsUnavailable = !!(disabled || busy || qualityPending);
   const settingsControl = hasSettings && <span ref={settingsTrigger} className="c3-share-control">
     <Btn icon={split ? "chevron" : "sliders"} title={{ text: settingsTitle }} cap={compact || split ? undefined : { text: settingsLabel }}
       className={split ? "is-split-more" + tonal : undefined} hint="hint-quality" size="compact" quiet={!split} tone={split ? actionTone : undefined}
-      disabled={!hasPublicationActions && (disabled || busy)} busy={!hasPublicationActions && qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
+      disabled={!panelHasActions && settingsUnavailable} busy={!panelHasActions && qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
   </span>;
   return <>{actionsHost && createPortal(<>{sourceControl}{publicationActions}</>, actionsHost)}
     <span className="c3-share-feedback" data-publication-actions={hasPublicationActions || undefined}><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>

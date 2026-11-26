@@ -519,7 +519,7 @@ For [microphone commentary](./sharing.md#include-your-microphone), check the pic
 [source sound](#picture-but-no-source-sound) and the sharer's **Share settings → Sound**.
 For room voice, follow these steps:
 
-1. Both people use **Join voice** in the same room and allow microphone access. Check that the voice-room selector is controlling the intended room and the microphone is not muted.
+1. Both people use **Join voice** in the same room and allow microphone access. In that room's voice controls, check that the microphone is on.
 2. The speaker checks browser microphone permission, input device and input volume
    in **Voice settings**. Microphone access needs HTTPS or `localhost`.
 3. Check whether you paused listening or muted that person locally. These controls

@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Btn } from "../../components/living/primitives";
 import { joinItems, useCopy } from "../../ui/copy";
@@ -11,10 +11,10 @@ import "./channel-room-item.css";
 /** Room navigation and room management are separate actions on the same item.
  * An unavailable room this device should host but could not open is not described as offline. */
 export function ChannelRoomItem({ room, selected, voice = false, sharing = false, viewing,
-  sourceCount = 0, settingsOpen = false, unread = false, unopened = false, participantDisclosure, compact = false, participantCount, onSelect, onManage }: {
+  sourceCount = 0, settingsOpen = false, unread = false, unopened = false, participantDisclosure, peopleFaces, compact = false, participantCount, onSelect, onManage }: {
   room: ChannelRoom; selected: boolean; voice?: boolean; sharing?: boolean; viewing?: ParticipantViewing; unopened?: boolean;
   sourceCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
-  compact?: boolean; participantCount?: number;
+  compact?: boolean; participantCount?: number; peopleFaces?: ReactNode;
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
 }) {
   const { t, lang } = useCopy();
@@ -50,6 +50,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         </span>}
       </button>
     </Tooltip>
+    {peopleFaces}
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
     {!room.available && <span id={offlineId} className="visually-hidden">{offlineLabel}</span>}
     {activityLabel && <span id={activityId} className="visually-hidden">{activityLabel}</span>}

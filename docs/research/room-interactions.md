@@ -318,7 +318,7 @@ sharing. Its README and [status](../status.md) own the runnable boundary.
 The selected direction presents one site with rooms, without an additional domain
 chooser or invitation gate. [Visual language](../standards/visual-language.md#30-room-workspace)
 owns the current workspace composition, control placement and responsive rules;
-its [quick-sharing section](../standards/visual-language.md#30-quick-sharing) owns
+its [layout choice section](../standards/visual-language.md#30-room-layout-choice) owns
 the optional screen-centred view. The network/data owners retain identity,
 directory, private-room admission and activity lifetimes.
 

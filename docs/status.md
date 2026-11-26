@@ -42,9 +42,7 @@ Internal 3.0 uses matching artifacts under this tree's
 ## Accepted Interaction Phase
 
 The 3.0 shared UI brings conversations, files, screen sharing, selective
-watching, room voice and attended input into the same room. The full workspace
-is the default, and the optional screen-centred view shares the room and
-activity lifetimes. [Interaction design](./research/room-interactions.md#workspace-hierarchy)
+watching, room voice and attended input into the same room. Full and Minimal share one room layout and activity lifecycle. Full is the default. [Interaction design](./research/room-interactions.md#workspace-hierarchy)
 
 ## Current Work
 

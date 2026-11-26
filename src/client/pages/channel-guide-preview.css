@@ -5,7 +5,6 @@
 .c3-guide-title { display: flex; align-items: center; gap: 8px; }
 .c3-guide-main > .c3-conversation { height: 360px; min-height: 0; }
 .c3-guide-room .c3-room-start { display: none; }
-.c3-guide-room .c3-voice-dock { margin: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
 @media (max-width: 700px) {
   .c3-guide-room { grid-template-columns: minmax(0, 1fr); }
   .c3-guide-navigation { border-inline-end: 0; border-bottom: 1px solid var(--line); }

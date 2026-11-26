@@ -16,7 +16,23 @@
   gap: 8px;
   padding: 4px;
 }
-.c3-voice-room-row .c3-voice-room-name > button { font-weight: 500; }
+.c3-voice-room-info { min-width: 0; }
+.c3-voice-room-name { display: block; min-width: 0; max-width: 100%; }
+.c3-voice-room-name > button {
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.c3-voice-room-name > button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c3-voice-room-row .c3-voice-room-name > button[aria-current] { font-weight: 700; }
 .c3-voice-room-row small { display: block; color: var(--live-ink); font-size: 11px; }
 .c3-voice-room-row small[data-status="joining"] { color: var(--busy); }
