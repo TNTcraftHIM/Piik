@@ -72,6 +72,7 @@ function TooltipCatalogue() {
   usePreviewAnchor();
   const { t, lang } = useCopy();
   const en = lang === "en";
+  const splitShare = new URLSearchParams(location.search).get("share") === "split";
   const [reducedMotion, setReducedMotion] = useState(false);
   usePreviewReducedMotion(reducedMotion);
   return (
@@ -107,7 +108,8 @@ function TooltipCatalogue() {
           <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
           <a href="/__status-preview?channel-entry">{en ? "Site connection" : "站点连接"}</a>
-          <a href="#channel-guide-preview">{en ? "3.0 rooms" : "3.0 房间"}</a>
+          <a href="/__tooltip-preview#channel-guide-preview">{en ? "3.0 rooms" : "3.0 房间"}</a>
+          <a href="/__tooltip-preview?share=split#channel-guide-preview">{en ? "Split share control" : "分享组合按钮"}</a>
           <a href="/__tooltip-preview?channel-room">{en ? "3.0 sharing view" : "3.0 分享视图"}</a>
         </nav>
         <details className="cp-catalog-scope">
@@ -124,7 +126,7 @@ function TooltipCatalogue() {
           <p>{en ? "Source selection stays inside the television. Browser capture permissions, native select menus and operating-system window frames are platform UI, verified in their actual environment. Website and documentation navigation retain their page-specific layouts."
             : "选源界面留在电视内。浏览器采集授权、原生下拉菜单和操作系统窗框属于平台界面，在实际环境验收；官网与文档导航保留各自的页面布局。"}</p>
         </details>
-        <ChannelGuidePreview />
+        <ChannelGuidePreview shareVariant={splitShare ? "split" : undefined} />
         <ControlsPreview />
         <MetricPreview />
         <WelcomeLine still={reducedMotion} />

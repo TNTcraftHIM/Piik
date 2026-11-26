@@ -6,6 +6,9 @@
   --wall-2: #e5eaf2;
   --paper-rgb: 255 254 251;
   --paper: rgb(var(--paper-rgb));
+  --surface-frame: var(--wall);
+  --surface-room: var(--paper);
+  --surface-room-aside: color-mix(in srgb, var(--surface-room) 55%, var(--surface-frame));
   --paper-translucent: rgb(var(--paper-rgb) / .84);
   --ink: #29374a;
   /* Opaque sRGB roles also work in WebViews without color-mix. */
@@ -58,6 +61,7 @@
 }
 :root[data-theme="dark"], :root.dark {
   --wall: var(--piik-dark-wall);
+  --surface-frame: #1b2029;
   --wall-2: var(--piik-dark-wall-2);
   --paper-rgb: var(--piik-dark-paper-rgb);
   --paper: var(--piik-dark-paper);

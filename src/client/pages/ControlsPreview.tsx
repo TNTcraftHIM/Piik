@@ -129,6 +129,18 @@ export function ControlsPreview() {
             <figcaption>{en ? "Quiet" : "弱化"}</figcaption>
           </figure>
         </div>
+        <div className="cp-tools cp-surface-samples">
+          <figure className="cp-control-sample cp-surface-frame">
+            <Btn icon="help" title="help.title" hint="hint-help" size="compact" className="is-tonal" onClick={notify} />
+            <figcaption>{en ? "Site and personal frame" : "站点与个人操作外框"}</figcaption>
+          </figure>
+          <figure className="cp-control-sample cp-surface-room">
+            <figcaption>{en ? "Room" : "房间"}</figcaption>
+          </figure>
+          <figure className="cp-control-sample cp-surface-aside">
+            <figcaption>{en ? "Room aside" : "房间侧栏"}</figcaption>
+          </figure>
+        </div>
       </section>
       <section id="sharing-preview" className="cp-card cp-sharing-preview">
         <header><h2>{t("host.advanced")}</h2></header>

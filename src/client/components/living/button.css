@@ -53,6 +53,52 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn.is-quiet { border-radius: 12px; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger) { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: var(--control-hover); border-color: transparent; color: var(--ink); }
+/* Flat tonal controls use the same geometry and stay in place. */
+.lr-btn.is-tonal {
+  --control-hover-transform: none;
+  --control-press-transform: none;
+  border-radius: 12px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
+  box-shadow: none;
+}
+.lr-btn.is-tonal:is(:hover, :focus-visible):not(:disabled, [aria-disabled="true"]) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+.lr-btn.is-tonal:active:not(:disabled, [aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+/* The targets retain independent focus while the whole shape moves. */
+.lr-btn-split {
+  display: inline-flex;
+  align-items: center;
+  transition: var(--control-motion);
+}
+.lr-btn-split:has(.lr-btn:is(:hover, :focus-visible):not(:disabled, [aria-disabled="true"])) {
+  transform: var(--control-hover-transform);
+}
+.lr-btn-split:has(.lr-btn:active:not(:disabled, [aria-disabled="true"])) {
+  transform: var(--control-press-transform);
+  transition-duration: var(--motion-press);
+}
+.lr-btn-split .lr-btn {
+  --control-hover-transform: none;
+  --control-press-transform: none;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.lr-btn-split .lr-btn:focus-visible { outline-color: currentColor; outline-offset: -5px; }
+.lr-btn-split .lr-btn.is-split-main { border-start-end-radius: 0; border-end-end-radius: 0; }
+.lr-btn-split .lr-btn.is-split-more {
+  padding: 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  border-inline-start-color: color-mix(in srgb, currentColor 44%, transparent);
+}
+
 /* Actions embedded in content keep their position and their focus ring inside it. */
 .lr-embedded-actions { --control-hover-transform: none; --control-press-transform: none; }
 .lr-embedded-actions :is(.lr-btn, .lr-chip):focus-visible { outline-color: currentColor; outline-offset: -3px; }

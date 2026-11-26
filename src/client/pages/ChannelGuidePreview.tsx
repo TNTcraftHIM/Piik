@@ -1,5 +1,5 @@
 import sampleThumbnail from "../../../public/favicon.png?url&inline";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { z } from "zod";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
@@ -267,7 +267,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
 }
 
 /** Guide images use these production controls with local sample props. */
-export function ChannelGuidePreview() {
+export function ChannelGuidePreview({ shareVariant }: { shareVariant?: ComponentProps<typeof ChannelShareControl>["variant"] }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const { channel, roomName, notice, received, onSend } = useChannelGuideSample({ showSampleAttachment: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -314,7 +314,7 @@ export function ChannelGuidePreview() {
       <header className="c3-guide-heading"><div className="c3-guide-title"><ChannelIdentityMark icon="couch" /><strong>{roomName}</strong>
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
-        <ChannelShareControl channel={channel} roomId="friday" disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
+        <ChannelShareControl channel={channel} roomId="friday" variant={shareVariant} disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
       <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
