@@ -1138,7 +1138,7 @@ export const en: Record<CopyKey, string> = {
   "voice.output.external": "This player uses the system playback device.",
   "voice.output.system": "Uses the system playback device.",
   "voice.output.device": "Playback device",
-  "voice.output.failed": "Could not switch playback device.",
+  "voice.output.failed": "Could not use this playback device. Choose another device.",
   "voice.input.device": "Room voice microphone",
   "voice.input.volume": "Room voice microphone volume",
   "host.device.microphone": "Microphone",

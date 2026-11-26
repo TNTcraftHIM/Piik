@@ -1136,7 +1136,7 @@ export const zh = {
   "voice.output.external": "此播放器使用系统播放设备。",
   "voice.output.system": "声音使用系统播放设备。",
   "voice.output.device": "播放设备",
-  "voice.output.failed": "无法切换播放设备。",
+  "voice.output.failed": "播放设备不可用，请选择其他设备。",
   "voice.input.device": "房间语音麦克风",
   "voice.input.volume": "房间语音麦克风音量",
   "host.device.microphone": "麦克风",

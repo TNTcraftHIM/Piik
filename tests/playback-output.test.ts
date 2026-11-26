@@ -18,6 +18,102 @@ it("moves registered outputs together, preserves the previous selection on refus
   stopElement();
 });
 
+it("serializes two device choices across players, shared voice and a retiring player", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const entering = new Promise<void>(resolve => { entered = resolve; });
+  const calls = new Map<string, string[]>();
+  const sink = (name: string) => ({ setSinkId: async (id: string) => {
+    calls.set(name, [...(calls.get(name) ?? []), id]);
+    if (name === "screen" && id === "A") {
+      entered();
+      await new Promise<void>(resolve => { release = resolve; });
+    }
+  } }) as unknown as HTMLMediaElement;
+  const screen = playbackOutput.attach(sink("screen"));
+  const retiring = playbackOutput.attach(sink("page"));
+  const voice = playbackOutput.attach(sink("voice"));
+  const first = playbackOutput.choose("A");
+  await entering;
+  const second = playbackOutput.choose("B");
+  const arriving = playbackOutput.attach(sink("new-page"));
+  retiring();
+  try {
+    release();
+    await Promise.all([first, second, arriving.ready]);
+    expect(playbackOutput.selected).toBe("B");
+    expect(playbackOutput.failed).toBe(false);
+    expect(calls.get("screen")).toEqual(["A", "B"]);
+    expect(calls.get("voice")).toEqual(["A", "B"]);
+    expect(calls.get("page")).toBeUndefined();
+    expect(calls.get("new-page")?.at(-1)).toBe("B");
+    expect(arriving.getWaiting()).toBe(false);
+  } finally { release(); screen(); voice(); arriving(); retiring(); await playbackOutput.choose(""); }
+});
+
+it("identifies the player whose previous device cannot be restored after another output refuses the change", async () => {
+  let oldDeviceAvailable = true;
+  let applied = "";
+  const screen = { setSinkId: async (id: string) => {
+    if (id === "headphones" && !oldDeviceAvailable) throw new DOMException("Unplugged", "NotFoundError");
+    applied = id;
+  } } as unknown as HTMLMediaElement;
+  const voice = { setSinkId: async (id: string) => {
+    if (id === "alternate") {
+      oldDeviceAvailable = false;
+      throw new DOMException("Cannot switch voice output", "AbortError");
+    }
+  } } as unknown as AudioContext;
+  const stopScreen = playbackOutput.attach(screen), stopVoice = playbackOutput.attach(voice);
+  try {
+    await playbackOutput.choose("headphones");
+    await expect(playbackOutput.choose("alternate")).rejects.toThrow("Cannot switch voice output");
+    expect(playbackOutput.selected).toBe("headphones");
+    expect(applied).toBe("alternate");
+    expect(playbackOutput.failedFor(screen)).toBe(true);
+    expect(playbackOutput.failedFor(voice)).toBe(false);
+    await playbackOutput.choose("working");
+    expect(applied).toBe("working");
+    expect(playbackOutput.failed).toBe(false);
+  } finally { stopScreen(); stopVoice(); await playbackOutput.choose(""); }
+});
+
+it("reports a missing selected device across active outputs and lets the browser resume it on reconnect", async () => {
+  const devices = new EventTarget();
+  let available = ["headphones"];
+  const enumerate = vi.fn(async () => available.map(deviceId => ({ deviceId, kind: "audiooutput" })));
+  Object.assign(devices, { enumerateDevices: enumerate });
+  vi.stubGlobal("navigator", { mediaDevices: devices });
+  vi.resetModules();
+  const { playbackOutput: output } = await import("../src/client/media/playback-output");
+  const sink = () => ({ setSinkId: vi.fn(async () => {}) }) as unknown as HTMLMediaElement;
+  const screen = sink(), page = sink(), voice = sink();
+  const stops = [output.attach(screen), output.attach(page), output.attach(voice)];
+  const changes = vi.fn();
+  const unsubscribe = output.subscribe(changes);
+  try {
+    await output.choose("headphones");
+    available = [];
+    devices.dispatchEvent(new Event("devicechange"));
+    await vi.waitFor(() => expect(output.failed).toBe(true));
+    expect(output.selected).toBe("headphones");
+    expect([screen, page, voice].map(target => output.failedFor(target))).toEqual([true, true, true]);
+    // setSinkId resolves without inspecting hardware when the sink ID is unchanged.
+    await output.choose("headphones");
+    expect(output.failed).toBe(true);
+    stops[1]();
+    expect(output.failedFor(page)).toBe(false);
+    expect(output.failedFor(voice)).toBe(true);
+    available = ["headphones"];
+    devices.dispatchEvent(new Event("devicechange"));
+    await vi.waitFor(() => expect(output.failed).toBe(false));
+    expect(output.selected).toBe("headphones");
+    expect(screen.setSinkId).toHaveBeenCalledTimes(2);
+    expect(voice.setSinkId).toHaveBeenCalledTimes(2);
+    expect(changes).toHaveBeenCalledTimes(4);
+  } finally { unsubscribe(); for (const stop of stops) stop(); await output.choose(""); vi.unstubAllGlobals(); }
+});
+
 it("keeps healthy outputs on the chosen device when a retiring output rejects late", async () => {
   let started!: () => void;
   let reject!: () => void;

@@ -64,6 +64,43 @@ describe("Viewer local audio", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it("updates shared voice readiness on device loss without retiring another listener's context", async () => {
+    const devices = new EventTarget();
+    let available = true;
+    Object.assign(devices, { enumerateDevices: async () => available ? [{ deviceId: "headphones", kind: "audiooutput" }] : [] });
+    vi.stubGlobal("navigator", { mediaDevices: devices });
+    vi.resetModules();
+    const { playbackOutput: output } = await import("../src/client/media/playback-output");
+    const { ViewerAudio: Audio, VoicePlaybackContext: Voice } = await import("../src/client/media/viewer-audio");
+    class Context extends PlaybackContext { async setSinkId() {} }
+    vi.stubGlobal("AudioContext", Context);
+    await output.choose("headphones");
+    const context = new Voice();
+    const video = () => Object.assign(new PlaybackVideo(), { setSinkId: async () => {} }) as unknown as HTMLAudioElement;
+    const firstVideo = video(), secondVideo = video(), secondReady = vi.fn();
+    const first = new Audio(firstVideo, vi.fn(), context, 4);
+    const second = new Audio(secondVideo, vi.fn(), context, 4, secondReady);
+    try {
+      const stream = new AudioStream([audioTrack()]) as unknown as MediaStream;
+      first.bind(stream); second.bind(stream);
+      first.setLevel(2); second.setLevel(2);
+      const shared = PlaybackContext.instances[0];
+      shared.start();
+      await vi.waitFor(() => expect(secondReady).toHaveBeenLastCalledWith(true));
+      available = false;
+      devices.dispatchEvent(new Event("devicechange"));
+      await vi.waitFor(() => expect(secondReady).toHaveBeenLastCalledWith(false));
+      expect(shared.gain.gain.value).toBe(0);
+      first.dispose();
+      expect(shared.close).not.toHaveBeenCalled();
+      available = true;
+      devices.dispatchEvent(new Event("devicechange"));
+      await vi.waitFor(() => expect(secondReady).toHaveBeenLastCalledWith(true));
+      expect(shared.close).not.toHaveBeenCalled();
+      expect(shared.gain.gain.value).toBe(2);
+    } finally { first.dispose(); second.dispose(); await output.choose(""); }
+  });
+
   it("reports the usable voice output independently of local mute and a refused native sink", async () => {
     await playbackOutput.choose("headphones");
     let refused = true;
