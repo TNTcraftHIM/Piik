@@ -601,7 +601,7 @@ fn delete_messages(db: &Connection, room: &str, from: u64, through: u64) -> Stor
         "DELETE FROM message WHERE room_id=?1 AND seq BETWEEN ?2 AND ?3",
         params![room, from, through],
     )?;
-    db.execute("UPDATE message SET reply=NULL WHERE room_id=?1 AND json_extract(reply, '$.seq') BETWEEN ?2 AND ?3", params![room, from, through])?;
+    db.execute("UPDATE message SET reply=NULL WHERE room_id=?1 AND seq>?3 AND json_extract(reply, '$.seq') BETWEEN ?2 AND ?3", params![room, from, through])?;
     Ok(())
 }
 
