@@ -93,7 +93,7 @@
 .c3-draft-files small { color: var(--muted); white-space: nowrap; }
 .c3-draft-files .lr-btn { width: var(--control-compact-size); padding-inline: 0; }
 .c3-failed-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-file-error { font-size: 12px; line-height: 1.6; color: var(--danger); }
+.c3-file-error { font-size: 12px; line-height: 1.6; color: var(--danger-ink); }
 .c3-file-retry, .c3-file-preparation { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
 .c3-file-preparation { flex-wrap: wrap; }
 .c3-file-preparation > .c3-attachment-progress { flex: 1 1 12ch; }

@@ -25,6 +25,7 @@
   --live-ink: #18754a;
   --warn: #d98e04;
   --danger: #d64541;
+  --danger-ink: #a52c28;
   --control-hover: #eef3ff;
   --control-selected: #e5efff;
   --control-selected-ink: #214c9b;
@@ -68,6 +69,7 @@
   --live-ink: #73dca2;
   --warn: #e8a33d;
   --danger: #e25a52;
+  --danger-ink: #ffaaa2;
   --action: var(--piik-dark-action);
   --action-deep: var(--piik-dark-action);
   --action-ink: var(--piik-dark-action-ink);

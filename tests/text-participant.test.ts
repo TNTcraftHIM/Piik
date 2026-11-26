@@ -261,6 +261,9 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(received[3].nonce).toBe(options.nonce);
     await expect(client.chat('plain', { mentions: [{ userId: owner, start: 0, end: 5 }] })).rejects.toThrow('invalid_mentions');
     await expect(client.chat('reply', { reply: { seq: 99, messageId: randomUUID(), notify: false } })).rejects.toThrow('message_unavailable');
+    await expect(client.history(-1)).rejects.toThrow('invalid_conversation');
+    await expect(client.chat('reply', { reply: { seq: 1, messageId: '', notify: false } })).rejects.toThrow('invalid_conversation');
+    expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
     malformedPage = 'empty-more';
     await expect(client.history(1)).rejects.toThrow('incomplete_history');
     expect(live).toEqual([]);

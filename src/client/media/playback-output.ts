@@ -5,13 +5,31 @@ let selected = "";
 let requested: { id: string } | undefined;
 const failedTargets = new Set<Sink>();
 let changeFailed = false;
+let deviceMissing = false;
 let pending = Promise.resolve();
+
+// Output choice and device observation live for the page; players register only their sinks.
+const devices = globalThis.navigator?.mediaDevices;
+devices?.addEventListener("devicechange", () => {
+  pending = pending.then(async () => {
+    if (!selected) return;
+    const available = await devices.enumerateDevices();
+    deviceMissing = !available.some(device => device.kind === "audiooutput" && device.deviceId === selected);
+    if (!deviceMissing) for (const sink of [...failedTargets]) {
+      if (!targets.has(sink)) continue;
+      try { await sink.setSinkId!(selected); }
+      catch { continue; }
+      targets.get(sink)?.();
+    }
+    events.dispatchEvent(new Event("change"));
+  }).catch(() => {});
+});
 
 export const playbackOutput = {
   get selected() { return selected; },
-  get failed() { return changeFailed || failedTargets.size > 0; },
+  get failed() { return changeFailed || deviceMissing || failedTargets.size > 0; },
   failedFor(target: HTMLMediaElement | AudioContext | null | undefined) {
-    return !!target && failedTargets.has(target as Sink);
+    return !!target && (failedTargets.has(target as Sink) || deviceMissing && targets.has(target as Sink));
   },
   subscribe(listener: () => void) {
     events.addEventListener("change", listener);
@@ -53,10 +71,14 @@ export const playbackOutput = {
           }
         }
         for (const sink of changed) targets.get(sink)?.();
+        deviceMissing = deviceMissing && selected === id;
         selected = id;
         changeFailed = false;
       } catch (error) {
-        await Promise.allSettled(changed.filter(sink => targets.has(sink)).map(sink => sink.setSinkId!(selected)));
+        await Promise.all(changed.filter(sink => targets.has(sink)).map(async sink => {
+          try { await sink.setSinkId!(selected); targets.get(sink)?.(); }
+          catch { if (targets.has(sink)) failedTargets.add(sink); }
+        }));
         changeFailed = true;
         throw error;
       } finally {

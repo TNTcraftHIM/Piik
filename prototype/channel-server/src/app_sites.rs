@@ -27,12 +27,11 @@ pub(super) enum StartupIntent {
 // Approval covers room hosting and device capture. A narrower saved consent
 // must be approved again; its room-data namespace remains the same.
 const APPROVAL_SCOPE: i64 = 2;
+const FORMAT_VERSION: u32 = 0;
 
 #[derive(Deserialize, Serialize)]
-pub(super) struct LocalIdentity {
-    // Seeds for first creation only. The opened Domain owns its active keys.
-    pub owner: String,
-    pub namespace: Uuid,
+struct LocalNamespace {
+    namespace: Uuid,
 }
 
 impl Sites {
@@ -61,6 +60,10 @@ impl Sites {
         std::fs::create_dir_all(directory)?;
         // Resolve the directory so SQLite can create journals beside long Windows paths.
         let db = Connection::open(std::fs::canonicalize(directory)?.join("app.sqlite"))?;
+        let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version != FORMAT_VERSION {
+            bail!("unsupported_storage_version");
+        }
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_site (
                origin TEXT PRIMARY KEY, data_id TEXT NOT NULL, allowed INTEGER NOT NULL);
@@ -136,7 +139,7 @@ impl Sites {
             .and_then(|value| serde_json::from_str(&value).ok())
             .unwrap_or_default())
     }
-    pub fn local_identity(&self) -> Result<LocalIdentity> {
+    pub fn local_namespace(&self) -> Result<Uuid> {
         let saved: Option<String> = self
             .0
             .query_row(
@@ -146,17 +149,16 @@ impl Sites {
             )
             .optional()?;
         if let Some(saved) = saved {
-            return Ok(serde_json::from_str(&saved)?);
+            return Ok(serde_json::from_str::<LocalNamespace>(&saved)?.namespace);
         }
-        let identity = LocalIdentity {
-            owner: Uuid::new_v4().to_string(),
+        let local = LocalNamespace {
             namespace: Uuid::new_v4(),
         };
         self.0.execute(
             "INSERT INTO app_setting(key,value) VALUES('domain',?1)",
-            [serde_json::to_string(&identity)?],
+            [serde_json::to_string(&local)?],
         )?;
-        Ok(identity)
+        Ok(local.namespace)
     }
     pub fn set_startup(&self, startup: &StartupIntent) -> Result<()> {
         if let StartupIntent::External(site) = startup {
@@ -215,6 +217,90 @@ impl Sites {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn newer_app_format_is_rejected_without_changing_data_or_schema() -> Result<()> {
+        for populated in [false, true] {
+            let directory = tempfile::tempdir()?;
+            let path = directory.path().join("app.sqlite");
+            if populated {
+                let mut sites = Sites::open(directory.path())?;
+                let site = "https://approved.example";
+                sites.approve(site, true, false)?;
+                sites.local_namespace()?;
+                sites.set_domain_port(NonZeroU16::new(12345).unwrap())?;
+                sites.set_startup(&StartupIntent::External(site.into()))?;
+                sites.save_bookmark(&Bookmark {
+                    id: Uuid::new_v4(),
+                    origin: "https://bookmark.example".into(),
+                    name: "Friend".into(),
+                })?;
+            }
+            let db = Connection::open(&path)?;
+            db.execute_batch(
+                "CREATE TABLE future_setting (value TEXT NOT NULL);
+                INSERT INTO future_setting VALUES('retained'); PRAGMA user_version=1;",
+            )?;
+            drop(db);
+            let before = std::fs::read(&path)?;
+            assert_eq!(
+                Sites::open(directory.path())
+                    .err()
+                    .expect("newer format opened")
+                    .to_string(),
+                "unsupported_storage_version"
+            );
+            assert_eq!(std::fs::read(&path)?, before);
+            let db = Connection::open(&path)?;
+            let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+            let tables: u32 = db.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'
+                AND name IN ('app_site','app_setting','app_bookmark')",
+                [],
+                |row| row.get(0),
+            )?;
+            let value: String =
+                db.query_row("SELECT value FROM future_setting", [], |row| row.get(0))?;
+            assert_eq!(version, 1);
+            assert_eq!(tables, if populated { 3 } else { 0 });
+            assert_eq!(value, "retained");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn local_namespace_retains_existing_data_without_storing_an_owner_key() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let sites = Sites::open(directory.path())?;
+        let namespace = sites.local_namespace()?;
+        let saved: String = sites.0.query_row(
+            "SELECT value FROM app_setting WHERE key='domain'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&saved)?,
+            serde_json::json!({"namespace": namespace}),
+        );
+        let existing = serde_json::json!({
+            "owner": "unused-bootstrap-seed",
+            "namespace": namespace,
+        }).to_string();
+        sites.0.execute(
+            "UPDATE app_setting SET value=?1 WHERE key='domain'",
+            [&existing],
+        )?;
+        drop(sites);
+        let sites = Sites::open(directory.path())?;
+        assert_eq!(sites.local_namespace()?, namespace);
+        let retained: String = sites.0.query_row(
+            "SELECT value FROM app_setting WHERE key='domain'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(retained, existing);
+        Ok(())
+    }
 
     #[test]
     fn bookmarks_reopen_edit_and_delete_without_changing_approval_or_startup() -> Result<()> {
@@ -301,14 +387,14 @@ mod tests {
     }
 
     #[test]
-    fn long_data_directory_retains_approval_and_identity_after_reopen() -> Result<()> {
+    fn long_data_directory_retains_approval_and_namespace_after_reopen() -> Result<()> {
         let root = tempfile::tempdir()?;
         let directory = root
             .path()
             .join("app-data-".repeat(16))
             .join("room-data-".repeat(16));
         let site = "https://channel.example";
-        let (namespace, identity) = {
+        let (namespace, local_namespace) = {
             let mut sites = Sites::open(&directory)?;
             let namespace = sites.approve(site, true, false)?;
             sites.set_startup(&StartupIntent::External(site.into()))?;
@@ -323,13 +409,13 @@ mod tests {
             );
             assert!(sites.domain_port()?.is_none());
             sites.set_domain_port(NonZeroU16::new(31337).unwrap())?;
-            (namespace, serde_json::to_value(sites.local_identity()?)?)
+            (namespace, sites.local_namespace()?)
         };
         let sites = Sites::open(&directory)?;
         assert_eq!(sites.approved()?.get(site), Some(&namespace));
         assert!(matches!(sites.startup()?, StartupIntent::External(origin) if origin == site));
         assert_eq!(sites.domain_port()?.unwrap().get(), 31337);
-        assert_eq!(serde_json::to_value(sites.local_identity()?)?, identity);
+        assert_eq!(sites.local_namespace()?, local_namespace);
         Ok(())
     }
 }

@@ -186,7 +186,7 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
     let address = listener.local_addr().unwrap();
     let origin = format!("http://{address}");
     let domain =
-        ServerDomain::open(directory.path(), "old-owner", origin.clone(), None, vec![]).unwrap();
+        ServerDomain::open(directory.path(), Some("old-owner"), origin.clone(), None, vec![]).unwrap();
     let old_identity = domain.identity();
     let mut replacement = Authority::new("restored-owner".into(), vec![]).unwrap();
     replacement.handle(

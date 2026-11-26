@@ -125,6 +125,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }, [selected, watchRoomId, channel.cancelScreenSelection]);
   useEffect(() => () => { preparingShare.current = null; }, []);
   const { state, self, sessionId, connection, pending, streams } = channel;
+  const roomRemoval = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId]));
+  const [removalRoom, setRemovalRoom] = useState<{ id: string; name: string } | null>(null);
+  const roomRemovalPending = !!removalRoom && pending.has(`delete:${removalRoom.id}`);
   const creationPolicy = state && self ? roomCreationPolicyFor(state.channel, self.id) : "owner_only";
   const canCreateRoom = creationPolicy !== "owner_only";
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
@@ -165,7 +168,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }>({ focus: null, snapshot: state, sessionId, waitingWatches: channel.waitingWatchPages, waiting: [] });
   function setSourceView(focus: typeof sourceView.focus) { setView(previous => ({ ...previous, focus })); }
   function closeWaiting(id: string) {
-    if (channel.watchPlayers.has(id) || channel.waitingWatchPages?.has(id)) run(channel.leaveWatch(id));
+    if (channel.watchPlayers.has(id) || channel.waitingWatchPages?.has(id)) watchAction(id, report => channel.leaveWatch(id, report));
     else if (state?.publications.some(p => p.id === id && p.kind === "screen") && channel.pending.has(`watch:${id}`)) run(channel.unwatch(id));
     setView(previous => ({ ...previous, waiting: previous.waiting.filter(source => source.id !== id) }));
   }
@@ -436,11 +439,18 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
   // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
   // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
-  const pictureAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]), publications);
+  const visibleWatches = watches.filter(activity => activity.roomId === roomId && (sidebarsInline || mobilePane === "room")
+    && (!theaterVisible || activity.id === focusedScreen));
+  const sourceAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]), [
+    ...publications.map(publication => ({ id: `picture:${publication.id}` })), ...visibleWatches.map(activity => ({ id: `watch:${activity.id}` })),
+  ]);
+  function watchAction(id: string, operation: (reportError: () => boolean) => Promise<void>) {
+    void sourceAction.run(`watch:${id}`, operation);
+  }
   // A share start reports here: the picker closes first, and the room's share control moves to the tile once sharing starts.
   const shareStart = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId, connected]));
   const attemptPicture = (id: string, operation: (reportError: () => boolean) => Promise<void>) => {
-    void pictureAction.run(id, operation);
+    void sourceAction.run(`picture:${id}`, operation);
   };
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
   const [hlsSupported, setHlsSupported] = useState(false);
@@ -461,7 +471,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     const available = connected && !!rooms.find(room => room.id === activity.roomId)?.available;
     return {
       kind: "watch", id: activity.id, roomId: activity.roomId, predecessor: activity.predecessor, pictureAdmitted: rooms.some(room => room.id === activity.roomId && room.authorized), userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
-      website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
+      website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => channel.focusWatch(activity.id),
       originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
         ? t("watch.pageUnsupported") : undefined,
       browserSource,
@@ -474,15 +484,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       receiving: !owned ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format, hlsSupported),
         failed: !!player?.error, mode: player?.mode ?? subscription?.mode ?? "direct",
         browserSource, pending: busy("watch-video", activity.id), disabled: !connected,
-        onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
-        onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
+        onPeer: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, "peer", report)); },
+        onDirect: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, "direct", report)); } } : undefined,
       shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} startAction={shareStart} />,
+      actionFailure: sourceAction.errors.get(`watch:${activity.id}`), clearActionFailure: () => sourceAction.clearError(`watch:${activity.id}`),
       hidden: activity.roomId !== roomId,
       paused: activity.playback.paused, player, available,
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
-      onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
-      onLeave: () => run(channel.leaveWatch(activity.id)), onStop: () => run(channel.stopWatch(activity.id)),
-      onResume: () => run(channel.resumeWatch(activity.id)), onPlayback: patch => run(channel.setWatchPlayback(activity.id, patch)),
+      onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, undefined, report)); },
+      onLeave: () => watchAction(activity.id, report => channel.leaveWatch(activity.id, report)), onStop: () => watchAction(activity.id, report => channel.stopWatch(activity.id, report)),
+      onResume: () => channel.resumeWatch(activity.id), onPlayback: patch => channel.setWatchPlayback(activity.id, patch),
     };
   });
   const connectionLabel = connected ? t("channel.previewPage.connected") : connection === "connecting"
@@ -539,7 +550,23 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       ? joinItems(lang, [errorRoomName, failure.message]) : failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
+    {roomRemoval.error && managedRoom?.id !== removalRoom?.id && <div className="c3-notice is-error">
+      <Glyph name="alert" size={20} /><div className="c3-notice-message"><strong>{removalRoom?.name}</strong><ChannelSettingsError error={roomRemoval.error} /></div>
+      <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={roomRemoval.clearError} />
+    </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
+      deleteError={managedRoom.id === removalRoom?.id ? roomRemoval.error : null} deleting={roomRemovalPending}
+      onDelete={deleteData => {
+        const deleting = { id: managedRoom.id, name: managedRoom.name };
+        setRemovalRoom(deleting);
+        return roomRemoval.run(async signal => {
+          const result = await channel.deleteRoom(deleting.id, deleteData, signal);
+          if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
+        }, () => {
+          setRemovalRoom(null);
+          setManagedRoomId(current => current === deleting.id ? null : current);
+        });
+      }}
       onClose={closeRoomSettings} />}
     {newRoom !== null && <ChannelRoomCreateDialog channel={channel} creationPolicy={creationPolicy}
       initialName={typeof newRoom === "string" ? newRoom : ""} initialInterruption={newRoom instanceof RoomCreationInterrupted ? newRoom : null}
@@ -648,7 +675,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               <Btn icon={owned ? "stop" : "x"} quiet size="dense" tone={owned ? "danger" : undefined}
                 title={{ text: owned ? t("channel.previewPage.stopSharingSource", { title: title }) : t("channel.previewPage.stopWatchingSource", { title: title }) }}
                 busy={busy(owned ? "stop" : "watch", source.id)} disabled={busy(owned ? "stop" : "watch", source.id)}
-                onClick={() => ended ? closeWaiting(source.id) : run(watch ? owned ? channel.stopWatch(source.id) : channel.leaveWatch(source.id) : owned ? channel.stopScreen(source.id) : channel.unwatch(source.id))} />
+                onClick={() => ended ? closeWaiting(source.id) : watch
+                  ? watchAction(source.id, report => owned ? channel.stopWatch(source.id, report) : channel.leaveWatch(source.id, report))
+                  : run(owned ? channel.stopScreen(source.id) : channel.unwatch(source.id))} />
             </div>;
           })}
         </div>}
@@ -693,7 +722,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: screenDeliveryFailed(publication, sessionId),
-            pictureFailure: pictureAction.errors.get(publication.id), clearPictureFailure: () => pictureAction.clearError(publication.id),
+            pictureFailure: sourceAction.errors.get(`picture:${publication.id}`), clearPictureFailure: () => sourceAction.clearError(`picture:${publication.id}`),
             playbackError: channel.screenPlaybackError(publication.id),
             roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
             deliveryScope: JSON.stringify([roomId, sessionId, publication.sessionId,

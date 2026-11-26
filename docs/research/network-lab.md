@@ -670,6 +670,17 @@ and Opus decoders. This used the original-forwarding Driver without capture;
 received data was decoded offline. Capture-enabled derivation, physical audio,
 presented cadence and Internet performance remain separate checks.
 
+A capture-enabled control on `ebe92f57` used the production Driver, derived
+encoder pool, encoder subprocess protocol and Windows VP8/Opus decoders with
+synthetic frames and silent audio. At injected 100 kbps feedback, optional
+picture and sound waited while selected media retained its output identities
+and decoded progress. At 180 kbps the optional pair joined after 327 ms; all
+22 frames in that receive window came from the real derived worker. Reducing
+source cadence and retiring the optional subscription preserved selected media.
+Both encoder children exited normally. This verifies worker execution and
+decoded delivery; GUI presentation, physical sound and uncontrolled networks
+remain separate checks.
+
 The Windows RTC pump's timer was compared with the same pinned SDK at
 `9e359a52`. On the review machine's ordinary system tick, the Tokio wait left
 the loopback bandwidth estimate around 0.2–0.3 Mbps; meeting the SDK deadlines

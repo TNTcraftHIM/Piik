@@ -2,11 +2,12 @@ import { useEffect, useId, useRef, useState, type RefObject, type ReactNode } fr
 import { createPortal } from "react-dom";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
+import { useLayerHistory } from "../../ui/layer-history";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
 import { PlaybackControlsReveal } from "./PlaybackControlsReveal";
 import { PlaybackWindowControls } from "./PlaybackWindowControls";
-import { PlaybackPictureControls, PlaybackSettings, type PlaybackSettingsProps } from "./PlaybackSettings";
+import { PlaybackPictureControls, PlaybackSettings, PlaybackSettingsHeading, type PlaybackSettingsProps } from "./PlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { PlaybackControlsAttention, usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
@@ -238,6 +239,7 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  useLayerHistory(panel, open);
   const detailed = Boolean(settings?.preview || settings?.remoteTouch || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
   const available = detailed || Boolean(settings);
   useAnchoredPopover(anchor, panel, { align: "center", minVisibleHeight: 160, enabled: available });
@@ -249,8 +251,9 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
   if (!available) return null;
   return <span className={`lr-playback-more${detailed ? "" : " is-compact-only"}`}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
-    <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" aria-label={t("playback.more")}
+    <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" role="dialog" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
+      <PlaybackSettingsHeading onClose={() => panel.current?.hidePopover()} />
       <PlaybackSettings {...settings} picture={settings} overlaySettings={overlaySettings} reconnect={reconnect} />
     </div>
   </span>;

@@ -8,4 +8,4 @@
 .c3-feedback-clip-name > .lr-comic-tip-wrap { min-width: 0; flex: 1; }
 .c3-feedback-clip-name > .lr-comic-tip-wrap > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .c3-feedback-clip-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-.c3-feedback-sounds p.c3-feedback-error { color: var(--danger); }
+.c3-feedback-sounds p.c3-feedback-error { color: var(--danger-ink); }

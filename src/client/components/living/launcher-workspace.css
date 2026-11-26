@@ -40,7 +40,7 @@
 .lr-launcher-join .lr-input { flex: 1; min-width: 0; background: var(--wall); }
 .lr-launcher-join input { min-width: 0; width: 100%; font-size: 13px; }
 .lr-launcher-join p { font-size: 11px; line-height: 1.7; margin: 12px 0 0; color: var(--muted); }
-.lr-launcher-join p[role=alert] { color: var(--danger); }
+.lr-launcher-join p[role=alert] { color: var(--danger-ink); }
 .lr-launcher-host { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
 .lr-launcher-host > div:nth-child(2) { flex: 1 0 min(100%, 12rem); }
 .lr-launcher-host-icon { color: var(--muted); }

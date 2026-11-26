@@ -110,6 +110,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const samplePictureId = "sample-screen-0";
   const sampleFlowsShown = picture === "candidate" || picture === "handoff";
   const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "no-route" || picture === "paused" || sampleFlowsShown);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  const watchFailure = async (name: string, report: boolean | (() => boolean) = true) => {
+    if (new URLSearchParams(location.search).get("fails") !== name) return;
+    await new Promise(resolve => setTimeout(resolve, 900));
+    if (typeof report === "function" ? report() : report) setWatchError("request_timeout");
+    throw new Error("request_timeout");
+  };
   const actionFails = (name: string) => { if (new URLSearchParams(location.search).get("fails") === name) throw new Error("request_timeout"); };
   const [streams, setStreams] = useState(new Map<string, MediaStream>());
   const [unwatched, setUnwatched] = useState(new Set<string>());
@@ -246,7 +253,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     ownerId: guestPreview ? "sample-bo" : sample.channel.state!.channel.ownerId, roomCreationPolicy,
     hostingMode: new URLSearchParams(location.search).has("hosted") ? "hosted" as const : "lightweight" as const,
-    managedRoomIds: guestPreview ? [] : [...roomIds, ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
+    managedRoomIds: guestPreview ? [] : [...roomIds,
+      ...(new URLSearchParams(location.search).has("hosted") && new URLSearchParams(location.search).get("fails") === "room-data-removal" ? removedRooms : []),
+      ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
     rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined, serviceRelay: undefined, picture: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
@@ -312,7 +321,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   };
   const pendingScreenRoom = capturePendingSample ? "friday" : browserSourcePending;
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...[...streams].filter(([id]) => id !== samplePictureId),
-      ...selectedSample ? [[samplePictureId, selectedSample.stream] as const] : []]) : streams, error: null, siteURL: "https://friends.example/",
+      ...selectedSample ? [[samplePictureId, selectedSample.stream] as const] : []]) : streams, error: watchError, siteURL: "https://friends.example/",
     pending: pendingScreenRoom ? new Set([...sample.channel.pending, `screen:${pendingScreenRoom}`]) : sample.channel.pending,
     watchPlayers, roomOpenFailures: unopened && hostOffline ? new Map([["friday", unopened]]) : sample.channel.roomOpenFailures,
     watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
@@ -322,9 +331,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setWatchByteSource: async (_id, choiceId) => setForwarding(choiceId !== null),
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
-    prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ url, activityId,
+    prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ pageId: crypto.randomUUID(), url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
-    focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
+    focusWatchPage: async () => sample.received(), focusWatch: async () => { actionFails("watch-focus"); sample.received(); },
     cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
@@ -373,11 +382,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, viewerSessionIds: [], source: { kind: "media", url },
         userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 } });
     },
-    joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
+    joinWatch: async (_id, mode = "direct", report) => { await watchFailure("watch-join", report); setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
     watchEmbedPreparation: () => undefined, cancelWatchPage: () => setPageSample(undefined),
-    leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
-    resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blockedReason = null; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
+    leaveWatch: async (_id, report) => { setWatchPlayers(new Map()); await watchFailure("watch-leave", report); setWatchMode("available"); setPageSample(undefined); },
+    stopWatch: async (_id, report) => { setWatchPlayers(new Map()); await watchFailure("watch-stop", report); setWatchActivity(null); },
+    resumeWatch: async id => { actionFails("watch-resume"); const player = watchPlayers.get(id); if (player) { player.blockedReason = null; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
     setWatchPlayback: async (_id, patch) => {
+      actionFails("watch-playback");
       setWatchActivity(previous => previous && ({ ...previous, playback: { ...previous.playback, ...patch } }));
       await watchPlayers.values().next().value?.patch(patch);
     },
@@ -416,14 +427,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setScreenTitle: async (id, title) => { if (ownedScreens.has(id)) setTitles(previous => ({ ...previous, [id]: title })); },
     inputPolicy: async () => sample.received(), inputDecide: async () => sample.received(), inputSimultaneous: async () => sample.received(),
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
-    screenPresentation: () => {}, screenPlaybackError: () => undefined, reconnect: sample.received, clearError: sample.received,
+    screenPresentation: () => {}, screenPlaybackError: () => undefined, reconnect: sample.received, clearError: () => setWatchError(null),
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
     updateProfile: sample.channel.updateProfile, updateDomain: sample.channel.updateDomain,
     setRoomCreationPolicy: async policy => setRoomCreationPolicy(policy),
     deleteRoom: async (roomId, deleteData) => {
+      actionFails("room-delete");
       setRemovedRooms(previous => new Set(previous).add(roomId));
       setSelected(previous => previous === roomId ? "" : previous);
-      return { dataRemoved: deleteData };
+      return { dataRemoved: deleteData && new URLSearchParams(location.search).get("fails") !== "room-data-removal" };
     },
     deleteMessage: async (roomId, seq, messageId) => {
       if (roomId === "friday" && seq === fileSampleSeq && fileSample) {

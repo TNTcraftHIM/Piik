@@ -60,7 +60,7 @@ async fn domain(path: PathBuf) -> Result<()> {
             .parse::<u16>()?,
     ))
     .await?;
-    let domain = Domain::open(&path, OWNER, ORIGIN.into(), None, ice)?;
+    let domain = Domain::open(&path, Some(OWNER), ORIGIN.into(), None, ice)?;
     let mut services = Vec::new();
     for address in ["198.51.100.1", "198.51.100.2", "198.51.100.3"] {
         let socket = UdpSocket::bind((address, 3478)).await?;

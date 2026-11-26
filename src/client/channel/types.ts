@@ -143,12 +143,12 @@ export interface ChannelActions {
   confirmWatchEmbed(roomId: string, reportError?: boolean): Promise<void>;
   watchEmbed(roomId: string): WatchMedia | undefined;
   prepareWatchPage(roomId: string, url: string, activityId?: string, reportError?: boolean): Promise<void>;
-  watchPage(roomId: string, activityId?: string): { pageId?: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
+  watchPage(roomId: string, activityId?: string): { pageId: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
   selectWatchPage(roomId: string, candidateId: string, activityId?: string, reportError?: boolean, mode?: "choose-source" | "original-page"): Promise<boolean>;
   selectWatchBrowserSource(roomId: string, choiceId: string | null, reportError?: boolean): Promise<void>;
   focusWatch(id: string): Promise<void>;
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;
-  joinWatch(id: string, mode?: WatchMode): Promise<void>;
+  joinWatch(id: string, mode?: WatchMode, reportError?: ReportError): Promise<void>;
   watchMediaChoices(id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources>;
   inspectWatchMpdSource(roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog>;
   selectWatchMpdSource(roomId: string, selection: NativePageMpdSelection, reportError?: boolean): Promise<void>;
@@ -157,8 +157,8 @@ export interface ChannelActions {
   setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | NativePageMpdSelection | null, signal?: AbortSignal): Promise<void>;
   watchEmbedPreparation(id: string): import("./watch-media").WatchMedia | undefined;
   cancelWatchPage(id: string): void;
-  leaveWatch(id: string): Promise<void>;
-  stopWatch(id: string): Promise<void>;
+  leaveWatch(id: string, reportError?: ReportError): Promise<void>;
+  stopWatch(id: string, reportError?: ReportError): Promise<void>;
   setWatchPlayback(id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;
   resumeWatch(id: string): Promise<void>;
   setScreenBufferTarget(target: number | null): void;

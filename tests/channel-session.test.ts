@@ -189,6 +189,45 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
+test.each(["latest", "message"] as const)("leaving a room retires a %s read still awaiting browse admission", async kind => {
+  const { session, socket, peer } = await setup(1000, false);
+  try {
+    const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    const reading = (kind === "latest" ? session.loadLatestHistory("first") : session.loadMessage("first", 1))
+      .then(() => "completed", error => error);
+    session.browse("second");
+    const second = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: second.requestId });
+    const current = await peer.next();
+    expect(current).toMatchObject({ type: "history", roomId: "second" });
+    peer.page(current, [message(2)], false, 2);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
+
+    socket.receive({ type: "ack", requestId: first.requestId });
+    await vi.waitFor(() => expect(peer.sent.some(request => request.roomId === "first")
+      || !session.getSnapshot().pending.has("history:first")).toBe(true));
+    const stale = peer.sent.find(request => request.roomId === "first");
+    if (stale) peer.page(stale, [message(1)], false, 1);
+    expect(await reading).toMatchObject({ name: "AbortError" });
+    expect(peer.sent.map(request => request.roomId)).toEqual(["second"]);
+    expect(session.getSnapshot().messagesByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().messagesByRoom.second).toEqual([message(2)]);
+    expect(session.getSnapshot().error).toBeNull();
+
+    session.browse("first");
+    const reopened = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    expect(reopened.requestId).not.toBe(first.requestId);
+    socket.receive({ type: "ack", requestId: first.requestId });
+    expect(peer.sent).toHaveLength(1);
+    socket.receive({ type: "ack", requestId: reopened.requestId });
+    const fresh = await peer.next();
+    expect(fresh).toMatchObject({ type: "history", roomId: "first" });
+    peer.page(fresh, [message(3)], false, 3);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3)]);
+  } finally { session.close(); }
+});
+
 test("writer-confirmed moderation removes messages, quotations and transfers for both readers", async () => {
   const moderator = await setup();
   const reader = await setup();
@@ -5622,6 +5661,20 @@ test("a rejected deletion identifies its room after the settings surface closes"
     socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "forbidden" });
     await rejected;
     expect(session.getSnapshot()).toMatchObject({ error: "forbidden", errorRoomId: "first" });
+  } finally { session.close(); }
+});
+
+test("a live deletion caller owns an unconfirmed data removal after the directory entry disappears", async () => {
+  const { session, socket } = await setup();
+  try {
+    const surface = new AbortController();
+    const deleting = session.deleteRoom("first", true, surface.signal);
+    const request = socket.sent.at(-1)!;
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, rooms: state.channel.rooms.filter(room => room.id !== "first") } } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "deleted", dataRemoved: false } });
+    await expect(deleting).resolves.toEqual({ dataRemoved: false });
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
@@ -12144,13 +12197,32 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
     await opening;
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.video).toBe(video);
-    session.browse('second');
     expect(video.src).toBe(url);
     expect(socket.sent.some(command => command.type === 'publish')).toBe(false);
-    const stopping = session.stopWatch(start.id as string);
+    let rowVisible = true;
+    const stopping = session.stopWatch(start.id as string, () => !rowVisible);
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
-    socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
-    await stopping;
+    session.browse('second');
+    rowVisible = false;
+    const rejected = expect(stopping).rejects.toThrow();
+    socket.receive({ type: 'error', requestId: stop.requestId, code: 'storage_failed' });
+    await rejected;
+    expect(session.getSnapshot().error).toBe('storage_failed');
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    await session['stopWatchResource'](start.id as string, 'media-closed');
+    expect(socket.sent.filter(command => command.type === 'stop_watch')).toHaveLength(1);
+    const retrying = session.stopWatch(start.id as string);
+    const retry = socket.sent.findLast(command => command.type === 'stop_watch')!;
+    expect(retry).toMatchObject({ id: start.id, roomId: 'first' });
+    expect(retry.requestId).not.toBe(stop.requestId);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: retry.requestId, result: { type: 'done' } });
+    await retrying;
+    const state = session.getSnapshot().state!;
+    const other = { ...state.watchActivities[0], id: 'other', sessionId: 'other-endpoint' };
+    socket.receive({ type: 'state', state: { ...state, watchActivities: [other] } });
+    await session.stopWatch(start.id as string);
+    await session.stopWatch(other.id);
+    expect(socket.sent.filter(command => command.type === 'stop_watch')).toHaveLength(2);
     expect(video.src).toBe('');
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
   } finally { session.close(); }
@@ -12581,7 +12653,7 @@ test.each(["channel", "writer"])("local video leave clears its audience membersh
   } finally { session.close(); }
 });
 
-test("watch retirement cancels a viewer still waiting for the join reply", async () => {
+test.each(["room", "leave"])("watch retirement by %s cancels a viewer still waiting for the join reply", async cause => {
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo();
   vi.stubGlobal("document", { createElement: () => video });
@@ -12593,7 +12665,13 @@ test("watch retirement cancels a viewer still waiting for the join reply", async
     socket.receive({ type: "state", state });
     const cancelled = expect(session.joinWatch(activity.id)).rejects.toMatchObject({ name: "AbortError" });
     const join = socket.sent.findLast(command => command.type === "join_watch")!;
-    socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
+    if (cause === "leave") {
+      const leaving = session.leaveWatch(activity.id);
+      const leave = socket.sent.findLast(command => command.type === "join_watch")!;
+      expect(leave.mode).toBeNull();
+      socket.receive({ type: "room_reply", roomId: "first", requestId: leave.requestId, result: { type: "done" } });
+      await leaving;
+    } else socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
     expect(video.src).toBe("");
     expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
     await cancelled;
@@ -13766,10 +13844,12 @@ test.each(['select', 'select-ack-first', 'cancel'] as const)('an unselected view
 test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquired webpage after the App reference changes', async role => {
   const { session, socket, page, request, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const activityId = role === 'viewer' ? 'website-viewer' : undefined;
+  let pageId = page.id;
   try {
     if (activityId) {
       await session.cancelScreenSelection('first');
       const viewerPage = new appLink.AppPage(crypto.randomUUID(), page.url, request, dispose, () => {});
+      pageId = viewerPage.id;
       vi.mocked((session as unknown as { connectApp(): Promise<appLink.ChannelApp> }).connectApp).mockResolvedValue({
         preparePage: async () => viewerPage,
       } as unknown as appLink.ChannelApp);
@@ -13780,6 +13860,7 @@ test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquir
       }] } });
       await session.prepareWatchPage('first', page.url, activityId);
     }
+    expect(session.watchPage('first', activityId)?.pageId).toBe(pageId);
     (session as unknown as { app: appLink.ChannelApp }).app = { stopCaptures: vi.fn(), close: vi.fn() } as unknown as appLink.ChannelApp;
     await session.focusWatchPage('first', activityId);
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_focus' }), expect.any(AbortSignal));
@@ -16186,7 +16267,7 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
       source: start.source, playback: start.playback, ...(start.byteSource ? { byteSource: start.byteSource } : {}),
     }] } });
     next.receive({ type: "page_share_requested", pageId: next.id });
-    const stopping = session.stopWatch(start.id as string, "media-closed");
+    const stopping = session["stopWatchResource"](start.id as string, "media-closed");
     const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
     socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
     await stopping;
@@ -16278,7 +16359,7 @@ test('a watch that ends during source selection does not block the new share', a
   try {
     const opening = session.startWatch('first', 'https://media.test/new.mp4').catch(error => error);
     await vi.waitFor(() => expect(ready).toHaveBeenCalled());
-    const stopping = session.stopWatch(id, 'media-closed');
+    const stopping = session['stopWatchResource'](id, 'media-closed');
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
     await stopping;
