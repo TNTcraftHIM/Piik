@@ -41,9 +41,9 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
           onDragEnd={() => { setOver(false); ordering.onEnd(); }}
           onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); ordering.onMove(event.key === "ArrowUp" ? -1 : 1); } }}><Glyph name="grip" size={16} /></button>
         <button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === 0} aria-label={t("room.order.up", { name: room.name })}
-          onClick={() => ordering.onMove(-1)}><Glyph name="arrowUp" size={14} /></button>
+          onClick={() => ordering.onMove(-1)}><Glyph name="arrowUp" size={16} /></button>
         <button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === ordering.total - 1} aria-label={t("room.order.down", { name: room.name })}
-          onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={14} /></button>
+          onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={16} /></button>
       </div>}
       <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
         unread={roomHasUnread(room, channel.readByRoom[room.id])} unopened={unopened}
