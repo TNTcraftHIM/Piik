@@ -26,6 +26,10 @@ pub struct Options {
     /// Policy P2: crossings and reductions rank the offered parent's depth
     /// before identifiers. Needs the crate feature `study`.
     pub depth_first: bool,
+    /// Policy P3: a waiting receiver whose confirmed pairs into the tree end
+    /// only at full members may have two repair trials in flight. Needs the
+    /// crate feature `study`.
+    pub second_trial: bool,
     /// Viewers enable peer transport only on arrival (see `Driver::cold`).
     pub cold: bool,
 }
@@ -39,16 +43,17 @@ const DRAIN_MS: u64 = 60_000;
 struct Policy;
 
 impl Policy {
-    fn set(race_ms: Option<u64>, depth_first: bool) -> Self {
+    fn set(race_ms: Option<u64>, depth_first: bool, second_trial: bool) -> Self {
         #[cfg(feature = "study")]
         {
             piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(race_ms));
             piik_channel_core::study::DEPTH_BEFORE_ID.with(|c| c.set(depth_first));
+            piik_channel_core::study::SECOND_TRIAL.with(|c| c.set(second_trial));
         }
         #[cfg(not(feature = "study"))]
         assert!(
-            race_ms.is_none() && !depth_first,
-            "policies P1 and P2 need --features sqlite,study"
+            race_ms.is_none() && !depth_first && !second_trial,
+            "policies P1 to P3 need --features sqlite,study"
         );
         Policy
     }
@@ -60,6 +65,7 @@ impl Drop for Policy {
         {
             piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(None));
             piik_channel_core::study::DEPTH_BEFORE_ID.with(|c| c.set(false));
+            piik_channel_core::study::SECOND_TRIAL.with(|c| c.set(false));
         }
     }
 }
@@ -202,6 +208,12 @@ pub struct Session {
     pub waits: Vec<Wait>,
     /// Distinct physical pair ids any endpoint was asked to try.
     pub pairs_started: u32,
+    /// Of those, pairs that never carried a screen flow.
+    pub pairs_unused: u32,
+    pub peak_endpoint: u32,
+    pub peak_channel: u32,
+    pub ticks: u32,
+    pub saturated_ticks: u32,
     pub early_observations: u32,
 }
 
@@ -219,7 +231,7 @@ fn instant(driver: &Driver, observation: &Observation, limit: u8) -> Instant {
 }
 
 pub fn run(script: &Script, options: Options) -> Session {
-    let _policy = Policy::set(options.race_ms, options.depth_first);
+    let _policy = Policy::set(options.race_ms, options.depth_first, options.second_trial);
     let mut driver = Driver::new(script, options.limit, options.timing, options.cold);
     let mut waits = Waits::default();
     let timed = options.timing.is_some();
@@ -465,6 +477,15 @@ pub fn run(script: &Script, options: Options) -> Session {
         driver.run_until(driver.now + DRAIN_MS, |d| waits.step(d));
         session.waits = waits.finish(&driver);
         session.pairs_started = driver.pairs_started.len() as u32;
+        session.pairs_unused = driver
+            .pairs_started
+            .iter()
+            .filter(|id| !driver.carried.contains(id))
+            .count() as u32;
+        session.peak_endpoint = driver.peak_endpoint as u32;
+        session.peak_channel = driver.peak_channel as u32;
+        session.ticks = driver.ticks as u32;
+        session.saturated_ticks = driver.saturated_ticks as u32;
         session.early_observations = driver.early_observations as u32;
     }
     session.seed = script.seed;

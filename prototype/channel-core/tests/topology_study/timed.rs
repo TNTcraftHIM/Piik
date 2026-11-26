@@ -220,6 +220,42 @@ pub fn time_tables(rows: &[TimedRow]) {
             row.sum(|s| s.early_observations),
         );
     }
+    header(
+        "Cost of trials (pair attempts: distinct physical pair ids any endpoint was asked to try; in flight: in an endpoint's state, not yet confirmed by both sides)",
+        &[
+            "arrival",
+            "setting",
+            "F s",
+            "N",
+            "policy",
+            "pair attempts (all seeds)",
+            "per session",
+            "failed (all seeds)",
+            "never carried a screen flow (all seeds)",
+            "peak in flight per endpoint: max / median of session peaks",
+            "peak in flight per channel: max / median of session peaks",
+            "ticks with the channel at 4 or more in flight %",
+        ],
+    );
+    for r in rows {
+        let row = &r.row;
+        let peak = |f: &dyn Fn(&super::study::Session) -> u32| {
+            let mut v: Vec<u32> = row.sessions.iter().map(f).collect();
+            v.sort_unstable();
+            format!("{} / {}", v.last().unwrap_or(&0), v.get(v.len() / 2).unwrap_or(&0))
+        };
+        println!(
+            "{} {} | {} | {} | {} | {} | {} | {:.1} |",
+            r.key(),
+            row.sum(|s| s.pairs_started),
+            spread(row.per(|s| f64::from(s.pairs_started)), 0),
+            row.sum(|s| s.pair_failures),
+            row.sum(|s| s.pairs_unused),
+            peak(&|s| s.peak_endpoint),
+            peak(&|s| s.peak_channel),
+            100.0 * ratio(row.sum(|s| s.saturated_ticks), row.sum(|s| s.ticks)),
+        );
+    }
 }
 
 /// Endpoint answers take time: first-picture delay under the present rule
@@ -246,6 +282,7 @@ fn timed_runs_are_deterministic() {
                 }),
                 race_ms: cfg!(feature = "study").then_some(1_000),
                 depth_first: cfg!(feature = "study") && index % 2 == 1,
+                second_trial: cfg!(feature = "study") && index % 4 >= 2,
                 cold,
             };
             let first = super::study::run(&script, options);
@@ -276,7 +313,9 @@ vs
 
 /// Endpoint answers take time: first-picture delay under the present rule
 /// and, with `--features sqlite,study`, policy P1 (race one alternative once
-/// the direct pair has been pending H = 1 s or 2 s). `STUDY_SUCCESS_MS` and
+/// the direct pair has been pending H = 1 s or 2 s), P2 (depth before
+/// identifiers) and P3 (a second trial for a receiver behind full members),
+/// chosen with `STUDY_POLICIES`. `STUDY_SUCCESS_MS` and
 /// `STUDY_PROOF_MS` (default 500) set the success and proof times,
 /// `STUDY_FAILURES_MS` the failure times (default `5000,20000`),
 /// `STUDY_SIZES` the viewer counts (default `8,16,32`), `STUDY_MODELS` the
@@ -295,13 +334,16 @@ fn time_model() {
         .into_iter()
         .filter(|m| wanted.is_empty() || wanted.split(',').any(|w| w == m.name))
         .collect();
-    let mut policies: Vec<(&'static str, Option<u64>, bool)> = vec![("present", None, false)];
+    let mut policies: Vec<(&'static str, Option<u64>, bool, bool)> =
+        vec![("present", None, false, false)];
     if cfg!(feature = "study") {
-        policies.push(("P1 H=1s", Some(1_000), false));
-        policies.push(("P1 H=2s", Some(2_000), false));
-        policies.push(("P2", None, true));
+        policies.push(("P1 H=1s", Some(1_000), false, false));
+        policies.push(("P1 H=2s", Some(2_000), false, false));
+        policies.push(("P2", None, true, false));
+        policies.push(("P3", None, false, true));
     }
-    // `STUDY_POLICIES`: comma-separated names to run (default: present and P1).
+    // `STUDY_POLICIES`: comma-separated names to run (default: present and P1;
+    // the second-trial run used `present,P3` with `STUDY_SCALE=2`).
     let wanted_policies =
         std::env::var("STUDY_POLICIES").unwrap_or_else(|_| "present,P1 H=1s,P1 H=2s".into());
     policies.retain(|(name, ..)| wanted_policies.split(',').any(|w| w.trim() == *name));
@@ -318,7 +360,7 @@ fn time_model() {
         for &model in &models {
             for &failure_ms in &failures {
                 for &viewers in &sizes {
-                    for &(policy, race_ms, depth_first) in &policies {
+                    for &(policy, race_ms, depth_first, second_trial) in &policies {
                         jobs.push((
                             arrival,
                             model,
@@ -327,6 +369,7 @@ fn time_model() {
                             policy,
                             race_ms,
                             depth_first,
+                            second_trial,
                         ));
                     }
                 }
@@ -340,8 +383,16 @@ fn time_model() {
         for _ in 0..threads {
             scope.spawn(|| loop {
                 let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let Some(&(arrival, model, failure_ms, viewers, policy, race_ms, depth_first)) =
-                    jobs.get(i)
+                let Some(&(
+                    arrival,
+                    model,
+                    failure_ms,
+                    viewers,
+                    policy,
+                    race_ms,
+                    depth_first,
+                    second_trial,
+                )) = jobs.get(i)
                 else {
                     return;
                 };
@@ -358,6 +409,7 @@ fn time_model() {
                     }),
                     race_ms,
                     depth_first,
+                    second_trial,
                     cold: arrival == "cold",
                 };
                 let row = run_row(&model, viewers, options);

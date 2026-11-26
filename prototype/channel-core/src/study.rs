@@ -13,6 +13,10 @@ thread_local! {
     /// reduction moves, by the depth of the parent offered (shallower first)
     /// before identifiers.
     pub static DEPTH_BEFORE_ID: Cell<bool> = const { Cell::new(false) };
+    /// P3 "second trial": a waiting receiver with a confirmed pair into the
+    /// tree prefix (so every such member is full) may have a second repair
+    /// trial in flight beside its first.
+    pub static SECOND_TRIAL: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(crate) fn race_direct_after() -> Option<u64> {
@@ -21,4 +25,8 @@ pub(crate) fn race_direct_after() -> Option<u64> {
 
 pub(crate) fn depth_before_id() -> bool {
     DEPTH_BEFORE_ID.with(Cell::get)
+}
+
+pub(crate) fn second_trial() -> bool {
+    SECOND_TRIAL.with(Cell::get)
 }

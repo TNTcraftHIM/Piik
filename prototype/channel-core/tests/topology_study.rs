@@ -14,9 +14,11 @@
 //!
 //! `timed::time_model` gives endpoint answers a duration and measures each
 //! viewer's first-picture delay (see `topology_study/timed.rs` for its
-//! variables); with `--features sqlite,study` it also runs policies P1 and P2,
+//! variables); with `--features sqlite,study` it also runs policies P1 to P3,
 //! whose switches live in `src/study.rs`, off by default and compiled only
-//! with that feature.
+//! with that feature. Its cost table counts pair attempts, attempts that never
+//! carried a screen flow, and the peak attempts in flight per endpoint and
+//! per channel.
 //!
 //! The core is driven through the same public command path as the other
 //! integration tests. Inputs are drawn from a seed, and participants are
@@ -179,6 +181,7 @@ fn runs_are_deterministic() {
                 timing: None,
                 race_ms: None,
                 depth_first: false,
+                second_trial: false,
                 cold: false,
             };
             let first = study::run(&script, options);
@@ -704,6 +707,7 @@ fn grid(model: &Connectivity, sizes: &[usize], limits: &[u8], execute_up_to: usi
                 timing: None,
                 race_ms: None,
                 depth_first: false,
+                second_trial: false,
                 cold: false,
             };
             rows.push((viewers, limit, run_row(model, viewers, options)));
@@ -780,6 +784,7 @@ fn trace() {
                 .ok()
                 .map(|h| h.parse().unwrap()),
             depth_first: std::env::var_os("STUDY_TRACE_DEPTH").is_some(),
+            second_trial: false,
             cold: std::env::var_os("STUDY_TRACE_COLD").is_some(),
         },
     );
@@ -807,6 +812,7 @@ fn released_pairs() {
                     timing: None,
                     race_ms: None,
                     depth_first: false,
+                    second_trial: false,
                     cold: false,
                 };
                 (viewers, 2, run_row(&model, viewers, options))

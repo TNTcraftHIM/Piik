@@ -38,6 +38,11 @@ pub struct Timing {
 /// also expires first (`Authority::handle`). Expiry delivers room wakes.
 pub const EXPIRE_EVERY_MS: u64 = 1_000;
 
+/// The core's limit on discovery attempts per channel
+/// (`CHANNEL_ATTEMPT_LIMIT` in `src/transport.rs`); a tick with this many
+/// pairs in flight counts as saturated.
+pub const CHANNEL_SATURATED: usize = 4;
+
 pub struct Person {
     pub connection: Uuid,
     pub session: Uuid,
@@ -103,6 +108,17 @@ pub struct Driver {
     /// peer transport, and enable it (by rejoining their session) only when
     /// they arrive, so no standby pair of theirs exists before.
     pub cold: bool,
+    /// Timed sessions only, the cost of trials. Pair ids that carried a
+    /// screen flow in some endpoint's state at a settled moment.
+    pub carried: BTreeSet<Uuid>,
+    /// Most pairs in flight (in an endpoint's state and not yet confirmed by
+    /// both sides) at one settled moment: at one endpoint, and in the channel.
+    pub peak_endpoint: usize,
+    pub peak_channel: usize,
+    /// Expiry ticks sampled, and those at which the channel had
+    /// `CHANNEL_SATURATED` or more pairs in flight.
+    pub ticks: usize,
+    pub saturated_ticks: usize,
     /// Every answer the driver gave, in participant terms (for replay checks).
     pub log: Vec<String>,
 }
@@ -186,6 +202,11 @@ impl Driver {
             touched: now,
             early_observations: 0,
             cold,
+            carried: BTreeSet::new(),
+            peak_endpoint: 0,
+            peak_channel: 0,
+            ticks: 0,
+            saturated_ticks: 0,
             log: Vec::new(),
         };
         let room = driver.room.clone();
@@ -258,7 +279,25 @@ impl Driver {
                 self.net.deliver(effects);
             }
             self.settle();
+            self.sample_attempts(next == tick);
             step(self);
+        }
+    }
+
+    /// Records the pairs in flight at this settled moment (timed sessions).
+    fn sample_attempts(&mut self, tick: bool) {
+        let mut channel = BTreeSet::new();
+        for person in (0..self.people.len()).filter(|&p| self.online[p]) {
+            let pending = self.pending_pairs(person);
+            self.peak_endpoint = self.peak_endpoint.max(pending.len());
+            channel.extend(pending.into_iter().map(|(_, id)| id));
+        }
+        self.peak_channel = self.peak_channel.max(channel.len());
+        if tick {
+            self.ticks += 1;
+            if channel.len() >= CHANNEL_SATURATED {
+                self.saturated_ticks += 1;
+            }
         }
     }
 
@@ -366,6 +405,14 @@ impl Driver {
                 let Some(&peer) = self.rank.get(&pair.peer_id) else {
                     continue;
                 };
+                if pair
+                    .incoming
+                    .iter()
+                    .chain(&pair.outgoing)
+                    .any(|flow| flow.publication_id == self.screen)
+                {
+                    self.carried.insert(pair.id);
+                }
                 if let Some(timing) = self.timing {
                     if !self.answered.contains(&(person, pair.id)) {
                         self.pairs_started.insert(pair.id);

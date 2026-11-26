@@ -321,6 +321,55 @@ impl Discovery<'_> {
     fn raced(&self, _: Pair) -> bool {
         false
     }
+    /// Study P3 only: when the waiting receiver of `direct` has a confirmed
+    /// pair into the frontier's tree prefix (each such member is full, or it
+    /// would not be waiting), the best unconfirmed crossing other than `first`
+    /// and the direct pair, with the confirmed path it would complete.
+    #[cfg(feature = "study")]
+    fn second_trial(
+        &self,
+        projection: &RoomProjection,
+        scope: &BTreeSet<Uuid>,
+        direct: Pair,
+        first: &DiscoveryEdge,
+    ) -> Option<(DiscoveryEdge, BTreeSet<Pair>)> {
+        let (a, b) = direct;
+        projection
+            .delivery_frontiers
+            .iter()
+            .filter_map(|f| {
+                let target = if f.source == a {
+                    b
+                } else if f.source == b {
+                    a
+                } else {
+                    return None;
+                };
+                let behind_full = f.waiting.contains(&target)
+                    && f.before
+                        .keys()
+                        .any(|&m| self.confirmed.contains(&pair(m, target)));
+                if !behind_full {
+                    return None;
+                }
+                let tail = self.suffix(f, target, scope, projection);
+                self.crossings(f, scope, false)
+                    .filter(|(_, edge, _, to, terminal)| {
+                        edge.endpoints != direct
+                            && edge.endpoints != first.endpoints
+                            && !self.confirmed.contains(&edge.endpoints)
+                            && !self.transports.rejected(edge)
+                            && tail.contains_key(to)
+                            && (!*terminal || *to == target)
+                    })
+                    .min_by_key(|entry| entry.0)
+                    .map(|(rank, edge, prefix, to, _)| {
+                        (rank, edge, path_segments(&prefix, to, &tail))
+                    })
+            })
+            .min_by_key(|entry| entry.0)
+            .map(|(_, edge, path)| (edge, path))
+    }
     fn current(&self, edge: &DiscoveryEdge) -> bool {
         DiscoveryEdge::current(edge.endpoints, self.identity).as_ref() == Some(edge)
     }
@@ -615,6 +664,21 @@ impl Discovery<'_> {
                 }
                 plan.keep(trial.clone(), Interest::Activity);
                 repair.trial = Some(trial);
+            }
+            // Study P3 only: request a second trial beside the first.
+            #[cfg(feature = "study")]
+            if crate::study::second_trial() {
+                if let Some((second, path)) = repair
+                    .trial
+                    .as_ref()
+                    .and_then(|first| self.second_trial(projection, scope, pair, first))
+                {
+                    for &leg in &path {
+                        plan.keep(self.proposal(leg), Interest::Activity);
+                    }
+                    plan.keep(second.clone(), Interest::Activity);
+                    plan.completions.push((second, path));
+                }
             }
             if let Some((trial, prefix)) = suggestion
                 .as_ref()
