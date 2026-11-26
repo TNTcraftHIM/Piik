@@ -22,7 +22,7 @@ export function ChannelRoomInvitation({ channel, room, onManageAccess }: {
   useAnchoredPopover(trigger, panel, { maxHeight: 560 });
   useLayerHistory(panel, open);
   return <span className="c3-room-invitation-entry" ref={trigger}>
-    <Btn icon="link" title={{ text: label }} textTooltip quiet size="dense" expanded={open} controls={id} popoverTarget={id} />
+    <Btn icon="link" title={{ text: label }} textTooltip quiet size="compact" expanded={open} controls={id} popoverTarget={id} />
     <div id={id} ref={panel} popover="auto" role="dialog" aria-label={label}
       className="lr-anchored-card c3-room-invitation" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");

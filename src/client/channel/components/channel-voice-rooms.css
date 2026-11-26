@@ -3,12 +3,23 @@
   gap: 4px;
   min-width: 0;
 }
+/* The heading names the section and ends with what adjusts all of it, as the rooms' heading does. */
+.c3-voice-rooms-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--control-dense-size);
+  padding-inline-start: 4px;
+}
 .c3-voice-rooms-heading {
-  margin: 0 4px 4px;
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
 }
+.c3-voice-tools-home { display: inline-flex; flex: none; }
+.c3-voice-tools-home:empty { display: none; }
 .c3-voice-room-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -48,8 +59,8 @@
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.c3-voice-room-layout[data-density="rows"] .c3-voice-room-actions { gap: 2px; }
-.c3-voice-room-layout[data-density="rows"] .c3-voice-room-actions .lr-btn.is-compact {
+.c3-voice-room-layout[data-density="rows"] :is(.c3-voice-room-actions, .c3-voice-shared-tools) { gap: 2px; }
+.c3-voice-room-layout[data-density="rows"] :is(.c3-voice-room-actions, .c3-voice-shared-tools) .lr-btn.is-compact {
   --button-size: var(--control-dense-size);
   width: var(--button-size);
   padding-inline: 0;
@@ -94,7 +105,13 @@
   text-align: center;
 }
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-row[data-direct] .c3-voice-room-name > button { text-align: center; }
+/* In the rail the voice tools stand in the column where they stand in the bar: after what they adjust. */
+.c3-voice-room-layout[data-density="rail"] .c3-voice-shared-tools { flex-direction: column; }
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn { width: var(--control-compact-size); padding: 0; }
 .c3-voice-room-layout[data-density="rail"] .c3-voice-room-disclosure > span .lr-btn > svg { display: none; }
 .c3-voice-room-disclosure > span .lr-btn .lr-cap { font-variant-numeric: tabular-nums; }
 .c3-voice-rooms-popover { width: min(320px, calc(100vw - 16px)); padding: 8px; overflow: auto; }
+/* Leaving ends the row, a step apart from what it ends. */
+.c3-voice-room-layout:is([data-density="bar"], [data-density="rail"]) .c3-voice-room-row[data-direct] .c3-voice-room-actions { gap: 4px; }
+.c3-voice-room-layout[data-density="bar"] .c3-voice-room-row[data-direct] .c3-voice-room-actions > .lr-comic-tip-wrap:last-child,
+.c3-voice-room-layout[data-density="bar"] .c3-voice-room-row[data-direct] .c3-voice-room-actions > .lr-btn:last-child { margin-inline-start: 8px; }

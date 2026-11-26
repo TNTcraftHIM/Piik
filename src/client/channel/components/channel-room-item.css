@@ -1,49 +1,94 @@
-.c3-room-item { display: flex; align-items: center; min-width: 0; border-radius: 12px; transition: background-color var(--motion-feedback) ease, box-shadow var(--motion-feedback) ease; }
-.c3-room-item:hover, .c3-room-item:focus-within { background: var(--control-hover); }
-.c3-room-item[data-selected] { background: var(--control-selected); box-shadow: inset 3px 0 0 var(--action); }
+/* A room's row is one object under the pointer: one highlight covers the whole row, quieter than the
+   selection, and each control inside it answers for itself. */
+.c3-room-item { --row-hover: color-mix(in srgb, var(--ink) 6%, transparent); --row-action-hover: color-mix(in srgb, var(--ink) 14%, transparent);
+  position: relative; display: flex; align-items: center; min-width: 0; border-radius: 12px; transition: background-color var(--motion-feedback) ease; }
+.c3-room-item:hover, .c3-room-item:focus-within { background: var(--row-hover); }
+.c3-room-item[data-selected] { background: var(--control-selected); }
+/* The selected room's bar stands on the column's edge, in the list's inset: the same place in the list and in the
+   rail, and clear of everything inside the row. */
+.c3-room-item[data-selected]::before { content: ""; position: absolute; inset-inline-start: calc(-1 * var(--room-list-inset, 0px)); top: calc(50% - 10px); width: 3px; height: 20px; border-radius: 0 2px 2px 0; background: var(--primary); pointer-events: none; }
+.c3-room-item .lr-btn { --control-hover: var(--row-action-hover); }
+.c3-room-item[data-selected] .lr-btn { --ink: var(--control-selected-ink); --muted: var(--control-selected-ink); }
 .c3-room-item[data-unread] .c3-room-link { color: var(--ink); }
 .c3-room-item[data-unread] .c3-room-link strong { font-weight: 750; }
+/* Unread is a mark on the room's own mark, where it cannot be taken for the disclosure beside it. */
 .c3-room-item[data-unread] .c3-identity-mark { position: relative; }
-.c3-room-item[data-unread] .c3-identity-mark::after { content: ""; position: absolute; width: 6px; height: 6px; inset-inline-start: -8px; top: calc(50% - 3px); background: var(--action); border-radius: 50%; }
+.c3-room-item[data-unread] .c3-identity-mark::after { content: ""; position: absolute; width: 7px; height: 7px; inset-inline-end: -3px; top: -2px; border-radius: 50%; background: var(--action); box-shadow: 0 0 0 2px var(--surface-frame, var(--wall)); }
 .c3-room-unread-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.c3-room-item[data-selected] .lr-btn { --ink: var(--control-selected-ink); --muted: var(--control-selected-ink); --control-hover: var(--control-selected); }
 .c3-room-item > .c3-room-label { flex: 1; min-width: 0; }
-.c3-room-list-item { --room-row-padding: 8px; --room-disclosure-width: 24px; --room-content-inset: 0px; --room-icon-size: 28px; --room-content-gap: 9px; }
-.c3-room-list-item > .c3-room-item { display: grid; grid-template-columns: var(--room-disclosure-width) minmax(0, 1fr) auto; grid-template-rows: 1fr auto; min-height: 52px; }
-/* Share the name/activity tracks through the existing tooltip and button wrappers. */
-.c3-room-list-item > .c3-room-item > :is(.c3-room-label, .c3-room-voice-toggle, .c3-room-manage),
-.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) > .lr-comic-tip-wrap,
-.c3-room-list-item .c3-room-item .lr-btn { display: grid; grid-row: 1 / span 2; grid-template-rows: subgrid; align-self: stretch; row-gap: 0; }
-.c3-room-list-item .c3-room-label { grid-column: 2; }
-.c3-room-list-item .c3-room-manage { grid-column: 3; }
-.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) .lr-btn { height: auto; padding-block: var(--room-row-padding); }
-.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) .lr-btn > svg { grid-row: 1; }
-.c3-room-list-item .c3-room-activity { margin-block-start: 3px; }
-.c3-room-voice-toggle { grid-column: 1; }
-.c3-room-voice-toggle .lr-btn { --button-size: var(--room-disclosure-width); --button-icon-size: 12px; --button-padding: 0; width: var(--room-disclosure-width); min-width: var(--room-disclosure-width); box-shadow: none; border: 0; }
+.c3-room-item[data-offline] .c3-room-link > .c3-identity-mark { opacity: .55; }
+
+/* The name selects the room and is the row: it never paints a box of its own inside the row's. */
+.c3-room-link.lr-btn { --control-hover-transform: none; --control-press-transform: none; display: grid; grid-template-columns: var(--room-icon-size, 28px) minmax(0, 1fr); column-gap: var(--room-content-gap, 8px); row-gap: 0; align-items: center; justify-content: stretch;
+  width: 100%; height: auto; min-width: 0; padding: 8px 10px; border: 0; background: transparent; color: var(--muted); text-align: start; box-shadow: none; }
+.c3-room-item .c3-room-link.lr-btn { --control-hover: transparent; }
+/* The button reaches over the whole row, so the row is one target and one focus ring. */
+.c3-room-item > .c3-room-label, .c3-room-link.lr-btn { position: static; }
+.c3-room-link::after { content: ""; position: absolute; inset: 0; border-radius: 12px; }
+.c3-room-link:focus-visible { outline: none; }
+.c3-room-link:focus-visible::after { outline: 3px solid var(--action); outline-offset: -3px; }
+.c3-room-item:is(:hover, :focus-within, [data-selected]) .c3-room-link { color: var(--ink); }
+.c3-room-link > .c3-identity-mark { grid-column: 1; grid-row: 1; justify-self: center; }
+.c3-room-link strong { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 20px; }
+.c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.c3-room-activity { grid-column: 2; grid-row: 2; min-height: 20px; }
+.c3-room-activity:empty { display: none; }
+
+/* In the list a row has two lines. The first is the room and what acts on it: the disclosure of its people, its
+   mark, its name, its settings. The second is what is happening there: its state at the start, who is in it at the
+   end. The four columns are the disclosure, the mark, the text and the row's end, so each line ends on one edge.
+   The disclosure's column and the mark's are sized so that the mark stands where it stands in the rail. The
+   columns belong to the whole list, so its headings can stand over the names. */
+.c3-room-navigation { --room-row-padding: 6px; --room-line: 28px; --room-disclosure-width: 16px; --room-icon-size: 24px; --room-content-gap: 8px; --room-end-inset: 6px;
+  --room-text-start: calc(var(--room-disclosure-width) + var(--room-icon-size) + var(--room-content-gap)); }
+.c3-room-list-item > .c3-room-item { display: grid; grid-template-columns: var(--room-disclosure-width) var(--room-icon-size) minmax(0, 1fr) auto; grid-template-rows: var(--room-line) auto;
+  align-items: center; padding: var(--room-row-padding) var(--room-end-inset) var(--room-row-padding) 0; }
+/* The name's button takes the row's tracks from the mark to the end, through its tooltip wrapper. */
+.c3-room-list-item > .c3-room-item > .c3-room-label { grid-column: 2 / -1; grid-row: 1 / -1; display: grid; grid-template-columns: subgrid; grid-template-rows: subgrid; }
+.c3-room-list-item .c3-room-link.lr-btn { grid-column: 1 / -1; grid-row: 1 / -1; grid-template-columns: subgrid; grid-template-rows: subgrid; column-gap: 0; padding: 0; }
+.c3-room-list-item .c3-room-link > .c3-identity-mark { grid-column: 1; }
+.c3-room-list-item .c3-room-link > :is(strong, .c3-room-activity) { grid-column: 2; padding-inline-start: var(--room-content-gap); }
+/* The two controls of the first line stand over the name's button, each a square of the line's height. */
+.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) { grid-row: 1; z-index: 1; display: flex; }
+.c3-room-voice-toggle { grid-column: 1; justify-content: flex-end; }
+.c3-room-manage { grid-column: 4; }
+.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) > .lr-comic-tip-wrap { display: flex; }
+.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) .lr-btn { --button-size: var(--room-line); --button-padding: 0; --button-icon-size: 16px; width: var(--room-line); min-width: var(--room-line); border: 0; border-radius: 8px; box-shadow: none; }
+/* The disclosure's target reaches into the list's inset, and what it paints stays inside the row. */
+.c3-room-list-item .c3-room-voice-toggle .lr-btn { --button-icon-size: 12px; --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
+  width: calc(var(--room-disclosure-width) + var(--room-disclosure-reach)); min-width: 0; margin-inline-start: calc(-1 * var(--room-disclosure-reach)); padding-inline-start: var(--room-disclosure-reach); }
+.c3-room-voice-toggle .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
+.c3-room-voice-toggle .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
+.c3-room-voice-toggle .lr-btn > svg { position: relative; }
 .c3-room-voice-toggle [aria-expanded="false"] > svg { transform: rotate(-90deg); }
 .c3-room-voice-toggle .lr-btn > svg { transition: transform var(--motion-control) var(--spring); }
-.c3-room-link.lr-btn { --control-hover-transform: none; --control-press-transform: scale(.99); display: grid; grid-template-columns: var(--room-icon-size, 21px) minmax(0, 1fr); gap: 3px var(--room-content-gap, 9px); align-items: center; justify-content: stretch; width: 100%; height: auto; min-width: 0; min-height: 46px; padding: var(--room-row-padding, 8px) var(--room-content-inset, 10px); border: 0; color: var(--muted); text-align: start; box-shadow: none; }
-.c3-room-link > .c3-identity-mark { grid-column: 1; grid-row: 1; justify-self: center; }
-.c3-room-link strong { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; line-height: 1.4; }
-.c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
-.c3-room-activity { grid-column: 2; grid-row: 2; }
-.c3-room-activity:empty { display: none; }
-.c3-room-manage { flex: 0 0 var(--control-dense-size); margin-inline-end: 4px; }
-.c3-room-manage > .lr-comic-tip-wrap { display: flex; }
-.c3-room-item[data-offline] .c3-room-link > .c3-identity-mark { opacity: .55; }
-.c3-room-order-help { margin: 4px 10px 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+/* Who is in the room: a picture at the end of the second line, on the edge the settings end on. It is not a
+   control, so the pointer passes through it to the row. */
+.c3-room-faces { grid-column: 3 / -1; grid-row: 2; justify-self: end; z-index: 1; display: flex; align-items: center; min-height: 20px; padding-inline-end: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.c3-room-faces > .lr-person { width: 16px; height: 20px; }
+.c3-room-faces > .lr-person + .lr-person { margin-inline-start: -5px; }
+.c3-room-faces > span { margin-inline-start: 4px; }
+/* The people of a room are one level in: each stands under the room's name. */
+.c3-room-people { padding: 0 8px 6px var(--room-text-start); }
+.c3-room-people .c3-user { min-height: 28px; padding: 0; }
+.c3-room-people .c3-person-identity { gap: 8px; }
+.c3-room-people .c3-person-identity :is(.lr-person, .c3-avatar-preview > .lr-person) { width: 18px; height: 22px; }
+.c3-room-people .c3-person-copy strong { font-size: 14px; font-weight: 500; }
+.c3-room-people .c3-person-copy small { display: none; }
+
+.c3-room-order-help { margin: 4px 0 8px; padding-inline: var(--room-text-start) 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .c3-room-list-item[data-ordering] { display: flex; flex-wrap: wrap; align-items: center; border-radius: 8px; }
-.c3-room-list-item[data-ordering] > .c3-room-item { order: 0; flex: 1 0 100%; min-width: 0; --room-disclosure-width: 0px; }
-.c3-room-list-item[data-ordering] .c3-room-voice-toggle { display: none; }
-.c3-room-order-controls { order: 1; display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 0; padding-inline: 6px; }
+.c3-room-list-item[data-ordering] > .c3-room-item { order: 0; flex: 1 0 100%; min-width: 0; }
+/* The handle stands under the mark and the last step under the settings, so ordering keeps the row’s two edges. */
+.c3-room-order-controls { order: 1; display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 0;
+  padding-inline: calc(var(--room-disclosure-width) + (var(--room-icon-size) - var(--control-dense-size)) / 2) calc(var(--room-end-inset) + (var(--room-line) - var(--control-dense-size)) / 2); }
 .c3-room-order-controls > [draggable] { margin-inline-end: auto; }
 .c3-room-order-controls > [draggable] { cursor: grab; }
 .c3-room-order-controls > [draggable]:active { cursor: grabbing; }
 .c3-room-list-item[data-drop] { outline: 2px solid var(--ink); outline-offset: -2px; }
-@media (any-pointer: coarse) {
-  .c3-room-list-item { --room-disclosure-width: var(--control-compact-size); }
-  .c3-room-list-item .c3-room-manage .lr-btn { --button-size: var(--control-compact-size); }
+/* A finger gets the larger target; a mouse beside a touch screen does not pay for it. */
+@media (pointer: coarse) {
+  .c3-room-navigation { --room-line: var(--control-compact-size); --room-disclosure-width: var(--control-compact-size); }
   .c3-room-order-controls > button { min-width: var(--control-compact-size); min-height: var(--control-compact-size); }
 }
 @media (hover: hover) and (pointer: fine) {
@@ -51,5 +96,9 @@
   .c3-room-item:is(:hover, :focus-within, [data-selected], [data-settings-open]) > .c3-room-manage { visibility: visible; }
 }
 
-.c3-room-list-item > .c3-room-item[data-compact] { display: flex; min-height: 0; }
-.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; flex-direction: column; justify-content: center; padding: 8px 4px; }
+/* In the rail a room is its mark over the same picture of who is in it, and the whole item selects it. */
+.c3-room-list-item > .c3-room-item[data-compact] { display: flex; padding: 0; }
+.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 4px 6px; }
+.c3-room-item[data-compact] .c3-room-faces { padding: 0; min-height: 15px; }
+.c3-room-item[data-compact] .c3-room-faces > .lr-person { width: 12px; height: 15px; }
+.c3-room-item[data-compact] .c3-room-faces > .lr-person + .lr-person { margin-inline-start: -4px; }

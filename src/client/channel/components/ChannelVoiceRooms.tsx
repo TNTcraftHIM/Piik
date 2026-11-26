@@ -24,11 +24,14 @@ export const VOICE_STATUS_LABEL = {
 } as const;
 
 export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBrowse, renderingBySpeaker, shortcuts,
-  shortcutRoomId, density = "rows", directRoomId }: {
+  shortcutRoomId, density = "rows", directRoomId, toolsHome }: {
   channel: ChannelController; state: ChannelSnapshot; joined: readonly VoiceActivity[];
   browsingRoomId: string; onBrowse: (roomId: string) => void;
   renderingBySpeaker: ReadonlyMap<string, VoiceRendering>;
   shortcuts: Shortcuts; shortcutRoomId?: string; density?: VoiceRoomDensity; directRoomId?: string;
+  /** Where the tools that adjust all of my voice are placed: at the heading's end, or in a bar after the controls they
+   * adjust. A rail holds what acts and nothing that adjusts; opening the list brings the heading back. */
+  toolsHome?: (element: HTMLElement | null) => void;
 }) {
   const { t } = useCopy();
   const label = t("channel.voiceDock.voiceControls");
@@ -43,7 +46,7 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
     const showRoomInfo = !direct || !current || joined.length > 1 || status === "joining";
     return <ChannelVoiceRoomRow key={roomId} channel={channel} activity={activity} name={name}
       current={current} visible={visible} direct={direct} labelled={direct && density === "bar"} status={status} showRoomInfo={showRoomInfo}
-      shortcuts={roomId === shortcutRoomId ? shortcuts : undefined}
+      shortcuts={roomId === shortcutRoomId ? shortcuts : undefined} toolsHome={direct ? toolsHome : undefined}
       onBrowse={() => { dismiss?.(); onBrowse(roomId); }} />;
   };
   const rows = (visible: boolean, dismiss?: () => void) => <div className="c3-voice-rooms">
@@ -51,7 +54,7 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
   </div>;
 
   return <div ref={layout} data-density={density} className="c3-voice-room-layout" role="region" aria-label={label}>
-    {density === "rows" && <h3 className="c3-voice-rooms-heading">{label}</h3>}
+    {density === "rows" && <div className="c3-voice-rooms-head"><h3 className="c3-voice-rooms-heading">{label}</h3><span ref={toolsHome} className="c3-voice-tools-home" /></div>}
     {direct && row(direct, true, true)}
     {density === "rows" ? rows(true) : listed.length > 0 && <ChannelVoiceRoomDisclosure
       count={listed.length} layoutAnchor={density === "rail" ? layout : undefined}>{rows}</ChannelVoiceRoomDisclosure>}
@@ -79,9 +82,10 @@ function ChannelVoiceRoomDisclosure({ count, layoutAnchor, children }: {
   </div>;
 }
 
-function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct, labelled, status, showRoomInfo, shortcuts, onBrowse }: {
+function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct, labelled, status, showRoomInfo, shortcuts, toolsHome, onBrowse }: {
   channel: ChannelController; activity: VoiceActivity; name: string; current: boolean; visible: boolean;
   direct: boolean; labelled: boolean; showRoomInfo: boolean; status: keyof typeof VOICE_STATUS_LABEL; shortcuts?: Shortcuts; onBrowse: () => void;
+  toolsHome?: (element: HTMLElement | null) => void;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -105,6 +109,8 @@ function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct
         onClick={() => toggle("microphone")} />
       <VoiceListeningButton cap={labelled ? "voice.listening.short" : undefined} deafened={deafened} className="is-tonal" keyShortcuts={voiceShortcutAria(listening ?? null)}
         shortcutLabel={listening && shortcuts ? voiceShortcutLabel(listening, shortcuts.mac) : undefined} onClick={() => toggle("listening")} />
+      {/* Act, adjust, and leaving last: what adjusts my voice follows the two controls it adjusts. */}
+      {toolsHome && <span ref={toolsHome} className="c3-voice-tools-home" />}
       <Btn icon="door" cap={labelled ? "voice.leave.short" : undefined} title="voice.leave" hint="hint-voice-leave" size="compact" className="is-tonal"
         onClick={() => { void channel.leaveVoice(roomId).catch(() => {}); }} />
     </div>

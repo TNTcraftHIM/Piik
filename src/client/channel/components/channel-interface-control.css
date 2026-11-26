@@ -1,4 +1,7 @@
-.c3-interface-choice { display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+/* A name and its choice on one line, as the language and the theme stand above it. */
+.c3-interface-choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; font-size: 14px; font-weight: 600; }
+/* The track is as tall as the language track above it. */
+.c3-interface-choice > .lr-toggle { flex: none; --selection-item-size: 36px; }
 .c3-interface-suggestion { display: grid; gap: 12px; width: 100%; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
 .c3-interface-suggestion h3 { margin: 0; font-size: 14px; line-height: 1.5; }
 .c3-interface-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; }
@@ -9,6 +12,5 @@
 .c3-interface-options .is-selected .c3-interface-option-description { color: inherit; }
 .c3-interface-suggestion footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .c3-interface-suggestion footer > span { flex: 1 1 160px; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.c3-forwarding-settings { padding: 8px 0; }
-.c3-forwarding-settings summary { cursor: pointer; padding-block: 6px; font-size: 13px; font-weight: 600; }
+.c3-forwarding-settings summary { cursor: pointer; padding-block: 6px; font-size: 14px; font-weight: 600; }
 .c3-forwarding-settings > p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 4px 0; }

@@ -54,7 +54,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
     {!room.available && <span id={offlineId} className="visually-hidden">{offlineLabel}</span>}
     {activityLabel && <span id={activityId} className="visually-hidden">{activityLabel}</span>}
-    {!compact && (room.authorized || room.canManage) && <span className="c3-room-manage">
+    {!compact && (room.authorized || room.canManage) && <span className="c3-room-manage lr-embedded-actions">
       <Btn icon="sliders" size="dense" quiet title={{ text: settingsLabel }} textTooltip
         expanded={settingsOpen} hasPopup="dialog" tone={settingsOpen ? "on" : undefined} onClick={onManage} />
     </span>}
