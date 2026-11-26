@@ -130,32 +130,47 @@ public final class CapturePlatform implements CaptureRequest {
     if (audio != null && audio.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) audio.stop();
   }
   public synchronized void releaseAudio() {
-    stopAudio();
-    if (audio != null) { audio.release(); audio = null; }
+    AudioRecord released = audio;
+    try {
+      retire(this::stopAudio, () -> { if (released != null) released.release(); });
+    } finally { audio = null; }
   }
   private synchronized void check() { if (error != null) throw new IllegalStateException(error); }
   private synchronized void fail(String message) { error = message; close(); }
   @Override public synchronized void close() {
     if (closed) return;
     closed = true; notifyAll();
-    stopAudio();
-    context.getSystemService(DisplayManager.class).unregisterDisplayListener(resize);
-    if (display != null) { display.release(); display = null; }
-    if (projection != null) { projection.stop(); projection = null; }
-    AppRuntimeService.main.post(() -> {
-      if (service != null) {
-        service.captureRequests.remove(this);
-        if (foreground) {
-          service.projections--; foreground = false;
-          if (AppRuntimeService.instance == service) service.foreground();
-        }
-        service = null;
+    VirtualDisplay oldDisplay = display;
+    MediaProjection oldProjection = projection;
+    display = null;
+    projection = null;
+    retire(this::stopAudio,
+        () -> context.getSystemService(DisplayManager.class).unregisterDisplayListener(resize),
+        () -> { if (oldDisplay != null) oldDisplay.release(); },
+        () -> { if (oldProjection != null) oldProjection.stop(); },
+        () -> AppRuntimeService.main.post(this::captureClosed));
+  }
+  private void captureClosed() {
+    if (service != null) {
+      service.captureRequests.remove(this);
+      if (foreground) {
+        service.projections--; foreground = false;
+        if (AppRuntimeService.instance == service) service.foreground();
       }
-      MainActivity activity = permissionActivity == null ? null : permissionActivity.get();
-      permissionActivity = null;
-      if (activity != null) activity.captureClosed(this);
-    });
+      service = null;
+    }
+    MainActivity activity = permissionActivity == null ? null : permissionActivity.get();
+    permissionActivity = null;
+    if (activity != null) activity.captureClosed(this);
+  }
+  private static void retire(Runnable... steps) {
+    RuntimeException first = null;
+    for (Runnable step : steps) {
+      try { step.run(); }
+      catch (RuntimeException failure) { if (first == null) first = failure; }
+    }
+    if (first != null) throw first;
   }
   /** Only after the native SurfaceTexture reader has detached and joined. */
-  public synchronized void dispose() { close(); surface.release(); texture.release(); }
+  public synchronized void dispose() { retire(this::close, surface::release, texture::release); }
 }
