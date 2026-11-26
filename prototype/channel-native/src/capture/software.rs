@@ -171,7 +171,7 @@ pub(super) fn run(
             frame_limit = next_limit;
             usage.target_frame_rate(frame_limit.unwrap_or(30));
             cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
-            if frame_limit.is_some() && !repeated {
+            if frame_limit.is_some() && !force {
                 cadence.accept(frame.qpc);
             }
             admission_rate = AdmissionRate::default();
