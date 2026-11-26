@@ -229,3 +229,23 @@ func TestWindowsPartialUnicodeRelease(t *testing.T) {
 		t.Fatalf("release recovery did not deliver only the unmatched KEYUP: %v", calls)
 	}
 }
+
+func TestAbsoluteMousePicturePixel(t *testing.T) {
+	// A 1024-pixel source at -1600 lies 320 pixels from the virtual origin.
+	for _, sample := range []struct {
+		position float64
+		extent   int32
+		pixel    int32
+	}{
+		{0, 1024, 0}, {.99 / 1024, 1024, 0}, {1 / 1024., 1024, 1}, {1.01 / 1024, 1024, 1},
+		{511.99 / 1024, 1024, 511}, {1, 1024, 1023},
+		// Actual picturePoint output for source pixel 2 on a 1920-wide image.
+		{0.001041666666666663, 1920, 2},
+	} {
+		code := absoluteMouseCoordinate(sample.position, -1600, sample.extent, -1920, 4480)
+		got := int32(int64(code)*4480/65536) - 320
+		if got != sample.pixel {
+			t.Fatalf("position %g reached %d, want %d", sample.position, got, sample.pixel)
+		}
+	}
+}

@@ -250,6 +250,18 @@ func buttonInput(button int, down bool) (winInput, error) {
 	return input, nil
 }
 
+// The Viewer sends a fraction of the picture's continuous extent. Select its
+// physical pixel, then the midpoint of the integer Win32 codes for that pixel.
+func absoluteMouseCoordinate(position float64, start, extent, origin, size int32) int32 {
+	const rounding = 0x1p-52 // Viewer division and rotation can round an exact pixel boundary down.
+	local := min(int64((position+rounding)*float64(extent)), int64(extent)-1)
+	pixel := max(int64(0), min(int64(size)-1, int64(start)-int64(origin)+local))
+	width := int64(size)
+	first := (pixel*65536 + width - 1) / width
+	last := ((pixel+1)*65536 - 1) / width
+	return int32((first + last) / 2)
+}
+
 func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 	switch e.Type {
 	case "move":
@@ -263,9 +275,9 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		if int32(w) < 2 || int32(h) < 2 {
 			return errors.New("desktop is unavailable")
 		}
-		px := float64(b.left) + e.X*float64(b.width-1) - float64(int32(x))
-		py := float64(b.top) + e.Y*float64(b.height-1) - float64(int32(y))
-		return s.inject(winInput{Mouse: mouseInput{X: int32(px * 65535 / float64(int32(w)-1)), Y: int32(py * 65535 / float64(int32(h)-1)), Flags: 0xc001}})
+		dx := absoluteMouseCoordinate(e.X, b.left, b.width, int32(x), int32(w))
+		dy := absoluteMouseCoordinate(e.Y, b.top, b.height, int32(y), int32(h))
+		return s.inject(winInput{Mouse: mouseInput{X: dx, Y: dy, Flags: 0xc001}})
 	case "relative":
 		if e.DX < -32767 || e.DX > 32767 || e.DY < -32767 || e.DY > 32767 {
 			return errors.New("invalid relative pointer")
