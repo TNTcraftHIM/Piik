@@ -2460,6 +2460,25 @@ test("voice shortcut preserves the whole batch, each room's buttons and membersh
   } finally { session.close(); }
 });
 
+test("the microphone shortcut restores both rooms after their shared device ends", async () => {
+  const { session, active, toggle } = await shortcutRooms();
+  const raw = remoteTrack("audio");
+  const getUserMedia = vi.fn().mockResolvedValueOnce(remoteStream("raw", [raw]))
+    .mockResolvedValueOnce(remoteStream("replacement", [remoteTrack("audio")]));
+  microphoneMixer(["first", "second", "restore-first", "restore-second"].map(id => remoteStream(id, [remoteTrack("audio")])));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  try {
+    await session.joinVoice("first");
+    await session.joinVoice("second");
+    expect(active("microphone")).toEqual(["first", "second"]);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    Object.defineProperty(raw, "readyState", { value: "ended" });
+    raw.onended?.call(raw, new Event("ended"));
+    expect(active("microphone")).toEqual([]);
+    await toggle("microphone", ["first", "second"]);
+  } finally { session.close(); }
+});
+
 test.each(["unmute", "join"])("voice shortcut cancels pending permission on %s beside a retained admitted track", async entry => {
   const { session, join, active } = await shortcutRooms();
   const contexts = microphoneMixer([]);

@@ -375,11 +375,14 @@ export class VoiceParticipation {
   captureEnded(id: string, stream: MediaStream): void {
     const capture = this.session.local.get(id);
     if (capture?.stream !== stream) return;
-    const roomId = capture.roomId;
+    this.retireEndedCapture(id, capture.roomId);
+    this.refresh();
+  }
+
+  private retireEndedCapture(id: string, roomId: string): void {
     const { state, sessionId } = this.session.view();
     const member = state?.voice.find(member => member.sessionId === sessionId && member.roomId === roomId);
     this.session.retire(id);
-    this.refresh();
     this.session.send({ type: "unpublish", publicationId: id });
     if (member) this.session.send({ type: "voice", roomId, joined: true, muted: true, deafened: member.deafened });
   }
@@ -453,14 +456,18 @@ export class VoiceParticipation {
         stream = await captureVoiceMicrophone(this.preference, requestSignal);
         requestSignal.throwIfAborted();
         if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
-        const captured = input = new MicrophoneInput(stream, context, this.preference.volume, () => {
-          for (const [id, capture] of [...this.session.local]) if (capture.microphone === captured) this.captureEnded(id, capture.stream);
+        const ended = () => {
+          for (const [id, capture] of this.session.local) {
+            if (capture.microphone === captured) this.retireEndedCapture(id, capture.roomId);
+          }
           captured.close();
           if (this.microphone === captured) this.microphone = null;
-        });
+          this.refresh();
+        };
+        const captured: MicrophoneInput = input = new MicrophoneInput(stream, context, this.preference.volume, ended);
         request.input = captured;
         request.context = null;
-        captured.onProcessingError = error => { captured.close(); this.microphone = null; for (const [id, capture] of [...this.session.local]) if (capture.microphone === captured) this.captureEnded(id, capture.stream); this.session.report(error); };
+        captured.onProcessingError = error => { ended(); this.session.report(error); };
         await captured.configure(stream, Boolean(this.preference.voiceProcessing && this.preference.strongerSuppression));
         // Push to talk and voice activation must hold before the first packet; a gate that fails stops the capture.
         captured.threshold(this.transmission.activationThreshold);
