@@ -38,7 +38,7 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
   const layout = useRef<HTMLDivElement>(null);
   const direct = density === "rows" ? undefined : joined.find(activity => activity.roomId === directRoomId) ?? joined[0];
   const listed = direct ? joined.filter(activity => activity.roomId !== direct.roomId) : joined;
-  const row = (activity: VoiceActivity, visible: boolean, direct = false, dismiss?: () => void) => {
+  const row = (activity: VoiceActivity, visible: boolean, direct = false, dismiss?: () => void, others?: ReactNode) => {
     const { roomId } = activity;
     const name = state.channel.rooms.find(room => room.id === roomId)?.name ?? roomId;
     const current = roomId === browsingRoomId;
@@ -46,18 +46,20 @@ export function ChannelVoiceRooms({ channel, state, joined, browsingRoomId, onBr
     const showRoomInfo = !direct || !current || joined.length > 1 || status === "joining";
     return <ChannelVoiceRoomRow key={roomId} channel={channel} activity={activity} name={name}
       current={current} visible={visible} direct={direct} labelled={direct && density === "bar"} status={status} showRoomInfo={showRoomInfo}
-      shortcuts={roomId === shortcutRoomId ? shortcuts : undefined} toolsHome={direct ? toolsHome : undefined}
+      shortcuts={roomId === shortcutRoomId ? shortcuts : undefined} toolsHome={direct ? toolsHome : undefined} others={others}
       onBrowse={() => { dismiss?.(); onBrowse(roomId); }} />;
   };
   const rows = (visible: boolean, dismiss?: () => void) => <div className="c3-voice-rooms">
     {listed.map(activity => row(activity, visible, false, dismiss))}
   </div>;
 
+  const others = density !== "rows" && listed.length > 0 && <ChannelVoiceRoomDisclosure
+    count={listed.length} layoutAnchor={density === "rail" ? layout : undefined}>{rows}</ChannelVoiceRoomDisclosure>;
   return <div ref={layout} data-density={density} className="c3-voice-room-layout" role="region" aria-label={label}>
     {density === "rows" && <div className="c3-voice-rooms-head"><h3 className="c3-voice-rooms-heading">{label}</h3><span ref={toolsHome} className="c3-voice-tools-home" /></div>}
-    {direct && row(direct, true, true)}
-    {density === "rows" ? rows(true) : listed.length > 0 && <ChannelVoiceRoomDisclosure
-      count={listed.length} layoutAnchor={density === "rail" ? layout : undefined}>{rows}</ChannelVoiceRoomDisclosure>}
+    {/* In a bar the other rooms stand between the room's name and its controls; in the rail they end the column. */}
+    {direct && row(direct, true, true, undefined, density === "bar" ? others : undefined)}
+    {density === "rows" ? rows(true) : density === "rail" && others}
   </div>;
 }
 
@@ -82,10 +84,10 @@ function ChannelVoiceRoomDisclosure({ count, layoutAnchor, children }: {
   </div>;
 }
 
-function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct, labelled, status, showRoomInfo, shortcuts, toolsHome, onBrowse }: {
+function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct, labelled, status, showRoomInfo, shortcuts, toolsHome, others, onBrowse }: {
   channel: ChannelController; activity: VoiceActivity; name: string; current: boolean; visible: boolean;
   direct: boolean; labelled: boolean; showRoomInfo: boolean; status: keyof typeof VOICE_STATUS_LABEL; shortcuts?: Shortcuts; onBrowse: () => void;
-  toolsHome?: (element: HTMLElement | null) => void;
+  toolsHome?: (element: HTMLElement | null) => void; others?: ReactNode;
 }) {
   const { t } = useCopy();
   const id = useId();
@@ -103,6 +105,7 @@ function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct
         <button id={id} type="button" aria-current={current ? "true" : undefined} onClick={onBrowse}>{name}</button>
       </Tooltip>
     </div>}
+    {others}
     <div className="c3-voice-room-actions">
       <VoiceMicrophoneButton cap={labelled ? "host.device.microphone" : undefined} active={!muted} level={level} disabled={microphoneDisabled} cancelPending={microphonePending} className="is-tonal"
         keyShortcuts={voiceShortcutAria(microphone ?? null)} shortcutLabel={microphone && shortcuts ? voiceShortcutLabel(microphone, shortcuts.mac) : undefined}

@@ -136,7 +136,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // Where chat's toggle stands: with people in the room's heading, except on a phone whose heading is one line.
   // Its heading has no room there, and its conversation opens just above my bar. The narrowest phones wrap the
   // heading to a second line, which has the room again.
-  const chatInBar = phone && workspaceWidth > 360;
+  const chatInBar = phone && workspaceWidth > 370;
   const minimal = layout === "minimal";
   const bar = phone || minimal;
   const [roomListFolded, setRoomListFolded] = useState(() => readRoomPreferences().roomListFolded);
@@ -588,7 +588,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               expanded={newRoom !== null} disabled={!connected} onClick={() => setNewRoom("")} />}
             </div>
           </div>
-          {!roomListCompact && orderingRooms && <p id="c3-room-order-help" className="c3-room-order-help">{t("room.order.help")}</p>}
+          {!roomListCompact && orderingRooms && <p className="c3-room-order-help">{t("room.order.scope")}<span id="c3-room-order-help" className="visually-hidden">{t("room.order.help")}</span></p>}
           <span className="visually-hidden" role="status">{orderAnnouncement}</span>
           <nav className="c3-rooms" aria-label={t("channel.previewPage.rooms")}>
             {roomGroups.flatMap(({ available, rooms: groupedRooms }) => [

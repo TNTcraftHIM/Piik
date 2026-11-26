@@ -75,17 +75,14 @@
 .c3-room-name .c3-room-title { min-width: 0; }
 .c3-room-name h2 { min-width: 0; font-size: 19px; letter-spacing: -.02em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-room-name > .c3-room-invitation-entry { border-inline-start: 1px solid var(--line); padding-inline-start: 8px; }
-.c3-room-actions, .c3-room-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.c3-room-tools { display: flex; align-items: center; gap: 6px; flex: none; }
 .c3-room-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; flex: none; max-width: 100%; }
-.c3-room-actions { min-width: 0; max-width: 100%; }
 .c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
 .c3-room-tools { gap: 4px; }
-.c3-room-actions:not(:empty) + .c3-room-tools { border-inline-start: 1px solid var(--line); padding-inline-start: 12px; }
 .c3-room-heading .c3-share-actions > .c3-share-control:nth-child(2) .lr-cap { display: none; }
 .c3-voice-joined { display: inline-flex; align-items: center; gap: 7px; padding: 8px 4px; color: var(--live-ink); font-size: 13px; font-weight: 650; white-space: nowrap; }
 .c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-inset-radius); padding: 10px 11px; font: inherit; font-size: 13px; }
 .c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
-.c3-copy-fallback { display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
 /* Stable content slots also move into the room tool without recreating players. */
 .c3-main-body { grid-column: 2 / 3; grid-row: 3; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
 .c3-shell[data-companion="none"] :is(.c3-main-body, .c3-room-presence) { grid-column-end: 4; }
@@ -119,7 +116,6 @@
 .c3-voice-talk-muted:is(:popover-open, .\:popover-open) { display: flex; align-items: center; gap: 6px; }
 .c3-personal .c3-identity { padding-block: 8px; }
 .c3-personal .c3-identity > svg { width: 26px; height: 34px; }
-.c3-control-divider { align-self: stretch; width: 1px; background: var(--line); margin: 7px 3px; }
 .c3-notice { flex: none; margin: 12px 20px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); font-size: 12px; line-height: 1.6; }
 .c3-notice-message { flex: 1; min-width: 0; }
 .c3-notice-message > .c3-settings-error { margin: 0; }
@@ -159,45 +155,6 @@
   .c3-people-panel .c3-participant-status {
     min-width: var(--control-compact-size);
     min-height: var(--control-compact-size);
-  }
-}
-@container channel-shell (max-width: 1100px) {
-  .c3-room-heading { gap: 8px; padding: 11px 12px; }
-}
-@container channel-site-bar (width <= 560px) {
-  .c3-site-identity { gap: 4px; }
-  .c3-site-name .c3-identity-mark { display: none; }
-  .c3-site-name .lr-btn { grid-template-columns: minmax(0, 1fr) 12px; }
-  .c3-site-name .lr-btn .lr-cap { grid-column: 1; }
-  .c3-site-name .lr-btn > svg { grid-column: 2; }
-}
-@container channel-site-bar (width <= 360px) {
-  .c3-site-bar :is(.lr-app-connect, #c3-rooms-trigger) { width: var(--control-compact-size); padding: 0; }
-  .c3-site-bar :is(.lr-app-connect, #c3-rooms-trigger) > .lr-cap { display: none; }
-}
-@container channel-shell (max-width: 600px) {
-  .c3-room-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
-  .c3-room-name { grid-column: 1; grid-row: 1; }
-  .c3-room-toolbar { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; }
-  .c3-room-toolbar .c3-room-tools { margin-inline-start: auto; }
-  .c3-room-actions:empty { display: none; }
-}
-@container channel-room (max-height: 680px) {
-  .c3-workspace.has-screens .c3-monitor { --stage-padding: var(--c3-compact-stage-padding); gap: 8px; }
-  .c3-workspace .c3-conversation { padding: 8px 12px; gap: 8px; }
-}
-@container channel-room (max-height: 420px) {
-  .c3-other-activities { max-height: min(96px, 30cqb); margin: 6px 12px; gap: 0; }
-}
-@container channel-shell (max-height: 680px) {
-  .c3-personal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; padding: 2px 8px 4px; gap: 2px 4px; }
-  .c3-personal .c3-voice-entry { grid-column: 1 / -1; grid-row: 1; padding: 0 4px; gap: 4px; }
-  .c3-personal .c3-voice-entry small, .c3-personal .c3-identity small { display: none; }
-  .c3-personal .c3-identity > svg { width: 20px; height: 26px; }
-  .c3-personal .c3-identity strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .c3-room-presence { flex-direction: row; justify-content: center; gap: 8px; padding-block: 4px; }
-  @media (max-width: 700px) {
-    .c3-personal .c3-voice-entry { grid-column: 1; }
   }
 }
 @media (min-width: 701px) and (max-height: 700px) {
