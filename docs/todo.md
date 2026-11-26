@@ -33,9 +33,12 @@ the feedback period; they do not delay that delivery.
   product timeout change from that result.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
-  changing the selected device. Check audible message alerts with the App in
-  the foreground and background. Room microphones, source audio inputs and
-  system-output capture retain their separate scopes.
+  changing the selected device. Check audible message alerts with the Windows
+  App focused and in the background, including when it is visible but unfocused
+  or behind another fullscreen window. Check alert suppression while its room's
+  conversation popout is focused. Compare throw sounds in their intended window
+  states. Room microphones, source audio inputs and system-output capture retain
+  their separate scopes.
 - [ ] **Capture device loss.** On real hardware, validate what a Windows share
   does when its graphics device is lost (`capture/gpu.rs`, `capture/frames.rs`),
   then state the accepted behaviour in the
@@ -45,7 +48,9 @@ the feedback period; they do not delay that delivery.
   matching-package GUI checks for document navigation, popup selection,
   consecutive source replacements and a viewer reselecting its local video.
   Verify retained viewing, retired media grants and window-group closure through
-  the actual Native windows; keep member-site field acceptance separate.
+  the actual Native windows. After an explicit stop, verify the waiting tile,
+  viewer dismissal and a separately started share that requires a new Watch
+  action. Keep member-site field acceptance separate.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.

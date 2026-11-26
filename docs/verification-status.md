@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-25
+Last updated: 2026-11-26
 
 Internal 3.0 evidence spans several revisions. Each package receipt identifies the
 build and workload it covers. Delivery readiness and published 2.x verification
@@ -32,7 +32,11 @@ static package checks; device behavior was not inferred from that build.
   access with an offline holder, archive restoration and invalid-archive rejection.
   Protocol-47 packaged Linux restart retained history lineage; restoring a room
   archive replaced it atomically while serving the archived rows through signed
-  history replies.
+  history replies. The frozen beta.56 Windows App and matching text participant
+  created a room and message, exited, and reopened the same data directory.
+  The original credential restored the same identity, room and confirmed row.
+  Actual Domain v1 and room v11 SQLite samples passed their integrity checks;
+  this used synthetic local data and two orderly process exits.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts
