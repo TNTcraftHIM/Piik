@@ -520,6 +520,36 @@ async fn failed_pair_retirement_reports_child_panic_after_sibling_closes() -> Re
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn aborted_runtime_closes_in_progress_turn_tls_setup() -> Result<()> {
+    use tokio::io::AsyncReadExt;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let server = IceServer {
+        urls: vec![format!("turns:{}", listener.local_addr()?)],
+        username: "test".into(),
+        credential: "test".into(),
+    };
+    let mut runtime = Runtime::new(None);
+    let (events, _events) = mpsc::channel(32);
+    let (_, demand) = watch::channel(BandwidthDemand { minimum_bps: 0, desired_bps: None });
+    let _pair = runtime.add(
+        Uuid::new_v4(), None, None, events, Arc::new(AtomicBool::new(false)),
+        Arc::new(AtomicU8::new(0)), demand, Arc::new(Notify::new()), &[server],
+    ).await?;
+    let mut handshake = tokio::time::timeout(Duration::from_secs(5), async {
+        let (mut socket, _) = listener.accept().await?;
+        ensure!(socket.read_u8().await? == 22, "expected the TLS handshake");
+        Ok::<_, anyhow::Error>(socket)
+    }).await??;
+
+    runtime.task.abort();
+    ensure!((&mut runtime.task).await.is_err_and(|error| error.is_cancelled()));
+    tokio::time::timeout(Duration::from_secs(1), tokio::io::copy(&mut handshake, &mut tokio::io::sink()))
+        .await.context("pump retirement left the TURN TLS handshake open")??;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn aborted_runtimes_release_their_sockets_and_server_udp_lease() -> Result<()> {
     use crate::peer::tests::support::{endpoint, exchange, open};
     let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
@@ -1117,11 +1147,7 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
                 .map(|socket| socket.local_addr())
                 .collect::<std::io::Result<_>>()?;
             ensure!(owned == bound);
-            ensure!(
-                engine.discovery.is_none()
-                    && engine.turn_setup_task.is_none()
-                    && engine.turn.is_empty()
-            );
+            ensure!(engine.connectivity_tasks.is_empty() && engine.turn.is_empty());
             Ok(())
         })
         .await?;

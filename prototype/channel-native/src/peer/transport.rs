@@ -32,7 +32,7 @@ use str0m::{
 use tokio::{
     net::UdpSocket,
     sync::{mpsc, oneshot, watch, Notify, OwnedSemaphorePermit, Semaphore},
-    task::JoinHandle,
+    task::{JoinHandle, JoinSet},
 };
 use uuid::Uuid;
 
@@ -441,7 +441,7 @@ pub(crate) struct Engine {
     rtc: Rtc,
     handle: Transport,
     sockets: Vec<Arc<UdpIo>>,
-    discovery: Option<JoinHandle<()>>,
+    connectivity_tasks: JoinSet<()>,
     #[cfg(not(target_os = "android"))]
     host_refresh: Option<HostRefresh>,
     nat64: Option<nat64::Bootstrap>,
@@ -449,7 +449,6 @@ pub(crate) struct Engine {
     discovery_routes: HashMap<rtc_stun::message::TransactionId, discovery::Route>,
     turn: HashMap<turn::Key, turn::Endpoint>,
     turn_setup: mpsc::Receiver<turn::Endpoint>,
-    turn_setup_task: Option<JoinHandle<()>>,
     retired_turn: Vec<usize>,
     events: EventTarget,
     overflow: Arc<AtomicBool>,
@@ -562,8 +561,8 @@ impl Runtime {
                             engine.drain(); engines.insert(id,engine);
                             let engine=engines.get_mut(&id).unwrap();
                             if let Some((config,turn))=connectivity {
-                                engine.discovery=Some(tokio::spawn(discovery::gather(engine.handle.clone(),config)));
-                                engine.turn_setup_task=Some(tokio::spawn(turn::setup(engine.handle.clone(),turn)));
+                                engine.connectivity_tasks.spawn(discovery::gather(engine.handle.clone(), config));
+                                engine.connectivity_tasks.spawn(turn::setup(engine.handle.clone(), turn));
                             }
                             let _=done.send(());
                         }
@@ -989,7 +988,7 @@ impl Runtime {
             rtc,
             handle: handle.clone(),
             sockets,
-            discovery: None,
+            connectivity_tasks: JoinSet::new(),
             #[cfg(not(target_os = "android"))]
             host_refresh: None,
             nat64: (!local_input && (has_ipv6 || can_refresh_ipv6))
@@ -997,7 +996,6 @@ impl Runtime {
             discovery_routes: HashMap::new(),
             turn: HashMap::new(),
             turn_setup,
-            turn_setup_task: None,
             retired_turn: Vec::new(),
             events,
             overflow,
@@ -1886,14 +1884,7 @@ impl Engine {
             let _ = watcher.task.await;
         }
         self.nat64.take();
-        if let Some(task) = self.discovery.take() {
-            task.abort();
-            let _ = task.await;
-        }
-        if let Some(task) = self.turn_setup_task.take() {
-            task.abort();
-            let _ = task.await;
-        }
+        self.connectivity_tasks.shutdown().await;
         self.turn_setup.close();
         while self.turn_setup.try_recv().is_ok() {}
         self.close_turn();
