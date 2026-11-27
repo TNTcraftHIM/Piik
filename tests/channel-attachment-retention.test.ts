@@ -188,7 +188,7 @@ test("gaining access to another room reads only its cached attachments and downl
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
-test("a pending peer read follows the committed copy when the original disappears", async () => {
+test.each(["active", "cancelled"])("a pending peer read follows the committed copy and withdraws an unreadable source when the request is %s", async request => {
   const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
   const original = new File(["GIF89a"], attachment.name), copy = new File(["GIF89a"], attachment.name);
   let rejectRead!: (reason: Error) => void, commit!: () => void;
@@ -198,7 +198,7 @@ test("a pending peer read follows the committed copy when the original disappear
   vi.spyOn(FileStore.prototype, "retain").mockImplementation(() => new Promise(resolve => {
     commit = () => resolve({ file: copy, evicted: [] });
   }));
-  const readResult = vi.fn(() => []), failed = vi.fn(() => [{ type: "failed", key, code: "file_source_unavailable" }]);
+  const readResult = vi.fn(() => []), failed = vi.fn(() => request === "active" ? [{ type: "failed", key, code: "file_source_unavailable" }] : []);
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await hosting.loadRoomHosting(), FileDelivery: class {
       update() { return []; } next_deadline() {} free() {}
@@ -224,6 +224,7 @@ test("a pending peer read follows the committed copy when the original disappear
     rejectRead(moved);
     await vi.waitFor(() => expect(failed).toHaveBeenCalledExactlyOnceWith(JSON.stringify(key), "gone", "file_source_unavailable"));
     expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: false });
+    expect(files.originalAvailability(key, attachment, false)).toBeUndefined();
   } finally { files.reset(); }
 });
 

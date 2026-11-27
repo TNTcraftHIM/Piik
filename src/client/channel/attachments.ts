@@ -704,7 +704,8 @@ export class ChannelAttachments {
         const failed = () => {
           if (!this.current(runtime)) return;
           const effects = runtime.delivery.request_failed(JSON.stringify(key), effect.requestId, "file_source_unavailable") as Effect[];
-          if (effects.length && source) this.withdraw(source);
+          // A cancelled range can still discover that this holder has lost its file.
+          if (source) this.withdraw(source);
           this.effects(runtime, effects);
         };
         if (!source) { failed(); continue; }
