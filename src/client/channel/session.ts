@@ -962,7 +962,7 @@ export class ChannelSession {
     const request = this.requests.get(reply.requestId);
     const addressed = request?.signedResult && request.roomId === reply.roomId && request.bindingId === reply.bindingId;
     if (addressed && record.type !== request.signedResult && record.type !== "error"
-      && record.type !== "live_message" && record.type !== "message_reactions") {
+      && record.type !== "live_message") {
       this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
       return;
     }
@@ -973,9 +973,8 @@ export class ChannelSession {
         this.patch(this.historyView([reply.roomId]));
       } else this.applyHistoryRemoval(reply.roomId, record);
     }
-    if (record.type === "message_reactions") {
+    if (record.type === "reaction" && record.snapshot?.type === "message") {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
-      return;
     }
     if (record.type === "interaction_ready" || record.type === "reaction" || (record.type === "error" && !request)) {
       const reader = this.readings.get(reply.roomId)?.reader;
@@ -1006,6 +1005,10 @@ export class ChannelSession {
       this.applyHistory(reply.roomId, history, page);
     } else if (record.type === "confirmed" && !messageRemoved(history?.changes, record.message.seq)) {
       request.result?.(record);
+      const { id, seq, reactions } = record.message;
+      if (reactions.revision > 0) this.applyReactionSnapshot(reply.roomId, reply.bindingId, {
+        messageId: id, messageSeq: seq, ...reactions,
+      });
       this.applyMessage(reply.roomId, record.message, record.inserted);
     }
     this.retireRequest(reply.requestId);
@@ -1288,7 +1291,6 @@ export class ChannelSession {
           interactionChanged: () => this.publishInteractions(),
           feedback: event => this.playFeedback(id, event),
           userName: userId => this.view.state?.users.find(user => user.id === userId)?.name ?? this.view.profiles.get(userId)?.name,
-          messageReactions: snapshot => this.applyReactionSnapshot(id, bindingId, snapshot),
           publicationReactions: snapshot => this.applyPublicationReactionSnapshot(id, snapshot),
         });
         reading = { reader, socket: this.socket, ready: this.request({ type: "browse", roomId: id, active: true }) };

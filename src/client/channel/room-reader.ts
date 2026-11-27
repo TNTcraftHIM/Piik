@@ -1,7 +1,7 @@
 import { memberName } from "./member-name";
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
 import { MAX_CHAT_CODE_POINTS, type ReactionId } from "../../shared/room-interactions";
-import type { ChannelCommand, ChannelMessage, ConversationReply, MessageReactionSnapshot, PublicationReactionSnapshot } from "./protocol";
+import type { ChannelCommand, ChannelMessage, ConversationReply, PublicationReactionSnapshot } from "./protocol";
 
 type InteractionCommand = Extract<ChannelCommand, { type: "interaction_ready" | "react" }>;
 type InteractionReply = Extract<ConversationReply["record"], { type: "interaction_ready" | "reaction" | "error" }>;
@@ -12,7 +12,6 @@ interface RoomReaderOptions {
   interactionChanged(): void;
   feedback(event: RoomInteraction): void;
   userName(userId: string): string | undefined;
-  messageReactions(snapshot: MessageReactionSnapshot): void;
   publicationReactions(snapshot: PublicationReactionSnapshot): void;
 }
 
@@ -81,8 +80,7 @@ export class RoomReader {
         return true;
       }
       case "reaction": {
-        if (record.snapshot?.type === "message") this.options.messageReactions(record.snapshot);
-        else if (record.snapshot?.type === "publication") this.options.publicationReactions(record.snapshot);
+        if (record.snapshot?.type === "publication") this.options.publicationReactions(record.snapshot);
         const event = record.event;
         if (!event) {
           interaction.confirm(requestId, record.nonce);

@@ -114,7 +114,8 @@ Avatars use PNG or WebP data URLs. The complete URL can contain at most 24 KiB.
   bounded retained page. Use the first message's sequence for the preceding
   page when `hasMore` is true.
 - `confirmed` reports the Host's receipt for this participant's send, including
-  a retained receipt returned on retry. `chat()` resolves to the same message.
+  a retained receipt returned on retry. `chat()` resolves to the same stored
+  message, including its current reaction counts and revision.
   `deleteOwnMessage()` takes a confirmed message authored by the caller and
   waits for the signed deletion receipt.
 - `react(seq, messageId, reaction)` returns the nonce, confirmed message counts

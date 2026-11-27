@@ -844,21 +844,18 @@ async function roomOwner(initial, serverRoom) {
     await action(2, `${method}(${JSON.stringify(room)})`);
     const records = (await sample(2)).protocol.filter(event => event.direction === 'received'
       && event.type === 'conversation' && event.room === room);
-    const end = records.findLast(event => event.result === 'history_end');
-    assert(end, 'a signed history request completes with its own END record');
-    assert(end.historyCount > 0 && end.historyCount <= 50, 'a history page advances within the 50-record limit');
-    assert(!historyPages.some(previous => previous.requestId === end.request), 'each page has a fresh request');
-    const pageRecords = records.filter(event => event.request === end.request);
-    assert.equal(pageRecords.filter(event => event.result === 'history_message').length, end.historyCount);
-    const reactionSnapshots = pageRecords.filter(event => event.result === 'message_reactions').length;
-    assert.equal(reactionSnapshots, end.historyCount, 'each history message retains its signed reaction snapshot');
-    assert.equal(pageRecords.filter(event => event.result === 'history_end').length, 1);
+    const signedPage = records.findLast(event => event.result === 'history_page');
+    assert(signedPage, 'a signed history request completes with a page');
+    assert(signedPage.historyCount > 0 && signedPage.historyCount <= 50, 'a history page advances within the 50-record limit');
+    assert(!historyPages.some(previous => previous.requestId === signedPage.request), 'each page has a fresh request');
+    assert.equal(records.filter(event => event.request === signedPage.request).length, 1);
+    assert.equal(signedPage.historyReactionCount, signedPage.historyCount, 'each history message includes its signed reaction snapshot');
     const current = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message =>
       ({ seq: message.seq, characters: message.text.length }))`);
-    assert.equal(current.length, page.length + end.historyCount, 'each signed page adds distinct rows');
+    assert.equal(current.length, page.length + signedPage.historyCount, 'each signed page adds distinct rows');
     if (page.length) assert(current[0].seq < page[0].seq, 'the history cursor advances to older rows');
     page = current;
-    historyPages.push({ requestId: end.request, messages: end.historyCount, reactionSnapshots, endMarkers: 1 });
+    historyPages.push({ requestId: signedPage.request, messages: signedPage.historyCount, reactionSnapshots: signedPage.historyReactionCount });
   }
   assert(historyPages[0].messages < 50, 'escaped messages reach the byte limit before the record limit');
   assert.deepEqual(page.slice(-100).map(message => message.characters), Array(100).fill(2000),

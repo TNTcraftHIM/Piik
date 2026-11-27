@@ -1172,7 +1172,8 @@ impl Channel {
         if let Some(crate::conversation::ConversationRecord::Confirmed { message, .. }) =
             reply.map(|reply| reply.record)
         {
-            if message.seq == 0 || message.seq > i64::MAX as u64 {
+            let seq = message.message.seq;
+            if seq == 0 || seq > i64::MAX as u64 {
                 return Err("invalid_message");
             }
             if let Some(projection) = self
@@ -1180,8 +1181,8 @@ impl Channel {
                 .get_mut(&address.room_id)
                 .and_then(|room| room.projection.as_mut())
             {
-                changed = message.seq > projection.last_message_seq;
-                projection.last_message_seq = projection.last_message_seq.max(message.seq);
+                changed = seq > projection.last_message_seq;
+                projection.last_message_seq = projection.last_message_seq.max(seq);
             }
         }
         let delivery = if changed {

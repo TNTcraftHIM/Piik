@@ -2151,7 +2151,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         },
     )
     .await;
-    assert!(matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.seq == 1));
+    assert!(matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.message.seq == 1));
     let client = reqwest::Client::new();
     let clear = |credential: &str| client.post(format!("http://{address}/prototype/channel/rooms/media/clear")).bearer_auth(credential);
     assert_eq!(clear(&creator_credential).send().await.unwrap().status(), 403);
@@ -2541,7 +2541,7 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
             )
             .await;
             assert!(
-                matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.seq == expected)
+                matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.message.seq == expected)
             );
             let history = room_conversation(
                 &mut socket,

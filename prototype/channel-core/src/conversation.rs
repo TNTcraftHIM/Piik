@@ -402,16 +402,13 @@ pub enum ConversationRecord {
         event: Option<ReactionEvent>,
         snapshot: Option<ReactionSnapshot>,
     },
-    MessageReactions {
-        snapshot: MessageReactionSnapshot,
-    },
     InteractionReady {
         server_time: u64,
         reaction_ids: Vec<String>,
         publication_reactions: Vec<PublicationReactions>,
     },
     Confirmed {
-        message: ChatMessage,
+        message: StoredMessage,
         inserted: bool,
     },
     HistorySeekResult {
@@ -441,7 +438,7 @@ impl ConversationRecord {
                 message,
                 inserted: true,
             } => Some(Self::LiveMessage {
-                message: message.clone(),
+                message: message.message.clone(),
             }),
             Self::Reaction { event: Some(_), .. } => Some(self.clone()),
             _ => None,
@@ -563,14 +560,10 @@ impl ConversationAddress {
                 vec![ConversationRecord::HistoryCleared { through_seq }]
             }
             Ok(ConversationResult::History(HistoryResult::Sent(confirmation))) => {
-                let snapshot = confirmation.message.reaction_snapshot();
-                vec![
-                    ConversationRecord::Confirmed {
-                        message: confirmation.message.message,
-                        inserted: confirmation.inserted,
-                    },
-                    ConversationRecord::MessageReactions { snapshot },
-                ]
+                vec![ConversationRecord::Confirmed {
+                    message: confirmation.message,
+                    inserted: confirmation.inserted,
+                }]
             }
             Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => {
                 vec![ConversationRecord::Reaction {
@@ -741,6 +734,21 @@ mod tests {
             .map(|reaction| ((*reaction).to_owned(), u64::MAX))
             .collect();
         message.reactions.revision = u64::MAX;
+        let confirmations = request
+            .address
+            .replies(Ok(ConversationResult::History(HistoryResult::Sent(
+                crate::history::MessageConfirmation { message: message.clone(), inserted: false },
+            ))))
+            .unwrap();
+        assert_eq!(confirmations.len(), 1);
+        let receipt = &confirmations[0];
+        let packet = signer.sign(receipt.address.sender, receipt).unwrap();
+        let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet: packet.clone() }).unwrap();
+        assert!(bytes.len() <= CONVERSATION_FRAME_BYTES);
+        let verified: ConversationReply = verify(&packet, signer.signing_key()).unwrap();
+        assert!(matches!(verified.record, ConversationRecord::Confirmed { message: stored, inserted: false }
+            if stored.reactions == message.reactions));
+
         // Read through the byte-bounded page owner, including an oversized
         // first row. It keeps the accepted large message reachable on its own page.
         let mut page = crate::history::HistoryPage::default();

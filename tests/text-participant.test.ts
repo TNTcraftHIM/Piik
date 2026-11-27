@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { WebSocketServer } from 'ws';
-import { CHANNEL_PROTOCOL, snapshotSchema, type ChannelMessage } from '../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, snapshotSchema, type ChannelMessage, type StoredMessage } from '../src/client/channel/protocol';
 
 test('Node text conversation ignores unrelated media descriptions and retains signed delivery checks', async () => {
   const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
@@ -19,6 +19,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
   const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}/prototype/channel`,
     origin: 'http://127.0.0.1', roomId: 'room', name: 'Text fixture' });
   const commands: string[] = [], live: ChannelMessage[] = [], errors: unknown[] = [];
+  const storedMessage = { ...message, reactions: { revision: 0, counts: {} } };
   let contradictDelete = false;
   const firstLive = new Promise<ChannelMessage>(resolve => client.once('ready', () => client.once('live', resolve)));
   client.on('live', value => live.push(value));
@@ -62,11 +63,11 @@ test('Node text conversation ignores unrelated media descriptions and retains si
               socket.send(JSON.stringify({ type: 'ack', requestId: address.requestId }));
               socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: address.requestId, result: { type: 'done' } }));
               reply({ type: 'live_message', message });
-              if (contradictDelete) reply({ type: 'confirmed', message, inserted: false });
+              if (contradictDelete) reply({ type: 'confirmed', message: storedMessage, inserted: false });
               reply({ type: 'message_deleted', messageSeq: message.seq });
             } else {
               expect(request.command).toMatchObject({ type: 'chat', text: 'notice', attachments: [] });
-              reply({ type: 'confirmed', message: { ...message, text: 'notice' }, inserted: true });
+              reply({ type: 'confirmed', message: { ...storedMessage, text: 'notice' }, inserted: true });
               reply({ type: 'live_message', message: { ...message, text: 'live' } });
             }
           } catch (error) { errors.push(error); socket.terminate(); }
@@ -311,15 +312,18 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
   const policy = rust.create_room_policy(JSON.stringify({ id: 'room', name: 'Room', icon: 'couch',
     creatorId: owner, access: 'public', hidden: false, password: null }));
   let room: InstanceType<typeof rust.RoomHost> | undefined, binding: string, loseConfirmation = true;
-  let original: ChannelMessage | undefined;
+  let original: StoredMessage | undefined;
   // The fixture supplies stored rows; Core owns validation, confirmations and live records.
-  const stored = new Map<string, string>(), broadcasts: ChannelMessage[] = [], errors: unknown[] = [];
+  const stored = new Map<string, StoredMessage>(), broadcasts: ChannelMessage[] = [], errors: unknown[] = [];
+  const confirmedEvents: StoredMessage[] = [];
+  const directReplies: number[] = [];
   const attempts: { requestId: string; bindingId: string; nonce: string }[] = [];
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Expected loopback port');
   const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}`, origin: 'http://127.0.0.1', roomId: 'room', name: 'Retry fixture' });
+  client.on('confirmed', message => confirmedEvents.push(message));
   server.on('connection', socket => socket.on('message', raw => {
     try {
       const command = JSON.parse(raw.toString());
@@ -340,12 +344,13 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
           const work = result.Ok.value, key = JSON.stringify([work.roomId, work.draft.userId, work.draft.nonce]);
           const previous = stored.get(key);
           const confirmation = JSON.parse(rust.prepare_confirmation(JSON.stringify(work.draft), JSON.stringify(previous
-            ? { type: 'existing', message: JSON.parse(previous) } : { type: 'new', lastSeq: stored.size })));
-          if (confirmation.inserted) stored.set(key, JSON.stringify(confirmation.message));
+            ? { type: 'existing', message: previous } : { type: 'new', lastSeq: stored.size })));
+          if (confirmation.inserted) stored.set(key, confirmation.message);
           result = { Ok: { type: 'history', value: confirmation } };
         }
         const { replies, broadcast } = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
         if (broadcast?.record.type === 'live_message') broadcasts.push(broadcast.record.message);
+        directReplies.push(replies.length);
         for (const reply of replies) if (reply.record.type === 'confirmed') original ??= reply.record.message;
         if (loseConfirmation) { loseConfirmation = false; socket.terminate(); }
         else for (const reply of replies) socket.send(JSON.stringify({ type: 'conversation',
@@ -358,13 +363,20 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
     const nonce = randomUUID();
     await expect(client.chat('one business send', { nonce })).rejects.toThrow('disconnected');
     expect(stored.size).toBe(1);
+    const [key, row] = [...stored.entries()][0];
+    const retained = { ...row, reactions: { revision: 2, counts: { heart: 2 } } };
+    stored.set(key, retained);
     await client.reconnect();
-    expect(await client.chat('one business send', { nonce })).toEqual(original);
+    expect(await client.chat('one business send', { nonce })).toEqual(retained);
+    expect(confirmedEvents).toEqual([retained]);
+    expect(directReplies).toEqual([1, 1]);
     expect(attempts.slice(0, 2).map(attempt => attempt.nonce)).toEqual([nonce, nonce]);
     expect(attempts[1].requestId).not.toBe(attempts[0].requestId);
     expect(attempts[1].bindingId).not.toBe(attempts[0].bindingId);
     expect(stored.size).toBe(1);
-    expect(broadcasts).toEqual([original]);
+    const { reactions, ...body } = original!;
+    expect(reactions).toEqual({ revision: 0, counts: {} });
+    expect(broadcasts).toEqual([body]);
     const first = await client.chat('ordinary new send'), second = await client.chat('ordinary new send');
     expect(first.id).not.toBe(second.id);
     expect(attempts[2].nonce).not.toBe(attempts[3].nonce);
