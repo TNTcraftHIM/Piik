@@ -195,9 +195,8 @@ impl Nat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mapping::{part, Aim, Allocator, Budget, Model, Part, PortSet, Sample};
+    use crate::mapping::{Allocator, Model, Sample};
 
-    const BUDGET: Budget = Budget { mappings: 256, packets: 1024 };
     const LANES: Ports = Ports::Lanes { counters: 32, block: 31, stride: 8 };
     const HARD: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 7);
     const EASY: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 9);
@@ -211,18 +210,11 @@ mod tests {
     /// one observer each, a tenth of a second apart. Returns the samples and the time it ended.
     fn survey(nat: &mut Nat, observers: u32, extra: u32) -> (Vec<Sample>, u32) {
         let (mut samples, mut now_ms) = (Vec::new(), 0);
-        let mut ask = |nat: &mut Nat, socket: u32, to: SocketAddrV4, now_ms: &mut u32| {
-            *now_ms += 100;
-            let mapped = SocketAddrV4::new(nat.address, nat.send(socket, to, *now_ms));
-            samples.push(Sample { socket: socket as u16, local_port: local_port(socket), observer: to, sent_ms: *now_ms, mapped });
-        };
-        for socket in 0..2 {
-            for index in 0..observers {
-                ask(nat, socket, observer(index), &mut now_ms);
-            }
-        }
-        for socket in 2..2 + extra {
-            ask(nat, socket, observer(socket % observers), &mut now_ms);
+        let asks = (0..2).flat_map(|socket| (0..observers).map(move |index| (socket, index))).chain((2..2 + extra).map(|socket| (socket, socket % observers)));
+        for (socket, index) in asks {
+            now_ms += 100;
+            let mapped = SocketAddrV4::new(nat.address, nat.send(socket, observer(index), now_ms));
+            samples.push(Sample { socket: socket as u16, local_port: local_port(socket), observer: observer(index), sent_ms: now_ms, mapped });
         }
         (samples, now_ms)
     }
@@ -237,7 +229,7 @@ mod tests {
         assert!(matches!(read(Scope::Any, Ports::Drawn), Allocator::Point { preserved: false, .. }));
         assert!(matches!(read(Scope::AddressAndPort, Ports::Counter { step: 1 }), Allocator::Cursors(cursors) if cursors.len() == 1));
         assert!(matches!(read(Scope::AddressAndPort, LANES), Allocator::Cursors(cursors) if cursors.len() > 3));
-        assert!(matches!(read(Scope::AddressAndPort, Ports::Drawn), Allocator::Set(PortSet::Span { .. })));
+        assert!(matches!(read(Scope::AddressAndPort, Ports::Drawn), Allocator::Drawn { .. }));
     }
 
     #[test]
@@ -255,181 +247,38 @@ mod tests {
         assert_eq!(admits(Scope::AddressAndPort), [true, false, false]);
     }
 
-    /// A NAT with one mapping per socket against one with lanes: the easy side sends to the ports
-    /// the model aims at, and the hard side opens `sockets` toward it. Returns how many of `trials`
-    /// pairs met, and the packets the easy side sent in each.
-    fn point_meets_lanes(observers: u32, extra: u32, sockets: u32, trials: u64) -> (u64, usize) {
-        let (mut met, mut packets) = (0, 0);
-        for seed in 0..trials {
-            let mut hard = Nat::new(seed, HARD, Scope::AddressAndPort, Scope::AddressAndPort, LANES, 0.5);
-            let mut easy = Nat::new(seed + 9_000, EASY, Scope::Any, Scope::AddressAndPort, Ports::Kept, 0.0);
-            let (samples, ended_ms) = survey(&mut hard, observers, extra);
-            let model = Model::read(&samples).unwrap();
-            let easy_port = easy.send(0, observer(0), 0);
-            let easy_model = Model { address: EASY, allocator: Allocator::Point { port: easy_port, preserved: true } };
-            let open_ms = ended_ms + 300;
-            let Some(aim) = model.aim(open_ms, BUDGET) else { continue };
-            let Some(Part::Sweep(windows)) = part(&easy_model, &Aim::Port(easy_port), &aim, HARD, BUDGET) else { continue };
-            // The hard side opens toward the easy side's one mapping, and the easy side sweeps.
-            let opened: Vec<u16> = (0..sockets).map(|socket| hard.send(1_000 + socket, SocketAddrV4::new(EASY, easy_port), open_ms)).collect();
-            let mut reached = false;
-            packets = 0;
-            for window in &windows {
-                for index in 0..window.count {
-                    let port = (i32::from(window.first) + i32::from(window.step) * i32::from(index)) as u16;
-                    easy.send(0, SocketAddrV4::new(HARD, port), open_ms + 50);
-                    packets += 1;
-                    // A packet that finds a mapping of the hard side gets in, and its answer comes back.
-                    reached |= opened.contains(&port)
-                        && hard.receive(port, SocketAddrV4::new(EASY, easy_port)).is_some()
-                        && easy.receive(easy_port, SocketAddrV4::new(HARD, port)) == Some(0);
-                }
-            }
-            met += u64::from(reached);
-        }
-        (met, packets)
+    /// A NAT with one mapping per socket against one with lanes: the hard side opens `sockets`
+    /// toward the easy side's mapping, and the easy side sends to the ports the model aims at.
+    /// Returns how many of `trials` pairs met.
+    fn point_meets_lanes(observers: u32, extra: u32, sockets: u32, trials: u64) -> u64 {
+        (0..trials)
+            .filter(|&seed| {
+                let mut hard = Nat::new(seed, HARD, Scope::AddressAndPort, Scope::AddressAndPort, LANES, 0.5);
+                let mut easy = Nat::new(seed + 9_000, EASY, Scope::Any, Scope::AddressAndPort, Ports::Kept, 0.0);
+                let (samples, ended_ms) = survey(&mut hard, observers, extra);
+                let peer = SocketAddrV4::new(EASY, easy.send(0, observer(0), 0));
+                let open_ms = ended_ms + 300;
+                let windows = Model::read(&samples).unwrap().aim(open_ms, 1_024);
+                let opened: Vec<u16> = (0..sockets).map(|socket| hard.send(1_000 + socket, peer, open_ms)).collect();
+                windows.iter().any(|window| {
+                    (0..window.count).any(|index| {
+                        let port = (i32::from(window.first) + i32::from(window.step) * i32::from(index)) as u16;
+                        easy.send(0, SocketAddrV4::new(HARD, port), open_ms + 50);
+                        // A packet that finds a mapping of the hard side gets in, and its answer comes back.
+                        opened.contains(&port) && hard.receive(port, peer).is_some() && easy.receive(peer.port(), SocketAddrV4::new(HARD, port)) == Some(0)
+                    })
+                })
+            })
+            .count() as u64
     }
 
     #[test]
     fn more_destinations_read_and_more_sockets_opened_meet_more_often() {
         const TRIALS: u64 = 400;
-        let few_one = point_meets_lanes(4, 10, 1, TRIALS);
-        let few_eight = point_meets_lanes(4, 10, 8, TRIALS);
-        let many_one = point_meets_lanes(12, 36, 1, TRIALS);
-        let many_eight = point_meets_lanes(12, 36, 8, TRIALS);
-        eprintln!("point x lanes, met of {TRIALS}: 4 destinations read: 1 socket {few_one:?}, 8 sockets {few_eight:?}; 12 read: 1 socket {many_one:?}, 8 sockets {many_eight:?}");
-        assert!(few_eight.0 > few_one.0 && many_eight.0 > many_one.0);
-        assert!(many_one.0 > few_one.0 && many_eight.0 > few_eight.0);
-        assert!(many_eight.0 * 2 > TRIALS);
-    }
-
-    /// What one side has read of its own NAT: each mapping's time, port and destination.
-    struct Side {
-        nat: Nat,
-        read: Vec<(u32, u16, SocketAddrV4)>,
-        sockets: u32,
-    }
-    impl Side {
-        fn new(nat: Nat) -> Self {
-            Self { nat, read: Vec::new(), sockets: 0 }
-        }
-        /// A new socket sends to `to`; the port is returned as an observer would tell it.
-        fn open(&mut self, to: SocketAddrV4, now_ms: u32) -> u16 {
-            self.sockets += 1;
-            self.nat.send(self.sockets, to, now_ms)
-        }
-        fn ask(&mut self, to: SocketAddrV4, now_ms: u32) -> u16 {
-            let port = self.open(to, now_ms);
-            self.read.push((now_ms, port, to));
-            port
-        }
-        fn allocations(&self) -> Vec<(u32, u16)> {
-            self.read.iter().map(|&(at_ms, port, _)| (at_ms, port)).collect()
-        }
-    }
-
-    /// How a trial of two lane NATs ended.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum End {
-        Met,
-        NoCounter,
-        PastTheNamed,
-        NoHoleIsAMapping,
-        AnotherHoleTookThePort,
-        NothingLandedOnTheCounter,
-    }
-
-    /// Two NATs with lanes. B names the ports next past the counter its readings landed on most.
-    /// For each of them A opens `sockets` toward it and names the holes they left between its
-    /// readings. B reads its counter again and opens sockets toward A's holes for the port that
-    /// is now next; the first of them to land on that counter holds the port named. Returns
-    /// how it ended and the sockets each side used.
-    fn lanes_meet_lanes(seed: u64, observers: u32, sockets: u32, rungs: u16, tries: u32) -> (End, u32, u32) {
-        const LATENCY_MS: u32 = 200;
-        const HOLES: usize = 64;
-        let hard = |seed, address| Nat::new(seed, address, Scope::AddressAndPort, Scope::AddressAndPort, LANES, 0.5);
-        let (mut a, mut b) = (Side::new(hard(seed, HARD)), Side::new(hard(seed + 50_000, EASY)));
-        let mut now_ms = 0;
-        // Both read their counters through every destination, three times each.
-        for _ in 0..3 {
-            for index in 0..observers {
-                now_ms += 20;
-                a.ask(observer(index), now_ms);
-                b.ask(observer(index), now_ms);
-            }
-        }
-        let used = |a: &Side, b: &Side| (a.sockets, b.sockets);
-        let Allocator::Cursors(cursors) = Allocator::of(&b.allocations()) else { return (End::NoCounter, a.sockets, b.sockets) };
-        let (frontier, step) = (cursors[0].last, i32::from(cursors[0].step));
-        let on_counter = |port: u16, from: u16| (1..=40).contains(&((i32::from(port) - i32::from(from)) * step));
-        // The destinations whose mappings landed on that counter read it again later.
-        let readers: Vec<SocketAddrV4> = b.read.iter().filter(|&&(_, port, _)| port == frontier || on_counter(frontier, port)).map(|&(_, _, to)| to).collect();
-        let named: Vec<u16> = (1..=rungs).map(|rung| (i32::from(frontier) + step * i32::from(rung)) as u16).collect();
-        now_ms += LATENCY_MS;
-        // A, for each port named: readings, the sockets toward it, readings, and the holes between.
-        let mut holes: Vec<Vec<u16>> = Vec::new();
-        for &port in &named {
-            let before = a.allocations();
-            now_ms += 20;
-            let opened_ms = now_ms;
-            for _ in 0..sockets {
-                a.open(SocketAddrV4::new(EASY, port), opened_ms);
-            }
-            now_ms += 20;
-            // Two readings toward every destination: a run is found when one of them lands past it.
-            let after: Vec<u16> = (0..2 * observers).map(|index| a.ask(observer(index % observers), now_ms)).collect();
-            holes.push(crate::mapping::holes(&before, opened_ms, &after).into_iter().take(HOLES).collect());
-        }
-        now_ms += LATENCY_MS;
-        // B reads its counter again to learn which named port is next.
-        let mut next = None;
-        for index in 0..8 {
-            now_ms += 5;
-            let port = b.ask(readers[index % readers.len()], now_ms);
-            if on_counter(port, frontier) {
-                next = Some((i32::from(port) + step) as u16);
-                break;
-            }
-        }
-        let Some(rung) = next.and_then(|next| named.iter().position(|port| *port == next)) else { return (End::PastTheNamed, a.sockets, b.sockets) };
-        let live = |a: &Side, hole: u16| a.nat.receive(hole, SocketAddrV4::new(EASY, named[rung])).is_some();
-        if !holes[rung].iter().any(|hole| live(&a, *hole)) {
-            return (End::NoHoleIsAMapping, a.sockets, b.sockets);
-        }
-        for _ in 0..tries {
-            for &hole in &holes[rung] {
-                now_ms += 1;
-                if b.open(SocketAddrV4::new(HARD, hole), now_ms) == named[rung] {
-                    // This socket holds the port named. It meets A when the hole is a mapping of A's.
-                    let met = live(&a, hole) && b.nat.receive(named[rung], SocketAddrV4::new(HARD, hole)).is_some();
-                    let (a_used, b_used) = used(&a, &b);
-                    return (if met { End::Met } else { End::AnotherHoleTookThePort }, a_used, b_used);
-                }
-            }
-        }
-        (End::NothingLandedOnTheCounter, a.sockets, b.sockets)
-    }
-
-    #[test]
-    fn two_lane_nats_meet_sometimes() {
-        const TRIALS: u64 = 300;
-        let rate = |observers, sockets, rungs, tries| {
-            let (mut ends, mut a_used, mut b_used) = ([0u64; 6], 0u64, 0u64);
-            for seed in 0..TRIALS {
-                let (end, a, b) = lanes_meet_lanes(seed, observers, sockets, rungs, tries);
-                ends[end as usize] += 1;
-                a_used += u64::from(a);
-                b_used += u64::from(b);
-            }
-            (ends, a_used / TRIALS, b_used / TRIALS)
-        };
-        let small = rate(12, 8, 3, 6);
-        let large = rate(24, 24, 3, 8);
-        let wide = rate(24, 24, 2, 8);
-        eprintln!("lanes x lanes of {TRIALS}, ([met, no counter, past the named, no hole is a mapping, another hole took the port, nothing landed], A's sockets, B's sockets):
-  12 destinations read, 8 sockets for each of 3 ports named: {small:?}
-  24 destinations, 24 sockets, 3 ports: {large:?}
-  24 destinations, 24 sockets, 2 ports: {wide:?}");
-        assert!(small.0[End::Met as usize] > 0);
+        let few = [point_meets_lanes(4, 10, 1, TRIALS), point_meets_lanes(4, 10, 8, TRIALS)];
+        let many = [point_meets_lanes(12, 36, 1, TRIALS), point_meets_lanes(12, 36, 8, TRIALS)];
+        eprintln!("point x lanes, met of {TRIALS} with one and with eight sockets: four destinations read {few:?}, twelve read {many:?}");
+        assert!(few[1] > few[0] && many[1] > many[0] && many[0] > few[0] && many[1] > few[1]);
+        assert!(many[1] * 2 > TRIALS);
     }
 }
