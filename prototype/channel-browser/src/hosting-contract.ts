@@ -25,11 +25,13 @@ export interface PeerDelivery {
   broadcast: ConversationReply | null;
 }
 
+export interface HostDispatchOptions { current?: () => boolean; signal?: AbortSignal }
+
 export interface HostedRoom {
   readonly roomId: string;
   summary(): RoomSummary | Promise<RoomSummary>;
   bind(bindingId: string): Promise<void>;
-  dispatch(input: unknown): Promise<unknown>;
+  dispatch(input: unknown, options?: HostDispatchOptions): Promise<unknown>;
   dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<PeerDelivery>;
   broadcastRecipients(requester: string): Promise<string[]>;
   snapshot(signal?: AbortSignal): Promise<BrowserRoomSnapshot>;

@@ -64,7 +64,7 @@ export class BrowserHosting {
     if (!hosted || hosted.bindingId !== input.bindingId) return;
     const binding = hosted.bindingId;
     const current = () => this.rooms.get(roomId) === hosted && hosted.bindingId === binding && this.session.socket() === socket;
-    void hosted.host.dispatch(input).then(output => {
+    void hosted.host.dispatch(input, { current }).then(output => {
       if (!current()) return;
       const result = (output as { reply?: { result?: { type?: string; dataRemoved?: boolean } } }).reply?.result;
       if (result?.type === "deleted" && result.dataRemoved === true) {

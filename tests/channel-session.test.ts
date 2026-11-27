@@ -6040,7 +6040,7 @@ test("host binding precedes its first input and a failed binding retires that ho
     roomId: "",
     summary: () => ({ id: host.roomId, name: "Hosted", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
     bind: vi.fn(async (_binding: string) => {}),
-    dispatch: vi.fn(async (_input: unknown) => ({ bindingId: "binding" })),
+    dispatch: vi.fn(async (_input: unknown, _options: { current: () => boolean }) => ({ bindingId: "binding" })),
     close: vi.fn(async () => {}),
   };
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
@@ -6061,7 +6061,9 @@ test("host binding precedes its first input and a failed binding retires that ho
     const input = { bindingId: "binding", revision: 1, endpoints: {}, action: { type: "sync" } };
     socket.receive({ type: "host_input", roomId: host.roomId, input });
     expect(host.bind).toHaveBeenCalledWith("binding");
-    expect(host.dispatch).toHaveBeenCalledWith(input);
+    expect(host.dispatch.mock.calls[0][0]).toEqual(input);
+    const { current } = host.dispatch.mock.calls[0][1];
+    expect(current()).toBe(true);
     expect(host.bind.mock.invocationCallOrder[0]).toBeLessThan(host.dispatch.mock.invocationCallOrder[0]);
     socket.receive({ type: "ack", requestId: registration.requestId });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === host.roomId)).toBe(true));
@@ -6072,6 +6074,7 @@ test("host binding precedes its first input and a failed binding retires that ho
     host.bind.mockRejectedValueOnce(new Error("room_host_conflict"));
     socket.receive({ type: "host_bound", roomId: host.roomId, bindingId: "conflicting-binding" });
     await vi.waitFor(() => expect(session.getSnapshot().error).toBe("room_host_conflict"));
+    expect(current()).toBe(false);
     expect(host.close).toHaveBeenCalledOnce();
     expect(socket.sent).toContainEqual({ type: "host_stop", roomId: host.roomId, bindingId: "conflicting-binding" });
     socket.receive({ type: "host_input", roomId: host.roomId, input: { ...input, bindingId: "conflicting-binding" } });
