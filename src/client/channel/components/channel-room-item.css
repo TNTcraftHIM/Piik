@@ -61,7 +61,7 @@
    target reaches into the list's inset, and what it paints stays inside the row. */
 .c3-room-list-item .c3-room-lead .lr-btn { --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
   width: calc(var(--room-disclosure-width) + var(--room-disclosure-reach)); min-width: 0; margin-inline-start: calc(-1 * var(--room-disclosure-reach)); padding-inline-start: var(--room-disclosure-reach); }
-.c3-room-list-item .c3-room-lead .lr-btn[aria-expanded] { --button-icon-size: 24px; padding-inline-start: 0; }
+.c3-room-list-item .c3-room-lead .lr-btn[aria-expanded] { --button-icon-size: 24px; }
 .c3-room-lead .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
 .c3-room-lead .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
 .c3-room-lead .lr-btn > svg { position: relative; }
@@ -104,9 +104,16 @@
   .c3-room-list-item[data-ordering] .c3-room-manage { visibility: visible; }
 }
 
-/* In the rail a room is its mark over the same picture of who is in it, and the whole item selects it. */
+/* A compact room stacks its 21px identity mark and the faces or participant count. */
+.c3-shell[data-sidebars="rail"] {
+  --rail-room-content-gap: 2px;
+  --rail-room-padding-start: 8px;
+  --rail-room-padding-end: 6px;
+  --rail-room-count-line: 18px;
+  --rail-room-max-height: calc(21px + var(--rail-room-content-gap) + var(--rail-room-count-line) + var(--rail-room-padding-start) + var(--rail-room-padding-end));
+}
 .c3-room-list-item > .c3-room-item[data-compact] { display: flex; padding: 0; }
-.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 4px 6px; }
-.c3-room-item[data-compact] .c3-room-faces { padding: 0; min-height: 15px; }
+.c3-room-item[data-compact] .c3-room-link.lr-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--rail-room-content-gap); padding: var(--rail-room-padding-start) 4px var(--rail-room-padding-end); }
+.c3-room-item[data-compact] .c3-room-faces { padding: 0; min-height: 15px; line-height: var(--rail-room-count-line); }
 .c3-room-item[data-compact] .c3-room-faces > .lr-person { width: 12px; height: 15px; }
 .c3-room-item[data-compact] .c3-room-faces > .lr-person + .lr-person { margin-inline-start: -4px; }
