@@ -156,6 +156,49 @@ fn sent(
 }
 
 #[test]
+fn backup_password_round_trip_and_cost_validation() {
+    use piik_channel_core::backup::RoomMetadata;
+
+    let policy = RoomState::new(
+        "private".into(),
+        "Private".into(),
+        Default::default(),
+        Uuid::new_v4(),
+        RoomAccess::Private,
+        false,
+        Some("room password".into()),
+    )
+    .unwrap();
+    let mut saved = serde_json::to_value(RoomMetadata {
+        version: RoomMetadata::VERSION,
+        policy,
+        domain_id: Uuid::new_v4(),
+        own_credential: None,
+        retained_files: vec![],
+    })
+    .unwrap();
+    let mut restored: RoomMetadata = serde_json::from_value(saved.clone()).unwrap();
+    restored.validate().unwrap();
+    restored
+        .policy
+        .enter(Uuid::new_v4(), Some("room password"), None)
+        .unwrap();
+
+    let generated = saved["policy"]["passwordHash"].as_str().unwrap().to_owned();
+    for (from, to) in [
+        ("m=19456", "m=19457"),
+        ("t=2", "t=3"),
+        ("p=1", "p=2"),
+        ("argon2id", "argon2i"),
+        ("v=19", "v=16"),
+    ] {
+        saved["policy"]["passwordHash"] = json!(generated.replace(from, to));
+        let imported: RoomMetadata = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(imported.validate(), Err("invalid_room_policy"), "{to}");
+    }
+}
+
+#[test]
 fn creating_invalid_room_policy_leaves_no_database() {
     let saved =
         serde_json::to_value(policy("invalid", Uuid::new_v4(), RoomAccess::Private)).unwrap();

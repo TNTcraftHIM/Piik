@@ -43,7 +43,7 @@ in place. The tabs show the tasks available to you:
   password can enter again. To prevent re-entry with those credentials, first
   reset the invitation and change or remove any room password, then remove the
   person's access.
-- **Network:** Set the room’s default forwarding limit and voice bitrate. If you see
+- **Network:** Set the **Room direct recipient limit** and voice bitrate. If you see
   **Use site forwarding**, choose whether this room allows it. **Save** applies changes
   from both **Room** and **Network**.
 - From **Records**, export loaded chat text or select **Clear local room cache**

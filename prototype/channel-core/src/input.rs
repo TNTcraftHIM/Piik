@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+pub const INPUT_FRAME_BYTES: usize = 8192;
+pub const INPUT_COMMAND_BYTES: usize = 4096;
+pub const INPUT_TEXT_BYTES: usize = 2048;
+
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InputRegistration {
@@ -144,7 +148,7 @@ pub fn route(
         || serde_json::to_vec(frame)
             .map_err(|_| "invalid_input_frame")?
             .len()
-            > crate::conversation::CONTROL_FRAME_BYTES
+            > INPUT_FRAME_BYTES
     {
         return Err("invalid_input_frame");
     }

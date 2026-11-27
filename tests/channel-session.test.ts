@@ -2900,6 +2900,50 @@ test("closing during microphone permission releases the pending context and late
   expect(raw.stop).toHaveBeenCalledOnce();
 });
 
+test("an expired resume cannot reclaim the screen publisher on a fresh connection", async () => {
+  const { session, socket } = await setup(1000, false);
+  const oldTrack = remoteTrack("video"), newTrack = remoteTrack("video");
+  const capture = vi.fn().mockResolvedValueOnce(remoteStream("old", [oldTrack])).mockResolvedValueOnce(remoteStream("new", [newTrack]));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: capture } });
+  try {
+    const publish = async (target: ChannelSocket) => {
+      const next = nextSocketCommand(target, "publish");
+      const starting = session.startScreen("first");
+      const command = await next;
+      target.receive({ type: "ack", requestId: command.requestId });
+      await starting;
+      return command.publication as Extract<ChannelCommand, { type: "publish" }>["publication"];
+    };
+    const first = await publish(socket);
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [publicationSchema.parse({ ...first, audience: [], sessionId: "endpoint", userId: "self", title: null, paused: false })];
+    socket.receive({ type: "state", state });
+    vi.useFakeTimers();
+    socket.close();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const pending = ChannelSocket.current;
+    await pending.onopen?.();
+    expect(pending.sent[0]).toMatchObject({ type: "join", sessionId: "endpoint" });
+    await vi.advanceTimersByTimeAsync(19_000);
+    expect(oldTrack.stop).toHaveBeenCalledOnce();
+    const welcome = { type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state };
+    pending.receive(welcome);
+    expect(session.getSnapshot().sessionId).toBeNull();
+    const fresh = ChannelSocket.current;
+    expect(fresh).not.toBe(pending);
+    await fresh.onopen?.();
+    expect(fresh.sent[0]).toMatchObject({ type: "join", credential: "credential" });
+    expect(fresh.sent[0]).not.toHaveProperty("sessionId");
+    state.sessions = state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value);
+    state.channel.rooms[0].participantSessionIds = ["new-endpoint"];
+    state.publications = [];
+    fresh.receive({ ...welcome, sessionId: "new-endpoint", state });
+    expect(session.getSnapshot().sessionId).toBe("new-endpoint");
+    expect((await publish(fresh)).id).not.toBe(first.id);
+    expect(newTrack.stop).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
 test("a new admitted session can request a microphone while retired permission is still pending", async () => {
   const { session, socket } = await setup(1000, false);
   const state = structuredClone(session.getSnapshot().state!);
@@ -4346,6 +4390,34 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     await session.setSourceAudio(publication.id, { level: 1 });
     expect(recovered[0].gain.gain.setTargetAtTime).toHaveBeenCalledWith(1, 0, .01);
     expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toHaveLength(1);
+  } finally { session.close(); }
+});
+
+test("a rejected Browser quality rollback retires the capture and retains both errors", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video"), stream = remoteStream("quality", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => stream } });
+  try {
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const { publication, requestId } = socket.sent.at(-1)!;
+    const { id } = publication as { id: string };
+    socket.receive({ type: "ack", requestId });
+    await starting;
+    const previous = session.getSnapshot().quality;
+    const restoreError = new Error("constraints could not be restored");
+    video.applyConstraints = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(restoreError).mockResolvedValue(undefined);
+    const editing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]).catch(error => error);
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.requestId).not.toBe(requestId));
+    expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } });
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce());
+    expect(socket.sent.at(-1)).toMatchObject({ type: "unpublish", publicationId: id });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    expect(await editing).toMatchObject({ message: "room_unavailable", errors: [expect.objectContaining({ message: "room_unavailable" }), restoreError] });
+    expect(session.screenQuality(id)).toBeUndefined();
+    expect(session.getSnapshot().streams.has(id)).toBe(false);
+    expect(session.getSnapshot().quality).toEqual(previous);
   } finally { session.close(); }
 });
 
@@ -6040,7 +6112,7 @@ test("host binding precedes its first input and a failed binding retires that ho
     roomId: "",
     summary: () => ({ id: host.roomId, name: "Hosted", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
     bind: vi.fn(async (_binding: string) => {}),
-    dispatch: vi.fn(async (_input: unknown) => ({ bindingId: "binding" })),
+    dispatch: vi.fn(async (_input: unknown, _options: { current: () => boolean }) => ({ bindingId: "binding" })),
     close: vi.fn(async () => {}),
   };
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
@@ -6061,7 +6133,9 @@ test("host binding precedes its first input and a failed binding retires that ho
     const input = { bindingId: "binding", revision: 1, endpoints: {}, action: { type: "sync" } };
     socket.receive({ type: "host_input", roomId: host.roomId, input });
     expect(host.bind).toHaveBeenCalledWith("binding");
-    expect(host.dispatch).toHaveBeenCalledWith(input);
+    expect(host.dispatch.mock.calls[0][0]).toEqual(input);
+    const { current } = host.dispatch.mock.calls[0][1];
+    expect(current()).toBe(true);
     expect(host.bind.mock.invocationCallOrder[0]).toBeLessThan(host.dispatch.mock.invocationCallOrder[0]);
     socket.receive({ type: "ack", requestId: registration.requestId });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === host.roomId)).toBe(true));
@@ -6072,6 +6146,7 @@ test("host binding precedes its first input and a failed binding retires that ho
     host.bind.mockRejectedValueOnce(new Error("room_host_conflict"));
     socket.receive({ type: "host_bound", roomId: host.roomId, bindingId: "conflicting-binding" });
     await vi.waitFor(() => expect(session.getSnapshot().error).toBe("room_host_conflict"));
+    expect(current()).toBe(false);
     expect(host.close).toHaveBeenCalledOnce();
     expect(socket.sent).toContainEqual({ type: "host_stop", roomId: host.roomId, bindingId: "conflicting-binding" });
     socket.receive({ type: "host_input", roomId: host.roomId, input: { ...input, bindingId: "conflicting-binding" } });
@@ -12186,6 +12261,12 @@ test.each(["close during handshake", "close during admission", "rejected handsha
       expect(await completion).toBeInstanceOf(Error);
       expect(ChannelSocket.current).toBe(admission);
       expect(session.getSnapshot().connection).toBe("closed");
+      // Page cache resumes this instance; a reload constructs a new one.
+      for (const resumed of [session, new ChannelSession()]) {
+        resumed.start(); await ChannelSocket.current.onopen?.();
+        expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+        resumed.close();
+      }
     }
   } finally { session.close(); }
 });
@@ -12246,13 +12327,13 @@ test("an approved App exports only rooms positively matched to its Native sessio
   } finally { session.close(); }
 });
 
-test.each(["registered", "registration-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
+test.each(["registered", "registration-failed", "account-storage-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
   const { session, socket, peer, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedRoomIds").mockResolvedValue([]);
   nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
-  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  const saved = vi.spyOn(localStorage, "setItem");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
@@ -12273,11 +12354,15 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint",
       state: { ...state, channel: { ...state.channel, rooms: [offline] } } });
+    expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("credential");
     expect.soft(session.getSnapshot().messagesByRoom.first).toBeUndefined();
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "admit_room")).toBe(true));
     const admissionRequest = admission.sent.find(command => command.type === "admit_room")!;
     expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });
     expect(stage.replace).not.toHaveBeenCalled();
+    if (outcome === "account-storage-failed") {
+      saved.mockImplementationOnce(() => { throw new DOMException("Storage unavailable", "QuotaExceededError"); });
+    }
     admission.receive({ type: "state", state });
     admission.receive({ type: "ack", requestId: admissionRequest.requestId });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "host_register")).toBe(true));
@@ -12304,6 +12389,16 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     const browse = admission.sent.find(command => command.type === "browse" && command.roomId === "imported")!;
     admission.receive({ type: "ack", requestId: browse.requestId });
     await expect(importing).resolves.toEqual({ roomId: "imported", cached: true }); expect(cache).toHaveBeenCalledOnce();
+    if (outcome === "account-storage-failed") {
+      expect(session.getSnapshot().self?.id).toBe("archived-user");
+      expect(session.getSnapshot().error).toBe("backup_identity_not_saved");
+    }
+    session.close();
+    const fresh = new ChannelSession();
+    try {
+      fresh.start(); await ChannelSocket.current.onopen?.();
+      expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: outcome === "account-storage-failed" ? "credential" : "accepted-credential" });
+    } finally { fresh.close(); }
   } finally { session.close(); }
 });
 
@@ -16468,6 +16563,12 @@ test("OBS commit blocks candidate cancellation across both source-transfer confi
       result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-only" },
     });
     await opening;
+    video.applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const editing = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+    const rejected = editing.catch(error => error);
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
+      publication: { id: publication.id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
+    const qualityRequest = socket.sent.at(-1)!;
     const b = crypto.randomUUID(),
       native = crypto.randomUUID();
     app.receive({
@@ -16478,6 +16579,9 @@ test("OBS commit blocks candidate cancellation across both source-transfer confi
       sessionId: native,
       codec: "h264",
     });
+    expect(socket.sent.at(-1)).toBe(qualityRequest);
+    socket.receive({ type: "error", requestId: qualityRequest.requestId, code: "room_unavailable" });
+    expect(await rejected).toMatchObject({ message: "room_unavailable" });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
     const transfer = socket.sent.at(-1)!;
     socket.receive({ type: "ack", requestId: transfer.requestId });

@@ -250,10 +250,45 @@ pub struct CaptureLease {
 }
 /// The page's publication owner retains this across active and pending pictures.
 pub struct CaptureAudio {
+    room_id: String,
     #[cfg(feature = "capture")]
     control: crate::media::local::AudioControl,
 }
 impl CaptureAudio {
+    #[cfg(feature = "capture")]
+    pub(crate) fn new(room_id: String, control: crate::media::local::AudioControl) -> Self {
+        Self { room_id, control }
+    }
+
+    pub fn configure_microphone(
+        &self,
+        room_id: &str,
+        capture_id: Uuid,
+        current_capture: Option<Uuid>,
+        settings: SourceMicrophoneSettings,
+    ) -> Result<impl std::future::Future<Output = Result<SourceMicrophoneSettings>> + Send + 'static> {
+        settings.validate()?;
+        // Picture replacement retains this publication's live commentary mixer.
+        anyhow::ensure!(
+            self.room_id == room_id && !self.is_stopped()
+                && (!settings.enabled || current_capture == Some(capture_id)),
+            "capture_unavailable"
+        );
+        #[cfg(feature = "capture")]
+        let control = self.control.clone();
+        Ok(async move {
+            #[cfg(feature = "capture")]
+            {
+                let settings = (current_capture == Some(capture_id)).then_some(settings);
+                control.configure_microphone(settings).await?;
+                let microphone = control.state.borrow().microphone.clone();
+                Ok(microphone)
+            }
+            #[cfg(not(feature = "capture"))]
+            anyhow::bail!("capture_unavailable")
+        })
+    }
+
     pub fn is_stopped(&self) -> bool {
         #[cfg(feature = "capture")]
         return self.control.is_stopped();
@@ -411,21 +446,6 @@ impl CaptureLease {
         return Some(self.mixer.state.clone());
         #[cfg(not(feature = "capture"))]
         None
-    }
-    pub fn configure_microphone(
-        &self,
-        settings: SourceMicrophoneSettings,
-    ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
-        settings.validate()?;
-        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
-        #[cfg(feature = "capture")]
-        let control = self.mixer.clone();
-        Ok(async move {
-            #[cfg(feature = "capture")]
-            return control.configure_microphone(settings).await;
-            #[cfg(not(feature = "capture"))]
-            anyhow::bail!("capture_unavailable")
-        })
     }
     pub fn cancel_microphone(
         &self,
@@ -1585,9 +1605,7 @@ impl Driver {
                 self.relay.clone(),
                 self.cancel.clone(),
             );
-            let owner = CaptureAudio {
-                control: audio.control.clone(),
-            };
+            let owner = CaptureAudio::new(scope.room_id.clone(), audio.control.clone());
             self.capture_audio
                 .insert(publication, (scope.clone(), audio));
             Some(owner)
@@ -2503,7 +2521,7 @@ impl Driver {
                             }
                         }
                         Lane::Input => {
-                            if !ready.open() || message.len() > 8192 {
+                            if !ready.open() || message.len() > piik_channel_core::input::INPUT_FRAME_BYTES {
                                 continue;
                             }
                             if let Ok(frame) = serde_json::from_slice(message.as_slice()) {

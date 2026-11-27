@@ -679,7 +679,7 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
         vec![],
     )
     .unwrap();
-    let (host, mut reader, mut observer, packet) = {
+    let (mut host, reader, mut observer, confirmation, page, history, closing) = {
         let mut hub = domain.hub.lock().unwrap();
         let mut host = Endpoint::join(&mut hub, "owner");
         let mut reader = Endpoint::join(&mut hub, "invite");
@@ -706,6 +706,15 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
             json!({"type":"browse","roomId":"living","active":true}),
         );
         let binding = stored_turn(&mut hub, &mut host, &mut room);
+        let history = SessionSigner::from_seed([1; 32]).sign(reader.session, &json!({
+            "roomId":"living","bindingId":binding,"sender":reader.session,
+            "recipient":host.session,"requestId":"history","command":{"type":"history","before":null}
+        })).unwrap();
+        let page = SessionSigner::from_seed([1; 32]).sign(host.session, &json!({
+            "roomId":"living","bindingId":binding,"sender":host.session,
+            "recipient":reader.session,"requestId":"history",
+            "record":{"type":"history_page","messages":[],"hasMore":false,"oldestSeq":null,"before":null}
+        })).unwrap();
         let packet = SessionSigner::from_seed([1;32]).sign(host.session, &json!({
             "roomId":"living","bindingId":binding,"sender":host.session,
             "recipient":reader.session,"requestId":"chat",
@@ -715,31 +724,34 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
         })).unwrap();
         reader.drain();
         observer.drain();
-        // Keep this reader's writer paused until the next authority turn.
-        let queue = &hub.clients[&reader.id].events;
-        while queue.capacity() > 0 {
-            queue
-                .try_send(Event::Ack {
-                    request_id: "queued".into(),
-                })
-                .unwrap();
-        }
-        (host, reader, observer, packet)
+        let client = hub.clients.get_mut(&reader.id).unwrap();
+        let closing = client.close.subscribe();
+        (client.events, reader.events) = mpsc::channel(1);
+        client.events.try_send(Event::Ack { request_id: "queued".into() }).unwrap();
+        let writer = hub.clients.get_mut(&host.id).unwrap();
+        (writer.events, host.events) = mpsc::channel(1);
+        writer.events.try_send(Event::Ack { request_id: "queued".into() }).unwrap();
+        (host, reader, observer, packet, page, history, closing)
     };
 
-    let request =
-        Request::parse(&json!({"type":"conversation","packet":packet}).to_string()).unwrap();
-    let confirmation = dispatch_request(&domain, host.id, request);
-    tokio::pin!(confirmation);
-    let completed = confirmation.as_mut().now_or_never().is_some();
+    let request = |packet| {
+        Request::parse(&json!({"type":"conversation","packet":packet}).to_string()).unwrap()
+    };
+    let forwarding = dispatch_request(&domain, reader.id, request(history));
+    tokio::pin!(forwarding);
+    assert!(forwarding.as_mut().now_or_never().is_none());
+    host.drain();
+    forwarding.await;
+    assert!(matches!(host.events.try_recv(), Ok(Event::Conversation { .. })));
+    // The next writer turn can proceed while this recipient still has a full queue.
+    assert!(dispatch_request(&domain, host.id, request(page)).now_or_never().is_some());
+    assert!(*closing.borrow());
+    dispatch_request(&domain, host.id, request(confirmation)).await;
     observer.request(
         &mut domain.hub.lock().unwrap(),
         json!({"type":"set_profile","avatar":null,"name":"Updated"}),
     );
-    reader.drain();
-    if !completed {
-        confirmation.await;
-    }
+    drop(reader);
     let names: Vec<_> = std::iter::from_fn(|| observer.events.try_recv().ok())
         .filter_map(|event| match event {
             Event::State { state } => state
@@ -3265,6 +3277,47 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         && stored.reactions.counts.get("wave") == Some(&1));
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn leaving_during_copy_releases_upload_scratch() {
+    use axum::{body::{Body, Bytes}, extract::State, http::{header, HeaderMap, StatusCode}};
+    use tokio::sync::oneshot;
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open_with_options(
+        folder.path(), Some("owner"), "http://localhost".into(), None, vec![],
+        RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
+    ).unwrap();
+    let (creator, headers) = {
+        let mut hub = domain.hub.lock().unwrap();
+        let mut creator = Endpoint::connect(&mut hub);
+        creator.request(&mut hub, json!({"type":"join","name":"Creator"}));
+        let welcome = creator.drain().into_iter().find(|event| event["type"] == "welcome").unwrap();
+        let mut headers = HeaderMap::new();
+        let credential = welcome["credential"].as_str().unwrap();
+        headers.insert(header::AUTHORIZATION, format!("Bearer {credential}").parse().unwrap());
+        headers.insert(header::CONTENT_TYPE, "application/zip".parse().unwrap());
+        headers.insert("x-piik-session", welcome["sessionId"].as_str().unwrap().parse().unwrap());
+        (creator, headers)
+    };
+    let (started, reading) = oneshot::channel();
+    let (producer, finished) = oneshot::channel::<()>();
+    let body = Body::from_stream(futures_util::stream::once(async move {
+        started.send(()).unwrap();
+        let _ = finished.await;
+        Ok::<_, std::io::Error>(Bytes::new())
+    }));
+    let request = tokio::spawn(backup::create_copy(State(domain.clone()), headers, body));
+    tokio::time::timeout(Duration::from_secs(5), reading).await.unwrap().unwrap();
+    creator.request(&mut domain.hub.lock().unwrap(), json!({"type":"leave"}));
+    let (status, error) = tokio::time::timeout(Duration::from_secs(5), request)
+        .await.unwrap().unwrap().unwrap_err();
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(error.0["error"], "disconnected");
+    let _released = tokio::time::timeout(Duration::from_secs(5), domain.room_restore.acquire())
+        .await.unwrap().unwrap();
+    drop(producer);
 }
 
 #[tokio::test]

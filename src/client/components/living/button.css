@@ -53,7 +53,7 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn.is-on:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: inset 0 0 0 1px var(--action); }
 :root[data-living-room] .lr-btn.is-on { border-color: transparent; box-shadow: none; }
 .lr-btn .lr-cap { margin-left: 2px; font-size: var(--control-label-size); font-weight: 600; }
-.lr-btn > .lr-glyph { width: var(--button-icon-size, var(--control-icon-size)); height: var(--button-icon-size, var(--control-icon-size)); }
+.lr-btn > .lr-glyph { width: var(--button-icon-size, var(--control-icon-size)); height: var(--button-icon-size, var(--control-icon-size)); pointer-events: none; }
 .lr-btn.is-compact { --button-size: var(--control-compact-size); --button-padding: 10px; }
 .lr-btn.is-dense { --button-size: var(--control-dense-size); --button-padding: 8px; --button-icon-size: 16px; }
 .lr-btn.is-quiet { border-radius: 12px; }

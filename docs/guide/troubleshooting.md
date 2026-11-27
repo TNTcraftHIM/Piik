@@ -32,7 +32,7 @@ If you can enter the room and chat but media or files cannot connect, use the [n
 ## Opening App and joining a room
 
 [Startup](#app-startup-fails-or-no-page-opens) · [Android installation](#android-apk-will-not-install) · [macOS](#macos-blocks-first-launch) ·
-[Public address / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
+[Public address / 1033](#public-address-will-not-open-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
 [Local certificate](#local-https-certificate-warning) · [Invitation or password](#an-invitation-or-password-is-rejected) · [Site connection](#the-page-opens-but-the-site-will-not-connect) · [App version](#app-and-page-versions-are-incompatible)
 
 ### App startup fails, or no page opens
@@ -44,7 +44,7 @@ If you can enter the room and chat but media or files cannot connect, use the [n
 3. If startup still fails, enable **Help → Debug** on the App launcher, retry and save the complete
    error and an [App report](#reporting-a-problem).
 
-If startup opens an expired temporary invitation, return to the App launcher,
+If startup opens an expired temporary site address, return to the App launcher,
 start your site and select startup on its current entry again. **Open my site
 when App starts (mode)** saves the launch mode; an external site's star saves
 its fixed address. Clear the owned-site option before restarting App to choose
@@ -87,7 +87,7 @@ Do not use the quarantine command below for those alerts.
 Use the App's actual path if you kept it elsewhere. Keep system-wide security
 checks enabled.
 
-### Public invitation fails or shows 1033
+### Public address will not open or shows 1033
 
 When you select **Public address → Automatic**, the App uses Cloudflare Tunnel for the site's temporary address.
 [Error 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
@@ -95,7 +95,7 @@ means the tunnel is disconnected. For `public tunnel exited before
 connecting` or `exit status 1`, read the following error details to choose a check.
 
 1. **Viewers: confirm the link.** Ask the person running the site to check that the App is running
-   and the computer is awake, then send the current invitation. Use a new link
+   and the computer is awake, then send a fresh room link. Use a new link
    after the App restarts; the old address may no longer work.
 2. **On the computer running the site, read the failure details.** Check that the complete App package was
    extracted. Save the full error from the launch page or terminal, including
@@ -229,7 +229,7 @@ reload. A 2.x App or site is not a replacement for the test endpoint.
 Open **Connection help** on the connection screen. If Piik answered the web
 request but the site still cannot connect, ask the site administrator to check
 that the proxy forwards WebSockets to the same Piik service as the webpage.
-If the check cannot confirm a Piik response, ask the host for the current site link.
+If the check cannot confirm a Piik response, ask the site administrator for the current site address.
 
 #### Room creation returns 403
 
@@ -382,7 +382,7 @@ with the codec comparison. If both codecs fail, also check
 
 If your browser reports that it could not decode or play the shared picture, select **Retry picture**. If the message returns, open the invitation in another browser and try the same share.
 
-1. **Viewer.** If the picture says **No route to this picture yet**, keep it open: watching starts by itself once a route is available. You can stop watching at any time. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot for a **public invitation**. For a **local or virtual-LAN invitation**, stay connected to that network and [check local access and UDP firewall rules](#local-invitation-will-not-open).
+1. **Viewer.** If the picture says **No route to this picture yet**, keep it open: watching starts by itself once a route is available. You can stop watching at any time. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot if you connected through a **public address**. For a **local or virtual LAN address**, stay connected to that network and [check local access and UDP firewall rules](#local-invitation-will-not-open).
 2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
 3. **Site operator and room manager.** Ask whether the site offers screen forwarding. If you manage the room, check **Use site forwarding** under **Room settings → Network**. If you turn it on, select **Save**. Piik can use the site when participants cannot deliver the picture.
 
@@ -556,8 +556,8 @@ If muting source sound leaves the echo audible, try turning off the host's **sha
    its sharing page therefore has no enable-control action. Follow the
    [authorization steps](./room-tools.md#let-a-friend-control-your-shared-screen).
 
-If your browser cannot accept the local certificate, use a reachable **Public
-invite** or an HTTPS site with a trusted certificate.
+If your browser cannot accept the local certificate, use a reachable **public address** or another HTTPS address
+with a trusted certificate.
 
 ## Gamepads
 

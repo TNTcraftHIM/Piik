@@ -44,7 +44,12 @@ pub(crate) async fn export(
     room_id: String,
     creator: Option<uuid::Uuid>,
     credential: OwnCredential,
+    exports: std::sync::Arc<tokio::sync::Semaphore>,
 ) -> ApiResult {
+    // A slow reader keeps both the ZIP worker and the room's SQLite snapshot.
+    let export = exports
+        .try_acquire_owned()
+        .map_err(|_| error(StatusCode::CONFLICT, "room_busy"))?;
     let (result, response) = oneshot::channel();
     commands
         .send(HostCommand::Snapshot(SnapshotRoom {
@@ -65,6 +70,7 @@ pub(crate) async fn export(
             bail!("file_source_unavailable")
         });
         drop(snapshot);
+        drop(export);
         result
     }))
 }
@@ -157,7 +163,7 @@ pub(crate) async fn receive_copy_upload(
     scratch: OwnedSemaphorePermit,
 ) -> Result<(File, tempfile::TempDir, OwnedSemaphorePermit), ApiError> {
     require_zip(headers)?;
-    let mut reader = upload_reader(body);
+    let (mut reader, _request) = upload_reader(body);
     tokio::task::spawn_blocking(move || {
         // Keep the permit until copying and any temporary file cleanup finish.
         let scratch = scratch;
@@ -194,7 +200,7 @@ async fn stage_upload(
     scratch: Option<OwnedSemaphorePermit>,
 ) -> std::result::Result<Upload, ApiError> {
     require_zip(headers)?;
-    let mut reader = upload_reader(body);
+    let (mut reader, _request) = upload_reader(body);
     tokio::task::spawn_blocking(move || -> Result<Upload> {
         let (archive, directory) = receive_zip(&mut reader, scratch.is_some())?;
         let staged = if existing {
@@ -220,9 +226,22 @@ fn require_zip(headers: &HeaderMap) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn upload_reader(body: Body) -> impl Read + Send {
-    let reader = StreamReader::new(body.into_data_stream().map_err(io::Error::other));
-    SyncIoBridge::new(reader)
+// Dropping the request wakes a blocked body read. The worker retains the
+// scratch permit while it closes and removes the partial archive.
+fn upload_reader(body: Body) -> (impl Read + Send, oneshot::Sender<()>) {
+    let (request, dropped) = oneshot::channel();
+    let bytes = stream::try_unfold(
+        (body.into_data_stream().map_err(io::Error::other), dropped),
+        |(mut body, mut dropped)| async move {
+            let chunk = tokio::select! {
+                biased;
+                _ = &mut dropped => return Err(io::Error::other("upload_cancelled")),
+                chunk = body.next() => chunk.transpose()?,
+            };
+            Ok(chunk.map(|bytes| (bytes, (body, dropped))))
+        },
+    );
+    (SyncIoBridge::new(StreamReader::new(Box::pin(bytes))), request)
 }
 
 fn receive_zip(input: &mut impl Read, bounded: bool) -> io::Result<(File, tempfile::TempDir)> {
@@ -250,18 +269,96 @@ fn copy_bounded(input: &mut impl Read, output: &mut impl io::Write, budget: u64)
 }
 
 #[cfg(test)]
+mod export_tests {
+    use super::*;
+    use piik_channel_core::{
+        backup::{DeletedHistoryRow, HistoryRow, RoomMetadata},
+        history::{HistoryRequest, HistoryResult, MessageDraft},
+        storage::Storage,
+        wire::RoomAccess,
+        RoomBackup, RoomState,
+    };
+    use std::{sync::Arc, time::Duration};
+    use tokio::sync::Semaphore;
+    use uuid::Uuid;
+
+    #[test]
+    fn unread_export_retains_admission_until_its_snapshot_closes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .max_blocking_threads(2)
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let site = Arc::new(Semaphore::new(1));
+            let (commands, mut received) = mpsc::channel(1);
+            let owner = Uuid::new_v4();
+            let request = || export(commands.clone(), "room".into(), Some(owner), OwnCredential {
+                user_id: owner,
+                credential: "test-owner".into(),
+            }, site.clone());
+
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("room.sqlite");
+            let metadata = RoomMetadata {
+                version: RoomMetadata::VERSION,
+                domain_id: Uuid::new_v4(),
+                policy: RoomState::new("room".into(), "Room".into(), Default::default(), owner,
+                    RoomAccess::Public, false, None).unwrap(),
+                own_credential: None,
+                retained_files: vec![],
+            };
+            // The STORE archive exceeds the bridge buffer before history finishes.
+            let rows = (1..=1024).map(|seq| Ok(HistoryRow::Deleted(DeletedHistoryRow {
+                seq,
+                retry_key: format!("{seq:064x}"),
+            })));
+            let room = RoomBackup::stage(&path, metadata, rows).unwrap();
+            let (response, ()) = tokio::join!(request(), async {
+                let Some(HostCommand::Snapshot(request)) = received.recv().await else {
+                    panic!("expected room snapshot");
+                };
+                assert!(request.result.send(Ok(RoomSnapshot { room, directory })).is_ok());
+            });
+            let unread = response.unwrap();
+            let (status, body) = tokio::time::timeout(Duration::from_secs(5), request())
+                .await.unwrap().unwrap_err();
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(body.0["error"], "room_busy");
+            assert!(matches!(received.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+            let chat = tokio::task::spawn_blocking(move || {
+                let sibling = tempfile::tempdir().unwrap();
+                let mut storage = Storage::open(&sibling.path().join("room.sqlite")).unwrap();
+                storage.history(&HistoryRequest::Send {
+                    room_id: "sibling".into(),
+                    draft: MessageDraft::new(owner, "test-send".into(), "hello".into(),
+                        vec![], Default::default(), vec![], None, 1).unwrap(),
+                }).unwrap()
+            });
+            let reply = tokio::time::timeout(Duration::from_secs(5), chat).await.unwrap().unwrap();
+            assert!(matches!(reply, HistoryResult::Sent(_)));
+            assert!(path.is_file());
+            drop(unread);
+            let _released = tokio::time::timeout(Duration::from_secs(5), site.acquire())
+                .await.unwrap().unwrap();
+            assert!(!path.exists());
+        });
+    }
+}
+
+#[cfg(test)]
 mod upload_tests {
     use super::*;
 
     #[tokio::test]
-    async fn disconnected_request_keeps_its_slot_until_staging_exits() {
+    async fn disconnected_request_releases_its_slot_with_the_body_still_open() {
         let slot = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
         let (commands, _receive) = mpsc::channel(1);
         let (started, reading) = oneshot::channel();
-        let (finish, finished) = oneshot::channel();
+        let (finish, finished) = oneshot::channel::<()>();
         let body = Body::from_stream(stream::once(async move {
             started.send(()).unwrap();
-            finished.await.unwrap();
+            let _ = finished.await;
             Ok::<_, io::Error>(axum::body::Bytes::new())
         }));
         let mut headers = HeaderMap::new();
@@ -277,9 +374,11 @@ mod upload_tests {
         reading.await.unwrap();
         request.abort();
         assert!(request.await.unwrap_err().is_cancelled());
-        assert!(slot.clone().try_acquire_owned().is_err());
-        finish.send(()).unwrap();
-        let _released = slot.acquire().await.unwrap();
+        let _released = tokio::time::timeout(std::time::Duration::from_secs(5), slot.acquire())
+            .await
+            .expect("request drop interrupts the body read")
+            .unwrap();
+        drop(finish);
     }
 
     #[test]

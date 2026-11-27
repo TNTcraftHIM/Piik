@@ -4,6 +4,15 @@ import { channelErrorPresentation } from "../src/client/components/error-present
 import { roomOpenFailure } from "../src/client/channel/types";
 
 describe("diagnosis using the current operation", () => {
+  it("distinguishes setting a password, requesting admission, and contention during a backup", () => {
+    const message = (code: string) => channelErrorPresentation(code, key => key).message;
+    expect(message("invalid_room_password")).toBe("channel.error.invalidRoomPassword");
+    expect(message("password_failed")).toBe("channel.error.setRoomPasswordFailed");
+    expect(message("room_access_required")).toBe("channel.error.roomAccessDenied");
+    expect(message("storage_busy")).toBe("channel.error.busy");
+    expect(message("room_storage_in_use")).toBe("channel.error.roomHostConflict");
+  });
+
   it("explains when an operation requires peer transport", () => {
     expect(channelErrorPresentation("peer_transport_unavailable", key => key)).toEqual({
       message: "channel.error.peerTransportUnavailable", connectionHelp: false,

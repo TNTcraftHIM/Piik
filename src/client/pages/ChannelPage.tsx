@@ -34,7 +34,7 @@ import { PlaybackDeviceSelect } from "../channel/components/PlaybackDeviceSelect
 import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSounds";
 import { ChannelForwardingSettings } from "../channel/components/ChannelForwardingSettings";
 import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
-import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog, RoomAccessNote, RoomHostingNote } from "../channel/components/ChannelRoomControls";
+import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog, RoomHostingNote, roomAccessNoteKey, roomHostingNoteKey } from "../channel/components/ChannelRoomControls";
 import { RoomCreationInterrupted, roomCreationPolicyFor, readSimpleShareRoom, rememberSimpleShareRoom, roomDraft, roomSettings, simpleShareRoom, simpleShareRoomKey } from "../channel/room-creation";
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
@@ -674,8 +674,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             {minimal && canCreateRoom ? <StageTv hasEntry label={t(quickStartLabel)}><div className="c3-quick-start">
               {rememberedShareRoom
                 ? <p>{t(rememberedShareRoom.available ? "channel.previewPage.quickReuseHint" : "channel.previewPage.quickOfflineHint", { name: rememberedShareRoom.name })}</p>
-                : <p>{t("channel.previewPage.quickCreateHint")} <RoomHostingNote channel={channel} />{" "}
-                  <RoomAccessNote access={creationPolicy === "invite_only" ? creationPolicy : roomDraft().access} /></p>}
+                : <p>{t("channel.previewPage.quickCreateHint", {
+                  hosting: t(roomHostingNoteKey(channel)),
+                  access: t(roomAccessNoteKey(creationPolicy === "invite_only" ? creationPolicy : roomDraft().access)),
+                })}</p>}
               <div className="c3-quick-start-action"><Btn id="c3-first-action" icon={rememberedRoomOffline ? "couch" : "cast"} tone="primary" title={quickStartLabel} cap={quickStartLabel}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
                 <ChannelSettingsError error={quickStart.error} /></div>

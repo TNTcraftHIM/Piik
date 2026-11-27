@@ -1,3 +1,4 @@
+import { inputFrameFits } from "../remote-control/protocol";
 import { EncryptedInput, type InputPacket, type InputTransport } from "../remote-control/input-route";
 import { loadRoomHosting } from "./hosting";
 import type { ChannelCommand, ChannelSnapshot } from "./protocol";
@@ -39,7 +40,7 @@ export class ChannelInput {
     this.channels.delete(pairId);
     if (channel) {
       const message = (event: MessageEvent) => {
-        if (typeof event.data !== "string" || event.data.length > 8192) return;
+        if (typeof event.data !== "string" || !inputFrameFits(event.data)) return;
         void this.receive(pairId, channel, event.data).catch(() => { /* Invalid input has no authority. */ });
       };
       const refresh = () => this.update();

@@ -209,6 +209,7 @@ impl Hub {
 pub struct Domain {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
+    room_export: Arc<Semaphore>,
     room_restore: Arc<Semaphore>,
     closing: watch::Sender<bool>,
     origin: String,
@@ -443,8 +444,8 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
         let mut effects = hub.authority.handle(connection, request, now());
         // Queue authority snapshots in the turn that produced them. Otherwise a
         // later turn can reach healthy readers while this one waits for a peer.
-        let ([(_, Event::Conversation { .. })], []) =
-            (effects.events.as_slice(), effects.close.as_slice())
+        let (true, [(_, Event::Conversation { .. })], []) =
+            (effects.conversation_to_writer, effects.events.as_slice(), effects.close.as_slice())
         else {
             hub.apply(effects);
             return;
@@ -455,7 +456,7 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
         };
         (client, event)
     };
-    // History pages span more than one socket queue. Wait for the sole recipient.
+    // A member may wait for its writer. The writer never waits for an individual reader.
     let mut closing = client.close.subscribe();
     if *closing.borrow() {
         return;
@@ -683,6 +684,7 @@ impl Domain {
                 room_commands: None,
             })),
             sockets: Arc::new(Semaphore::new(2 * piik_channel_core::MAX_SESSIONS)),
+            room_export: Arc::new(Semaphore::new(1)),
             room_restore: Arc::new(Semaphore::new(1)),
             closing: watch::channel(false).0,
             origin,
@@ -846,8 +848,8 @@ impl Domain {
         servers.push(http.boxed());
         let stop_https = axum_server::Handle::new();
         if let Some(https) = https {
-            let server = axum_server::from_tcp_rustls(https.listener.into_std()?, https.config)?
-                .map(|acceptor| acceptor.acceptor(axum_server::accept::NoDelayAcceptor::new()))
+            let server = crate::web::http_server(https.listener)
+                .map(|tcp| axum_server::tls_rustls::RustlsAcceptor::new(https.config).acceptor(tcp))
                 .handle(stop_https.clone())
                 .serve(app.into_make_service());
             servers.push(server.boxed());

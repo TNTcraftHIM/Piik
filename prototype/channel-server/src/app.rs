@@ -112,12 +112,14 @@ pub struct Config {
 }
 struct Permission {
     data_id: Uuid,
+    room_export: Arc<tokio::sync::Semaphore>,
     revoked: watch::Sender<bool>,
 }
 impl Permission {
     fn new(data_id: Uuid) -> Self {
         Self {
             data_id,
+            room_export: Arc::new(tokio::sync::Semaphore::new(1)),
             revoked: watch::channel(false).0,
         }
     }
@@ -2669,25 +2671,17 @@ async fn connection(
                         room_id,
                         settings,
                     } => {
-                        let update = captures
-                            .get(&publication_id)
-                            .and_then(Capture::lease)
-                            .filter(|lease| {
-                                lease.id == capture_id && lease.scope.room_id == room_id
-                            })
+                        let update = captures.get(&publication_id)
                             .ok_or_else(|| anyhow!("capture_unavailable"))
-                            .and_then(|lease| {
-                                Ok((
-                                    lease.configure_microphone(settings)?,
-                                    lease
-                                        .audio_state()
-                                        .ok_or_else(|| anyhow!("capture_unavailable"))?,
-                                ))
+                            .and_then(|capture| {
+                                let audio = capture.audio.as_ref().ok_or_else(|| anyhow!("capture_unavailable"))?;
+                                let current = capture.lease().map(|lease| lease.id);
+                                audio.configure_microphone(&room_id, capture_id, current, settings)
                             });
                         match update {
-                            Ok((update, state)) => {
+                            Ok(update) => {
                                 operations.push(async move {
-                                    control_reply(request.id, update.await.map(|()| json!(state.borrow().microphone.clone())))
+                                    control_reply(request.id, update.await.map(|microphone| json!(microphone)))
                                 }.boxed());
                                 continue;
                             }

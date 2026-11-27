@@ -60,13 +60,12 @@ site, not the entry for this test version.
 
 ### Choose an App mode
 
-- **Local network:** for friends on the same LAN or virtual LAN. If several
-  invitation addresses are offered, choose the interface they can reach.
+- **Local network:** for friends on the same LAN or virtual LAN. If **Local network address** offers several choices, select an address your friends can reach.
 - **Public address:** for friends elsewhere. **Automatic** creates a temporary
   Cloudflare address for your site while App is running. Copy a room link from the room to invite friends.
   **Existing address** uses [your own HTTPS proxy](#use-an-existing-public-address).
 
-Local invitations use HTTPS. After starting **Local network**, return to the
+Local network access uses HTTPS. After starting **Local network**, return to the
 App launcher and expand **Local connection details** below **Continue** to
 read the address and certificate fingerprint. Compare it with the browser's
 certificate before accepting its first warning; see the

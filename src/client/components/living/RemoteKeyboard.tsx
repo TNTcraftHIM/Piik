@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
-import { REMOTE_TEXT_BYTES, type RemoteInputPlatform } from "../../remote-control/protocol";
+import { remoteTextFits, type RemoteInputPlatform } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { readRoomPreferences, saveRoomPreferences, REMOTE_KEYBOARD_PAGES, type RoomPreferences } from "../../lib/room-preferences";
 import { onDocumentInactive } from "../../ui/document-active";
@@ -68,7 +68,7 @@ export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch
   const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences().combineKeys);
   const composing = useRef(false);
   const editor = useRef<HTMLTextAreaElement>(null);
-  const textTooLong = new TextEncoder().encode(text).length > REMOTE_TEXT_BYTES;
+  const textTooLong = !remoteTextFits(text);
   const panel = useRef<HTMLElement>(null);
   const panelWindow = usePanelWindow(true, onSurfaceChange);
   const owner = panelWindow.surfaceDocument ?? document;

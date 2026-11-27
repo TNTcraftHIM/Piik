@@ -56,6 +56,8 @@ use wire::{Command, Event, Request, CHANNEL_PROTOCOL};
 pub struct Effects {
     pub events: Vec<(Uuid, Event)>,
     pub close: Vec<Uuid>,
+    /// A member submitted a signed conversation request to its current room writer.
+    pub conversation_to_writer: bool,
 }
 
 #[derive(Clone)]
@@ -204,10 +206,7 @@ impl Authority {
                 let identity = &self.channel.identity;
                 identity.session_for_connection(connection)
                     .and_then(|id| identity.users.get(&identity.sessions[&id].user_id))
-                    .is_some_and(|user| {
-                        name.as_ref().is_some_and(|name| name.trim() != user.name)
-                            || avatar.as_ref().is_some_and(|avatar| avatar != &user.avatar)
-                    })
+                    .is_some_and(|user| user.changes_profile(name.as_deref(), avatar.as_ref()))
             }
             Command::UpdateDomain { .. }
             | Command::SetRoomCreationPolicy { .. }
@@ -320,10 +319,12 @@ impl Authority {
         }
         if let Command::Conversation { packet } = request.command {
             match self.channel.relay_conversation(session_id, packet) {
-                Ok((recipient, event, changed)) => {
+                Ok((recipient, event, delivery)) => {
                     self.deliver(recipient, event, &mut effects);
-                    if changed {
-                        self.broadcast(None, &mut effects);
+                    match delivery {
+                        channel::ConversationDelivery::ToWriter => effects.conversation_to_writer = true,
+                        channel::ConversationDelivery::AdvancedHistory => self.broadcast(None, &mut effects),
+                        channel::ConversationDelivery::ToReader => {}
                     }
                 }
                 Err(code) => Self::error(connection, request.request_id, code, &mut effects),

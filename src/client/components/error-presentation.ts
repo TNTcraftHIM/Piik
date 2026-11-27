@@ -15,7 +15,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (!error) return { message: null, connectionHelp: true };
   const diagnosis = diagnoseChannelFact({ area: "error", code: error });
   if (diagnosis) return display(diagnosis.message);
-  if (error === "room_busy" || error === "capture_pending") return display("channel.error.busy");
+  if (error === "room_busy" || error === "capture_pending" || error === "storage_busy") return display("channel.error.busy");
   if (error === "room_creation_restricted") return display("channel.error.roomCreationRestricted");
   if (error === "room_limit") return display("channel.error.roomLimit");
   if (error === "file_transfer_interrupted") return display("channel.attachment.transferInterrupted");
@@ -52,6 +52,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.roomRestoredConnectionFailed", true);
   if (error === "room_host_unavailable" || error === "stale_backup")
     return display("channel.error.backupStateUnavailable");
+  if (error === "backup_identity_not_saved") return display("channel.error.backupIdentityNotSaved");
   if (error === "backup_identity_required")
     return display("channel.error.backupIdentityRequired");
   if (error === "backup_room_mismatch")
@@ -127,12 +128,12 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.videoCodecUnsupported");
   if (error === "owner_mismatch")
     return display("channel.error.ownerMismatch");
-  if (/room_host_conflict|room_storage_in_use/.test(error))
+  if (error === "room_host_conflict" || error === "room_storage_in_use")
     return display("channel.error.roomHostConflict");
   if (/^(?:room_unavailable|room_not_found|invalid_room_id)$/.test(error))
     return display("channel.error.roomUnavailable");
-  if (/password/i.test(error))
-    return display("channel.error.passwordIncorrect");
+  if (error === "invalid_room_password") return display("channel.error.invalidRoomPassword");
+  if (error === "password_failed") return display("channel.error.setRoomPasswordFailed");
   if (/room_access|room_forbidden/i.test(error))
     return display("channel.error.roomAccessDenied");
   if (/invit(?:e|ation)/i.test(error))

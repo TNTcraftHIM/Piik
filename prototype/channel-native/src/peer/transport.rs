@@ -56,6 +56,8 @@ impl Estimate {
     }
 }
 
+const INPUT_SEND_BUFFER_BYTES: usize = 8192;
+
 // Finite SDK probing target when source demand is unknown, not a media limit.
 // An explicitly idle connection requests zero instead.
 const UNKNOWN_DEMAND_PROBE_BPS: u64 = 100_000_000;
@@ -1768,7 +1770,7 @@ impl Channel {
                     .context("channel not open")?;
                 if input {
                     ensure!(
-                        channel.buffered_amount() + bytes.len() <= 8192,
+                        channel.buffered_amount() + bytes.len() <= INPUT_SEND_BUFFER_BYTES,
                         "input_channel_busy"
                     );
                 }

@@ -1,4 +1,5 @@
 import { data_frame_bytes, data_queue_frames } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
+import { inputFrameFits } from "../remote-control/protocol";
 import { LinearCandidateAdmission } from "../webrtc/linear-ice-candidate";
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
@@ -14,6 +15,7 @@ import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from 
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
 const TRANSPORT_PREPARE_MS = 20_000;
+const INPUT_SEND_BUFFER_BYTES = 8192;
 const DATA_SEND_BUFFER_BYTES = 65536;
 
 export interface OutgoingMedia {
@@ -243,7 +245,7 @@ export class ChannelTransport {
   sendInput(frame: string): boolean {
     const channel = this.input;
     if (!this.inputEnabled || channel?.readyState !== "open" || this.closed || this.pc.connectionState !== "connected") return false;
-    if (frame.length > 8192 || channel.bufferedAmount > 8192) { channel.close(); return false; }
+    if (!inputFrameFits(frame) || channel.bufferedAmount > INPUT_SEND_BUFFER_BYTES) { channel.close(); return false; }
     try { channel.send(frame); return true; }
     catch { channel.close(); return false; }
   }

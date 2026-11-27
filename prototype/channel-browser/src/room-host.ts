@@ -9,7 +9,7 @@ export function initializeRuntime(): Promise<void> {
 }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
 import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
-import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostedRoom, type PeerDelivery } from "./hosting-contract";
+import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostDispatchOptions, type HostedRoom, type PeerDelivery } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
@@ -369,9 +369,9 @@ export class BrowserRoomHost implements HostedRoom {
     }, complete, signal);
   }
 
-  dispatch(input: unknown, signal?: AbortSignal): Promise<unknown> {
+  dispatch(input: unknown, { current, signal }: HostDispatchOptions = {}): Promise<unknown> {
     return this.enqueue(async () => {
-      if (!this.bindingId || (input as { bindingId?: string } | null)?.bindingId !== this.bindingId) {
+      if (current?.() === false || !this.bindingId || (input as { bindingId?: string } | null)?.bindingId !== this.bindingId) {
         throw new Error("stale_room_host");
       }
       const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));

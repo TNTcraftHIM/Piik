@@ -58,7 +58,7 @@ window.runBrowserRoomCheck = async () => {
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
     now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
-  }, signal) as Promise<Output>;
+  }, { signal }) as Promise<Output>;
   const bindHost = async () => {
     await host.bind(bindingId);
     await host.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });

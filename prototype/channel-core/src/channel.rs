@@ -42,6 +42,12 @@ pub struct Channel {
     pub(crate) service_kinds: crate::host::TransitKinds,
 }
 
+pub(crate) enum ConversationDelivery {
+    ToWriter,
+    ToReader,
+    AdvancedHistory,
+}
+
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
     pub state_changed: bool,
@@ -237,12 +243,11 @@ impl Channel {
         match command {
             Command::Join { .. } => return Err("already_joined"),
             Command::SetProfile { name, avatar } => {
-                self.identity
+                broadcast = self.identity
                     .users
                     .get_mut(&user_id)
                     .unwrap()
                     .set_profile(name, avatar)?;
-                broadcast = true;
             }
             Command::UpdateDomain { name, icon } => {
                 if user_id != self.identity.owner_id {
@@ -1089,7 +1094,7 @@ impl Channel {
         &mut self,
         session: Uuid,
         packet: crate::conversation::SignedPacket,
-    ) -> Result<(Uuid, Event, bool), &'static str> {
+    ) -> Result<(Uuid, Event, ConversationDelivery), &'static str> {
         if packet.sender != session {
             return Err("invalid_conversation_sender");
         }
@@ -1110,6 +1115,7 @@ impl Channel {
         if address.binding_id != binding.id || !valid_id(&address.request_id) {
             return Err("invalid_conversation_scope");
         }
+        let to_writer = address.recipient == binding.session;
         let participant = if address.sender == binding.session {
             address.recipient
         } else if address.recipient == binding.session {
@@ -1151,7 +1157,7 @@ impl Channel {
                     request_id: Some(address.request_id),
                     result: RoomResult::Error { code: code.into() },
                 };
-                return Ok((address.recipient, error, false));
+                return Ok((address.recipient, error, ConversationDelivery::ToReader));
             }
             return Err(code);
         }
@@ -1171,7 +1177,14 @@ impl Channel {
                 projection.last_message_seq = projection.last_message_seq.max(message.seq);
             }
         }
-        Ok((address.recipient, Event::Conversation { packet }, changed))
+        let delivery = if changed {
+            ConversationDelivery::AdvancedHistory
+        } else if to_writer {
+            ConversationDelivery::ToWriter
+        } else {
+            ConversationDelivery::ToReader
+        };
+        Ok((address.recipient, Event::Conversation { packet }, delivery))
     }
 
     pub(crate) fn remove_room(&mut self, id: &str, actor: Uuid) -> Vec<RetiredRoomReply> {

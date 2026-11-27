@@ -1464,7 +1464,7 @@ impl InputEvent {
                 Some(Action::Held(Held::Button(button), down))
             }
             Self::Wheel { delta } if (-1200..=1200).contains(&delta) => Some(Action::Wheel(delta)),
-            Self::Text { text } if text.len() <= 2048 && !text.contains('\0') => {
+            Self::Text { text } if text.len() <= piik_channel_core::input::INPUT_TEXT_BYTES && !text.contains('\0') => {
                 Some(Action::Text(text))
             }
             _ => None,

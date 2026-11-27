@@ -3,7 +3,7 @@ import { SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { AudioBitrateControl } from "../../components/living/QualityPresets";
 import { Glyph } from "../../ui/icons";
-import { useCopy } from "../../ui/copy";
+import { useCopy, type CopyKey } from "../../ui/copy";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
 import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy } from "../protocol";
@@ -90,24 +90,27 @@ function RoomForm({ value, disabled, busy, imageBusy, onSave, onCancel, createLa
   </form>;
 }
 
-export function RoomHostingNote({ channel, room }: { channel: ChannelController; room?: ChannelRoom }) {
-  const { t } = useCopy();
+export function roomHostingNoteKey(channel: ChannelController, room?: ChannelRoom): CopyKey {
   const serverHosted = channel.state?.channel.hostingMode === "hosted";
   if (room) {
-    if (serverHosted) return t("room.hosting.server");
+    if (serverHosted) return "room.hosting.server";
     if (room.available && room.delivery?.hostSessionId === channel.sessionId && channel.sessionId) {
-      return t("room.create.browserHostedNote");
+      return "room.create.browserHostedNote";
     }
-    return t("room.hosting.creatorDevice");
+    return "room.hosting.creatorDevice";
   }
-  if (serverHosted) return t("room.create.serverHostedNote");
-  return t(channel.appConnected ? "room.create.appHostedNote" : "room.create.browserHostedNote");
+  if (serverHosted) return "room.create.serverHostedNote";
+  return channel.appConnected ? "room.create.appHostedNote" : "room.create.browserHostedNote";
 }
 
-export function RoomAccessNote({ access }: { access: "public" | "private" | "invite_only" }) {
+export function RoomHostingNote({ channel, room }: { channel: ChannelController; room?: ChannelRoom }) {
   const { t } = useCopy();
-  if (access === "invite_only") return t("room.settings.inviteOnlyNote");
-  return t(access === "public" ? "room.settings.publicNote" : "room.settings.privateNote");
+  return t(roomHostingNoteKey(channel, room));
+}
+
+export function roomAccessNoteKey(access: RoomDraft["access"] | "invite_only"): CopyKey {
+  if (access === "invite_only") return "room.settings.inviteOnlyNote";
+  return access === "public" ? "room.settings.publicNote" : "room.settings.privateNote";
 }
 
 function RoomIdentityAndAccess({ room, value, onChange: change, inviteOnly, disabled, imageBusy, onImageBusyChange }: {
@@ -120,7 +123,7 @@ function RoomIdentityAndAccess({ room, value, onChange: change, inviteOnly, disa
     <ChannelIdentityFields name={name} icon={icon} label={t("room.settings.name")}
       roomPicture={{ value: value.picture === undefined ? room?.picture ?? null : value.picture, onChange: picture => change({ picture }) }}
       disabled={disabled} onName={name => change({ name })} onIcon={icon => change({ icon })} imageBusy={imageBusy} onImageBusyChange={onImageBusyChange} />
-    {inviteOnly ? <p><RoomAccessNote access="invite_only" /></p> : <>
+    {inviteOnly ? <p>{t(roomAccessNoteKey("invite_only"))}</p> : <>
       <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
         <legend className="visually-hidden">{t("room.settings.admission")}</legend>
         {(["public", "private"] as const).map(value => <label key={value}>
@@ -130,7 +133,7 @@ function RoomIdentityAndAccess({ room, value, onChange: change, inviteOnly, disa
             {value === "public" ? t("room.settings.public") : t("room.settings.private")}</span>
         </label>)}
       </fieldset>
-      <p><RoomAccessNote access={access} /></p>
+      <p>{t(roomAccessNoteKey(access))}</p>
       {access === "private" && <div className="c3-private-options">
         <label><span>{t("room.settings.optionalPassword")}</span><input className="c3-input" type="password"
           maxLength={128} autoComplete="new-password" value={password} disabled={disabled || removePassword}

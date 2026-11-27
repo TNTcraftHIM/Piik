@@ -204,6 +204,7 @@ export class ChannelSession {
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
   private identityGeneration = 0;
+  private previousRoomAccount?: { credential?: string; ownerBootstrap?: OwnerBootstrap; roomId: string };
   private releaseDebug?: () => void;
   private feedbackAudio = new FeedbackAudio();
   private feedbackImports = new Map<FeedbackCue, symbol>();
@@ -554,7 +555,7 @@ export class ChannelSession {
       if (this.view.sessionId && !resumed) this.releaseMedia();
       if (!resumed) this.releaseHosts();
       this.credential = event.credential;
-      const saved = stored(credentialKey, event.credential) === event.credential;
+      const saved = !this.previousRoomAccount && stored(credentialKey, event.credential) === event.credential;
       const owner = event.state.sessions.find(session => session.id === event.sessionId)?.userId === event.state.channel.ownerId;
       if (bootstrap && owner) {
         this.ownerBootstrap = undefined;
@@ -1810,7 +1811,7 @@ export class ChannelSession {
     });
   }
 
-  private async admitBackupIdentity(metadata: RoomBackupMetadata): Promise<(() => void) | undefined> {
+  private async admitBackupIdentity(metadata: RoomBackupMetadata): Promise<number | undefined> {
     if (metadata.policy.creatorId === this.view.self?.id) return;
     const check = this.sessionContext(), archived = metadata.ownCredential;
     if (!archived || archived.userId !== metadata.policy.creatorId) throw new Error("backup_identity_required");
@@ -1818,24 +1819,14 @@ export class ChannelSession {
     if (!response.ok) throw new Error("backup_identity_required");
     const identity = z.object({ domainId: z.string(), user: userSchema }).parse(await response.json()); check();
     if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
-    const previous = { credential: this.credential, ownerBootstrap: this.ownerBootstrap, roomId: this.roomId,
-      hash: location.hash };
-    const rollback = () => {
-      this.close(); this.credential = previous.credential;
-      if (previous.credential) stored(credentialKey, previous.credential);
-      this.ownerBootstrap = previous.ownerBootstrap; this.roomId = previous.roomId;
-      if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
-      this.start();
-    };
-    const generation = await this.connectBackupIdentity(metadata.domainId, archived.userId, { credential: archived.credential }, metadata.policy.id, rollback);
-    if (generation !== this.identityGeneration) throw new Error("disconnected");
-    if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
-    return () => { if (generation === this.identityGeneration) rollback(); };
+    return this.connectBackupIdentity(metadata.domainId, archived.userId, { credential: archived.credential }, metadata.policy.id);
   }
 
   private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string },
-    skipRoom?: string, onFailure = this.close): Promise<number> {
-    this.close(); this.credential = identity.credential; this.roomId = "";
+    skipRoom?: string): Promise<number> {
+    this.close();
+    if (skipRoom) this.previousRoomAccount = { credential: this.credential, ownerBootstrap: this.ownerBootstrap, roomId: this.roomId };
+    this.credential = identity.credential; this.roomId = "";
     this.ownerBootstrap = identity.ownerKey === undefined ? undefined : { key: identity.ownerKey };
     const generation = this.identityGeneration;
     const lifetime = this.captureLifetime.signal;
@@ -1860,7 +1851,10 @@ export class ChannelSession {
       lifetime.throwIfAborted();
       return generation;
     } catch (error) {
-      if (generation === this.identityGeneration) onFailure();
+      if (generation === this.identityGeneration) {
+        this.close();
+        if (skipRoom) this.start();
+      }
       throw error;
     } finally {
       clearTimeout(timer);
@@ -2020,9 +2014,19 @@ export class ChannelSession {
     const target = metadata.policy.id;
     if (!owner && this.view.state!.channel.rooms.some(room => room.id === target && room.available)) throw new Error("room_host_conflict");
     if (owner && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
-    let rollback: (() => void) | undefined, committed = false;
+    let identityGeneration: number | undefined, committed = false;
+    const keepImportedAccount = () => {
+      if (identityGeneration !== this.identityGeneration) return;
+      this.previousRoomAccount = undefined;
+      if (stored(credentialKey, this.credential) !== this.credential) this.patch({ error: "backup_identity_not_saved" });
+      if (typeof history !== "undefined") {
+        try { history.replaceState(null, "", location.pathname + location.search); }
+        catch { /* The active session already uses the imported account. */ }
+      }
+    };
     try {
-      if (source.kind === "restore") rollback = await this.admitBackupIdentity(metadata);
+      if (source.kind === "restore") identityGeneration = await this.admitBackupIdentity(metadata);
+      if (identityGeneration !== undefined && identityGeneration !== this.identityGeneration) throw new Error("disconnected");
       const check = this.sessionContext();
       const app = this.app?.connected ? this.app : undefined;
       const native = owner?.native ?? (!owner && app ? { restore: (blob: Blob) => app.restoreRoom(blob) } : undefined);
@@ -2035,7 +2039,9 @@ export class ChannelSession {
           async entry => contents.get(entry.attachment.sha256.toLowerCase())!);
         check(); owner?.current();
         if (!owner && (this.app !== app || !app?.connected)) throw new Error("app_disconnected");
-        const restored = await native.restore(archive); committed = true; check();
+        const restored = await native.restore(archive);
+        committed = true; keepImportedAccount();
+        check();
         if (restored.id !== target) throw new Error("backup_room_mismatch");
         if (!owner && app) {
           const description = await app.describeHosting(); check();
@@ -2056,6 +2062,7 @@ export class ChannelSession {
             if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
             else await stage.replace(cancel.signal);
             committed = true;
+            keepImportedAccount();
             if (!owner) requestBrowserRoomPersistence();
           }
           finally { cancel.dispose(); }
@@ -2075,8 +2082,11 @@ export class ChannelSession {
       return { roomId: target, cached };
     } catch (error) {
       if (committed) throw new Error("room_restored_connection_failed");
-      if (roomRestoreRecovery(error)) throw error;
-      rollback?.();
+      if (roomRestoreRecovery(error)) {
+        keepImportedAccount();
+        throw error;
+      }
+      if (identityGeneration === this.identityGeneration) { this.close(); this.start(); }
       if (error instanceof Error && error.message === "room_not_in_domain") throw new Error("backup_room_not_admitted");
       throw error;
     }
@@ -2317,6 +2327,7 @@ export class ChannelSession {
         local: id => this.local.get(id), app: () => this.app,
         configure: (id, profile) => this.media.configureLocal(id, profile),
         publish: (id, roomId, profile) => this.request({ type: "publish", publication: { id, roomId, kind: "screen", videoSettings: screenVideoSettings(profile) } }),
+        retire: id => this.retireScreenPublication(id),
         remember: this.setQuality, begin: () => this.beginActionFeedback(),
       });
       this.stages.set(roomId, stage);
@@ -3219,7 +3230,9 @@ export class ChannelSession {
     const prepared = () => this.app === app && this.stages.get(roomId)?.screen === share
       && app.externalInput(share.id) === input && input?.state === "prepared" && input.captureId === event.captureId
       && this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available);
-    const busy = () => this.stages.get(roomId)?.sourceSelection || this.view.pending.has(`screen:${roomId}`);
+    const stage = this.stages.get(roomId)!;
+    const busy = () => stage.sourceSelection || this.pendingActions.has(`screen:${roomId}`)
+      || (this.local.has(share.id) && stage.qualityPending);
     while (prepared() && busy()) {
       await new Promise<void>(resolve => {
         const unsubscribe = this.subscribe(() => {
@@ -3690,6 +3703,8 @@ export class ChannelSession {
       this.releaseMedia();
       this.releaseHosts();
       this.patch({ sessionId: null, state: null, self: null, error: "session_expired" });
+      // An in-flight Join can still name the session whose media just expired.
+      if (this.socket) this.reconnect();
     }, session_recovery_ms());
   }
 
@@ -3701,6 +3716,12 @@ export class ChannelSession {
   close = (): void => {
     this.identityGeneration++;
     this.closeConnection();
+    if (this.previousRoomAccount) {
+      this.credential = this.previousRoomAccount.credential;
+      this.ownerBootstrap = this.previousRoomAccount.ownerBootstrap;
+      this.roomId = this.previousRoomAccount.roomId;
+      this.previousRoomAccount = undefined;
+    }
   };
 
   private closeConnection(): void {

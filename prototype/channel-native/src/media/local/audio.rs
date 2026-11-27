@@ -57,7 +57,8 @@ enum Request {
     ),
     CommitSystem(watch::Receiver<bool>, oneshot::Sender<Result<()>>),
     StopSystem(oneshot::Sender<Result<()>>),
-    Microphone(SourceMicrophoneSettings, oneshot::Sender<Result<()>>),
+    // None disables commentary while retaining the actor's current device and gain.
+    Microphone(Option<SourceMicrophoneSettings>, oneshot::Sender<Result<()>>),
     CancelMicrophone(oneshot::Sender<Result<()>>),
 }
 struct Preparing {
@@ -182,7 +183,7 @@ impl Control {
             .map_err(|_| anyhow!("capture_unavailable"))?;
         wait.await.map_err(|_| anyhow!("capture_unavailable"))?
     }
-    pub async fn configure_microphone(&self, settings: SourceMicrophoneSettings) -> Result<()> {
+    pub async fn configure_microphone(&self, settings: Option<SourceMicrophoneSettings>) -> Result<()> {
         let (done, wait) = oneshot::channel();
         self.requests
             .send(Request::Microphone(settings, done))
@@ -313,7 +314,10 @@ fn run(
                                 response = Some((reply, Ok(())));
                             }
                         }
-                        Some(Request::Microphone(next, reply)) => {
+                        Some(Request::Microphone(settings, reply)) => {
+                            let next = settings.unwrap_or_else(|| SourceMicrophoneSettings {
+                                enabled: false, ..microphone.clone()
+                            });
                             if !next.enabled {
                                 let old = mic.take();
                                 let preparing = pending.take_if(|p| matches!(p.kind, PreparingKind::Microphone(_)));
@@ -960,11 +964,11 @@ mod tests {
                     },
                 );
                 control
-                    .configure_microphone(SourceMicrophoneSettings {
+                    .configure_microphone(Some(SourceMicrophoneSettings {
                         enabled: true,
-                        device_id: "active".into(),
-                        volume: 1.0,
-                    })
+                        device_id: "successor-device".into(),
+                        volume: 0.6,
+                    }))
                     .await?;
                 let (system, _system_pcm, system_joined) = AudioCapture::fixture(false)?;
                 let system_control = system.control();
@@ -974,11 +978,11 @@ mod tests {
                     let selected = control.clone();
                     changing = Some(tokio::spawn(async move {
                         selected
-                            .configure_microphone(SourceMicrophoneSettings {
+                            .configure_microphone(Some(SourceMicrophoneSettings {
                                 enabled: true,
                                 device_id: "pending".into(),
                                 volume: 1.0,
-                            })
+                            }))
                             .await
                     }));
                     opened.await?;
@@ -990,13 +994,19 @@ mod tests {
                     system_started = Some(started);
                     changing = None;
                 }
-                let off = control
-                    .configure_microphone(SourceMicrophoneSettings {
-                        enabled: false,
-                        device_id: "active".into(),
-                        volume: 1.0,
-                    })
-                    .await;
+                let owner = crate::peer::CaptureAudio::new("room".into(), control.clone());
+                let previous = Uuid::new_v4();
+                let successor = Uuid::new_v4();
+                let mut settings = control.state.borrow().microphone.clone();
+                assert!(settings.enabled);
+                settings.device_id = "previous-device".into();
+                settings.volume = 0.2;
+                assert!(owner.configure_microphone("room", previous, Some(successor), settings.clone()).is_err());
+                settings.enabled = false;
+                assert!(owner.configure_microphone("other", previous, Some(successor), settings.clone()).is_err());
+                // Off can arrive after selection or while the previous video has stopped.
+                let current = preparing_microphone.then_some(successor);
+                let off = owner.configure_microphone("room", previous, current, settings)?.await;
                 let stopped = mic_control.is_stopped();
                 let state = control.state.borrow().clone();
                 let pending_mic_stopped = candidate_control.is_stopped();
@@ -1004,6 +1014,11 @@ mod tests {
                 if preparing_microphone {
                     system_control.stop();
                 }
+                let edited = SourceMicrophoneSettings {
+                    enabled: false, device_id: "chosen-while-off".into(), volume: 0.4,
+                };
+                let applied = owner.configure_microphone("room", successor, Some(successor), edited.clone())?.await?;
+                assert_eq!(applied, edited);
                 control.stop();
                 task.await?;
                 mic_joined.await?;
@@ -1018,8 +1033,10 @@ mod tests {
                 if let Some(started) = system_started {
                     assert!(started.await?.is_err());
                 }
-                off?;
+                assert_eq!(off?, state.microphone);
                 assert!(stopped && !state.microphone.enabled);
+                assert_eq!(state.microphone.device_id, "successor-device");
+                assert_eq!(state.microphone.volume, 0.6);
                 if preparing_microphone {
                     assert!(pending_mic_stopped);
                 } else {
@@ -1113,11 +1130,11 @@ mod tests {
             let (packets, mut received) = mpsc::channel(8);
             relay.set(id, vec![packets]);
             control
-                .configure_microphone(SourceMicrophoneSettings {
+                .configure_microphone(Some(SourceMicrophoneSettings {
                     enabled: true,
                     device_id: "mic".into(),
                     volume: 0.5,
-                })
+                }))
                 .await?;
             for millis in [20, 40] {
                 // Fill both capture queues before yielding to the mixer.
@@ -1136,11 +1153,11 @@ mod tests {
             }
             assert_eq!(control.source.borrow().as_ref(), Some(&id));
             assert!(control
-                .configure_microphone(SourceMicrophoneSettings {
+                .configure_microphone(Some(SourceMicrophoneSettings {
                     enabled: true,
                     device_id: "missing".into(),
                     volume: 1.0
-                })
+                }))
                 .await
                 .is_err());
             assert_eq!(control.state.borrow().microphone.device_id, "mic");
@@ -1289,19 +1306,19 @@ mod tests {
             assert_eq!(*control.source.borrow(), Some(id));
             assert!(ready.try_recv().is_err());
             control
-                .configure_microphone(SourceMicrophoneSettings {
+                .configure_microphone(Some(SourceMicrophoneSettings {
                     enabled: true,
                     device_id: "mic".into(),
                     volume: 1.5,
-                })
+                }))
                 .await?;
             assert_eq!(control.state.borrow().microphone.volume, 1.5);
             control
-                .configure_microphone(SourceMicrophoneSettings {
+                .configure_microphone(Some(SourceMicrophoneSettings {
                     enabled: false,
                     device_id: "mic".into(),
                     volume: 1.5,
-                })
+                }))
                 .await?;
             mic_joined.await?;
             let Event::CaptureAudioEnded { source, .. } = ended.recv().await.unwrap() else {
@@ -1312,11 +1329,11 @@ mod tests {
             current.wait_for(Option::is_none).await?;
             assert!(!control.state.borrow().microphone.enabled);
             control
-                .configure_microphone(SourceMicrophoneSettings {
+                .configure_microphone(Some(SourceMicrophoneSettings {
                     enabled: true,
                     device_id: "again".into(),
                     volume: 1.0,
-                })
+                }))
                 .await?;
             again_pcm
                 .send(frame(epoch, 320, [0.2, 0.4]))
@@ -1327,11 +1344,11 @@ mod tests {
                 let control = control.clone();
                 tokio::spawn(async move {
                     control
-                        .configure_microphone(SourceMicrophoneSettings {
+                        .configure_microphone(Some(SourceMicrophoneSettings {
                             enabled: true,
                             device_id: "cancelled".into(),
                             volume: 1.0,
-                        })
+                        }))
                         .await
                 })
             };
@@ -1355,11 +1372,11 @@ mod tests {
                 let control = control.clone();
                 tokio::spawn(async move {
                     control
-                        .configure_microphone(SourceMicrophoneSettings {
+                        .configure_microphone(Some(SourceMicrophoneSettings {
                             enabled: true,
                             device_id: "pending".into(),
                             volume: 1.0,
-                        })
+                        }))
                         .await
                 })
             };

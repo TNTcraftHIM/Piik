@@ -749,6 +749,14 @@ fn profile_update_and_clear_follow_the_user_across_live_endpoints() {
     }
     assert!(updated.events.iter().any(|(target, event)| *target == first
         && matches!(event, Event::Ack { request_id } if request_id == "profile")));
+    let repeated = apply(
+        &mut core,
+        second,
+        json!({"type":"set_profile", "name":" Same friend ", "avatar":avatar, "requestId":"repeat"}),
+        3,
+    );
+    assert!(matches!(repeated.events.as_slice(), [(target, Event::Ack { request_id })]
+        if *target == second && request_id == "repeat"));
     core.disconnect(first, 4);
     let resumed = Uuid::new_v4();
     let (_, _, snapshot) = welcome(

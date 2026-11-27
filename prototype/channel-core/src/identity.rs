@@ -47,11 +47,19 @@ impl User {
             version: self.version.clone(),
         }
     }
+    pub(crate) fn changes_profile(&self, name: Option<&str>, avatar: Option<&Option<String>>) -> bool {
+        name.is_some_and(|name| name.trim() != self.name)
+            || avatar.is_some_and(|avatar| avatar != &self.avatar)
+    }
+
     pub fn set_profile(
         &mut self,
         name: Option<String>,
         avatar: Option<Option<String>>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<bool, &'static str> {
+        if !self.changes_profile(name.as_deref(), avatar.as_ref()) {
+            return Ok(false);
+        }
         if let Some(name) = name {
             let name = name.trim();
             if name.is_empty() || name.encode_utf16().count() > 40 {
@@ -63,7 +71,7 @@ impl User {
             self.avatar = avatar;
         }
         self.version = profile_version(&self.name, &self.avatar);
-        Ok(())
+        Ok(true)
     }
 }
 

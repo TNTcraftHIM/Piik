@@ -1,8 +1,22 @@
 import { z } from "zod";
 import { isComposingOrAltGraph } from "../ui/shortcut-key";
 
-// A text submission still fits one encrypted input packet and the existing queue.
+export const INPUT_FRAME_BYTES = 8192;
+export const REMOTE_INPUT_COMMAND_BYTES = 4096;
 export const REMOTE_TEXT_BYTES = 2048;
+
+const encoder = new TextEncoder();
+export function inputFrameFits(frame: string): boolean {
+  return frame.length <= INPUT_FRAME_BYTES && encoder.encode(frame).byteLength <= INPUT_FRAME_BYTES;
+}
+
+// The editor can measure the command before sending. Every grant has the same hex length.
+const exampleGrant = "0".repeat(64);
+export function remoteTextFits(text: string, grant = exampleGrant): boolean {
+  return text.length <= REMOTE_TEXT_BYTES && encoder.encode(text).byteLength <= REMOTE_TEXT_BYTES
+    && encoder.encode(JSON.stringify({ type: "text", text, grant })).byteLength <= REMOTE_INPUT_COMMAND_BYTES;
+}
+
 // F12 is reserved by Windows debuggers, including for global modified chords.
 export const remoteShortcutKeySchema = z.number().int().min(1).max(11);
 export const REMOTE_SHORTCUT_KEYS = Array.from({ length: 11 }, (_, index) => index + 1);

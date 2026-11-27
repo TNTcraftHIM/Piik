@@ -389,7 +389,7 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
     // Settle real recovery sync before moving the same stored hosts to Native.
     core.settle(piik_channel_core::Effects {
         events: recovery.into_iter().map(|e| (core.connection, e)).collect(),
-        close: vec![],
+        ..Default::default()
     })?;
     let mut native = session(&mut core, state);
     let mut sink = RecordedSink::default();
