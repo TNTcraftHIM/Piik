@@ -17470,6 +17470,70 @@ test("transport ack leaves invitation pending until its correlated result", asyn
   } finally { session.close(); }
 });
 
+test.each(["profiles", "room_created"] as const)("a %s reply cannot confirm a profile edit", async type => {
+  const { session, socket } = await setup();
+  try {
+    const saving = session.updateProfile({ name: "Updated" });
+    const requestId = socket.sent.at(-1)!.requestId;
+    const profile = { ...session.getSnapshot().self!, name: "Unrelated" };
+    socket.receive(type === "profiles" ? { type, requestId, profiles: [profile], total: 1, nextCursor: null }
+      : { type, requestId, room: session.getSnapshot().state!.channel.rooms[0] });
+    await expect(saving).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().self?.name).toBe("Me");
+    expect(session.getSnapshot().connection).toBe("connected");
+  } finally { session.close(); }
+});
+
+test("a bare acknowledgement cannot confirm a Watch join without its room clock", async () => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  try {
+    const watch = { id: "film", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+      source: { kind: "media", url: "https://media.test/film.mp4" },
+      playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [watch] } });
+    const joining = session.joinWatch(watch.id);
+    const command = socket.sent.findLast(c => c.type === "join_watch")!;
+    socket.receive({ type: "ack", requestId: command.requestId });
+    await expect(joining).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().watchPlayers.has(watch.id)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("a bare acknowledgement rejects an outstanding profile query and room creation", async () => {
+  const { session, socket } = await setup();
+  try {
+    socket.autoProfiles = false;
+    const profile = session.queryProfiles({ query: "Alice" });
+    const creating = session.createRoom({ name: "New", icon: "couch", access: "public", hidden: false });
+    const query = socket.sent.findLast(command => command.type === "profiles")!;
+    const create = socket.sent.findLast(command => command.type === "create_room")!;
+    socket.receive({ type: "ack", requestId: query.requestId });
+    socket.receive({ type: "ack", requestId: create.requestId });
+    await expect(profile).rejects.toThrow("invalid_response");
+    await expect(creating).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().connection).toBe("connected");
+  } finally { session.close(); }
+});
+
+test("a room completion cannot answer a profile query or preempt a different room's edit", async () => {
+  const { session, socket } = await setup();
+  try {
+    socket.autoProfiles = false;
+    const reading = session.queryProfiles({ query: "Alice" });
+    const query = socket.sent.at(-1)!;
+    const saving = session.updateRoom("second", { name: "Renamed" }, false);
+    const update = socket.sent.at(-1)!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: query.requestId, result: { type: "done" } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
+    socket.receive({ type: "profiles", requestId: query.requestId, profiles: [], total: 0, nextCursor: null });
+    await expect(reading).resolves.toMatchObject({ profiles: [], total: 0 });
+    expect(session.getSnapshot().pending.has("room:second")).toBe(true);
+    socket.receive({ type: "room_reply", roomId: "second", requestId: update.requestId, result: { type: "done" } });
+    await saving;
+  } finally { session.close(); }
+});
+
 test("terminal candidate rejects unsupported room results only for their caller", async () => {
   const { session, socket } = await setup();
   try {

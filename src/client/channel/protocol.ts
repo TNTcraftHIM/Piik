@@ -264,7 +264,7 @@ export class ChannelEventDecoder {
     return event;
   }
 }
-export type ChannelReply = Extract<ChannelEvent, { type: "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "ack" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }

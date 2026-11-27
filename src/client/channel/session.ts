@@ -125,6 +125,24 @@ function signedConversationRequest(command: ChannelCommand) {
   }
 }
 
+function acceptsChannelReply(command: ChannelCommand, event: ChannelReply): boolean {
+  switch (command.type) {
+    case "create_room": return event.type === "room_created";
+    case "profiles": return event.type === "profiles";
+    case "room_invite": return event.type === "room_reply" && event.result.type === "invite";
+    case "get_room_invite": return event.type === "room_reply" && event.result.type === "invite_state";
+    case "room_topology": return event.type === "room_reply" && event.result.type === "topology";
+    case "delete_room": return event.type === "room_reply" && event.result.type === "deleted";
+    case "start_watch":
+    case "join_watch":
+      if (command.type === "join_watch" && command.mode === null) break;
+      if (event.type !== "room_reply" || event.result.type !== "watch_ready") return false;
+      const time = event.result.serverTime;
+      return typeof time === "number" && Number.isSafeInteger(time) && time >= 0;
+  }
+  return event.type === "ack" || event.type === "room_reply" && event.result.type === "done";
+}
+
 function stored(key: string, value?: string): string | null {
   try {
     if (value !== undefined) localStorage.setItem(key, value);
@@ -596,19 +614,12 @@ export class ChannelSession {
       else {
         request.result?.(event); request.resolve();
       }
-    } else if (event.type === "room_created") {
+    } else if (event.type === "room_created" || event.type === "profiles") {
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
       if (!request || !event.requestId) return;
       this.retireRequest(event.requestId);
       request.result?.(event); request.resolve();
     } else if (event.type === "state") this.applyState(event.state);
-    else if (event.type === "profiles") {
-      const request = this.requests.get(event.requestId);
-      if (!request) return;
-      this.retireRequest(event.requestId);
-      this.mergeProfiles(event.profiles);
-      request.result?.(event); request.resolve();
-    }
     else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
     else if (event.type === "ack" || event.type === "error") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
@@ -616,7 +627,7 @@ export class ChannelSession {
       if (request && event.requestId) {
         if (event.type === "ack" && (request.kind === "room_invite" || request.kind === "get_room_invite")) return;
         this.retireRequest(event.requestId);
-        if (event.type === "ack") request.resolve();
+        if (event.type === "ack") { request.result?.(event); request.resolve(); }
         else request.reject(new Error(event.code));
       } else if (event.type === "error" && event.requestId) {
         for (const { reader } of this.readings.values()) {
@@ -901,18 +912,8 @@ export class ChannelSession {
       this.requests.set(requestId, { resolve, reject, roomId, kind: command.type, signedResult: conversation?.result,
         result: event => {
           try {
-            if (event.type === "room_reply") {
-              const kind = event.result.type;
-              const needsClock = command.type === "start_watch" || command.type === "join_watch" && command.mode !== null;
-              if (needsClock) {
-                const time = event.result.serverTime;
-                if (kind !== "watch_ready" || typeof time !== "number" || !Number.isSafeInteger(time) || time < 0) throw new Error("invalid_response");
-              } else if (command.type === "room_invite" || command.type === "get_room_invite") {
-                if (kind !== (command.type === "room_invite" ? "invite" : "invite_state")) throw new Error("invalid_response");
-              } else if (command.type !== "delete_room" && command.type !== "room_topology" && (conversation || kind !== "done")) {
-                throw new Error("invalid_response");
-              }
-            }
+            if (!conversation && !acceptsChannelReply(command, event)) throw new Error("invalid_response");
+            if (event.type === "profiles") this.mergeProfiles(event.profiles);
             result?.(event);
           }
           catch (error) {
