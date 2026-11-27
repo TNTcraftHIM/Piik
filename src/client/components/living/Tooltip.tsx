@@ -33,9 +33,10 @@ import { isCopyKey, say } from "../../ui/copy";
 import { motionDuration, replaySvgAnimations } from "../../ui/animation";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { useLayerHistory } from "../../ui/layer-history";
+import { useTouchHold } from "./use-touch-hold";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "./comic-presentation";
 
-export const LONG_PRESS_MS = 500;
+const TOUCH_HOLD_TOLERANCE_PX = 10;
 const TOUCH_HIDE_MS = 1500;
 export const HOVER_ENTER_MS = 500;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
@@ -90,12 +91,11 @@ export function Tooltip({
   const tooltipId = useId();
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const tipRef = useRef<HTMLSpanElement | null>(null);
-  const pressTimer = useRef<number | null>(null);
+  const hold = useTouchHold(ownerDocument?.defaultView, TOUCH_HOLD_TOLERANCE_PX);
   const hideTimer = useRef<number | null>(null);
   const hoverTimer = useRef<number | null>(null);
   const panelUnmountTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
-  const pressPoint = useRef<{ x: number; y: number } | null>(null);
   const [hoverOpen, setHoverOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
   const [pressOpen, setPressOpen] = useState(false);
@@ -172,13 +172,11 @@ export function Tooltip({
     // A hover/hold from the old window cannot pin guidance in the new one.
     dismissPanel();
     setPanelMounted(false);
-    pressPoint.current = null;
   }, [ownerDocument]);
 
   useEffect(() => {
     if (enabled) return;
     dismissPanel();
-    pressPoint.current = null;
   }, [enabled]);
 
   const mountPanel = (replay = false) => {
@@ -449,7 +447,6 @@ export function Tooltip({
 
   useEffect(
     () => () => {
-      if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
       if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
       if (panelUnmountTimer.current !== null) {
@@ -471,13 +468,6 @@ export function Tooltip({
     return () => ownerDocument?.removeEventListener("pointerdown", dismiss);
   }, [interactionOpen, ownerDocument]);
 
-  const cancelPress = () => {
-    if (pressTimer.current !== null) {
-      window.clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-  };
-
   const cancelHover = () => {
     if (hoverTimer.current !== null) {
       window.clearTimeout(hoverTimer.current);
@@ -486,7 +476,7 @@ export function Tooltip({
   };
   const dismissPanel = () => {
     cancelHover();
-    cancelPress();
+    hold.cancel();
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
     hideTimer.current = null;
     setHoverOpen(false);
@@ -552,28 +542,24 @@ export function Tooltip({
         // A suppression token belongs only to the click synthesized for the
         // completed long-press. A later touch starts a new, actionable gesture.
         longPressed.current = false;
-        cancelPress();
+        hold.cancel();
         if (tipRef.current?.contains(event.target as Node)) {
           // Reading/scrolling the panel is not another trigger long-press.
           if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
           hideTimer.current = null;
-          pressPoint.current = null;
           return;
         }
         touchGesture.current = event.pointerType === "touch";
         if (!enabled || event.pointerType !== "touch") return;
-        pressPoint.current = { x: event.clientX, y: event.clientY };
-        pressTimer.current = window.setTimeout(() => {
-          pressTimer.current = null;
+        hold.start(event, () => {
           longPressed.current = true;
           mountPanel(true);
           pickAlign();
           setPressOpen(true);
-        }, LONG_PRESS_MS);
+        });
       }}
       onPointerUp={() => {
-        cancelPress();
-        pressPoint.current = null;
+        hold.cancel();
         if (longPressed.current && enabled) {
           if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
           hideTimer.current = window.setTimeout(() => {
@@ -584,8 +570,7 @@ export function Tooltip({
         }
       }}
       onPointerCancel={(event) => {
-        cancelPress();
-        pressPoint.current = null;
+        hold.cancel();
         longPressed.current = false;
         if (hideTimer.current !== null) {
           window.clearTimeout(hideTimer.current);
@@ -594,13 +579,7 @@ export function Tooltip({
         if (!tipRef.current?.contains(event.target as Node)) setPressOpen(false);
       }}
       onPointerMove={(event) => {
-        // Only a real drag (scroll intent) cancels the hold — Chrome emits
-        // sub-pixel settling moves right after touchstart that must not count.
-        if (pressTimer.current !== null && event.pointerType === "touch" && pressPoint.current) {
-          const dx = event.clientX - pressPoint.current.x;
-          const dy = event.clientY - pressPoint.current.y;
-          if (dx * dx + dy * dy > 100) cancelPress();
-        }
+        if (event.pointerType === "touch") hold.move(event);
       }}
       onContextMenu={(event) => {
         // Long-press on a wrapped control means "show the hint", never the
