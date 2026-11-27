@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       channel_native:
-        description: Build Rust Native/App and run synthetic macOS codec timing checks
+        description: Run macOS Native builds and codec checks plus the Windows WebView2 lifecycle check
         required: false
         default: false
         type: boolean
@@ -131,7 +131,11 @@ jobs:
 
   channel-native:
     if: github.event_name == 'workflow_dispatch' && inputs.channel_native == true
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
       run:
@@ -147,25 +151,49 @@ jobs:
           rustup toolchain install 1.91.0 --profile minimal
           echo "CARGO_TARGET_DIR=$RUNNER_TEMP/channel-native-target" >> "$GITHUB_ENV"
       - name: Build Rust Server and App with capture
+        if: runner.os == 'macOS'
         run: |
           mkdir -p "$RUNNER_TEMP/channel-native-logs"
           cargo +1.91.0 build --locked --manifest-path prototype/channel-server/Cargo.toml --features capture --bins 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/server-app.log"
       - name: Compile Native tests without running them
+        if: runner.os == 'macOS'
         run: cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml --features capture --tests --no-run 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/native-tests.log"
       - name: Run synthetic VideoToolbox timing and roundtrip tests
+        if: runner.os == 'macOS'
         timeout-minutes: 2
         run: >-
           cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml
           --features capture --lib capture::macos::tests::
           -- --test-threads=1 --nocapture 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/synthetic-h264.log"
       - name: Save macOS build and codec logs
-        if: always()
+        if: always() && runner.os == 'macOS'
         uses: actions/upload-artifact@v7
         with:
           name: channel-native-macos-${{ github.sha }}
           path: ${{ runner.temp }}/channel-native-logs/
           if-no-files-found: warn
           retention-days: 7
+      - name: Compile the Windows App library tests
+        if: runner.os == 'Windows'
+        run: cargo +1.91.0 test --locked --manifest-path prototype/channel-server/Cargo.toml --features capture --lib --no-run
+      - name: Run the Windows WebView2 window lifecycle regression
+        if: runner.os == 'Windows'
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          $runtimeKeys = @(
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+            'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          )
+          $runtimeVersions = Get-ItemPropertyValue -Path $runtimeKeys -Name pv -ErrorAction SilentlyContinue
+          "WebView2 Runtime registry versions: $($runtimeVersions -join ', ')"
+          "Interactive desktop: $([Environment]::UserInteractive)"
+          $manifest = 'prototype/channel-server/Cargo.toml'
+          $testName = 'app_windows::page::cancelled_prepare_and_queued_close_release_native_windows'
+          cargo +1.91.0 test --locked --manifest-path $manifest --features capture --lib $testName `
+            -- --ignored --exact --test-threads=1 --nocapture | Tee-Object -Variable testOutput
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($testOutput -notcontains 'running 1 test') { throw "Expected to run $testName" }
 
   release-notes:
     if: github.event_name == 'pull_request'
