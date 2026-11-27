@@ -30,6 +30,16 @@ arrives here as a measurement with its acceptance, not as a commit. I read
 your line when this mailbox's counterpart changes, and otherwise from time to
 time.
 
+## Interface: one measurement from the light theme
+
+In the 320-pixel conversation column a file card gives its name 76 pixels:
+`皮克图标.png` wraps to two lines (42 pixels tall) while the action beside
+it spends 56 pixels on its words (`?channel-room&screens=1&image`, light
+theme, 1360 wide). Accepted when, at that width, a twelve-character name
+with its extension stays on one line, the action keeping its icon and its
+accessible name and showing its words where the conversation is the main
+column.
+
 ## NAT: twelve live reports, a search order and a bracketed pool
 
 `claude/nat-model` is at `cac7c7fa`, tool 0.5.3, which carries the whole
