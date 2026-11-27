@@ -122,6 +122,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const outputFailed = useSyncExternalStore(playbackOutput.subscribe, () => playbackOutput.failedFor(player.video), () => false);
   const showOutputRecovery = outputFailed && !player.error && !player.blocked;
   const waiting = player.waitingForPicture && !player.error && !player.blocked;
+  const nativeWaiting = native.mounted && waiting;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
@@ -149,7 +150,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const openOriginal = !owned && website && originalPageAvailable ? onAppWatch : undefined;
   const settingsOriginal = !player.error && surface.kind !== "external" && openOriginal;
   const localControls = !!player.video || !!receivingSettings || !!settingsOriginal || owned && !embedded;
-  const hasControls = localControls || !embedded && !thumbnail && !!mediaState;
+  const hasControls = nativeWaiting || localControls || !embedded && !thumbnail && !!mediaState;
   const failure = channelErrorPresentation(player.error, t,
     receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
   const diagnosis = player.error ? diagnoseChannelFact({ area: "error", code: player.error }) : null;
@@ -225,7 +226,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-tooltip-player data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-tooltip-player data-native-page={pageId ? true : undefined} data-native-mounted={native.mounted || undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
     data-diagnosis={showDiagnosis || showOutputRecovery && !thumbnail ? true : undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
@@ -290,6 +291,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
             title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
           {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
+            {nativeWaiting && <span className="c3-watch-status" role="status">
+              <BrandMark size={16} motion="loop" />{t("watch.waiting")}
+            </span>}
             {ended && <span className="c3-watch-status" role="status">{t("watch.ended")}</span>}
             {live?.active && !seekAvailable && <span className="c3-watch-status">{t("watch.live")}</span>}
             {(!live || seekAvailable) && <span className="c3-watch-time" data-live={!!live || undefined} title={timeLabel}>{live ? timeReadout : <><strong>{formatMediaTime(position)}</strong>{` / ${formatMediaTime(media.duration || Number.NaN)}`}</>}</span>}
