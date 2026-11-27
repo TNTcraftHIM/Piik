@@ -184,7 +184,7 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
   const count = joined ? people.length : people.filter(person => "state" in person && person.state === "active").length;
   return <span ref={trigger} className="c3-screen-audience">
     <Btn icon={joined ? viewingAppearance.joined.icon : "eye"} iconOverlay={<span aria-hidden="true">{count}</span>} quiet size="dense" expanded={open} controls={id} popoverTarget={id}
-      title={{ text: t(joined ? "watch.viewersCount" : "screen.viewersCount", { count: String(count) }) }} />
+      title={{ text: t(joined ? "watch.viewersCount" : "screen.pictureReceivedCount", { count: String(count) }) }} />
     <div id={id} ref={panel} popover="auto" role="dialog" aria-label={t(joined ? "watch.joined" : "screen.viewers")}
       className="lr-anchored-card c3-screen-audience-panel" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");

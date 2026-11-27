@@ -226,7 +226,7 @@ export const ko = {
   "conversation.deleteMessage": "이 메시지 삭제",
   "conversation.confirmDeleteMessage": "이 메시지와 첨부 파일을 영구 삭제할까요? 이미 다운로드한 파일은 그대로 남아요.",
   "screen.sharedSound": "공유 소리: {title}",
-  "screen.viewersCount": "시청자: {count}명 시청 중",
+  "screen.pictureReceivedCount": "화면을 받은 시청자: {count}명",
   "screen.viewers": "이 화면의 시청자",
   "screen.noViewers": "아직 이 화면을 보는 사람이 없어요.",
   "screen.sharedScreens": "공유 중인 화면",

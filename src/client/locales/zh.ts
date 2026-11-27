@@ -270,7 +270,7 @@ export const zh = {
   "conversation.deleteMessage": "删除这条消息",
   "conversation.confirmDeleteMessage": "永久删除这条消息及其附件？已下载的文件仍会保留。",
   "screen.sharedSound": "{title}的分享声音",
-  "screen.viewersCount": "观看者：{count} 人正在观看",
+  "screen.pictureReceivedCount": "画面已到：{count} 人",
   "screen.pictureReceived": "画面已到",
   "screen.pictureFailed": "画面不可用",
   "screen.viewers": "此画面的观看者",

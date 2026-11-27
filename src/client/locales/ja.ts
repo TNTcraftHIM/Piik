@@ -225,7 +225,7 @@ export const ja = {
   "conversation.deleteMessage": "このメッセージを削除",
   "conversation.confirmDeleteMessage": "このメッセージと添付ファイルを完全に削除しますか？ダウンロード済みのファイルは残ります。",
   "screen.sharedSound": "共有音声：{title}",
-  "screen.viewersCount": "視聴者：{count} 人が視聴中",
+  "screen.pictureReceivedCount": "映像が届いた視聴者：{count} 人",
   "screen.viewers": "この画面の視聴者",
   "screen.noViewers": "この画面を視聴している人はまだいません。",
   "screen.sharedScreens": "共有中の画面",
