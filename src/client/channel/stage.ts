@@ -57,6 +57,7 @@ interface ScreenQualityEffects {
   app(): ChannelApp | undefined;
   configure(id: string, profile: QualityProfile): Promise<void>;
   publish(id: string, roomId: string, profile: QualityProfile): Promise<void>;
+  retire(id: string): Promise<void>;
   remember(profile: QualityProfile): void;
   begin(): (error: unknown) => void;
 }
@@ -112,19 +113,27 @@ export class Stage {
       try {
         while (current()) {
           const next = edit.requested;
+          let restore: QualityProfile | undefined;
           try {
             if (local) {
-              const previous = share.profile;
               await this.quality.configure(id, next);
               if (!current()) break;
-              try { await this.quality.publish(id, this.roomId, next); }
-              catch (error) {
-                if (current()) await this.quality.configure(id, previous);
-                throw error;
-              }
+              restore = share.profile;
+              await this.quality.publish(id, this.roomId, next);
             } else await app!.setCaptureQuality(id, next);
           } catch (error) {
             if (!current()) break;
+            if (restore) {
+              try { await this.quality.configure(id, restore); }
+              catch (rollback) {
+                if (!current()) break;
+                const errors = [error, rollback];
+                try { await this.quality.retire(id); }
+                catch (retirement) { errors.push(retirement); }
+                throw new AggregateError(errors, error instanceof Error ? error.message : "operation_failed", { cause: error });
+              }
+              if (!current()) break;
+            }
             if (edit.requested !== next) continue;
             throw error;
           }

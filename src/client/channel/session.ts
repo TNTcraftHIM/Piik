@@ -2327,6 +2327,7 @@ export class ChannelSession {
         local: id => this.local.get(id), app: () => this.app,
         configure: (id, profile) => this.media.configureLocal(id, profile),
         publish: (id, roomId, profile) => this.request({ type: "publish", publication: { id, roomId, kind: "screen", videoSettings: screenVideoSettings(profile) } }),
+        retire: id => this.retireScreenPublication(id),
         remember: this.setQuality, begin: () => this.beginActionFeedback(),
       });
       this.stages.set(roomId, stage);
@@ -3229,7 +3230,9 @@ export class ChannelSession {
     const prepared = () => this.app === app && this.stages.get(roomId)?.screen === share
       && app.externalInput(share.id) === input && input?.state === "prepared" && input.captureId === event.captureId
       && this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available);
-    const busy = () => this.stages.get(roomId)?.sourceSelection || this.view.pending.has(`screen:${roomId}`);
+    const stage = this.stages.get(roomId)!;
+    const busy = () => stage.sourceSelection || this.pendingActions.has(`screen:${roomId}`)
+      || (this.local.has(share.id) && stage.qualityPending);
     while (prepared() && busy()) {
       await new Promise<void>(resolve => {
         const unsubscribe = this.subscribe(() => {

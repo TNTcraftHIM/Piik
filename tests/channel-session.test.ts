@@ -4393,6 +4393,34 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
   } finally { session.close(); }
 });
 
+test("a rejected Browser quality rollback retires the capture and retains both errors", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video"), stream = remoteStream("quality", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => stream } });
+  try {
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const { publication, requestId } = socket.sent.at(-1)!;
+    const { id } = publication as { id: string };
+    socket.receive({ type: "ack", requestId });
+    await starting;
+    const previous = session.getSnapshot().quality;
+    const restoreError = new Error("constraints could not be restored");
+    video.applyConstraints = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(restoreError).mockResolvedValue(undefined);
+    const editing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]).catch(error => error);
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.requestId).not.toBe(requestId));
+    expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } });
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce());
+    expect(socket.sent.at(-1)).toMatchObject({ type: "unpublish", publicationId: id });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    expect(await editing).toMatchObject({ message: "room_unavailable", errors: [expect.objectContaining({ message: "room_unavailable" }), restoreError] });
+    expect(session.screenQuality(id)).toBeUndefined();
+    expect(session.getSnapshot().streams.has(id)).toBe(false);
+    expect(session.getSnapshot().quality).toEqual(previous);
+  } finally { session.close(); }
+});
+
 test("Browser source output gain and bitrate survive replacement and close with the capture", async () => {
   const { session, socket } = await setup();
   const contexts: Array<{ gain: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> = [];
@@ -16535,6 +16563,12 @@ test("OBS commit blocks candidate cancellation across both source-transfer confi
       result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-only" },
     });
     await opening;
+    video.applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const editing = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+    const rejected = editing.catch(error => error);
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
+      publication: { id: publication.id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
+    const qualityRequest = socket.sent.at(-1)!;
     const b = crypto.randomUUID(),
       native = crypto.randomUUID();
     app.receive({
@@ -16545,6 +16579,9 @@ test("OBS commit blocks candidate cancellation across both source-transfer confi
       sessionId: native,
       codec: "h264",
     });
+    expect(socket.sent.at(-1)).toBe(qualityRequest);
+    socket.receive({ type: "error", requestId: qualityRequest.requestId, code: "room_unavailable" });
+    expect(await rejected).toMatchObject({ message: "room_unavailable" });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
     const transfer = socket.sent.at(-1)!;
     socket.receive({ type: "ack", requestId: transfer.requestId });
