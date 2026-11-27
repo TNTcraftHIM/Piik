@@ -45,7 +45,7 @@ import { SCREEN_BUFFER_TARGET_MAX_MS, type ScreenPlaybackError } from "../media/
 import { browserCaptureDevices } from "../media/capture-devices";
 import type { RoomInteractionSession, RoomInteraction } from "../lib/room-interactions";
 import { RoomReader } from "./room-reader";
-import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
+import { isThrow } from "../../shared/room-interactions";
 import { FeedbackAudio, type FeedbackCue } from "./feedback-audio";
 import { validateCustomFeedbackClip } from "./feedback-clip";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
@@ -390,6 +390,7 @@ export class ChannelSession {
     for (const stage of this.stages.values()) {
       if (!stage.screen) continue;
       ownedScreens.add(stage.screen.id);
+      if (stage.screen.microphoneChange?.current()) pending.add(`source-microphone:${stage.screen.id}`);
       if (stage.qualityPending) pending.add(`quality:${stage.screen.id}`);
     }
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
@@ -620,7 +621,7 @@ export class ChannelSession {
     else if (event.type === "room_reply") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
-      if (!request && event.requestId && event.result.type === "error") this.readings.get(event.roomId)?.reader.settle(event.requestId);
+      if (!request && event.requestId && event.result.type === "error") this.readings.get(event.roomId)?.reader.undelivered(event.requestId);
       if (!request || request.roomId !== event.roomId || !event.requestId) return;
       this.retireRequest(event.requestId);
       if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
@@ -645,7 +646,7 @@ export class ChannelSession {
       } else if (event.type === "error" && event.requestId) {
         for (const { reader } of this.readings.values()) {
           if (!reader.hasPendingInteraction(event.requestId)) continue;
-          reader.settle(event.requestId);
+          reader.undelivered(event.requestId);
           break;
         }
       } else if (event.type === "error" && !event.requestId) {
@@ -754,7 +755,7 @@ export class ChannelSession {
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
     const freshBindings = new Set(state.channel.rooms.filter(room => room.delivery
       && previousRooms?.find(previous => previous.id === room.id)?.delivery?.bindingId !== room.delivery.bindingId).map(room => room.id));
-    for (const id of freshBindings) this.readings.get(id)?.reader.close();
+    for (const id of freshBindings) this.readings.get(id)?.reader.clearInteraction();
     for (const [id, request] of this.requests) if (request.bindingId
       && !state.channel.rooms.some(room => room.id === request.roomId && room.authorized
         && room.available && room.delivery?.bindingId === request.bindingId)) {
@@ -971,33 +972,9 @@ export class ChannelSession {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
       return;
     }
-    const reader = this.readings.get(reply.roomId)?.reader;
-    const interaction = reader?.interaction;
-    if (reader?.bindingId === reply.bindingId && interaction) {
-      if (record.type === "interaction_ready") {
-        if (!reader.subscribed(reply.requestId, record)) return;
-        for (const snapshot of record.publicationReactions) this.applyPublicationReactionSnapshot(reply.roomId, snapshot);
-        return;
-      }
-      if (record.type === "reaction") {
-        if (record.snapshot?.type === "message") this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
-        else if (record.snapshot?.type === "publication") this.applyPublicationReactionSnapshot(reply.roomId, record.snapshot);
-        const event = record.event;
-        const user = event && (this.view.state?.users.find(user => user.id === event.senderUserId) ?? this.view.profiles.get(event.senderUserId) ?? { id: event.senderUserId, name: "User" });
-        if (event && user) interaction.receive({ type: "room-interaction", id: event.id, requestId: reply.requestId, occurredAt: event.occurredAt,
-          sender: { peerId: user.id, displayName: user.name, role: "viewer" },
-          payload: { kind: "reaction", reaction: event.reaction as import("../../shared/room-interactions").ReactionId,
-            ...(event.target.type === "person" ? { targetPeerId: event.target.userId } : {}) },
-          ...(event.target.type === "message" ? { contentTarget: { messageSeq: event.target.messageSeq, messageId: event.target.messageId } }
-            : event.target.type === "publication" ? { contentTarget: { publicationId: event.target.publicationId } } : {}) });
-        if (!event) interaction.confirm(reply.requestId, record.nonce);
-        return;
-      }
-      if (record.type === "error" && !this.requests.has(reply.requestId)) {
-        reader.settle(reply.requestId,
-          record.code === "rate_limited" ? "rate-limited" : record.code === "target_unavailable" ? "target-unavailable" : "busy");
-        return;
-      }
+    if (record.type === "interaction_ready" || record.type === "reaction" || (record.type === "error" && !request)) {
+      const reader = this.readings.get(reply.roomId)?.reader;
+      if (reader?.bindingId === reply.bindingId && reader.receiveInteraction(reply.requestId, record)) return;
     }
     if (record.type === "live_message") {
       if (this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.delivery?.bindingId === reply.bindingId)) {
@@ -1040,7 +1017,7 @@ export class ChannelSession {
     const removed = this.roomHistory(roomId).remove(throughSeq, messageSeqs, this.view.state?.channel.historyWindow ?? 1000);
     this.patch(this.historyView([roomId]));
     this.attachments.removeMessages(roomId, removed);
-    this.readings.get(roomId)?.reader.interaction?.removeChatMessages(removed);
+    this.readings.get(roomId)?.reader.removeMessages(removed);
     if (throughSeq) this.markRead(roomId, throughSeq);
   }
 
@@ -1077,15 +1054,7 @@ export class ChannelSession {
     if (!visible) return;
     message = visible;
     void this.loadProfiles(historyProfileIds([message])).catch(() => {});
-    if (live) {
-      const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
-      const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
-      const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
-      this.readings.get(roomId)?.reader.interaction?.receiveConfirmedChat({
-        type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
-        sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
-      });
-    }
+    if (live) this.readings.get(roomId)?.reader.receiveLiveMessage(message);
     if (history.receiveMessage(message, live, state.channel.historyWindow)) this.patch(this.historyView([roomId]));
   }
 
@@ -1269,7 +1238,7 @@ export class ChannelSession {
   browse = (roomId: string): void => {
     this.roomId = roomId;
     const wanted = this.wantedReadings();
-    for (const [id, { reader }] of this.readings) if (!wanted.has(id)) reader.close();
+    for (const [id, { reader }] of this.readings) if (!wanted.has(id)) reader.clearInteraction();
     this.browseRooms();
   };
 
@@ -1298,7 +1267,7 @@ export class ChannelSession {
     for (const [id, reading] of this.readings) {
       const room = this.view.state?.channel.rooms.find(room => room.id === id);
       if (!room?.authorized || !room.available || room.delivery?.bindingId !== reading.reader.bindingId || reading.socket !== this.socket && !wanted.has(id)) {
-        reading.reader.close(); this.readings.delete(id);
+        reading.reader.clearInteraction(); this.readings.delete(id);
       }
     }
     for (const id of wanted) {
@@ -1312,6 +1281,9 @@ export class ChannelSession {
           nextReactionNonce: () => ++this.reactionNonce,
           interactionChanged: () => this.publishInteractions(),
           feedback: event => this.playFeedback(id, event),
+          userName: userId => this.view.state?.users.find(user => user.id === userId)?.name ?? this.view.profiles.get(userId)?.name,
+          messageReactions: snapshot => this.applyReactionSnapshot(id, bindingId, snapshot),
+          publicationReactions: snapshot => this.applyPublicationReactionSnapshot(id, snapshot),
         });
         reading = { reader, socket: this.socket, ready: this.request({ type: "browse", roomId: id, active: true }) };
         this.readings.set(id, reading);
@@ -1343,7 +1315,7 @@ export class ChannelSession {
         void current.history.catch(() => {});
       }, error => {
         if (this.readings.get(id) === current && this.socket === current.socket && this.view.connection === "connected") {
-          current.reader.close(); this.readings.delete(id);
+          current.reader.clearInteraction(); this.readings.delete(id);
           this.retireReadings();
           this.patch({ error: error instanceof Error ? error.message : "operation_failed" });
         }
@@ -1355,7 +1327,7 @@ export class ChannelSession {
   private retireReadings(): void {
     const keep = this.wantedReadings();
     for (const [id, { reader }] of this.readings) if (!keep.has(id)) {
-      reader.close(); this.readings.delete(id);
+      reader.clearInteraction(); this.readings.delete(id);
       for (const [requestId, request] of this.requests) if (request.roomId === id && (request.kind === "browse" || this.histories.get(id)?.hasPage(requestId) || request.seekAfter !== undefined)) {
         this.retireRequest(requestId);
         request.reject(new DOMException("Read cancelled", "AbortError"));
@@ -1372,7 +1344,7 @@ export class ChannelSession {
     }
   }
   private clearReadings(): void {
-    for (const { reader } of this.readings.values()) reader.close();
+    for (const { reader } of this.readings.values()) reader.clearInteraction();
     this.readings.clear();
   }
 
@@ -2415,8 +2387,8 @@ export class ChannelSession {
     const selection = this.stages.get(roomId)?.sourceSelection;
     if (selection?.committing) return;
     if (selection) this.finishSourceSelection(roomId, selection);
-    if (!share || !selection && (!share.microphoneChange || this.local.has(share.id))) return;
-    if (!selection) share.requestedMicrophone = undefined;
+    if (!share || !selection && (!share.microphoneChange?.current() || this.local.has(share.id))) return;
+    if (!selection) share.microphoneChange!.requested = undefined;
     // A ready OBS input may be waiting for this independent picker to close.
     if (!selection || this.app?.externalInput(share.id)?.state !== "prepared") await this.app?.cancelCapture(share.id);
     this.patch({});
@@ -3303,7 +3275,7 @@ export class ChannelSession {
       : this.app?.sourceMicrophone(publicationId) ?? { enabled: false, deviceId: "", volume: 1 };
     return { ...actual, browser, canDisable: browser ? !!local.audio : !!this.app?.hasSourceAudioControl(publicationId),
       available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.hasSourceAudioControl(publicationId),
-      requested: share.requestedMicrophone?.settings ?? actual };
+      requested: share.microphoneChange?.current() ? share.microphoneChange.requested?.settings ?? actual : actual };
   };
 
   sourceMicrophones = (publicationId: string, signal?: AbortSignal) => this.local.get(publicationId)?.kind === "screen"
@@ -3316,54 +3288,74 @@ export class ChannelSession {
     const local = this.local.get(publicationId), app = this.app;
     const stopping = settings.enabled === false && actual?.canDisable;
     if (!share || this.stages.get(owner![0])?.sourceSelection && !stopping || !actual?.available) return Promise.reject(new Error("microphone_unavailable"));
-    if (share.microphoneChange && !share.requestedMicrophone && !stopping) return share.microphoneChange;
+    const running = share.microphoneChange?.current() ? share.microphoneChange : undefined;
+    if (running && !running.requested && !stopping) return running.promise;
     const next = { ...actual.requested, ...settings };
     if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
-    const request: NonNullable<ScreenShare["requestedMicrophone"]> = { settings: next };
-    share.requestedMicrophone = request;
+    type Edit = NonNullable<ScreenShare["microphoneChange"]>;
+    const request: NonNullable<Edit["requested"]> = { settings: next };
     const applyNative = ({ enabled, deviceId, volume }: SourceMicrophoneConfiguration) =>
       app!.setSourceMicrophone(publicationId, owner![0], { enabled, deviceId, volume });
-    if (stopping && local?.audio) void local.audio.setMicrophone(false, share.microphone);
-    else if (stopping && share.microphoneChange && app) {
-      // Start immediately to cancel Native preparation. The loop awaits this same request.
-      request.started = applyNative(next);
-      void request.started.catch(() => {});
+    if (running) {
+      running.requested = request;
+      if (stopping && local?.audio) void local.audio.setMicrophone(false, share.microphone);
+      else if (stopping && app) {
+        // Start immediately to cancel Native preparation. The loop awaits this same request.
+        request.started = applyNative(next);
+        void request.started.catch(() => {});
+      }
+      this.patch({});
+      return running.promise;
     }
-    this.patch({});
-    if (share.microphoneChange) return share.microphoneChange;
-    const current = () => this.stages.get(owner![0])?.screen === share
-      && (local ? this.local.get(publicationId) === local : this.app === app && !!app?.screens.has(publicationId));
-    share.microphoneChange = this.action(`source-microphone:${publicationId}`, async () => {
-      do {
-        const requested = share.requestedMicrophone;
-        if (!requested) throw new DOMException("Capture cancelled", "AbortError");
-        const wanted = requested.settings;
-        try {
-          if (local?.kind === "screen" && local.audio) {
-            const input = { deviceId: wanted.deviceId, volume: wanted.volume,
-              voiceProcessing: wanted.voiceProcessing ?? share.microphone.voiceProcessing };
-            if (wanted.enabled !== local.audio.microphoneEnabled || wanted.enabled && (input.deviceId !== share.microphone.deviceId
-              || input.voiceProcessing !== share.microphone.voiceProcessing)) await local.audio.setMicrophone(wanted.enabled, input);
-            else {
-              local.audio.microphoneVolume(input.volume);
-              await Promise.resolve(); // Gain edits share the same latest-wanted operation.
+    const captureId = app?.captureId(publicationId);
+    if (!local && !captureId) return Promise.reject(new Error("microphone_unavailable"));
+    const current = (): boolean => share.microphoneChange === edit && this.stages.get(owner![0])?.screen === share
+      && (local ? this.local.get(publicationId) === local : this.app === app && app?.captureId(publicationId) === captureId);
+    let settle!: (work: Promise<void>) => void;
+    const promise = new Promise<void>(resolve => { settle = resolve; });
+    const edit: Edit = share.microphoneChange = { current, requested: request, promise };
+    const failed = this.beginActionFeedback();
+    const apply = async () => {
+      try {
+        while (current()) {
+          const requested = edit.requested;
+          if (!requested) throw new DOMException("Capture cancelled", "AbortError");
+          const wanted = requested.settings;
+          try {
+            if (local?.kind === "screen" && local.audio) {
+              const input = { deviceId: wanted.deviceId, volume: wanted.volume,
+                voiceProcessing: wanted.voiceProcessing ?? share.microphone.voiceProcessing };
+              if (wanted.enabled !== local.audio.microphoneEnabled || wanted.enabled && (input.deviceId !== share.microphone.deviceId
+                || input.voiceProcessing !== share.microphone.voiceProcessing)) await local.audio.setMicrophone(wanted.enabled, input);
+              else {
+                local.audio.microphoneVolume(input.volume);
+                await Promise.resolve(); // Gain edits share the same latest-wanted operation.
+              }
+              if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+              share.microphone = input;
+            } else {
+              await (requested.started ?? applyNative(wanted));
+              if (!current()) throw new DOMException("Capture cancelled", "AbortError");
             }
+          } catch (error) {
             if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-            share.microphone = input;
-          } else {
-            await (requested.started ?? applyNative(wanted));
-            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            if (edit.requested && requested !== edit.requested) continue;
+            throw error;
           }
-        } catch (error) {
-          if (current() && share.requestedMicrophone && requested !== share.requestedMicrophone) continue;
-          throw error;
+          if (requested === edit.requested) return;
+          this.patch({});
         }
+        throw new DOMException("Capture cancelled", "AbortError");
+      } catch (error) {
+        failed(error);
+        throw error;
+      } finally {
+        if (share.microphoneChange === edit) share.microphoneChange = undefined;
         this.patch({});
-        if (requested === share.requestedMicrophone) return;
-      } while (current());
-      throw new DOMException("Capture cancelled", "AbortError");
-    }).finally(() => { share.microphoneChange = undefined; share.requestedMicrophone = undefined; this.patch({}); });
-    return share.microphoneChange;
+      }
+    };
+    settle(apply());
+    return promise;
   };
 
   screenEncodingExecution = (publicationId: string) => this.screenStage(publicationId)?.screen?.encodingExecution;

@@ -1,14 +1,18 @@
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
-import type { ChannelCommand, ConversationReply } from "./protocol";
+import { MAX_CHAT_CODE_POINTS, type ReactionId } from "../../shared/room-interactions";
+import type { ChannelCommand, ChannelMessage, ConversationReply, MessageReactionSnapshot, PublicationReactionSnapshot } from "./protocol";
 
 type InteractionCommand = Extract<ChannelCommand, { type: "interaction_ready" | "react" }>;
-type InteractionReady = Extract<ConversationReply["record"], { type: "interaction_ready" }>;
+type InteractionReply = Extract<ConversationReply["record"], { type: "interaction_ready" | "reaction" | "error" }>;
 
 interface RoomReaderOptions {
   send(command: InteractionCommand, requestId: string): Promise<void>;
   nextReactionNonce(): number;
   interactionChanged(): void;
   feedback(event: RoomInteraction): void;
+  userName(userId: string): string | undefined;
+  messageReactions(snapshot: MessageReactionSnapshot): void;
+  publicationReactions(snapshot: PublicationReactionSnapshot): void;
 }
 
 /** One reader per room binding, re-admitted on each connection. */
@@ -53,7 +57,7 @@ export class RoomReader {
       };
     }
     void this.options.send(command, requestId).catch(() => {
-      if (this.admission === admission) this.settle(requestId);
+      if (this.admission === admission) this.undelivered(requestId);
     });
     return nonce === undefined ? true : { nonce };
   };
@@ -62,20 +66,68 @@ export class RoomReader {
     return this.admission?.readyRequestId === requestId || this.interactionSession?.getSnapshot().pending?.requestId === requestId;
   }
 
-  subscribed(requestId: string, record: InteractionReady): boolean {
-    const admission = this.admission, interaction = this.interactionSession;
-    if (admission?.readyRequestId !== requestId || !interaction) return false;
-    delete admission.readyRequestId;
-    interaction.setSupportedReactions(record.reactionIds);
-    interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
-    return true;
+  receiveInteraction(requestId: string, record: InteractionReply): boolean {
+    const interaction = this.interactionSession;
+    if (!interaction) return false;
+    switch (record.type) {
+      case "interaction_ready": {
+        const admission = this.admission;
+        if (admission?.readyRequestId !== requestId) return true;
+        delete admission.readyRequestId;
+        interaction.setSupportedReactions(record.reactionIds);
+        interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
+        for (const snapshot of record.publicationReactions) this.options.publicationReactions(snapshot);
+        return true;
+      }
+      case "reaction": {
+        if (record.snapshot?.type === "message") this.options.messageReactions(record.snapshot);
+        else if (record.snapshot?.type === "publication") this.options.publicationReactions(record.snapshot);
+        const event = record.event;
+        if (!event) {
+          interaction.confirm(requestId, record.nonce);
+          return true;
+        }
+        const { senderUserId, target } = event;
+        interaction.receive({ type: "room-interaction", id: event.id, requestId, occurredAt: event.occurredAt,
+          sender: { peerId: senderUserId, displayName: this.options.userName(senderUserId) ?? "User", role: "viewer" },
+          payload: { kind: "reaction", reaction: event.reaction as ReactionId,
+            ...(target.type === "person" ? { targetPeerId: target.userId } : {}) },
+          ...(target.type === "message" ? { contentTarget: { messageSeq: target.messageSeq, messageId: target.messageId } }
+            : target.type === "publication" ? { contentTarget: { publicationId: target.publicationId } } : {}) });
+        return true;
+      }
+      case "error":
+        this.settle(requestId, record.code === "rate_limited" ? "rate-limited"
+          : record.code === "target_unavailable" ? "target-unavailable" : "busy");
+        return true;
+    }
   }
 
   /** An undelivered reply leaves the reaction eligible for a retry with its original nonce. */
-  settle(requestId: string, rejection?: Rejection): void {
-    if (this.admission?.readyRequestId === requestId) this.close();
+  undelivered(requestId: string): void {
+    this.settle(requestId);
+  }
+
+  private settle(requestId: string, rejection?: Rejection): void {
+    if (this.admission?.readyRequestId === requestId) this.clearInteraction();
     else if (rejection) this.interactionSession?.receive({ type: "room-interaction-rejected", requestId, reason: rejection });
     else this.interactionSession?.undelivered(requestId);
+  }
+
+  receiveLiveMessage(message: ChannelMessage): void {
+    const interaction = this.interactionSession;
+    if (!interaction) return;
+    const displayName = this.options.userName(message.userId) ?? message.archivedAuthorName ?? "User";
+    const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
+    const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
+    interaction.receiveConfirmedChat({
+      type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
+      sender: { peerId: message.userId, displayName, role: "viewer" }, payload: { kind: "chat", text },
+    });
+  }
+
+  removeMessages(removed: (seq: number) => boolean): void {
+    this.interactionSession?.removeChatMessages(removed);
   }
 
   disconnect(): void {
@@ -83,7 +135,7 @@ export class RoomReader {
     this.interactionSession?.disconnected();
   }
 
-  close(): void {
+  clearInteraction(): void {
     this.admission = undefined;
     const interaction = this.interactionSession;
     if (!interaction) return;

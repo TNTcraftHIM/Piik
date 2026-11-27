@@ -1248,8 +1248,10 @@ test("unread lookup advances past a row deleted between seek and history", async
 });
 
 test("history assembles early live reaction snapshots and preserves the newer projection in a historical window", async () => {
-  const { session, peer } = await setup(2);
+  const { session, socket, peer } = await setup(2, true, "room=first", false);
   try {
+    socket.receive({ type: "error", requestId: peer.interactions[0].requestId, code: "room_busy" });
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
     await peer.history([message(3), message(4)], true);
     const older = session.loadHistory("first"), request = await peer.next();
     peer.reply({ ...request, requestId: "live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { heart: 1 }) });
@@ -1274,7 +1276,7 @@ test("history assembles early live reaction snapshots and preserves the newer pr
     await refreshing;
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([2, 3]);
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.reactions?.revision)).toEqual([4, 5]);
-    expect(session.getSnapshot().interactionsByRoom.get("first")!.getSnapshot().reactions).toEqual([]);
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
   } finally { session.close(); }
 });
 
@@ -1434,8 +1436,16 @@ test("interaction readiness follows Domain read admission without waiting for a 
     await Promise.resolve();
     expect(peer.interactions).toHaveLength(1);
     const request = peer.interactions[0];
-    peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"], publicationReactions: [] });
+    state.publications = [{ audience: [], id: "picture", roomId: "first", sessionId: "host", userId: "friend",
+      kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
+    socket.receive({ type: "state", state });
+    const snapshot = { publicationId: "picture", revision: 1, counts: { wave: 1 } };
+    const ready = { type: "interaction_ready" as const, serverTime: Date.now(), reactionIds: ["wave", "future-decoration"], publicationReactions: [snapshot] };
+    peer.reply({ ...request, requestId: "other-ready" }, ready);
+    expect(session.getSnapshot().publicationReactions.size).toBe(0);
+    peer.reply(request, ready);
     expect(pending.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
+    expect(session.getSnapshot().publicationReactions.get("picture")).toEqual(snapshot);
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
@@ -4910,12 +4920,33 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       expect(session.nativeCaptureSelection("first")).toEqual(previous);
       const audioToken = crypto.randomUUID();
       audioTokens.add(audioToken);
-      app.receive({ id: app.sent.at(-1)!.id, result: { captureId: audioToken, sessionId: nativeSessionId, codec: "h264" } });
+      const prepare = app.sent.at(-1)!;
+      // Off remains available on the incumbent while its replacement is preparing.
+      const oldOff = change === changes[0]
+        ? session.setSourceMicrophone(publicationId, { enabled: false, volume: .2 }).catch(error => error)
+        : undefined;
+      const offCommand = app.sent.at(-1)!;
+      app.receive({ id: prepare.id, result: { captureId: audioToken, sessionId: nativeSessionId, codec: "h264" } });
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
       expect(app.sent.at(-1)?.captureId).toBe(audioToken);
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: audio, microphone: disabledMicrophone } });
       await changing;
+      if (oldOff) {
+        expect(session.sourceMicrophone(publicationId)?.requested).toEqual(disabledMicrophone);
+        const enabling = session.setSourceMicrophone(publicationId, { enabled: true });
+        const enableCommand = app.sent.at(-1)!;
+        expect(enableCommand).toMatchObject({ type: "capture_microphone", captureId: audioToken,
+          settings: { ...disabledMicrophone, enabled: true } });
+        app.receive({ id: offCommand.id, result: { ...disabledMicrophone, volume: .2 } });
+        await expect(oldOff).resolves.toMatchObject({ name: "AbortError" });
+        expect(session.getSnapshot().pending.has(`source-microphone:${publicationId}`)).toBe(true);
+        app.receive({ id: enableCommand.id, result: { ...disabledMicrophone, enabled: true } });
+        await enabling;
+        const off = session.setSourceMicrophone(publicationId, { enabled: false });
+        app.receive({ id: app.sent.at(-1)!.id, result: disabledMicrophone });
+        await off;
+      }
       app.receive({ type: "input_state", publicationId, state: heldInput });
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio, excludeAudio: exclusion, renderEndpointId, showCaptureBorder: true, current: true });
       expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(heldInput);
