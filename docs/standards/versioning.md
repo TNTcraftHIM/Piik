@@ -132,7 +132,8 @@ the reasons and the sources. The rule:
   A writer stores the
   fields it knows, and its confirmation carries the message as stored. Stores
   and archives are the exception, because nobody is there to be told: content
-  their reader does not know is refused before anything is installed.
+  their reader does not know is refused before anything is installed, at the
+  one place that reads an archive in.
 - **Where an addition goes.** A new action an older receiver must decline uses
   a distinct request. The same applies to a new constraint whose omission
   would widen authority, lifetime, recipients or the operation's target.
@@ -172,6 +173,10 @@ an active share just because an unrelated product/build label changed.
 
 ### The private 3.0 code today
 
+On the Domain's wire a reply and a notification are told apart by whether an
+optional request ID is present, in several kinds. On the room's wire a record
+does not say which of the two it is. The rule for unknown kinds needs the role
+to be readable before the kind is.
 Joins and App discovery each require one exact private identifier. Domain and
 App senders use the fields defined for each command, and most command variants
 reject unknown keys. A few parameterless commands, including Domain `leave`
