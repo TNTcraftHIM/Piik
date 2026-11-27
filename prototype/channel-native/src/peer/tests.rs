@@ -20,26 +20,28 @@ async fn stale_capture_lease_precedes_invalid_audio_endpoint() -> Result<()> {
             binding_id: Uuid::new_v4(),
         },
         Some(Uuid::new_v4()),
-        Target {
-            kind: TargetKind::Display,
-            source_id: "display".into(),
-            title: String::new(),
-            pid: 0,
-            creation_time: None,
+        CaptureOptions {
+            target: Target {
+                kind: TargetKind::Display,
+                source_id: "display".into(),
+                title: String::new(),
+                pid: 0,
+                creation_time: None,
+            },
+            settings: Settings {
+                degradation_preference: crate::capture::DegradationPreference::Balanced,
+                width: 640,
+                height: 360,
+                fps: 30,
+                bitrate: 1_000_000,
+            },
+            codec_mode: VideoCodecMode::Auto,
+            encoding_execution: EncodingExecution::Auto,
+            audio: true,
+            exclude_audio: None,
+            render_endpoint_id: Some(String::new()),
+            show_capture_border: false,
         },
-        Settings {
-            degradation_preference: crate::capture::DegradationPreference::Balanced,
-            width: 640,
-            height: 360,
-            fps: 30,
-            bitrate: 1_000_000,
-        },
-        VideoCodecMode::Auto,
-        EncodingExecution::Auto,
-        true,
-        None,
-        Some(String::new()),
-        false,
     ).await;
     driver.files.close().await;
     driver.watches.close().await;

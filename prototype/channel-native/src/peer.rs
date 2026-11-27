@@ -1,6 +1,7 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
 use crate::diagnostics::RetirementReason;
 use crate::{
+    capture::CaptureOptions,
     data::{self, DataLink, Lane},
     file::Files,
     media::{
@@ -615,14 +616,7 @@ enum Input {
     PrepareCapture(
         CaptureScope,
         Option<Uuid>,
-        crate::capture::Target,
-        crate::capture::Settings,
-        crate::capture::VideoCodecMode,
-        crate::capture::EncodingExecution,
-        bool,
-        Option<crate::capture::Target>,
-        Option<String>,
-        bool,
+        CaptureOptions,
         oneshot::Sender<Result<CaptureLease>>,
     ),
     #[cfg(feature = "capture")]
@@ -993,34 +987,8 @@ impl NativePeers {
                             let _ = done.send(publications);
                         }
                         #[cfg(feature = "capture")]
-                        Turn::Input(Input::PrepareCapture(
-                            scope,
-                            replaces,
-                            target,
-                            settings,
-                            mode,
-                            execution,
-                            audio,
-                            exclude_audio,
-                            render_endpoint_id,
-                            show_capture_border,
-                            done,
-                        )) => {
-                            let _ = done.send(
-                                d.prepare_capture(
-                                    scope,
-                                    replaces,
-                                    target,
-                                    settings,
-                                    mode,
-                                    execution,
-                                    audio,
-                                    exclude_audio,
-                                    render_endpoint_id,
-                                    show_capture_border,
-                                )
-                                .await,
-                            );
+                        Turn::Input(Input::PrepareCapture(scope, replaces, options, done)) => {
+                            let _ = done.send(d.prepare_capture(scope, replaces, options).await);
                         }
                         Turn::Input(Input::CommitCapture(id, done)) => {
                             let _ = done.send(d.commit_capture(id).await);
@@ -1158,50 +1126,20 @@ impl NativePeers {
         &self,
         scope: CaptureScope,
         replaces: Option<Uuid>,
-        target: crate::capture::Target,
-        settings: crate::capture::Settings,
-        mode: crate::capture::VideoCodecMode,
-        execution: crate::capture::EncodingExecution,
-        audio: bool,
-        exclude_audio: Option<crate::capture::Target>,
-        render_endpoint_id: Option<String>,
-        show_capture_border: bool,
+        options: CaptureOptions,
     ) -> Result<CaptureLease> {
-        execution.validate()?;
+        options.encoding_execution.validate()?;
         #[cfg(feature = "capture")]
         {
             let (tx, rx) = oneshot::channel();
             self.input
-                .send(Input::PrepareCapture(
-                    scope,
-                    replaces,
-                    target,
-                    settings,
-                    mode,
-                    execution,
-                    audio,
-                    exclude_audio,
-                    render_endpoint_id,
-                    show_capture_border,
-                    tx,
-                ))
+                .send(Input::PrepareCapture(scope, replaces, options, tx))
                 .await?;
             rx.await?
         }
         #[cfg(not(feature = "capture"))]
         {
-            let _ = (
-                scope,
-                replaces,
-                target,
-                settings,
-                mode,
-                execution,
-                audio,
-                exclude_audio,
-                render_endpoint_id,
-                show_capture_border,
-            );
+            let _ = (scope, replaces, options);
             anyhow::bail!("capture_unavailable")
         }
     }
@@ -1573,18 +1511,21 @@ impl Driver {
         &mut self,
         scope: CaptureScope,
         replaces: Option<Uuid>,
-        target: crate::capture::Target,
-        settings: crate::capture::Settings,
-        mode: crate::capture::VideoCodecMode,
-        execution: crate::capture::EncodingExecution,
-        audio: bool,
-        exclude_audio: Option<crate::capture::Target>,
-        render_endpoint_id: Option<String>,
-        show_capture_border: bool,
+        options: CaptureOptions,
     ) -> Result<CaptureLease> {
         let publication = scope.publication_id;
         self.cancelled_audio().await;
         self.check_local_preparation(&scope, replaces)?;
+        let CaptureOptions {
+            target,
+            settings,
+            codec_mode: mode,
+            encoding_execution: execution,
+            audio,
+            exclude_audio,
+            render_endpoint_id,
+            show_capture_border,
+        } = options;
         let audio = crate::capture::AudioScope::from_request(
             &target, audio, exclude_audio, render_endpoint_id,
         )?;

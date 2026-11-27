@@ -134,8 +134,20 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
             "codecMode":"vp8","encodingExecution":"software","audio":false});
 
         // This is the reported sibling path: the armed OBS input precedes Native B.
-        send!(capture("native-b"));
+        let mut selected = capture("native-b");
+        selected["audio"] = json!(true);
+        selected["renderEndpointId"] = json!("fixture-endpoint");
+        selected["showCaptureBorder"] = json!(true);
+        send!(selected);
         let HostCommand::PrepareCapture(native_b) = timeout(Duration::from_secs(3), requests.recv()).await?.unwrap() else { panic!("expected Native capture preparation") };
+        let options = &native_b.options;
+        assert_eq!(serde_json::to_value(&options.target)?, selected["target"]);
+        assert_eq!(serde_json::to_value(options.settings)?, selected["settings"]);
+        assert_eq!(options.codec_mode, VideoCodecMode::Vp8);
+        assert_eq!(options.encoding_execution, EncodingExecution::Software);
+        assert!(options.audio && options.show_capture_border);
+        assert!(options.exclude_audio.is_none());
+        assert_eq!(options.render_endpoint_id.as_deref(), Some("fixture-endpoint"));
         send!(json!({"id":"cancel-b","type":"cancel_capture","publicationId":publication}));
         let cancelled = replies(&mut socket, &["native-b", "cancel-b"]).await;
         ensure!(reply(&cancelled, "native-b")["error"] == "capture_cancelled");

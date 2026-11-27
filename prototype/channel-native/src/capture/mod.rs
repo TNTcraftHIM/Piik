@@ -346,6 +346,19 @@ impl VideoCodecMode {
     }
 }
 
+/// One decoded Native capture request. The driver resolves source audio after
+/// admitting the capture or its replacement.
+pub struct CaptureOptions {
+    pub target: Target,
+    pub settings: Settings,
+    pub codec_mode: VideoCodecMode,
+    pub encoding_execution: EncodingExecution,
+    pub audio: bool,
+    pub exclude_audio: Option<Target>,
+    pub render_endpoint_id: Option<String>,
+    pub show_capture_border: bool,
+}
+
 #[derive(Debug)]
 pub(crate) enum AudioScope {
     Off,

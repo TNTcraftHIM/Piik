@@ -43,7 +43,7 @@ use futures_util::{
 };
 use piik_channel_core::RoomState;
 use piik_channel_native::{
-    capture::{EncodingExecution, Settings, Target, VideoCodec, VideoCodecMode},
+    capture::{CaptureOptions, EncodingExecution, Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
     peer::{
         CaptureAudio, CaptureLease, ExternalLease, SourceAudioSettings, SourceAudioState,
@@ -2456,6 +2456,16 @@ async fn connection(
                         match capture.prepare(SourceKind::Capture, audio_settings) {
                             Err(error) => Err(error),
                             Ok((cancel, registration)) => {
+                                let options = CaptureOptions {
+                                    target,
+                                    settings,
+                                    codec_mode,
+                                    encoding_execution,
+                                    audio,
+                                    exclude_audio,
+                                    render_endpoint_id,
+                                    show_capture_border,
+                                };
                                 let replaces =
                                     capture.source().map(SourceLease::producer_id);
                                 let picker_events = cfg!(target_os = "android").then(|| control_events.clone());
@@ -2467,14 +2477,7 @@ async fn connection(
                                                 &commands,
                                                 publication_id,
                                                 room_id,
-                                                target,
-                                                settings,
-                                                codec_mode,
-                                                encoding_execution,
-                                                audio,
-                                                exclude_audio,
-                                                render_endpoint_id,
-                                                show_capture_border,
+                                                options,
                                                 replaces,
                                                 picker_events.as_ref().map(|events| (events, request.id.as_str())),
                                             ),
@@ -2938,34 +2941,20 @@ async fn prepare_capture(
     commands: &mpsc::Sender<HostCommand>,
     publication_id: Uuid,
     room_id: String,
-    target: Target,
-    settings: Settings,
-    codec_mode: VideoCodecMode,
-    encoding_execution: EncodingExecution,
-    audio: bool,
-    exclude_audio: Option<Target>,
-    render_endpoint_id: Option<String>,
-    show_capture_border: bool,
+    options: CaptureOptions,
     replaces: Option<Uuid>,
     picker: Option<(&mpsc::Sender<Value>, &str)>,
 ) -> Result<CaptureResult> {
     if !cfg!(feature = "capture") {
         bail!("capture_unavailable");
     }
-    settings.validate()?;
+    options.settings.validate()?;
     let (result, response) = oneshot::channel();
     commands
         .send(HostCommand::PrepareCapture(PrepareCapture {
             publication_id,
             room_id,
-            target,
-            settings,
-            codec_mode,
-            encoding_execution,
-            audio,
-            exclude_audio,
-            render_endpoint_id,
-            show_capture_border,
+            options,
             replaces,
             result,
         }))
@@ -5032,14 +5021,16 @@ mod tests {
             &commands,
             publication,
             room_id,
-            target.clone(),
-            settings,
-            codec_mode,
-            encoding_execution,
-            audio,
-            exclude_audio,
-            render_endpoint_id,
-            show_capture_border,
+            CaptureOptions {
+                target: target.clone(),
+                settings,
+                codec_mode,
+                encoding_execution,
+                audio,
+                exclude_audio,
+                render_endpoint_id,
+                show_capture_border,
+            },
             None,
             Some((&picker_events, "selected-profile")),
         );
@@ -5049,16 +5040,17 @@ mod tests {
             };
             assert_eq!(request.publication_id, publication);
             assert_eq!(request.room_id, "room");
-            assert!(request.audio);
-            assert!(request.show_capture_border);
-            assert_eq!(request.codec_mode, VideoCodecMode::Vp8);
-            assert_eq!(request.encoding_execution, EncodingExecution::Software);
+            let options = request.options;
+            assert!(options.audio);
+            assert!(options.show_capture_border);
+            assert_eq!(options.codec_mode, VideoCodecMode::Vp8);
+            assert_eq!(options.encoding_execution, EncodingExecution::Software);
             assert_eq!(
-                serde_json::to_value(request.exclude_audio).unwrap(),
+                serde_json::to_value(options.exclude_audio).unwrap(),
                 wire["excludeAudio"]
             );
             assert_eq!(
-                serde_json::to_value(request.settings).unwrap(),
+                serde_json::to_value(options.settings).unwrap(),
                 wire["settings"]
             );
             // Stop at the existing HostCommand boundary, without starting OS capture.
@@ -5077,14 +5069,16 @@ mod tests {
             &commands,
             publication,
             "room".into(),
-            target,
-            invalid,
-            VideoCodecMode::H264,
-            EncodingExecution::Auto,
-            false,
-            None,
-            None,
-            false,
+            CaptureOptions {
+                target,
+                settings: invalid,
+                codec_mode: VideoCodecMode::H264,
+                encoding_execution: EncodingExecution::Auto,
+                audio: false,
+                exclude_audio: None,
+                render_endpoint_id: None,
+                show_capture_border: false,
+            },
             None,
             None,
         )

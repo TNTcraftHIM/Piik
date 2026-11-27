@@ -2,7 +2,7 @@
 //! Room policy and route decisions remain in the shared core.
 use crate::{
     backup::RoomSnapshot,
-    capture::{Settings, Target},
+    capture::CaptureOptions,
     hosted_room::{storage_error, HostedRoom, RoomStorageInUse},
     peer::{
         CaptureInput, CaptureLease, CaptureScope, InputAuthority, NativeConnectionMetrics,
@@ -487,14 +487,7 @@ pub struct UnavailableRoom {
 pub struct PrepareCapture {
     pub publication_id: Uuid,
     pub room_id: String,
-    pub target: Target,
-    pub settings: Settings,
-    pub codec_mode: crate::capture::VideoCodecMode,
-    pub encoding_execution: crate::capture::EncodingExecution,
-    pub audio: bool,
-    pub show_capture_border: bool,
-    pub exclude_audio: Option<Target>,
-    pub render_endpoint_id: Option<String>,
+    pub options: CaptureOptions,
     pub replaces: Option<Uuid>,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
 }
@@ -2131,7 +2124,7 @@ impl Session {
         if request.result.is_closed() {
             return Ok(());
         }
-        if let Err(error) = request.encoding_execution.validate() {
+        if let Err(error) = request.options.encoding_execution.validate() {
             let _ = request.result.send(Err(error.to_string()));
             return Ok(());
         }
@@ -2279,14 +2272,7 @@ impl Session {
                     binding_id,
                 },
                 request.replaces,
-                request.target,
-                request.settings,
-                request.codec_mode,
-                request.encoding_execution,
-                request.audio,
-                request.exclude_audio,
-                request.render_endpoint_id,
-                request.show_capture_border,
+                request.options,
             ),
             &mut live.commands,
             &live.pairs,
