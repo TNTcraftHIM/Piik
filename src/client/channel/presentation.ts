@@ -69,7 +69,7 @@ export interface ParticipantActivity {
 }
 interface LocalWatchPresentation {
   sessionId: string | null;
-  watchPlayers: ReadonlyMap<string, Pick<WatchPlayer, "blocked" | "waitingForPicture" | "hasPresentedFrame" | "hasReadyOriginalPage" | "error">>;
+  watchPlayers: ReadonlyMap<string, Pick<WatchPlayer, "blocked" | "waitingForPicture" | "hasUsablePicture" | "error">>;
 }
 export const viewingAppearance = {
   joined: { icon: "clapperboard", label: "watch.joined", rank: 0 },
@@ -87,7 +87,7 @@ function watchViewerState(watch: WatchActivity, sessionId: string, local?: Local
   if (player?.error) return "failed";
   if (player?.blocked) return "joined";
   if (player?.waitingForPicture) return "preparing";
-  return player?.hasPresentedFrame || player?.hasReadyOriginalPage ? "active" : "joined";
+  return player?.hasUsablePicture ? "active" : "joined";
 }
 
 function takesViewingPriority(next: ParticipantViewing, current?: ParticipantViewing): boolean {

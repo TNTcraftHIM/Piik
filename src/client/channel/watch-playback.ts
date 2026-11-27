@@ -43,8 +43,8 @@ export class WatchPlayer {
     const required = media.paused || media.ended ? HAVE_CURRENT_DATA : HAVE_FUTURE_DATA;
     return media.readyState < required || Boolean(video && video.videoWidth > 0 && !this.hasPresentedFrame);
   }
-  get hasReadyOriginalPage(): boolean {
-    return !this.video && !!this.media.page && !this.waitingForPicture;
+  get hasUsablePicture(): boolean {
+    return !this.waitingForPicture && (!this.video || this.hasPresentedFrame);
   }
   presentFrame(): void {
     if (this.signal.aborted || this.presented) return;

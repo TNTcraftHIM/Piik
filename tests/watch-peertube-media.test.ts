@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { PeerTubeMedia } from "../src/client/channel/watch-peertube-media";
+import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { peerTubeOrigin } from "../src/client/channel/watch-peertube-source";
 
 const uuid = "3a82b2ed-b8b3-468a-a27f-d83ad37625ca";
@@ -53,15 +54,23 @@ test("playing progress proves readiness with optional numeric or string duration
     packet({ id, result: results[method.split("::")[1]] });
   });
   packet({ method: scope + "::ready", params: true });
-  const status = { method: scope + "::playbackStatusUpdate", params: { playbackState: "playing", position: 22.3 } };
-  packet(status);
-  await media.ready(new AbortController().signal);
-  expect(await media.read()).toMatchObject({ readyState: 3, duration: null });
-  for (const [duration, expected] of [["171.37499", 171.37499], [120, 120], ["", 120], [true, 120]] as const) {
-    packet({ ...status, params: { ...status.params, duration } });
-    expect(await media.read()).toMatchObject({ readyState: 3, duration: expected });
-  }
-  media.close();
+  const watch = new WatchPlayer("room", false, media, () => {});
+  try {
+    watch.calibrate(0, performance.now());
+    await watch.sample();
+    expect(watch.waitingForPicture).toBe(true);
+    expect(watch.hasUsablePicture).toBe(false);
+    const status = { method: scope + "::playbackStatusUpdate", params: { playbackState: "playing", position: 22.3 } };
+    packet(status);
+    await media.ready(new AbortController().signal);
+    await watch.sample();
+    expect(watch.hasUsablePicture).toBe(true);
+    expect(await media.read()).toMatchObject({ readyState: 3, duration: null });
+    for (const [duration, expected] of [["171.37499", 171.37499], [120, 120], ["", 120], [true, 120]] as const) {
+      packet({ ...status, params: { ...status.params, duration } });
+      expect(await media.read()).toMatchObject({ readyState: 3, duration: expected });
+    }
+  } finally { watch.close(); }
 });
 
 test("closing pending commands rejects with AbortError and retires their replies", async () => {

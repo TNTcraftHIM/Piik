@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
+import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { youtubeVideoId, youtubeSourceId, youtubeStartSeconds } from "../src/client/channel/watch-youtube-source";
 
 class Element {
@@ -63,8 +64,20 @@ test('cold SDK preparation stays pending through API ready until the visible can
   await Promise.resolve();await Promise.resolve();await Promise.resolve();
   const player=players[0];player.fire('onReady');await Promise.resolve();expect(ready).toBe(false);
   expect((await media.read()).buffered).toBeNull();
-  player.playVideo();await prepared;expect(ready).toBe(true);
-  expect(player.frame.src).toContain('origin=https%3A%2F%2Fpiik.test');media.close();
+  const watch = new WatchPlayer("room", false, media, () => {});
+  try {
+    watch.calibrate(0, performance.now());
+    await watch.sample();
+    expect(watch.waitingForPicture).toBe(true);
+    expect(watch.hasUsablePicture).toBe(false);
+    player.playVideo();await prepared;expect(ready).toBe(true);
+    await watch.sample();
+    expect(watch.hasUsablePicture).toBe(true);
+    expect(player.frame.src).toContain('origin=https%3A%2F%2Fpiik.test');
+  } finally {
+    watch.close();
+    await prepared.catch(() => {});
+  }
 });
 
 test('cancel before SDK completion never creates a late iframe',async()=>{
