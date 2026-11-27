@@ -17,7 +17,7 @@ export interface SourceSelection {
   replaceScreenId?: string;
   controller: AbortController;
   committing: boolean;
-  watchCandidate?: { player: WatchPlayer; stopping: boolean };
+  watchCandidate?: WatchPlayer;
   browserCaptureGranted?: boolean;
   releaseBrowserCandidate?: () => void;
   readonly borrowed: boolean;
@@ -122,7 +122,7 @@ export class Stage {
     selection.releaseBrowserCandidate?.();
     current.releasePage?.();
     if (!selection.committing) {
-      if (selection.watchCandidate) selection.watchCandidate.player.close();
+      if (selection.watchCandidate) selection.watchCandidate.close();
       else selection.embed?.close();
     }
     if (this.share) this.forgetInactiveScreen(this.share.id);
@@ -196,7 +196,7 @@ export class Stage {
     for (const [id, player] of this.players) {
       const activity = state.watchActivities.find(value => value.id === id);
       const previousActivity = previous?.watchActivities.find(value => value.id === id);
-      if (!room?.authorized || (!activity && (!available || previousActivity || this.selection?.watchCandidate?.player !== player))) {
+      if (!room?.authorized || (!activity && (!available || previousActivity || this.selection?.watchCandidate !== player))) {
         this.retireWatch(id, "activity-removed");
       } else if (!player.owner && (!restoring || player.signal.aborted) && !state.watchSubscriptions.some(value => value.id === id)
         && previous?.watchSubscriptions.some(value => value.id === id)) this.retireWatch(id);

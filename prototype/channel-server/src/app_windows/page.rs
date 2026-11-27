@@ -116,6 +116,15 @@ struct Pending {
     patch: bool,
 }
 impl Pending {
+    fn retire_missing_candidates(
+        requests: &mut BTreeMap<Uuid, Self>,
+        candidates: &BTreeMap<Uuid, Candidate>,
+    ) {
+        for (_, pending) in requests.extract_if(.., |_, p| !candidates.contains_key(&p.candidate_id)) {
+            let _ = pending.reply.send(Err("page_candidate_unavailable".into()));
+        }
+    }
+
     fn take_reply(requests: &mut BTreeMap<Uuid, Self>, request: Uuid, view: Uuid, frame: Uuid) -> Option<Self> {
         let pending = requests.get(&request)?;
         if pending.view != view || pending.frame != frame { return None; }
@@ -232,9 +241,7 @@ impl Page {
         true
     }
     fn candidates(&mut self) {
-        for (_, pending) in self.pending.extract_if(.., |_, pending| !self.candidates.contains_key(&pending.candidate_id)) {
-            let _ = pending.reply.send(Err("page_candidate_unavailable".into()));
-        }
+        Pending::retire_missing_candidates(&mut self.pending, &self.candidates);
         let views = self.views.borrow();
         let page_urls = views.iter().filter_map(|(id, view)| view.view.url().ok()
             .filter(|url| page::valid_url(url)).map(|url| (*id, url))).collect::<BTreeMap<_, _>>();
@@ -1000,11 +1007,7 @@ impl Pages {
             } => {
                 let Some(pending) = Pending::take_reply(&mut page.pending, request, view_key, message.frame) else { return };
                 let result = if let Some(error) = error {
-                    Err(anyhow!(match error.as_str() {
-                        "page_candidate_unavailable" => "page_candidate_unavailable",
-                        "watch_autoplay_blocked" => "watch_autoplay_blocked",
-                        _ => "watch_media_failed",
-                    }))
+                    Err(anyhow!(page_reply_error(&error)))
                 } else {
                     state
                         .ok_or_else(|| anyhow!("watch_media_failed"))
@@ -1046,6 +1049,14 @@ impl Pages {
             }
             PageEvent::Document => {}
         }
+    }
+}
+
+fn page_reply_error(error: &str) -> &'static str {
+    match error {
+        "page_candidate_unavailable" => "page_candidate_unavailable",
+        "watch_autoplay_blocked" => "watch_autoplay_blocked",
+        _ => "watch_media_failed",
     }
 }
 
@@ -1738,6 +1749,41 @@ mod candidate_tests {
             assert!(!*current_reader.borrow());
         }
     }
+    #[test]
+    fn candidate_removal_settles_its_pending_read_and_preserves_the_sibling() {
+        let view = Uuid::new_v4();
+        let frame = Uuid::new_v4();
+        let sibling = Uuid::new_v4();
+        let candidates = BTreeMap::from([(sibling, Candidate {
+            view, frame, ancestors: vec![], source: report(Uuid::new_v4(), "https://media.test/b"),
+        })]);
+        let mut requests = BTreeMap::new();
+        let mut read = |candidate_id| {
+            let request = Uuid::new_v4();
+            let (reply, receiver) = oneshot::channel();
+            requests.insert(request, Pending {
+                view, frame, candidate_id, reply, selecting: true, promote: None, patch: false,
+            });
+            (request, receiver)
+        };
+        let (removed, mut removed_reply) = read(Uuid::new_v4());
+        let (kept, mut kept_reply) = read(sibling);
+
+        Pending::retire_missing_candidates(&mut requests, &candidates);
+        assert_eq!(removed_reply.try_recv().unwrap(), Err("page_candidate_unavailable".into()));
+        assert!(Pending::take_reply(&mut requests, removed, view, frame).is_none());
+        let pending = Pending::take_reply(&mut requests, kept, view, frame).unwrap();
+        pending.reply.send(Ok(Value::Null)).unwrap();
+        assert_eq!(kept_reply.try_recv().unwrap(), Ok(Value::Null));
+    }
+
+    #[test]
+    fn frame_reply_preserves_candidate_loss_and_normalizes_unknown_errors() {
+        assert_eq!(page_reply_error("page_candidate_unavailable"), "page_candidate_unavailable");
+        assert_eq!(page_reply_error("watch_autoplay_blocked"), "watch_autoplay_blocked");
+        assert_eq!(page_reply_error("page_player_closed"), "watch_media_failed");
+    }
+
     #[test]
     fn cancelled_selection_reply_preserves_active_grant() {
         let (view, frame, candidate) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());

@@ -81,7 +81,8 @@ export class ChannelAttachments {
     private messageRemoved: (key: Pick<ChannelFileKey, "roomId" | "messageSeq">) => boolean = () => false,
     private cancelChunks?: (peer: string, request: string) => void,
     private observationLimit: () => number = () => 0,
-    private confirmedMessage?: (key: ChannelFileKey) => ChannelMessage | undefined) {}
+    private confirmedMessage?: (key: ChannelFileKey) => ChannelMessage | undefined,
+    private fileDataReady: (peer: string, roomId: string) => boolean = () => false) {}
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   status = (key: ChannelFileKey, attachment?: ChannelAttachment) => {
@@ -154,9 +155,9 @@ export class ChannelAttachments {
   }
   private current(runtime: Runtime): boolean { return this.lifetime === runtime.lifetime && !runtime.lifetime.signal.aborted; }
   private project(runtime: Runtime): Effect[] { return runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers), BigInt(Date.now())); }
-  private invoke(runtime: Runtime, work: () => Effect[]): void {
+  private invoke(runtime: Runtime, work: () => Effect[], peer?: string): void {
     if (!this.current(runtime)) return;
-    this.effects(runtime, work());
+    this.effects(runtime, work(), peer);
     clearTimeout(this.expiry);
     const deadline = runtime.delivery.next_deadline();
     this.expiry = deadline === undefined ? undefined : setTimeout(() => this.invoke(runtime,
@@ -184,18 +185,16 @@ export class ChannelAttachments {
         changed = true;
         continue;
       }
-      const matches = (plan: ChannelFilePlan) => plan.roomId === entry.key.roomId && plan.messageSeq === entry.key.messageSeq
-        && plan.attachment.id === entry.key.attachmentId;
-      const plan = plans.find(matches);
+      const plan = this.filePlan(entry.key);
       if (plan && !sameContent(plan.attachment, entry.attachment)) {
         void this.stopSink(entry, new Error("attachment_unavailable"));
         continue;
       }
       if (!entry.progress || entry.progress.state === "finishing") continue;
       let state = entry.progress.state;
-      if (!plan?.sourceId) state = "waiting-source";
-      else if (!plan.upstream) state = "connecting";
-      else if (state === "waiting-source" || previousPlans.find(matches)?.upstream !== plan.upstream) state = "waiting";
+      if (state !== "receiving" || !plan?.upstream || this.filePlan(entry.key, previousPlans)?.upstream !== plan.upstream) {
+        state = this.waitingState(plan);
+      }
       if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; changed = true; }
     }
     for (const [id, download] of this.downloads) {
@@ -247,8 +246,17 @@ export class ChannelAttachments {
     for (const room of rooms) if (room.authorized && room.available && previous.some(old => old.id === room.id
       && (!old.available || old.delivery?.bindingId !== room.delivery?.bindingId))) this.resume(room.id);
   }
+  private filePlan(key: ChannelFileKey, plans = this.plans): ChannelFilePlan | undefined {
+    return plans.find(plan => plan.roomId === key.roomId && plan.messageSeq === key.messageSeq && plan.attachment.id === key.attachmentId);
+  }
+
+  private waitingState(plan?: ChannelFilePlan): "waiting-source" | "waiting" | "connecting" {
+    if (!plan?.sourceId) return "waiting-source";
+    return plan.upstream && this.fileDataReady(plan.upstream, plan.roomId) ? "waiting" : "connecting";
+  }
+
   private matchesPlan(source: Pick<Source, "key" | "attachment">): boolean {
-    const plan = this.plans.find(plan => fileKeyString({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }) === fileKeyString(source.key));
+    const plan = this.filePlan(source.key);
     return !plan || sameContent(source.attachment, plan.attachment);
   }
   private listCachedFiles(store: FileStore, scope: FileScope, roomIds: string[]): Promise<RetainedFile[]> {
@@ -499,14 +507,16 @@ export class ChannelAttachments {
     }
   }
   data(peer: string, kind: "control" | "chunk", data: string | Uint8Array): void {
-    void this.ensure().then(runtime => this.invoke(runtime, () => kind === "control" ? runtime.delivery.control(peer, data as string, BigInt(Date.now())) : runtime.delivery.chunk(peer, data as Uint8Array))).catch(() => {});
+    void this.ensure().then(runtime => this.invoke(runtime, () => kind === "control"
+      ? runtime.delivery.control(peer, data as string, BigInt(Date.now()))
+      : runtime.delivery.chunk(peer, data as Uint8Array), peer)).catch(() => {});
   }
   peerState(peer: string, available: boolean): void {
     for (const plan of this.plans.filter(plan => plan.upstream === peer)) {
       const entry = this.sinks.get(fileKeyString({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }));
-      if (entry?.progress && entry.progress.state !== "finishing" && (!available || entry.progress.state === "connecting")) {
-        entry.progress = { ...entry.progress, state: available ? "waiting" : "connecting" }; this.changed();
-      }
+      if (!entry?.progress || entry.progress.state === "finishing" || available && entry.progress.state !== "connecting") continue;
+      const state = available ? this.waitingState(plan) : "connecting";
+      if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; this.changed(); }
     }
     if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => available ? this.project(runtime) : runtime.delivery.peer_unavailable(peer))).catch(() => {});
   }
@@ -604,8 +614,9 @@ export class ChannelAttachments {
     if (!entry) {
       if (!room.available) throw new Error("room_unavailable");
       const consumers = new Set<symbol>();
+      const plan = this.filePlan(key);
       entry = { key, attachment, consumers, ready: this.createSink(runtime, key, consumers),
-        progress: { received: 0, total: attachment.size, state: "waiting" } };
+        progress: { received: 0, total: attachment.size, state: plan ? this.waitingState(plan) : "waiting" } };
       this.sinks.set(id, entry);
       this.requestReceive(entry);
       const creating = entry;
@@ -654,7 +665,7 @@ export class ChannelAttachments {
       await this.disposeSink(sink, errorOf(error)); throw error;
     }
   }
-  private effects(runtime: Runtime, effects: Effect[]): void {
+  private effects(runtime: Runtime, effects: Effect[], peer?: string): void {
     const failedResponses = new Set<string>();
     for (const effect of effects) {
       const key = "key" in effect ? effect.key : effect.control.key;
@@ -718,10 +729,10 @@ export class ChannelAttachments {
               await sink.writer.write({ type: "write", position: effect.offset, data: bytes }).catch(throwStorageError);
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;
-              // Progress counts completed sink writes, never requested or queued bytes.
+              // A completed write always counts. Only data from the selected upstream proves delivery on that route.
               const progress = entry.progress;
               entry.progress = { ...progress, received: effect.offset + bytes.length,
-                state: progress.state === "waiting" ? "receiving" : progress.state };
+                state: peer && this.filePlan(key)?.upstream === peer ? "receiving" : progress.state };
               this.changed();
               this.invoke(runtime, () => runtime.delivery.written(JSON.stringify(key), BigInt(effect.offset), bytes.length));
             } else {

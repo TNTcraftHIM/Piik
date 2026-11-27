@@ -10188,6 +10188,48 @@ test("a remote data channel cannot report connectivity and a retired socket cann
   } finally { session.close(); }
 });
 
+test("file progress waits for both channels on the selected peer's room lease", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = await setup();
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    ...await hosting.loadRoomHosting(),
+    FileDelivery: class { start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {} },
+  } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  stubTransferStorage({
+    getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    removeEntry: async () => {},
+  });
+  const state = structuredClone(session.getSnapshot().state!);
+  const peer = "z", authorId = crypto.randomUUID(), attachmentId = crypto.randomUUID();
+  const attachment = { id: attachmentId, name: "example.bin", size: 3, mediaType: "application/octet-stream" as const, sha256: "0".repeat(64) };
+  const keys = ["first", "second"].map(roomId => ({ roomId, messageSeq: 1, attachmentId }));
+  state.pairs = [{ id: "pair", peerId: peer, canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
+  state.files = keys.map(key => ({ ...key, attachment, authorId, sourceId: peer, upstream: peer, downstream: [], receiving: true }));
+  socket.receive({ type: "state", state });
+  const [pc] = RoomPeerConnection.instances;
+  const [control, bulk] = pc.channels;
+  const abort = new AbortController();
+  const reads = keys.map(key => session.attachments.content(key, attachment, abort.signal).catch(error => error));
+  const progress = () => keys.map(key => session.attachments.progress(key)?.state);
+  const roomReady = () => socket.sent.filter(command => command.type === "room_data_state" && command.ready);
+  try {
+    await vi.waitFor(() => expect(progress()).toEqual(["connecting", "connecting"]));
+    pc.connected();
+    expect(progress()).toEqual(["connecting", "connecting"]);
+    control.open();
+    expect(progress()).toEqual(["connecting", "connecting"]);
+    expect(roomReady()).toEqual([{ type: "room_data_state", pairId: "pair", roomId: "first", ready: true }]);
+    bulk.open();
+    expect(progress()).toEqual(["waiting", "connecting"]);
+    expect(roomReady()).toHaveLength(1);
+    state.pairs[0].rooms.push("second");
+    socket.receive({ type: "state", state });
+    expect(progress()).toEqual(["waiting", "waiting"]);
+  } finally { abort.abort(); await Promise.all(reads); session.close(); }
+});
+
 test("physical data channels can precede room leases without admitting retired work", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const roomData = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
@@ -17125,7 +17167,7 @@ test("stopping a borrowed-page replacement before confirmation keeps it retired"
   } finally { session.close(); }
 });
 
-test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowed original page replacement handles %s", async failure => {
+test.each(["catalog", "app-reply", "page-closed", "host-signaling-loss"] as const)("a confirmed borrowed original page replacement handles %s", async failure => {
   const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   commit.mockRestore();
   const roomId = "first";
@@ -17142,8 +17184,10 @@ test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowe
     const update = socket.sent.findLast(command => command.type === "update_watch" && command.id === id)!;
     socket.receive({ type: "room_reply", roomId, requestId: update.requestId, result: { type: "done" } });
   };
-  const snapshot = (start: Awaited<ReturnType<typeof waitForStart>>) => {
-    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [{
+  const snapshot = (start: Awaited<ReturnType<typeof waitForStart>>, available = true) => {
+    const state = session.getSnapshot().state!;
+    const rooms = state.channel.rooms.map(room => room.id === roomId ? { ...room, available } : room);
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, rooms }, watchActivities: [{
       id: start.id, roomId, sessionId: "endpoint", userId: "self", viewerSessionIds: [],
       source: start.source, playback: start.playback,
     }] } });
@@ -17180,7 +17224,8 @@ test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowe
 
     openPicker();
     const selecting = select(nextId);
-    const lost = failure === "page-closed" ? expect(selecting).rejects.toMatchObject({ name: "AbortError" })
+    const interrupted = failure === "page-closed" || failure === "host-signaling-loss";
+    const lost = interrupted ? expect(selecting).rejects.toMatchObject({ name: "AbortError" })
       : expect(selecting).rejects.toThrow("watch_source_unavailable");
     const failed = await waitForStart(2);
     expect(failed.replaceId).toBe(old.id);
@@ -17189,11 +17234,21 @@ test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowe
     snapshot(failed);
     now += 3000;
     expect(session.getSnapshot().watchPlayers.has(String(old.id))).toBe(false);
-    if (failure === "page-closed") {
-      page.receive({ type: "page_closed", pageId: page.id });
+    if (interrupted) {
+      let stopping: Promise<void> | undefined;
+      if (failure === "page-closed") page.receive({ type: "page_closed", pageId: page.id });
+      else {
+        // An admitted participant keeps the last room activity while the writer's signaling recovers.
+        snapshot(failed, false);
+        expect(session.sourceSelectionCommitting(roomId)).toBe(false);
+        expect(session.getSnapshot().state?.watchActivities.map(activity => activity.id)).toEqual([failed.id]);
+        snapshot(failed);
+        stopping = session.stopWatch(String(failed.id));
+      }
       const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
       expect(stop.id).toBe(failed.id);
       socket.receive({ type: "room_reply", roomId, requestId: stop.requestId, result: { type: "done" } });
+      await stopping;
       finishSelection(false);
       await lost;
       expect(session.getSnapshot().watchPlayers.has(String(failed.id))).toBe(false);

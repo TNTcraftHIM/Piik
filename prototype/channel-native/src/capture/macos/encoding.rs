@@ -6,14 +6,14 @@ use crate::capture::{
     frame_dropper::FrameDropper,
     qp, FrameTiming, Settings, VideoCodec,
 };
-use crate::EncodedFrame;
+use crate::{media::clock::VIDEO_RTP_TICK_NS, EncodedFrame};
 use anyhow::{anyhow, ensure, Result};
 use cidre::{arc, cf, cm, cv, objc, vt};
 use std::{
     collections::VecDeque,
     sync::{mpsc, Arc, Mutex},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tokio::sync::Notify;
 
@@ -411,10 +411,11 @@ fn run(
     dropper.set_rates(settings.bitrate as f32 / 1000.0, 0.0);
     let mut codec: Option<Codec> = None;
     let mut bitrate = settings.bitrate;
-    let mut last = None;
+    let mut previous_raw = None;
+    let mut submitted: Option<(Instant, Instant)> = None;
     let mut pending_keyframe = false;
     let result = (|| {
-        while let Some(work) = runtime.block_on(next(shared, &frames, last))? {
+        while let Some(work) = runtime.block_on(next(shared, &frames, previous_raw))? {
             let (raw, explicit_force) = match work {
                 Work::Bitrate(next) => {
                     bitrate = next;
@@ -426,16 +427,8 @@ fn run(
                 }
                 Work::Frame(raw, force) => (raw, force),
             };
-            // Capture-only: an explicit request may refresh this current static
-            // snapshot once at current host time. This is not Source/derived
-            // timing. Natural source frames always retain their original PTS.
-            let repeated = last.is_some_and(|last| raw.time <= last);
-            let time = if frames.timing() == FrameTiming::Capture && explicit_force && repeated {
-                clock.project(cm::Clock::host_time_clock().time())?
-            } else {
-                raw.time
-            };
-            last = Some(time);
+            let repeated = previous_raw == Some(raw.time);
+            previous_raw = Some(raw.time);
             let mut force = explicit_force || pending_keyframe;
             let (width, height) = raw.image.size();
             let fitted = Settings {
@@ -461,7 +454,7 @@ fn run(
                 cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
                 admission_rate = AdmissionRate::default();
             }
-            let source_time = clock.timestamp(time).value / 100;
+            let source_time = clock.timestamp(raw.time).value / 100;
             if !force && frame_limit.is_some() && !cadence.accept(source_time) {
                 continue;
             }
@@ -490,7 +483,17 @@ fn run(
                 )
             });
             let codec = codec.as_mut().unwrap();
+            let mut time = raw.time;
+            if frames.timing() == FrameTiming::Capture {
+                if let Some((last_raw, last_pts)) = submitted {
+                    if explicit_force && raw.time == last_raw {
+                        time = clock.project(cm::Clock::host_time_clock().time())?;
+                    }
+                    time = time.max(last_pts + Duration::from_nanos(VIDEO_RTP_TICK_NS));
+                }
+            }
             let frame = codec.encode(&raw.image, time, duration, force, clock)?;
+            submitted = Some((raw.time, time));
             let Some(frame) = frame else {
                 policy.report_drop();
                 pending_keyframe = force;

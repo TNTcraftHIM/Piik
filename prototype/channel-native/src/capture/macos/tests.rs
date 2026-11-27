@@ -244,3 +244,48 @@ async fn synthetic_h264_roundtrip_preserves_source_time_and_stops() -> Result<()
     eprintln!("synthetic VT roundtrip: aus={aus} decoded={decoded} qpSamples={qp_samples} sizes={sizes:?} siblingDecoded={sibling_frames} sourcePTS=preserved forcedIDR=true joined=true");
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn static_refresh_preserves_the_next_due_capture() -> Result<()> {
+    async fn next(encoding: &mut super::Encoding) -> Result<EncodedFrame> {
+        tokio::time::timeout(Duration::from_secs(3), encoding.recv())
+            .await
+            .context("timed out waiting for VT output")?
+            .context("encoding ended early")?
+    }
+
+    for offset_us in [-20_000_i64, 1] {
+        let frames = Frames::new(FrameTiming::Capture)?;
+        let mut encoding = frames.encode(
+            Settings {
+                degradation_preference: DegradationPreference::Balanced,
+                width: 320,
+                height: 180,
+                fps: 10,
+                bitrate: 1_000_000,
+            },
+            VideoCodec::H264,
+        )?;
+        let first = Instant::now() - Duration::from_secs(1);
+        frames.publish(image(0)?, first);
+        ensure!(next(&mut encoding).await?.presentation_time == first);
+        encoding.control().force_keyframe()?;
+        let refresh = next(&mut encoding).await?;
+        ensure!(refresh.keyframe && refresh.presentation_time > first);
+        let offset = Duration::from_micros(offset_us.unsigned_abs());
+        let raw = if offset_us < 0 {
+            refresh.presentation_time - offset
+        } else {
+            refresh.presentation_time + offset
+        };
+        frames.publish(image(1)?, raw);
+        let fresh = next(&mut encoding).await?;
+        ensure!(
+            fresh.presentation_time == refresh.presentation_time + Duration::from_nanos(11_112),
+            "first changed image after static refresh, source offset {offset_us} us"
+        );
+        frames.finish(None);
+        tokio::task::spawn_blocking(move || encoding.stop()).await??;
+    }
+    Ok(())
+}

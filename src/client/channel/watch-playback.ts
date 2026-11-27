@@ -16,6 +16,7 @@ export class WatchPlayer {
   get presentation() { return this.media.presentation ?? { kind: "external" as const }; }
   get video(): HTMLVideoElement | null { return this.presentation.kind === "video" ? this.presentation.element : null; }
   mode: WatchMode | null = null;
+  stopRequested = false;
   blockedReason: "autoplay" | "local-seek" | null = null;
   get blocked(): boolean { return this.blockedReason !== null; }
   private failure: string | typeof unsupportedRate | typeof retiredSource | null = null;
