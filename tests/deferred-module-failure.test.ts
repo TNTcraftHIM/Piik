@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test, vi } from "vitest";
-import { ChannelSettingsError, settingsActionFailure } from "../src/client/channel/components/ChannelSettingsDialog";
+import { ChannelSettingsError } from "../src/client/channel/components/ChannelSettingsDialog";
+import { settingsActionFailure } from "../src/client/ui/use-settings-action";
 import { installDeferredModuleFailureTracking, isDeferredModuleFailure } from "../src/client/lib/deferred-module-failure";
 import { say } from "../src/client/ui/copy";
 

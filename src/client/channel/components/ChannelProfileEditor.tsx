@@ -8,8 +8,8 @@ import { useLayerHistory } from "../../ui/layer-history";
 import { useCopy } from "../../ui/copy";
 import { ChannelIdentityImageInput } from "./ChannelIdentity";
 import { MAX_USER_NAME_UNITS, type ProfileUpdate } from "../protocol";
-import { channelErrorPresentation } from "../error-presentation";
-import { useSettingsAction } from "./ChannelSettingsDialog";
+import { channelErrorPresentation } from "../../components/error-presentation";
+import { useSettingsAction } from "../../ui/use-settings-action";
 import "./channel-profile-editor.css";
 
 export function ChannelProfileEditor({ name, avatar, color, disabled, profileReady, busy, onSave, userId, triggerStyle }: {

@@ -60,7 +60,7 @@ impl RoomCopyMetadata {
         if self.room_info.as_ref().is_some_and(|info| {
             crate::wire::title(&info.name).as_deref() != Some(info.name.as_str())
                 || info.appearance.validate().is_err()
-                || !crate::access::valid_audio_bitrate(info.voice_bitrate)
+                || !crate::supports_audio_send_bitrate(info.voice_bitrate)
                 || !(1..=crate::MAX_RELAY_CAPACITY).contains(&info.relay_capacity)
         }) || self
             .authors

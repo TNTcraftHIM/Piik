@@ -13,6 +13,7 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use piik_channel_core::conversation::ControlFrame;
 use piik_channel_core::file_room::FilePlan;
+use piik_channel_core::supports_audio_send_bitrate;
 use piik_channel_core::wire::Snapshot;
 use piik_channel_core::wire::{
     Candidate, Command, Description, FlowBinding, FlowState, Kind, LinkState, PairInfo,
@@ -150,7 +151,7 @@ impl Default for SourceAudioSettings {
 impl SourceAudioSettings {
     pub fn validate(self) -> Result<()> {
         anyhow::ensure!(
-            (6_000..=320_000).contains(&self.bitrate)
+            supports_audio_send_bitrate(self.bitrate)
                 && self.gain.is_finite()
                 && (0.0..=2.0).contains(&self.gain),
             "invalid_audio_settings"

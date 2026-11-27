@@ -27,7 +27,7 @@ import previewRelease from "./preview-release.json";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
 import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls, VideoCodecControl } from "../components/living/QualityPresets";
-import { MAX_AUDIO_SEND_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
+import { VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import { POSTER, SOURCES, previewCameras, previewSource } from "./preview-sources";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
@@ -182,7 +182,7 @@ export function ControlsPreview() {
             onVolume={volume => setCommentaryInput(current => ({ ...current, volume }))}
             onDevice={deviceId => setCommentaryInput(current => ({ ...current, deviceId }))}
             onVoiceProcessing={voiceProcessing => setCommentaryInput(current => ({ ...current, voiceProcessing }))} />
-          <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_AUDIO_SEND_BITRATE}
+          <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate}
             disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
           </>}
           connection={

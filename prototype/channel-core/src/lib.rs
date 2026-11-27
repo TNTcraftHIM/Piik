@@ -33,9 +33,11 @@ pub mod watch_delivery;
 pub mod wire;
 pub mod wire_images;
 
-pub use access::{RoomAppearance, RoomPermission, RoomState, MAX_RELAY_CAPACITY};
+pub use access::{
+    supports_audio_send_bitrate, RoomAppearance, RoomPermission, RoomState, MAX_RELAY_CAPACITY,
+};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
-pub use channel::{DomainStateHeader, DurableState};
+pub use channel::{DomainStateHeader, DurableState, MAX_ROOMS};
 pub use identity::{Endpoint, Member, User, MAX_SESSIONS, PROFILE_PAGE_SIZE, RECOVERY_MS};
 pub use room::{RoomRecipient, RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]

@@ -23,7 +23,7 @@ import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import type { SiteManagementProps } from "../components/living/SiteManagement";
 import { downloadBlob } from "../lib/download";
 import { openLauncherSite, publicSiteOrigin } from "../lib/site-address";
-import { diagnosisGuide } from "../channel/diagnosis";
+import { diagnosisGuide } from "../ui/diagnosis";
 
 const localCertificateSchema = z.object({ origin: z.string().url(), sha256Fingerprint: z.string().regex(/^[A-Fa-f0-9]{64}$/) });
 const launcherStateSchema = z.object({

@@ -47,6 +47,8 @@ export type DegradationPreference = z.infer<
 
 export const MIN_AUDIO_BITRATE = 6_000;
 export const MAX_AUDIO_BITRATE = 510_000;
+// Current 20 ms output leaves room for RTP/SRTP overhead within a 1200-byte packet.
+export const MAX_AUDIO_SEND_BITRATE = 320_000;
 export const maxAudioBitrateSchema = z.number().int().min(MIN_AUDIO_BITRATE).max(MAX_AUDIO_BITRATE);
 
 export const qualitySettingsSchema = z

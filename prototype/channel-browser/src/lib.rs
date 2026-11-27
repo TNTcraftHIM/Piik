@@ -435,6 +435,42 @@ impl AttachmentHash {
 pub fn attachment_media_type(bytes: &[u8]) -> String {
     piik_channel_core::attachment::sniff_media_type(bytes).into()
 }
+/// Static Browser and Node schemas are constructed before the WASM runtime starts.
+#[wasm_bindgen]
+pub fn channel_wire_limits() -> Result<String, JsValue> {
+    use piik_channel_core::{wire, MAX_ROOMS, MAX_SESSIONS, PROFILE_PAGE_SIZE};
+    encode(&serde_json::json!({
+        "protocol": wire::CHANNEL_PROTOCOL,
+        "sessions": MAX_SESSIONS,
+        "rooms": MAX_ROOMS,
+        "profilePage": PROFILE_PAGE_SIZE,
+        "eventBytes": wire::CHANNEL_MESSAGE_BYTES,
+        "identityImageBytes": wire::IDENTITY_IMAGE_URL_BYTES,
+    }))
+}
+
+#[wasm_bindgen]
+pub fn session_recovery_ms() -> f64 {
+    piik_channel_core::RECOVERY_MS as f64
+}
+
+#[wasm_bindgen]
+pub fn data_frame_bytes(bulk: bool) -> usize {
+    if bulk {
+        piik_channel_core::file_delivery::FILE_FRAME_BYTES
+    } else {
+        conversation::CONTROL_FRAME_BYTES
+    }
+}
+
+#[wasm_bindgen]
+pub fn is_watch_frame(first: Option<u8>, second: Option<u8>) -> bool {
+    // The bulk header is two bytes. Pass them by value to keep the payload in JS.
+    first.zip(second).is_some_and(|(a, b)| {
+        piik_channel_core::watch_delivery::is_watch_frame(&[a, b])
+    })
+}
+
 #[wasm_bindgen]
 pub fn data_queue_frames(bulk: bool) -> usize {
     piik_channel_core::conversation::data_queue_frames(bulk)

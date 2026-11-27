@@ -2,7 +2,7 @@ import Hls from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPageMedia, canReceivePeerWatch, createResourceWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
 import { M3U8Parser, watchHlsFailure } from "../src/client/channel/watch-hls";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { t } from "../src/client/ui/copy";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 

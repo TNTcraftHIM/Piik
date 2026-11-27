@@ -3,12 +3,12 @@ import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useLayerHistory } from "../../ui/layer-history";
 import { useCopy } from "../../ui/copy";
-import { channelErrorPresentation } from "../error-presentation";
+import { channelErrorPresentation } from "../../components/error-presentation";
 import type { ChannelRoom, RoomInvitationState } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
 import { InvitationLink } from "./InvitationLink";
-import { useSettingsAction } from "./ChannelSettingsDialog";
+import { useSettingsAction } from "../../ui/use-settings-action";
 import "./channel-room-invitation.css";
 
 /** The title's invitation entry owns one open read, independently of room settings. */

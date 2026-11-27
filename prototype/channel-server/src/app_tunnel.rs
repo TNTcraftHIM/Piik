@@ -287,25 +287,27 @@ async fn log_line(
 }
 
 fn quick_origin(message: &str) -> Option<String> {
-    message.split_ascii_whitespace().find_map(|word| {
-        let url = Url::parse(word).ok()?;
-        let label = url.host_str()?.strip_suffix(".trycloudflare.com")?;
-        if url.scheme() != "https"
-            || label.is_empty()
-            || !label
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.port().is_some()
-            || url.path() != "/"
-            || url.query().is_some()
-            || url.fragment().is_some()
-        {
-            return None;
-        }
-        Some(url.origin().ascii_serialization())
-    })
+    message.split_ascii_whitespace().find_map(quick_tunnel_origin)
+}
+
+pub(super) fn quick_tunnel_origin(address: &str) -> Option<String> {
+    let url = Url::parse(address).ok()?;
+    let label = url.host_str()?.strip_suffix(".trycloudflare.com")?;
+    if url.scheme() != "https"
+        || label.is_empty()
+        || !label
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    Some(url.origin().ascii_serialization())
 }
 
 struct TemporaryConfig(PathBuf);

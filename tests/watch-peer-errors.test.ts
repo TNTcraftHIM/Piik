@@ -4,7 +4,7 @@ import { ChannelSession } from "../src/client/channel/session";
 import type { Stage } from "../src/client/channel/stage";
 import { HTMLVideoMedia, createResourceWatchMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 

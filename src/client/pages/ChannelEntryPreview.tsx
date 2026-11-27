@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AppHeader } from "../components/living/Header";
 import { ChannelSiteEntry } from "../channel/components/ChannelSiteEntry";
-import { channelErrorPresentation } from "../channel/error-presentation";
+import { channelErrorPresentation } from "../components/error-presentation";
 import { useCopy } from "../ui/copy";
 
 const cases = [

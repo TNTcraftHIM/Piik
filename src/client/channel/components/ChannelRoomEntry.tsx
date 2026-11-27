@@ -4,7 +4,8 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelRoom } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsError, useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsError } from "./ChannelSettingsDialog";
+import { useSettingsAction } from "../../ui/use-settings-action";
 import { protectRoomComposition, useRoomFormFocus } from "./room-form-interaction";
 import "./channel-room-controls.css";
 

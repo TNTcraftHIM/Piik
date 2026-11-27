@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { diagnoseChannelFact } from "../src/client/channel/diagnosis";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { diagnoseChannelFact } from "../src/client/ui/diagnosis";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { roomOpenFailure } from "../src/client/channel/types";
 
 describe("diagnosis using the current operation", () => {

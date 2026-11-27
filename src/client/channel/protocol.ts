@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { watchFormatSchema } from "../../shared/watch-format";
 export type { WatchFormat } from "../../shared/watch-format";
-import { videoSettingsSchema, type VideoSettings } from "../../shared/protocol";
+import { MAX_AUDIO_SEND_BITRATE, MIN_AUDIO_BITRATE, videoSettingsSchema, type VideoSettings } from "../../shared/protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 export { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 
@@ -33,10 +33,11 @@ export const userSchema = userSummarySchema.extend({ avatar: identityImageSchema
 export const PROFILE_PAGE_SIZE = 32;
 export const profilePageSchema = z.object({ profiles: z.array(userSchema).max(PROFILE_PAGE_SIZE), total: z.number().int().nonnegative(), nextCursor: id.nullable() });
 export type ProfilePage = z.infer<typeof profilePageSchema>;
+export const DEFAULT_ROOM_VOICE_BITRATE = 64_000;
 export const roomSchema = z.object({
   id, name: identityNameSchema, icon: roomIconSchema, picture: identityImageSchema.optional(), creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
-  voiceBitrate: z.number().int().min(6_000).max(320_000).default(64_000),
+  voiceBitrate: z.number().int().min(MIN_AUDIO_BITRATE).max(MAX_AUDIO_SEND_BITRATE).default(DEFAULT_ROOM_VOICE_BITRATE),
   relayCapacity: z.number().int().min(1).max(MAX_RELAY_CAPACITY).default(DEFAULT_RELAY_CAPACITY),
   relayOverride: z.number().int().min(0).max(MAX_RELAY_CAPACITY).nullable().default(null),
   members: z.array(id).optional(),

@@ -2,6 +2,7 @@ import {
   DEFAULT_QUALITY_SETTINGS,
   MIN_AUDIO_BITRATE,
   MAX_AUDIO_BITRATE,
+  MAX_AUDIO_SEND_BITRATE,
   qualitySettingsSchema,
   type DegradationPreference,
   type QualityResolution,
@@ -34,7 +35,6 @@ export function screenVideoCeiling(profile: VideoCeiling): VideoCeiling {
 export function screenVideoSettings(profile: QualityProfile): VideoSettings {
   return { ceiling: screenVideoCeiling(profile), degradationPreference: profile.degradationPreference };
 }
-export const DEFAULT_ROOM_VOICE_BITRATE = 64_000;
 
 const QUALITY_PREFERENCE_KEY = "piik:quality-preference:v1";
 
@@ -168,8 +168,6 @@ export const SCREEN_AUDIO_BITRATES = {
   "very-high": 192_000,
 } as const;
 export type ScreenAudioPreset = keyof typeof SCREEN_AUDIO_BITRATES;
-// Current 20 ms output leaves room for RTP/SRTP overhead within a 1200-byte packet.
-export const MAX_AUDIO_SEND_BITRATE = 320_000;
 export const OPUS_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
 
 /**

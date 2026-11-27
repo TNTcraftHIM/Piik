@@ -16,7 +16,14 @@ export function publicSiteOrigin(value: string): string | null {
   return url?.protocol === "https:" && url.pathname === "/" && !url.search && !url.hash ? url.origin : null;
 }
 
-export function siteEntryError(reason: unknown) {
+/** Match the HTTPS origin issued by the App's Cloudflare Quick Tunnel provider. */
+export function isQuickTunnelAddress(url: URL | null): boolean {
+  return url?.protocol === "https:" && !url.port && /^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname);
+}
+
+export function siteEntryError(reason: unknown, target?: URL | null) {
+  if (reason === "temporary_bookmark") return "client.bookmarks.temporaryAddress" as const;
+  if (reason === "site_unavailable" && isQuickTunnelAddress(target ?? null)) return "client.bookmarks.temporaryUnavailable" as const;
   if (reason === "not_piik_site") return "client.bookmarks.notPiik" as const;
   if (reason === "site_unavailable") return "client.bookmarks.unavailable" as const;
   return undefined;

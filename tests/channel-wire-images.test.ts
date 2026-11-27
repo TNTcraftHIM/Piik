@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { CHANNEL_EVENT_BYTES, CHANNEL_PROTOCOL, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, ChannelEventDecoder } from "../src/client/channel/protocol";
+import { readFile } from "node:fs/promises";
+import { CHANNEL_EVENT_BYTES, CHANNEL_PROTOCOL, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, IDENTITY_IMAGE_URL_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder } from "../src/client/channel/protocol";
 
 const picture = "data:image/png;base64,YWJj";
 const version = "a".repeat(64);
@@ -26,18 +26,17 @@ const decode = (decoder: ChannelEventDecoder, event: unknown) => {
   return decoder.decode(JSON.parse(text), new TextEncoder().encode(text).byteLength);
 };
 
-// Keep static readers usable before WASM initialization; fail this contract check on drift.
-const coreLimit = (file: string, name: string): number => {
-  const source = readFileSync(`prototype/channel-core/src/${file}.rs`, "utf8");
-  const value = source.match(new RegExp(`const ${name}: usize = (\\d+);`));
-  if (!value) throw new Error(`Core capacity constant ${name} is missing`);
-  return Number(value[1]);
-};
+it("matches the compiled Core wire contract for schemas built before WASM initialization", async () => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  expect(JSON.parse(core.channel_wire_limits())).toEqual({
+    protocol: CHANNEL_PROTOCOL, sessions: CHANNEL_SESSION_LIMIT, rooms: CHANNEL_ROOM_LIMIT,
+    profilePage: PROFILE_PAGE_SIZE, eventBytes: CHANNEL_EVENT_BYTES, identityImageBytes: IDENTITY_IMAGE_URL_BYTES,
+  });
+});
 
 it("accepts the Core session budget and rejects one extra session", () => {
-  const limit = coreLimit("identity", "MAX_SESSIONS");
-  expect(CHANNEL_SESSION_LIMIT).toBe(limit);
-  const state = { ...snapshot(), sessions: Array.from({ length: limit }, (_, index) => ({
+  const state = { ...snapshot(), sessions: Array.from({ length: CHANNEL_SESSION_LIMIT }, (_, index) => ({
     id: `endpoint-${index}`, userId: "user", online: true, signingKey: Array(32).fill(0),
   })) };
   expect(() => decode(new ChannelEventDecoder(), { ...welcome(), state })).not.toThrow();
@@ -46,10 +45,8 @@ it("accepts the Core session budget and rejects one extra session", () => {
 });
 
 it("accepts the Core room budget and rejects one extra room", () => {
-  const limit = coreLimit("channel", "MAX_ROOMS");
-  expect(CHANNEL_ROOM_LIMIT).toBe(limit);
   const state = snapshot(), room = state.channel.rooms[0]!;
-  state.channel.rooms = Array.from({ length: limit }, (_, index) => ({ ...room, id: `room-${index}` }));
+  state.channel.rooms = Array.from({ length: CHANNEL_ROOM_LIMIT }, (_, index) => ({ ...room, id: `room-${index}` }));
   expect(() => decode(new ChannelEventDecoder(), welcome(state))).not.toThrow();
   state.channel.rooms.push({ ...room, id: "extra" });
   expect(() => decode(new ChannelEventDecoder(), welcome(state))).toThrow();

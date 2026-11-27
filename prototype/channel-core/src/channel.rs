@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 const MAX_ACTIVE_ROOMS: usize = 32;
 // Directory space for the live set plus one equally sized recovery set.
-const MAX_ROOMS: usize = 64;
+pub const MAX_ROOMS: usize = 64;
 
 mod discovery;
 use discovery::Repairs;

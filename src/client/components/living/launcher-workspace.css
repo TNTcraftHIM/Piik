@@ -85,6 +85,14 @@
 .lr-launcher-join form > label { flex: 1 0 min(100%, 14rem); }
 .lr-launcher-join form > label > .lr-input { display: flex; }
 .lr-launcher-join form > label > span:first-child:not(.lr-input):not(.visually-hidden) { display: block; margin-bottom: 12px; font-size: 15px; font-weight: 650; }
+@media (min-width: 601px) {
+  .lr-launcher-shell:not([data-saved]) { grid-template: "brand" auto "main" 1fr "saved" auto / minmax(0, 1fr); max-width: 760px; }
+  .lr-launcher-shell:not([data-saved]) .lr-launcher-identity { background: transparent; border: 0; padding-inline: clamp(24px, 4vw, 44px); }
+  .lr-launcher-shell:not([data-saved]) .lr-launcher-brand { margin: 0; }
+  .lr-launcher-shell:not([data-saved]) .lr-launcher-sidebar { border: 0; padding: 0; }
+  .lr-launcher-shell:not([data-saved]) .lr-launcher-local { padding: 10px clamp(24px, 4vw, 44px); }
+}
+.lr-launcher-local > .lr-btn { margin-inline-start: auto; }
 @media (max-height: 650px) and (min-width: 601px) {
   .lr-launcher-shell { margin-block: 8px; }
   .lr-launcher-main, .lr-launcher-identity { padding-top: 16px; }

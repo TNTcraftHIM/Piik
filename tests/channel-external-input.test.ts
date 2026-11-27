@@ -5,7 +5,7 @@ import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelExternalInput } from "../src/client/channel/components/ChannelExternalInput";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { setCopy, t } from "../src/client/ui/copy";
 
 vi.mock("../src/client/channel/components/ChannelSettingsDialog", async importOriginal => {

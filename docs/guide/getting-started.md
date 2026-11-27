@@ -31,7 +31,7 @@ volume and local pause affect only your own viewing. Move the pointer over the
 picture, tap it or focus a playback button to reveal its controls.
 
 You do not need to launch your own App or create another room to watch a friend.
-Keep the full invitation link your friend sent. Opening your own App launcher takes you to your own site.
+To open the link in Piik App, paste it into **Open a site or invitation** on the launcher. Keep the full invitation link for later.
 
 ## Use a 3.0 link without installing
 
@@ -120,7 +120,14 @@ working, while existing access and the room password remain.
 4. In a room, **Start sharing** now also offers the App's supported sources.
 
 Connecting App adds supported device features. Existing rooms keep their host.
-Manage approved sites from the App launcher. See the
+
+Open the star button, **Manage sites**, and choose **Save a site** to save a
+stable address. The site then appears under **Saved sites** in the launcher. Open temporary invitations
+with **Open a site or invitation**. If a temporary address stops working, ask
+the person who sent it for the latest link.
+
+To review or revoke App access, open the site’s details in **Manage sites**.
+An approved site can appear there even when it hasn’t been saved. See the
 [App reference](../../prototype/channel-server/README.md#local-app-link) for details.
 
 ### Upgrading

@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { AudioBitrateControl } from "../../components/living/QualityPresets";
-import { MAX_AUDIO_SEND_BITRATE } from "../../media/quality";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { downloadBlob } from "../../lib/download";
@@ -10,12 +9,13 @@ import { formatChatTranscript } from "../../lib/room-chat-export";
 import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy } from "../protocol";
 import { MAX_RELAY_CAPACITY } from "../protocol";
 import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch, type RoomDraft } from "../room-creation";
-import { diagnoseChannelFact } from "../diagnosis";
+import { diagnoseChannelFact } from "../../ui/diagnosis";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs, useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs } from "./ChannelSettingsDialog";
+import { useSettingsAction } from "../../ui/use-settings-action";
 import { ChannelIdentityFields } from "./ChannelIdentity";
-import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
+import { ChannelDiagnosisHelp } from "../../components/ChannelDiagnosisHelp";
 import "./channel-room-controls.css";
 import { BackupControls, RoomRestoreResult } from "./BackupControls";
 import { roomRestoreRecovery, type RoomRestoreRecovery, type NativeRoomOpenReason } from "../hosting-api";
@@ -405,7 +405,7 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
         {room.authorized && room.canManage && <section ref={networkPanel} id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
           <RoomForm {...form}>
             <RoomForwardingDefault value={value.relayCapacity} disabled={disabled} onChange={relayCapacity => change({ relayCapacity })} />
-            <AudioBitrateControl purpose="voice" value={value.voiceBitrate ?? room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
+            <AudioBitrateControl purpose="voice" value={value.voiceBitrate ?? room.voiceBitrate}
               disabled={disabled} onChange={voiceBitrate => change({ voiceBitrate })} />
             <ServiceTransit room={room} enabled={draft.allowServiceRelay} disabled={disabled} onChange={allowServiceRelay => change({ allowServiceRelay })} />
           </RoomForm>

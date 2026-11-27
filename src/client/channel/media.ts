@@ -192,7 +192,7 @@ export class ChannelMedia {
         try {
           transport = new ChannelTransport({
             identity: { sessionId, pairId: plan.id, peerId: plan.peerId },
-            polite: sessionId.localeCompare(plan.peerId) > 0,
+            polite: sessionId > plan.peerId,
             iceServers: state.iceServers,
             canReceiveVideoLayers: plan.canReceiveVideoLayers,
             videoPool: this.videoPool,

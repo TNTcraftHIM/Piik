@@ -1,6 +1,6 @@
-import { Glyph } from "../../ui/icons";
-import { useCopy, type CopyKey } from "../../ui/copy";
-import { diagnosisGuide, type ChannelDiagnosis } from "../diagnosis";
+import { Glyph } from "../ui/icons";
+import { useCopy, type CopyKey } from "../ui/copy";
+import { diagnosisGuide, type ChannelDiagnosis } from "../ui/diagnosis";
 import "./channel-diagnosis-help.css";
 
 export function ChannelDiagnosisHelp({ diagnosis, details }: {

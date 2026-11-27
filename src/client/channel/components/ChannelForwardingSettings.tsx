@@ -4,7 +4,8 @@ import { Glyph } from "../../ui/icons";
 import { MAX_RELAY_CAPACITY } from "../protocol";
 import type { NativeRelayCapacity } from "../app-link";
 import type { ChannelController } from "../types";
-import { useSettingsAction, ChannelSettingsError } from "./ChannelSettingsDialog";
+import { ChannelSettingsError } from "./ChannelSettingsDialog";
+import { useSettingsAction } from "../../ui/use-settings-action";
 import "./channel-interface-control.css";
 
 function ForwardingLimit({ label, value, disabled, onChange }: {

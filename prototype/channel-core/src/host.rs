@@ -61,7 +61,7 @@ impl RoomSummary {
         {
             return Err("invalid_room_name");
         }
-        if !crate::access::valid_audio_bitrate(self.voice_bitrate) {
+        if !crate::supports_audio_send_bitrate(self.voice_bitrate) {
             return Err("invalid_audio_bitrate");
         }
         if !(1..=crate::MAX_RELAY_CAPACITY).contains(&self.relay_capacity) {

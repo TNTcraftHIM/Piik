@@ -16,8 +16,8 @@ import { channelAppDiscovery } from "../../channel/app-link";
 import { OpenInClient, type AppNavigationIssue } from "./OpenInClient";
 import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
-import { diagnoseChannelFact, type AppConnectionState } from "../../channel/diagnosis";
-import { ChannelDiagnosisHelp } from "../../channel/components/ChannelDiagnosisHelp";
+import { diagnoseChannelFact, type AppConnectionState } from "../../ui/diagnosis";
+import { ChannelDiagnosisHelp } from "../ChannelDiagnosisHelp";
 
 interface AppConnectionProps {
   onConnected?: (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>, signal: AbortSignal) => void | Promise<void>;

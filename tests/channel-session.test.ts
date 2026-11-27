@@ -10,7 +10,7 @@ import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import { RoomCreationInterrupted } from "../src/client/channel/room-creation";
 import { FeedbackAudio } from "../src/client/channel/feedback-audio";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
 import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";
@@ -1709,9 +1709,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(discovery).toHaveBeenCalledTimes(healthChecks);
     expect(ChannelSocket.current).toBe(resumedApp);
     await vi.waitFor(() => expect(host.close).toHaveBeenCalledOnce());
-    expect(socket.sent.filter(command => command.type === "host_stop")).toEqual([
-      { type: "host_stop", roomId: localRoom.id, bindingId: "browser-binding" },
-    ]);
+    expect(socket.sent.filter(command => command.type === "host_stop" || command.type === "leave")).toEqual([{ type: "leave" }]);
     expect(app.sent.map(command => command.type)).toEqual(["hello", "open", "connection_metrics", "connection_metrics", "connection_metrics"]);
   } finally { session.close(); }
 });
@@ -14229,7 +14227,10 @@ test('turning off remote forwarding preserves the Host local provider and reuses
     }
     expect(stop).not.toHaveBeenCalled();expect(dispose).not.toHaveBeenCalled();
     expect(socket.sent.some(x=>x.type==='join_watch')).toBe(false);
+    socket.receive({ type: "error", code: "room_host_offline" });
     await expect(session.setWatchByteSource('owned',crypto.randomUUID())).rejects.toThrow('watch_page_unavailable');
+    expect(session.getSnapshot().error).toBe("room_host_offline");
+    expect(session.getSnapshot().pending.has("watch-source:owned")).toBe(false);
   }finally{session.close();}
 });
 
