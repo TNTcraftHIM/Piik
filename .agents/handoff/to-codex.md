@@ -94,34 +94,46 @@ estimate ramps is not part of the rule and should not be.
 I owe you the meaning of "limited" where no encoder says it: for a Native
 flow that encodes, and for a pass-through flow. Until I send it, no new arm.
 
-## NAT: seven field reports, and a new tool revision to package
+## NAT: nine field reports, and a new tool revision to package
 
-The owner's testers sent seven reports. My tool misread every one: the
-observer `stun.chat.bilibili.com:3479` alone reported an address other than
-the one every other observer saw, with the same port, so each report said
-"more than one public address" and "model: unusable". The sample tables are
-sound. Read with that observer set aside, new address, held of tried:
+The owner's testers sent nine reports with tool 0.1. That tool misread every
+one: the observer `stun.chat.bilibili.com:3479` alone reported an address
+other than the one every other observer saw, with the same port, so each
+report said "more than one public address" and "model: unusable". The sample
+tables are sound. Read with that observer set aside, for a new address, held
+of tried:
 
 | Network | Kind | 16 packets | 64 packets |
 | --- | --- | --- | --- |
 | 27.30, 119.247, 125.110 | a point per socket (two keep the local port) | no aim needed | |
 | 119.123 with 183.11 | two real addresses chosen by destination; a point per socket inside one | no aim needed | |
+| 42.48, 113.247, 111.23 (hotspot) | three real addresses chosen by destination; the local port kept on each | no aim needed | |
 | 133.18 with 223.104 (hotspot) | two real addresses chosen by socket; the first a point per socket | no aim needed | |
 | 183.251 | by destination, two counters, one up and one down | 17/30 | 26/30 |
+| 61.242 (hotspot) | three addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn, no aim | |
 | 112.4 | by destination, a counter per destination | 5/30 | 6/30 |
-| 223.104 (the hotspot's second address) | by destination, a counter per destination | 0/13 | 1/13 |
+| 223.104 (a hotspot's second address) | by destination, a counter per destination | 0/13 | 1/13 |
 
 One-sided surveys of the owner's circle, no peer and no filtering measured.
-What they say for `peer/preparation.rs`, none of it to change yet: `observe`
-gives up when its three answers show two addresses, which loses the two
-networks that really have two; the kind with two counters is within reach
-of sixty-four packets from one socket; a counter per destination is not, and
-needs another idea. The design that follows is mine.
+What they say for `peer/preparation.rs`, none of it to change yet:
 
-Please build `piik-nat-lab` 0.2.0 from `claude/nat-model` at `48762735` for
-macOS and Linux as before. It drops that observer, reads each public address
-by itself, prints the replay at 16, 64 and 1024 packets and its own version
-inside the report. The Windows package is built here and on the owner's
+- Four of nine networks leave through more than one real address. `observe`
+  gives up when its three answers show two addresses, and when they happen
+  to show one it aims at an address the peer's packets may not leave by.
+- The kind with two slow counters is within reach of sixty-four packets from
+  one socket.
+- A fast counter defeats a guess but not a bracket: on 61.242 a straight
+  line through the earlier ports was within 32 of the next in 23 of 35 and
+  within 128 in 31 of 35. Tool 0.3.0 now measures brackets directly: three
+  new sockets sent to in a row, the middle port to lie between the outer
+  two.
+- A counter per destination is out of reach of both and needs another idea.
+
+The design that follows is mine. Please build `piik-nat-lab` 0.3.0 from
+`claude/nat-model` at `769f962f` for macOS and Linux as before. Against 0.1
+it drops that observer, reads each public address by itself, prints the
+replay at 16, 64 and 1024 packets and its version inside the report, and
+measures brackets. The Windows package is built here and is on the owner's
 desktop; `package/windows/run.bat` is its launcher. `examples/replay.rs`
 replays pasted reports offline.
 
