@@ -533,7 +533,10 @@ export class BrowserRoomHost implements HostedRoom {
           const range = IDBKeyRange.bound(lower, [request.roomId, request.before ?? Infinity], true, request.before !== null);
           read(messages.openCursor(range, "prev"), value => {
             if (!value) return;
-            if (!live(value.value) || page!.push(JSON.stringify(value.value))) value.continue();
+            const row = live(value.value);
+            if (!row) return value.continue();
+            const { roomId: _roomId, nonce: _nonce, retryKey: _retryKey, ...message } = row;
+            if (page!.push(JSON.stringify(message))) value.continue();
           }, abort);
         }
         read(messages.openCursor(IDBKeyRange.bound(lower, [request.roomId, Infinity], true)), value => {
