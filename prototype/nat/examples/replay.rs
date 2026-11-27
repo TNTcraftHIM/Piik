@@ -13,7 +13,7 @@ fn main() {
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--drop" => dropped.extend(arguments.next()),
-            "--only" => only = arguments.next().and_then(|letter| letter.chars().next()),
+            "--only" => only = arguments.next(),
             _ => files.push(argument),
         }
     }
@@ -34,52 +34,59 @@ fn main() {
                 observers.insert(index, (name.to_owned(), SocketAddrV4::new(Ipv4Addr::new(203, 0, 113, host_index as u8 + 1), port)));
             }
         }
-        let mut samples = Vec::new();
+        let mut groups = BTreeMap::<&str, Vec<Sample>>::new();
         for line in text.lines() {
             let fields: Vec<&str> = line.split_whitespace().collect();
             let [socket, observer, sent_ms, letter, mapped, local] = fields[..] else { continue };
             let (Ok(socket), Ok(observer), Ok(sent_ms), Ok(mapped), Ok(local)) =
                 (socket.parse(), observer.parse::<u16>(), sent_ms.parse(), mapped.parse(), local.parse()) else { continue };
-            let Some(letter) = letter.chars().next().filter(char::is_ascii_uppercase) else { continue };
+            if !letter.starts_with(|c: char| c.is_ascii_uppercase()) { continue }
             let Some((name, address)) = observers.get(&observer) else { continue };
-            if dropped.iter().any(|text| name.contains(text.as_str())) || only.is_some_and(|wanted| wanted != letter) {
+            if dropped.iter().any(|text| name.contains(text.as_str())) || only.as_deref().is_some_and(|wanted| wanted != letter) {
                 continue;
             }
-            samples.push(Sample {
+            groups.entry(letter).or_default().push(Sample {
                 socket,
                 local_port: local,
                 observer: *address,
                 sent_ms,
-                mapped: SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, letter as u8 - b'A' + 1), mapped),
+                mapped: SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), mapped),
             });
         }
-        // A socket that shows a port again is reading the mapping it already has.
-        let mut made: Vec<Sample> = Vec::new();
-        for sample in &samples {
-            if !made.iter().any(|earlier| earlier.socket == sample.socket && earlier.mapped == sample.mapped) {
-                made.push(*sample);
-            }
+        println!("\n{file}: offline replay assumes the target's public address is known");
+        for (letter, samples) in groups {
+            read_address(letter, &samples);
         }
-        println!("\n{file}: {} samples, {} mappings made", samples.len(), made.len());
-        match Model::read(&samples).map(|model| model.allocator) {
-            Err(unusable) => println!("  model: unusable ({unusable:?})"),
-            Ok(Allocator::Point { port, preserved }) => println!("  model: point, port {port}, local port kept: {preserved}"),
-            Ok(Allocator::Cursors(cursors)) => println!(
-                "  model: {} cursor(s): {}",
-                cursors.len(),
-                cursors.iter().map(|cursor| format!("{} step {} x{} ({:.1}/s)", cursor.last, cursor.step, cursor.landings, cursor.per_second())).collect::<Vec<_>>().join(", ")
-            ),
-            Ok(Allocator::Drawn { low, high }) => println!("  model: drawn between {low} and {high}"),
+    }
+}
+
+fn read_address(letter: &str, samples: &[Sample]) {
+    // A socket that shows a port again is reading the mapping it already has.
+    let mut made: Vec<Sample> = Vec::new();
+    for sample in samples {
+        if !made.iter().any(|earlier| earlier.socket == sample.socket && earlier.mapped == sample.mapped) {
+            made.push(*sample);
         }
-        for (reading, holdout) in [("all earlier mappings", Holdout::Nothing), ("other destinations only", Holdout::Destination), ("other addresses only", Holdout::Address)] {
-            let line: Vec<String> = [8u16, 16, 64, 256, 1024]
-                .iter()
-                .map(|&packets| {
-                    let replayed = replay(&made, 8, holdout, packets);
-                    format!("{packets}: {}/{}", replayed.held, replayed.held + replayed.missed + replayed.no_aim)
-                })
-                .collect();
-            println!("  held with packets, reading {reading}: {}", line.join("  "));
-        }
+    }
+    println!("address {letter}: {} samples, {} mappings made", samples.len(), made.len());
+    match Model::read(samples).map(|model| model.allocator) {
+        Err(unusable) => println!("  model: unusable ({unusable:?})"),
+        Ok(Allocator::Point { port, preserved }) => println!("  model: point, port {port}, local port kept: {preserved}"),
+        Ok(Allocator::Cursors(cursors)) => println!(
+            "  model: {} cursor(s): {}",
+            cursors.len(),
+            cursors.iter().map(|cursor| format!("{} step {} x{} ({:.1}/s)", cursor.last, cursor.step, cursor.landings, cursor.per_second())).collect::<Vec<_>>().join(", ")
+        ),
+        Ok(Allocator::Drawn { low, high }) => println!("  model: drawn between {low} and {high}"),
+    }
+    for (reading, holdout) in [("all earlier mappings", Holdout::Nothing), ("other destinations only", Holdout::Destination), ("other addresses only", Holdout::Address)] {
+        let line: Vec<String> = [8u16, 16, 64, 256, 1024]
+            .iter()
+            .map(|&packets| {
+                let replayed = replay(&made, 8, holdout, packets);
+                format!("{packets}: {}/{} ({} warm-up)", replayed.held, replayed.held + replayed.missed + replayed.no_aim, replayed.too_early)
+            })
+            .collect();
+        println!("  held with packets, reading {reading}: {}", line.join("  "));
     }
 }
