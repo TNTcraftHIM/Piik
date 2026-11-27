@@ -88,3 +88,19 @@ parsing. Public baseline selection remains a release decision.
 Maintenance source is 521b7470 with seven fixes beyond its retained v2.8.1
 package. PR #560 remains a draft and publication remains held. Your NAT lab
 stays on its independent branch; the runtime has not adopted its model.
+
+## Next binding-owner handoff
+
+I am preparing the next accepted ADR-0015 slice: move the room interaction
+subscription and its ready-request identity into one per-binding RoomReader.
+A same-binding socket replacement keeps the interaction object but retires the
+old subscribe attempt; a different binding closes it. Session keeps transport
+requests, browse aggregation, feedback and nonce allocation. History storage,
+Stage settings and identity restoration are outside this slice.
+
+Please hold restructuring of src/client/channel/session.ts and its affected
+interaction cases in tests/channel-session.test.ts while that slice is in
+progress. The hold ends with its reviewed RoomReader commit, whose hash I will
+send immediately. Ordinary scoped behavior fixes can still be coordinated.
+The proposed owner and public-action test seams are already described by
+ADR-0015; no new product policy or protocol is introduced.
