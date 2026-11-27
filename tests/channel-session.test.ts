@@ -4365,7 +4365,15 @@ test("Browser source output gain and bitrate survive replacement and close with 
     const constraints = vi.fn(async (_value: MediaTrackConstraints) => {});
     constraints.mockImplementationOnce(() => new Promise<void>(resolve => { applied = resolve; }));
     first.getVideoTracks()[0].applyConstraints = constraints;
+    let subscriberEdit: Promise<void> | undefined;
+    const unsubscribe = session.subscribe(() => {
+      if (!session.getSnapshot().pending.has(`quality:${publication.id}`)) return;
+      unsubscribe();
+      subscriberEdit = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+      void subscriberEdit.catch(() => {});
+    });
     const changingQuality = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+    expect(subscriberEdit).toBe(changingQuality);
     expect(session.getSnapshot().pending.has(`quality:${publication.id}`)).toBe(true);
     expect(session.screenQuality(publication.id)?.applied).toEqual(originalProfile);
     expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["1080p30"])).toBe(changingQuality);
@@ -5600,9 +5608,17 @@ test("arming OBS preserves the current capture controls until the external sourc
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, available: false }));
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    const replacement = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
+    const replacementCommand = app.sent.at(-1)!;
     app.receive({ id: edit.id, error: "capture_unavailable" });
     await cancelled;
-    expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(1);
+    expect(replacement).not.toBe(editing);
+    expect(replacementCommand).toMatchObject({ type: "capture_video_settings", captureId: external });
+    expect(session.getSnapshot().pending.has(`quality:${publicationId}`)).toBe(true);
+    app.receive({ id: replacementCommand.id, result: null });
+    await replacement;
+    expect(session.screenQuality(publicationId)?.applied.resolution).toEqual(QUALITY_PROFILES["720p30"].resolution);
     expect(session.getSnapshot().error).toBeNull();
     expect(session.sourceAudio(publicationId)).toBeUndefined();
   } finally { session.close(); }

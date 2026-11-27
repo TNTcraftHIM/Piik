@@ -238,6 +238,7 @@ export class ChannelSession {
     bindingId: string; content: string; files: PreparedFile[]; command: Extract<ChannelCommand, { type: "chat" }>;
   }>();
   private captureLifetime = new AbortController();
+  private readonly pendingActions = new Set<string>();
   private readonly stages = new Map<string, Stage>();
   private waitingWatchPages = new Map<string, {
     roomId: string;
@@ -385,7 +386,12 @@ export class ChannelSession {
 
   private patch(patch: Partial<ChannelView>): void {
     const ownedScreens = new Set(this.app?.screens);
-    for (const [, share] of this.screenShares()) ownedScreens.add(share.id);
+    const pending = new Set(this.pendingActions);
+    for (const stage of this.stages.values()) {
+      if (!stage.screen) continue;
+      ownedScreens.add(stage.screen.id);
+      if (stage.qualityPending) pending.add(`quality:${stage.screen.id}`);
+    }
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
     const localScreens = new Set(ownedScreens);
     for (const publication of (patch.state ?? this.view.state)?.publications ?? []) {
@@ -397,7 +403,7 @@ export class ChannelSession {
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     const errorRoomId = "error" in patch ? patch.errorRoomId : this.view.errorRoomId;
-    this.view = { ...this.view, ...patch, errorRoomId, waitingWatchPages: new Set(this.waitingWatchPages.keys()), watchPlayers: new Map(this.watchPlayers()), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+    this.view = { ...this.view, ...patch, pending, errorRoomId, waitingWatchPages: new Set(this.waitingWatchPages.keys()), watchPlayers: new Map(this.watchPlayers()), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
       appPort: this.app?.connected ? this.app.port : undefined,
       backgroundVoiceShortcuts: this.app?.connected ? this.app.backgroundVoiceShortcuts : undefined,
       externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
@@ -1236,20 +1242,22 @@ export class ChannelSession {
   };
 
   private async action<T>(key: string, work: () => Promise<T>, reportError: ReportError = true, options: { clearError?: boolean } = {}): Promise<T> {
-    if (this.view.pending.has(key)) throw new Error("operation_pending");
+    if (this.pendingActions.has(key)) throw new Error("operation_pending");
+    this.pendingActions.add(key);
+    const failed = this.beginActionFeedback(reportError, options.clearError);
+    try { return await work(); }
+    catch (error) { failed(error); throw error; }
+    finally { this.pendingActions.delete(key); this.patch({}); }
+  }
+
+  private beginActionFeedback(reportError: ReportError = true, clearError = true): (error: unknown) => void {
     const socket = this.socket;
     const ownsError = () => typeof reportError === "function" ? reportError() : reportError;
-    this.patch({ pending: new Set([...this.view.pending, key]), ...(ownsError() && options.clearError !== false ? { error: null } : {}) });
-    try { return await work(); }
-    catch (error) {
+    this.patch(ownsError() && clearError ? { error: null } : {});
+    return error => {
       const code = error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
       if (this.socket === socket && code !== "AbortError" && ownsError()) this.patch({ error: code });
-      throw error;
-    } finally {
-      const pending = new Set(this.view.pending);
-      pending.delete(key);
-      this.patch({ pending });
-    }
+    };
   }
 
   browse = (roomId: string): void => {
@@ -2324,7 +2332,12 @@ export class ChannelSession {
   private stage(roomId: string): Stage {
     let stage = this.stages.get(roomId);
     if (!stage) {
-      stage = new Stage(roomId, id => this.local.has(id) || !!this.app?.screens.has(id), () => this.patch({}));
+      stage = new Stage(roomId, id => this.local.has(id) || !!this.app?.screens.has(id), () => this.patch({}), {
+        local: id => this.local.get(id), app: () => this.app,
+        configure: (id, profile) => this.media.configureLocal(id, profile),
+        publish: (id, roomId, profile) => this.request({ type: "publish", publication: { id, roomId, kind: "screen", videoSettings: screenVideoSettings(profile) } }),
+        remember: this.setQuality, begin: () => this.beginActionFeedback(),
+      });
       this.stages.set(roomId, stage);
     }
     return stage;
@@ -2357,7 +2370,8 @@ export class ChannelSession {
     this.stages.get(roomId)?.finishSelection(selection);
   }
   private selectScreen(roomId: string): { share: ScreenShare; selection: SourceSelection; current(): boolean } {
-    let share = this.stages.get(roomId)?.screen;
+    const stage = this.stage(roomId);
+    let share = stage.screen;
     if (!share) {
       const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
       const id = local?.[0] ?? crypto.randomUUID();
@@ -2365,15 +2379,9 @@ export class ChannelSession {
         codecMode: this.view.videoCodecMode, encodingExecution: this.view.encodingExecution,
         volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
     }
-    if (share.audioChange || share.qualityChange || this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
-    // An armed OBS permission keeps the publication ID, not a capture's settings.
-    if (!this.local.has(share.id) && !this.app?.hasCapture(share.id)) {
-      share.profile = this.view.quality;
-      share.codecMode = this.view.videoCodecMode;
-      share.encodingExecution = this.view.encodingExecution;
-      share.codec = undefined;
-    }
-    return this.stage(roomId).selectScreen(share);
+    if (this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
+    return stage.selectScreen(share, { profile: this.view.quality, codecMode: this.view.videoCodecMode,
+      encodingExecution: this.view.encodingExecution });
   }
 
   private forgetInactiveScreen(publicationId: string): void {
@@ -3356,56 +3364,9 @@ export class ChannelSession {
     return share && { mode: share.codecMode, primary: share.codec?.primary };
   };
 
-  screenQuality = (publicationId: string) => {
-    const share = this.screenStage(publicationId)?.screen;
-    return share ? { applied: share.profile, requested: share.requestedProfile ?? share.profile } : undefined;
-  };
-
-  setScreenQuality = (publicationId: string, requested: QualityProfile): Promise<void> => {
-    const owner = [...this.screenShares()].find(([, share]) => share.id === publicationId), share = owner?.[1];
-    if (!share || this.stages.get(owner![0])?.sourceSelection || share.audioChange) return Promise.reject(new Error("capture_unavailable"));
-    const profile = { ...requested, maxAudioBitrate: share.profile.maxAudioBitrate };
-    if (!supportsCaptureProfile(profile)) return Promise.reject(new Error("capture_quality_unsupported"));
-    const local = this.local.get(publicationId), app = this.app;
-    const captureId = app?.captureId(publicationId);
-    if (!local && !captureId) return Promise.reject(new Error("capture_unavailable"));
-    share.requestedProfile = profile;
-    this.patch({});
-    if (share.qualityChange) return share.qualityChange;
-    const current = () => this.stages.get(owner![0])?.screen === share
-      && (local ? this.local.get(publicationId) === local : this.app === app && app?.captureId(publicationId) === captureId);
-    share.qualityChange = this.action(`quality:${publicationId}`, async () => {
-      do {
-        const profile = share.requestedProfile!;
-        try {
-          if (local) {
-            const previous = share.profile;
-            await this.media.configureLocal(publicationId, profile);
-            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-            try {
-              await this.request({ type: "publish", publication: { id: publicationId, roomId: local.roomId, kind: "screen",
-                videoSettings: screenVideoSettings(profile) } });
-            } catch (error) {
-              if (current()) await this.media.configureLocal(publicationId, previous);
-              throw error;
-            }
-          } else {
-            await app!.setCaptureQuality(publicationId, profile);
-          }
-        } catch (error) {
-          if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-          if (share.requestedProfile !== profile) continue;
-          throw error;
-        }
-        if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-        share.profile = profile;
-        this.patch({});
-        if (share.requestedProfile === profile) { this.setQuality(profile); return; }
-      } while (current());
-      throw new DOMException("Capture cancelled", "AbortError");
-    }).finally(() => { share.qualityChange = undefined; share.requestedProfile = undefined; this.patch({}); });
-    return share.qualityChange;
-  };
+  screenQuality = (publicationId: string) => this.screenStage(publicationId)?.screenQuality;
+  setScreenQuality = (publicationId: string, profile: QualityProfile): Promise<void> =>
+    this.screenStage(publicationId)?.setScreenQuality(profile) ?? Promise.reject(new Error("capture_unavailable"));
 
   sourceAudio = (publicationId: string) => {
     const share = this.screenStage(publicationId)?.screen;
@@ -3420,11 +3381,11 @@ export class ChannelSession {
   };
 
   setSourceAudio = (publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void> => {
-    const owner = [...this.screenShares()].find(([, share]) => share.id === publicationId), share = owner?.[1];
+    const stage = this.screenStage(publicationId), share = stage?.screen;
     const local = this.local.get(publicationId);
     const stopping = settings.bitrate === undefined && (settings.muted === true || settings.level === 0) && !!local?.audio?.outputGainAvailable;
     const native = this.app?.hasSourceAudioControl(publicationId);
-    if (!share || (this.stages.get(owner![0])?.sourceSelection || share.qualityChange) && !(settings.bitrate === undefined && (stopping || native)))
+    if (!share || (stage.sourceSelection || stage.qualityPending) && !(settings.bitrate === undefined && (stopping || native)))
       return Promise.reject(new Error("capture_unavailable"));
     const volume = { level: settings.level ?? share.volume.level, muted: settings.muted ?? share.volume.muted };
     const profile = { ...share.profile, maxAudioBitrate: settings.bitrate ?? share.profile.maxAudioBitrate ?? 128_000 };
@@ -3434,7 +3395,7 @@ export class ChannelSession {
     if (stopping) local!.audio!.setVolume(0);
     this.patch({});
     if (share.audioChange) return share.audioChange;
-    const current = () => this.stages.get(owner![0])?.screen === share;
+    const current = () => stage.screen === share;
     share.audioChange = this.action(`source-audio:${publicationId}`, async () => {
       try {
         do {

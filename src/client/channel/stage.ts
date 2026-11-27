@@ -1,7 +1,7 @@
 import type { AppPage, ChannelApp } from "./app-link";
 import type { EncodingExecution } from "../native/wire";
 import type { CommentaryInput } from "../media/host-audio";
-import type { QualityProfile } from "../media/quality";
+import { supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import type { BrowserVideoCodecMode, BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { NativeCaptureSelection } from "../native/capture-selection";
 import type { SourceMicrophoneConfiguration } from "./types";
@@ -46,20 +46,28 @@ export interface ScreenShare {
   requestedMicrophone?: { settings: SourceMicrophoneConfiguration; started?: Promise<void> };
   microphoneChange?: Promise<void>;
   audioChange?: Promise<void>;
-  requestedProfile?: QualityProfile;
-  qualityChange?: Promise<void>;
   native?: NativeCaptureSelection;
+}
+
+interface ScreenQualityEffects {
+  local(id: string): object | undefined;
+  app(): ChannelApp | undefined;
+  configure(id: string, profile: QualityProfile): Promise<void>;
+  publish(id: string, roomId: string, profile: QualityProfile): Promise<void>;
+  remember(profile: QualityProfile): void;
+  begin(): (error: unknown) => void;
 }
 
 /** The local stage in one room owns selection, screen identity and watch-player resources. */
 export class Stage {
   private selection?: ActiveSourceSelection;
   private share?: ScreenShare;
+  private qualityEdit?: { current(): boolean; requested: QualityProfile; promise: Promise<void> };
   private readonly players = new Map<string, WatchPlayer>();
   private readonly preparations = new Map<string, WatchPlayer>();
 
   constructor(readonly roomId: string, private readonly screenPresent: (id: string) => boolean,
-    private readonly changed: () => void) {}
+    private readonly changed: () => void, private readonly quality: ScreenQualityEffects) {}
 
   get sourceSelection(): SourceSelection | undefined { return this.selection; }
   get screen(): ScreenShare | undefined { return this.share; }
@@ -68,6 +76,75 @@ export class Stage {
   candidates(): IterableIterator<[string, WatchPlayer]> { return this.preparations.entries(); }
   watch(id: string): WatchPlayer | undefined { return this.players.get(id); }
   candidate(id: string): WatchPlayer | undefined { return this.preparations.get(id); }
+
+  get qualityPending(): boolean { return this.qualityEdit?.current() ?? false; }
+  get screenQuality() {
+    const share = this.share;
+    if (!share) return undefined;
+    return { applied: share.profile, requested: this.qualityEdit?.current() ? this.qualityEdit.requested : share.profile };
+  }
+
+  setScreenQuality(requested: QualityProfile): Promise<void> {
+    const share = this.share;
+    if (!share || this.selection || share.audioChange) return Promise.reject(new Error("capture_unavailable"));
+    const profile = { ...requested, maxAudioBitrate: share.profile.maxAudioBitrate };
+    if (!supportsCaptureProfile(profile)) return Promise.reject(new Error("capture_quality_unsupported"));
+    const id = share.id, local = this.quality.local(id), app = this.quality.app();
+    const captureId = app?.captureId(id);
+    if (!local && !captureId) return Promise.reject(new Error("capture_unavailable"));
+    const running = this.qualityEdit;
+    if (running?.current()) {
+      running.requested = profile;
+      this.changed();
+      return running.promise;
+    }
+    const current = (): boolean => this.qualityEdit === edit && this.share === share && (local ? this.quality.local(id) === local
+      : this.quality.app() === app && app?.captureId(id) === captureId);
+    // Subscribers can issue another edit synchronously as soon as pending is projected.
+    let settle!: (work: Promise<void>) => void;
+    const promise = new Promise<void>(resolve => { settle = resolve; });
+    const edit = this.qualityEdit = { current, requested: profile, promise };
+    const failed = this.quality.begin();
+    const apply = async () => {
+      try {
+        while (current()) {
+          const next = edit.requested;
+          try {
+            if (local) {
+              const previous = share.profile;
+              await this.quality.configure(id, next);
+              if (!current()) break;
+              try { await this.quality.publish(id, this.roomId, next); }
+              catch (error) {
+                if (current()) await this.quality.configure(id, previous);
+                throw error;
+              }
+            } else await app!.setCaptureQuality(id, next);
+          } catch (error) {
+            if (!current()) break;
+            if (edit.requested !== next) continue;
+            throw error;
+          }
+          if (!current()) break;
+          share.profile = next;
+          if (edit.requested === next) {
+            this.qualityEdit = undefined;
+            this.quality.remember(next);
+            return;
+          }
+          this.changed();
+        }
+        throw new DOMException("Capture cancelled", "AbortError");
+      } catch (error) {
+        if (this.qualityEdit === edit) this.qualityEdit = undefined;
+        failed(error);
+        this.changed();
+        throw error;
+      }
+    };
+    settle(apply());
+    return promise;
+  }
 
   selectSource(page?: AppPage): SourceSelection {
     if (this.selection) this.finishSelection(this.selection);
@@ -105,7 +182,13 @@ export class Stage {
     if (!available && this.selection) this.finishSelection(this.selection);
   }
 
-  selectScreen(share: ScreenShare): { share: ScreenShare; selection: SourceSelection; current(): boolean } {
+  selectScreen(share: ScreenShare, defaults?: Pick<ScreenShare, "profile" | "codecMode" | "encodingExecution">):
+    { share: ScreenShare; selection: SourceSelection; current(): boolean } {
+    if (share.audioChange || this.qualityPending) throw new Error("operation_pending");
+    // An armed OBS permission retains the publication ID until a new capture starts.
+    if (defaults && !this.quality.local(share.id) && !this.quality.app()?.hasCapture(share.id)) {
+      Object.assign(share, defaults, { codec: undefined });
+    }
     const selection = this.selectSource();
     this.share = share;
     return { share, selection, current: () => this.share === share && this.selection === selection };
