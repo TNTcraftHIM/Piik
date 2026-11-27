@@ -1536,6 +1536,57 @@ test("a reconnect keeps the interaction and retires the previous socket's ready 
   } finally { session.close(); }
 });
 
+test("a subscription waiting for its signer stays off replacement sockets for the same binding", async () => {
+  const fixture = await setup(1000, false);
+  const state = structuredClone(fixture.session.getSnapshot().state!);
+  fixture.session.close();
+  vi.mocked(ChannelConversation.prototype.initialize).mockRestore();
+  vi.spyOn(ChannelConversation.prototype, "forwardingBudget").mockReturnValue(undefined);
+  const sessionId = crypto.randomUUID();
+  state.sessions[0].id = sessionId;
+  state.channel.rooms[0].participantSessionIds = [sessionId];
+  const welcome = { type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state };
+  const session = new ChannelSession();
+  let release!: () => void;
+  const signerWait = new Promise<void>(resolve => { release = resolve; });
+  const admit = (socket: ChannelSocket) => {
+    socket.receive(welcome);
+    const browse = socket.sent.find(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+  };
+  const reconnect = async () => {
+    session.reconnect();
+    const socket = ChannelSocket.current;
+    await socket.onopen?.();
+    admit(socket);
+    return socket;
+  };
+  const signedCommands = (socket: ChannelSocket) => socket.sent.filter(frame => frame.type === "conversation")
+    .map(frame => JSON.parse((frame.packet as { payload: string }).payload).command.type);
+  try {
+    session.start();
+    const original = ChannelSocket.current;
+    await original.onopen?.();
+    // Hold the first subscription at the signer's await while later joins and sends use the real signer.
+    const signer = ChannelConversation.prototype["ready"];
+    const lookup = vi.spyOn(ChannelConversation.prototype as unknown as { ready: typeof signer }, "ready");
+    lookup.mockImplementationOnce(async function (this: ChannelConversation) {
+      const identity = await signer.call(this);
+      await signerWait;
+      return identity;
+    });
+    admit(original);
+    await vi.waitFor(() => expect(signedCommands(original)).toEqual(["history"]));
+    const middle = await reconnect();
+    await vi.waitFor(() => expect(signedCommands(middle)).toEqual(["interaction_ready", "history"]));
+    const last = await reconnect();
+    await vi.waitFor(() => expect(signedCommands(last)).toEqual(["interaction_ready", "history"]));
+    release();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(signedCommands(last)).toEqual(["interaction_ready", "history"]);
+  } finally { release(); session.close(); }
+});
+
 test("content reaction targets and delayed events stay with the current room binding", async () => {
   const { session, socket, peer } = await setup();
   try {
