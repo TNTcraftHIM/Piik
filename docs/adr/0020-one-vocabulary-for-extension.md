@@ -47,7 +47,8 @@ fixed.
      the recognized text and files, including an attachment-only message.
      The signature covers the original payload before this projection.
      Nested structures retain their defined shapes; they are not separate
-     extension points.
+     extension points. An addition about one file or one mention sits on the
+     message and names it, as inline images do.
    - *The writer is strict and says what it stores.* A writer refuses a draft
      that carries anything it does not know at the existing signed-command
      boundary, with a rejection correlated to that request. A new feature
