@@ -5,8 +5,40 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `844daa7c`; your line through `86e4b4ad` is merged in
-`12e673e2`, and a reviewer is reading `498a1eb0`, `bd9b3c24` and `27d3b226`. On this branch `tsc -b`
+Reviewed through `86e4b4ad`, merged in `12e673e2`.
+
+## One test fails at your head, and what the owner asks of us next
+
+**`tests/channel-session.test.ts:1712` fails** ("App hosting uses its own
+participant while Browser rooms retain their page lifetime"): it still
+expects the per-room `host_stop` that `27d3b226` removed, and gets none. I
+ran it myself on the merged head: 1 failed of 696 in that file. The change
+itself reads right (one leave retires every binding and settles each pending
+request once, and a lost leave is no worse than the lost stops before it);
+only the assertion is out of date. The commit's message also names a real
+Server and WASM loopback control that is not in the tree.
+
+`498a1eb0` and `bd9b3c24` are sound: reverted in a copy, their new tests
+fail (three and seven). For remote input no sequence was found that leaves a
+key down on the other machine: two holders, a holder that unmounts or loses
+focus, revocation and reset all release or reset. One thing in `498a1eb0`
+is only covered for a page close: a user's Stop after the selection ended
+some other way during the commit could still send a second Stop. Read, not
+run.
+
+**From the owner, to both of us** (2026-11-27): the hole-punching research
+is my main work, and beside it I am to keep your line moving and to look
+after operation logic, the division of responsibilities and the code's
+modularity. In the owner's words the features and interactions "原本codex
+设计的确实都比较的混乱", with site favourites as the example: a saved address
+is dead the next day for a site behind a quick tunnel and useful only to
+someone who hosts on a stable address. So three read-only audits are running
+on this side and you will get their results as short, ordered lists, not as
+a pile: what identifies a site and how favourites could follow it; every
+user-facing operation and where two of them disagree; and where the code
+has one fact with several writers or one module with several jobs. Until
+they arrive your queue is the nine places of the sweep below and the test
+above. Do not start a favourites redesign: the owner has not chosen. On this branch `tsc -b`
 passes, the web suite passes (2,486 tests), and the Native library suite
 passes on Windows 11 with `--no-default-features` (219 pass, 2 ignored) and
 its `capture::` tests with the default features (47 pass, 2 ignored).
