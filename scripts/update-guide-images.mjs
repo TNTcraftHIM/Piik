@@ -109,7 +109,7 @@ try {
         await run('set', 'viewport', '1280', '760');
         await run('open', roomPreview.href);
         await run('wait', '.c3-room-preview .c3-voice-dock-rooms');
-        await run('click', '.c3-room-item[data-selected] .c3-room-voice-toggle button');
+        await run('click', '.c3-room-item[data-selected] .c3-room-lead button[aria-expanded="false"]');
         await run('click', '#c3-people-trigger');
         await capture('.c3-room-preview', `channel-room.${suffix}`);
         await run('set', 'viewport', '1280', '900');

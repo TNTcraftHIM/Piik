@@ -82,6 +82,36 @@ emits `Disconnected` when no nominated or viable candidate remains, with no late
 Native sends exhaustion to the existing pair failure/replacement owner. Browser
 disconnection retains Browser semantics, and short interruptions remain SDK-owned.
 
+### Allocator Prediction Controls
+
+On 2026-11-26, six isolated Linux namespace arms compared two sequential
+targets and a stable/sequential search. Each arm ran twice with matching results.
+The routers used the existing laboratory allocator and filtering rules;
+identifiable synthetic UDP established both peer directions.
+
+| Allocation sequence | Existing search | Candidate search |
+| --- | --- | --- |
+| Four foreign allocations before each side's eight mappings | Target `+4` missed | Target `+8` reached both peers |
+| Four foreign allocations between each side's fourth and fifth mappings | Target `+4` reached both peers | Target `+8` missed |
+| Stable/sequential, twelve foreign allocations before the sequential side | Eight sockets and two targets missed | One socket and 64 targets reached both peers |
+
+The stable side retained one source port, but its peer-directed connection
+tracking entries rose from two to 64. The production 64-request limit also
+covers triggered checks, so an initial scan must reserve part of that budget.
+Production authentication, pacing, ICE transfer and media remain the next
+acceptance boundary. The current runtime targets are unchanged.
+
+A separate STUN census held two sockets and queried three observer IPs plus
+a second port on the first IP. Three programmed routers distinguished port
+preservation, address-dependent mapping and sequential per-flow mapping.
+The sequential router's eight observed ports were `40000–40007`; independent
+peer requests used `40008` and `40009`. Two deliberately withheld replies
+remained missing observations, with their actual tuples retained for scoring.
+Prediction comparisons need held-out target mappings and unknown outcomes;
+the observed minimum and maximum cannot define the allocator's support.
+Mapping and filtering remain separate observations under
+[RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html#section-4.1).
+
 ### Native NAT64 Assessment
 
 Native adds IPv6 aliases for numeric IPv4 UDP candidates through the SDK's public

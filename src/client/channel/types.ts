@@ -260,8 +260,8 @@ export interface ChannelActions {
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
   setInputVolume(volume: number): void;
   microphones(): Promise<CaptureDevice[]>;
-  configureVoiceInput(settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void>;
-  setMicrophoneMode(mode: MicrophoneMode): Promise<void>;
+  configureVoiceInput(settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing" | "strongerSuppression">>, reportError?: boolean): Promise<void>;
+  setMicrophoneMode(mode: MicrophoneMode, reportError?: boolean): Promise<void>;
   /** Voice activation's threshold, in dBFS. */
   setActivationThreshold(dbfs: number): void;
   /** The talk key is held; only push to talk transmits on it, and mute still overrides it. */

@@ -251,6 +251,7 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
   const [columns, setColumns] = useState<number>();
   const fitGrid = !theater && (!focused || active.length === 1);
   const [tileSizes, setTileSizes] = useState<StageTile[]>();
+  const [focusedWidth, setFocusedWidth] = useState<number>();
   const [sideStrip, setSideStrip] = useState(false);
   useLayoutEffect(() => {
     const parent = stage.current, tiles = grid.current;
@@ -260,23 +261,24 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
       const gap = parseFloat(style.rowGap) || 0;
       const layout = getComputedStyle(tiles);
+      const width = tiles.clientWidth;
+      const tileGap = parseFloat(layout.columnGap) || 0;
+      const minimumWidth = parseFloat(layout.getPropertyValue("--stage-tile-min"));
       if (focused && !fitGrid) {
         const main = tiles.querySelector<HTMLElement>("article.is-focused")!;
         const thumbs = [...tiles.querySelectorAll<HTMLElement>("article.is-thumbnail")];
-        setSideStrip(stageFocusSidebar(tiles.clientWidth, tiles.clientHeight,
-          stagePictureRatio(main),
-          main.querySelector("footer")!.offsetHeight + 2, parseFloat(layout.columnGap) || 0,
-          thumbs.map(tile => tile.getBoundingClientRect()), parseFloat(layout.getPropertyValue("--stage-tile-min"))));
+        setFocusedWidth(width);
+        setSideStrip(stageFocusSidebar(width, tiles.clientHeight, stagePictureRatio(main),
+          main.querySelector("footer")!.offsetHeight + 2, tileGap, thumbs.map(tile => ({ width: tile.offsetWidth, height: tile.offsetHeight })), minimumWidth));
         return;
       }
       const availableHeight = style.maxHeight.endsWith("px") && style.flexGrow === "0" ? parseFloat(style.maxHeight) : parent.clientHeight;
       const height = availableHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
         - gap * (children.length - 1);
-      const footer = Math.max(...[...tiles.querySelectorAll("article:not([hidden]) > footer")].map(node => node.getBoundingClientRect().height));
+      const footer = Math.max(...[...tiles.querySelectorAll<HTMLElement>("article:not([hidden]) > footer")].map(node => node.offsetHeight));
       const ratios = [...tiles.children].filter(tile => !(tile as HTMLElement).hidden).map(stagePictureRatio);
-      const tileGap = parseFloat(layout.columnGap) || 0;
-      const minimumWidth = parseFloat(layout.getPropertyValue("--stage-tile-min"));
-      const fitted = fittedStage(tiles.clientWidth, height, ratios, tileGap, footer, minimumWidth);
+      const minimumHeight = parseFloat(layout.getPropertyValue("--c3-stage-picture-min"));
+      const fitted = fittedStage(width, height, ratios, tileGap, footer, minimumWidth, minimumHeight);
       setColumns(fitted.columns);
       setTileSizes(fitted.tiles);
     };
@@ -316,7 +318,17 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
     // The focus button can scroll the strip down and disappears when its tile moves to the main row.
     tiles.scrollTop = 0;
     if (request.trigger && !request.trigger.isConnected && document.activeElement === document.body) {
-      tiles.querySelector<HTMLElement>(".c3-monitor-tile.is-focused")?.focus({ preventScroll: true });
+      const main = tiles.querySelector<HTMLElement>(".c3-monitor-tile.is-focused");
+      if (!main) return;
+      const player = main.querySelector<HTMLVideoElement>('video[data-selected="true"]');
+      const target = player?.checkVisibility({ visibilityProperty: true }) ? player
+        : [...main.querySelectorAll<HTMLButtonElement>("button:enabled")].find(button =>
+          button.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !button.closest("[inert]"));
+      target?.focus({ preventScroll: true });
+      if (document.activeElement === target) return;
+      main.tabIndex = -1;
+      main.addEventListener("blur", () => main.removeAttribute("tabindex"), { once: true });
+      main.focus({ preventScroll: true });
     }
   }, [focused?.id]);
   const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : focused?.kind === "screen" && hasPicture(focused);
@@ -352,7 +364,11 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
         {layoutInToolbar ? createPortal(layoutControls, layoutHome) : layoutControls}
       </header>
       <div ref={grid} data-fitted={fitGrid && !!tileSizes || undefined} data-side-strip={!fitGrid && !!focused && !theater && sideStrip || undefined} hidden={!active.length} className={`c3-monitor-grid${focused ? " is-focused" : active.length > 1 ? " is-grid" : ""}`}
-        style={{ "--stage-columns": columns ?? 1, "--stage-thumbnails": Math.max(1, active.length - 1) } as CSSProperties}>
+        style={{
+          "--stage-columns": columns ?? 1,
+          "--stage-thumbnails": Math.max(1, active.length - 1),
+          "--stage-focused-width": focusedWidth === undefined ? undefined : `${focusedWidth}px`,
+        } as CSSProperties}>
         {retained.map(source => {
           const index = active.indexOf(source);
           const isFocused = source.id === focused?.id;
@@ -372,8 +388,8 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
             onToggleTheater={() => { onFocus(source.id); setTheater(!theater); }} />;
           const waiting = source.kind === "waiting";
           const microphone = !waiting && source.sourceMicrophone;
-          const sourceDetail = `${source.name} / ${source.roomName}${!waiting && source.localSource ? ` / ${t("screen.localPreview")}` : ""}`;
           const title = stageTitle(source, t);
+          const sourceLabel = `${title} / ${source.name} / ${source.roomName}${!waiting && source.localSource ? ` / ${t("screen.localPreview")}` : ""}`;
           const playbackFailed = !waiting && source.playbackError !== undefined;
           const failed = !waiting && !source.paused && (playbackFailed || source.deliveryFailed);
           const diagnosis = !waiting && diagnoseChannelFact({ area: "screen", paused: source.paused,
@@ -395,10 +411,10 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
               hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
               onClick={() => onPause(source.id, !source.paused)} />
           </>;
-          return <article key={source.id} data-compact-caption={compactCaption || undefined} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
+          return <article key={source.id} data-compact-caption={compactCaption || undefined} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={tileStyle}
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
-            aria-label={`${title} / ${source.name} / ${source.roomName}`}
+            aria-label={sourceLabel}
             onClick={event => {
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
@@ -411,7 +427,7 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
               theaterMode={theater && isFocused} onToggleTheater={() => {
                 onFocus(source.id); setTheater(!theater);
               }}
-              label={`${title} / ${source.name} / ${source.roomName}`} />
+              label={sourceLabel} />
               : <div className="c3-monitor-wait" data-failed={failed || undefined}>
                 {source.paused || failed || source.waitingForInput ? <Glyph name={source.paused ? "pause" : failed ? "x" : "tv"} size={24} /> : <BrandLoader />}
                 <span role="status">{t(source.paused ? "host.pauseNotice" : playbackFailed && diagnosis ? diagnosis.message
@@ -433,10 +449,6 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
                   <PawnSvg centered color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
                   <div className="c3-monitor-source">
                     <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
-                    <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
-                      <span>{!waiting && source.localSource ? t("screen.localPreview") : source.name}</span><span aria-hidden="true"> / </span>
-                      {!waiting && source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
-                    </small></Tooltip>
                   </div>
                   {!waiting && <div className="c3-monitor-social">
                     <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
@@ -500,7 +512,7 @@ function WatchStageTile({ source, thumbnail, compactCaption, focused, focusable,
   const embedded = source.player?.presentation.kind === "embed";
   const playbackAction = useSettingsAction(!source.hidden, source.player);
   const windowAction = useSettingsAction(!source.hidden, source.player);
-  return <article data-compact-caption={compactCaption || undefined} hidden={source.hidden} inert={source.hidden} tabIndex={focused ? -1 : undefined} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
+  return <article data-compact-caption={compactCaption || undefined} hidden={source.hidden} inert={source.hidden} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={style}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {
@@ -536,7 +548,6 @@ function WatchStageTile({ source, thumbnail, compactCaption, focused, focusable,
       <div className="c3-monitor-source-info">
         <PawnSvg centered color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
         <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
-          <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
         </div>
         <div className="c3-monitor-social"><SourceAudience people={source.audience} joined /></div>
       </div>

@@ -2,7 +2,7 @@
 export const zh = {
   "room.transit.title": "站点转发协助",
   "room.transit.allow": "使用站点转发",
-  "room.transit.note": "站点提供转发时，本房间默认允许用它兜底。关闭后，站点不会代转本房间的画面、语音或文件。",
+  "room.transit.note": "参与者无法传送本房间的画面、语音或文件时，可用站点转发兜底。",
   "room.transit.unavailable": "站点暂未提供转发；房间设置已保留。",
   "connection.siteForwarding": "站点转发",
   "connection.webpage": "网页",
@@ -145,7 +145,7 @@ export const zh = {
   "room.copy.includeSettings": "附带房间名称、图标、连接与语音设置",
   "room.copy.export": "导出房间副本",
   "room.settings.roomTab": "房间",
-  "room.settings.connectionTab": "连接",
+  "room.settings.connectionTab": "网络",
   "room.settings.recordsTab": "记录",
   "room.settings.title": "房间设置",
   "room.settings.offlineManager": "房间当前未托管，可以从列表中移除。",

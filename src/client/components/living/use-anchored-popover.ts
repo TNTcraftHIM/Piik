@@ -2,14 +2,15 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { surfaceViewport } from "../../ui/window-appearance";
 
-// Native popovers own visibility, dismissal and focus. This only places a
-// menu beside its anchor, within the document displaying it.
+// Place the native popover beside its anchor. Nested callers can supply a
+// return target for when the browser leaves focus behind in the closing layer.
 export function useAnchoredPopover(
   trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>,
   { side = "below", align = "end", maxHeight = Infinity, preferredHeight, minVisibleHeight = Infinity, enabled = true,
-    closeWhenAnchorClipped = false }: {
+    closeWhenAnchorClipped = false, returnFocus }: {
     side?: "above" | "below"; align?: "start" | "end" | "center";
     maxHeight?: number; preferredHeight?: number; minVisibleHeight?: number; enabled?: boolean; closeWhenAnchorClipped?: boolean;
+    returnFocus?: () => HTMLElement | null | undefined;
   } = {},
 ) {
   const ownerDocument = useSurfaceDocument();
@@ -71,11 +72,24 @@ export function useAnchoredPopover(
     const visibility = closeWhenAnchorClipped ? new view.IntersectionObserver(entries => {
       if (!entries.at(-1)?.isIntersecting && menu.matches(":popover-open")) menu.hidePopover();
     }) : null;
+    let focusWasInside = false;
+    const beforeToggle = (event: ToggleEvent) => {
+      focusWasInside = !!returnFocus && event.newState === "closed" && menu.contains(menu.ownerDocument.activeElement);
+      schedule();
+    };
     const toggled = () => {
       observer.disconnect();
       visibility?.disconnect();
       view.cancelAnimationFrame(frame);
-      if (!menu.matches(":popover-open")) return;
+      if (!menu.matches(":popover-open")) {
+        const { activeElement, body } = menu.ownerDocument;
+        if (focusWasInside && (activeElement === body || menu.contains(activeElement))) {
+          const target = returnFocus?.();
+          if (target?.checkVisibility()) target.focus({ preventScroll: true });
+        }
+        focusWasInside = false;
+        return;
+      }
       place(); observer.observe(menu);
       const anchor = trigger.current;
       if (anchor) {
@@ -86,7 +100,7 @@ export function useAnchoredPopover(
       if (parentPopover) observer.observe(parentPopover);
     };
     // `toggle` is queued by the browser; position before the first painted frame.
-    menu.addEventListener("beforetoggle", schedule);
+    menu.addEventListener("beforetoggle", beforeToggle);
     menu.addEventListener("toggle", toggled);
     view.addEventListener("resize", schedule);
     view.addEventListener("scroll", schedule, true);
@@ -98,12 +112,12 @@ export function useAnchoredPopover(
       observer.disconnect();
       visibility?.disconnect();
       view.cancelAnimationFrame(frame);
-      menu.removeEventListener("beforetoggle", schedule);
+      menu.removeEventListener("beforetoggle", beforeToggle);
       menu.removeEventListener("toggle", toggled);
       view.removeEventListener("resize", schedule);
       view.removeEventListener("scroll", schedule, true);
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
     };
-  }, [trigger, panel, side, align, maxHeight, preferredHeight, minVisibleHeight, enabled, closeWhenAnchorClipped, ownerDocument]);
+  }, [trigger, panel, side, align, maxHeight, preferredHeight, minVisibleHeight, enabled, closeWhenAnchorClipped, returnFocus, ownerDocument]);
 }

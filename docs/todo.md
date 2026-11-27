@@ -339,6 +339,10 @@ the feedback period; they do not delay that delivery.
   concurrent use. [Random-mapping and linear-extension controls](./research/nat-traversal.md#random-mapping-collision-control)
   Compare parallel surveys and search budgets under the same preparation deadline
   before changing the accepted limits.
+  Evaluate the isolated allocator proposal against held-out per-destination
+  mappings, including burst allocations and missing observations; then verify a
+  bounded schedule through authenticated preparation and ICE transfer.
+  [Allocator controls](./research/nat-traversal.md#allocator-prediction-controls)
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before
   adding a discovery responder to its existing socket owner.

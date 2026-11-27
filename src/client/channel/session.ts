@@ -2956,13 +2956,29 @@ export class ChannelSession {
       if (screen && screen.id === selection.replaceScreenId && (this.local.has(screen.id) || this.app?.screens.has(screen.id))) {
         await this.stopScreen(screen.id, id);
       }
-      await confirmPage?.();
+      let sourceUnavailable = false;
+      try {
+        await confirmPage?.();
+      } catch (error) {
+        if (!current() || this.watchPlayer(id) !== player || player.signal.aborted)
+          throw new DOMException("Cancelled", "AbortError");
+        const code = error instanceof Error ? error.message : "";
+        if (!replaceId || !selection.borrowed || !(media instanceof AppPageMedia) || this.socket !== startSocket
+          || (code !== "page_candidate_unavailable" && code !== "watch_source_unavailable" && player.error !== "watch_source_unavailable")) throw error;
+        // The Room already committed this paused activity. Keep the page for another selection.
+        player.sourceUnavailable();
+        sourceUnavailable = true;
+      }
       if (!current() || this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
       committed = true;
       player.mode = "direct";
       if (media instanceof PageSuppliedMedia) void media.page.hide().catch(() => {});
       this.activateWatchOwner(id, player);
       this.patch({});
+      if (sourceUnavailable) {
+        this.browseRooms();
+        throw new Error("watch_source_unavailable");
+      }
       if (media.presentation?.kind === "video") await player.play();
       else await player.publish(true);
       this.browseRooms();

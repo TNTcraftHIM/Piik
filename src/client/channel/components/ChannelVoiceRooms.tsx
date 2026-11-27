@@ -100,10 +100,10 @@ function ChannelVoiceRoomRow({ channel, activity, name, current, visible, direct
   return <div className="c3-voice-room-row" role="group" aria-labelledby={showRoomInfo ? id : undefined} aria-label={showRoomInfo ? undefined : name}
     data-current={current || undefined} data-direct={direct || undefined}>
     {showRoomInfo && <div className="c3-voice-room-info">
-      {(direct || status !== "joined") && <small role="status" data-status={status}>{t(VOICE_STATUS_LABEL[status])}</small>}
       <Tooltip className="c3-voice-room c3-voice-room-name" overflow={{ text: name, selector: "button" }}>
-        <button id={id} type="button" aria-current={current ? "true" : undefined} onClick={onBrowse}>{name}</button>
+        <button id={id} type="button" className="lr-btn" aria-current={current ? "true" : undefined} onClick={onBrowse}>{name}</button>
       </Tooltip>
+      {(direct || status !== "joined") && <small role="status" data-status={status}>{t(VOICE_STATUS_LABEL[status])}</small>}
     </div>}
     {others}
     <div className="c3-voice-room-actions">

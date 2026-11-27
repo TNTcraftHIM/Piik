@@ -2670,7 +2670,8 @@ test("voice rooms share one microphone gain graph and release it after the last 
     expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
     expect(replacement.stop).not.toHaveBeenCalled();
     getUserMedia.mockRejectedValueOnce(new DOMException("Cannot open device", "NotReadableError"));
-    await expect(session.configureVoiceInput({ deviceId: "failed-device" })).rejects.toThrow("Cannot open device");
+    await expect(session.configureVoiceInput({ deviceId: "failed-device" }, false)).rejects.toThrow("Cannot open device");
+    expect(session.getSnapshot().error).toBe("voice_microphone_permission_denied");
     expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
     expect(replacement.stop).not.toHaveBeenCalled();
     expect(contexts[0].close).not.toHaveBeenCalled();
@@ -17054,6 +17055,100 @@ test("stopping a borrowed-page replacement before confirmation keeps it retired"
     expect(socket.sent.filter(command => command.type === "stop_watch" && command.id === start.id)).toHaveLength(1);
     expect(session.getSnapshot().watchPlayers.has(old.id as string)).toBe(true);
     expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test.each(["catalog", "app-reply"] as const)("a borrowed original page survives a confirmed replacement losing its video (%s)", async failure => {
+  const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  commit.mockRestore();
+  const roomId = "first";
+  const select = (id: string) => session.selectWatchPage(roomId, id, undefined, false, "original-page");
+  const waitForStart = async (count: number) => {
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(count));
+    return socket.sent.findLast(command => command.type === "start_watch")!;
+  };
+  const confirm = (start: Awaited<ReturnType<typeof waitForStart>>) => {
+    socket.receive({ type: "room_reply", roomId, requestId: start.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+  };
+  const finishPlayback = async (id: unknown) => {
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "update_watch" && command.id === id)).toBe(true));
+    const update = socket.sent.findLast(command => command.type === "update_watch" && command.id === id)!;
+    socket.receive({ type: "room_reply", roomId, requestId: update.requestId, result: { type: "done" } });
+  };
+  const snapshot = (start: Awaited<ReturnType<typeof waitForStart>>) => {
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [{
+      id: start.id, roomId, sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+      source: start.source, playback: start.playback,
+    }] } });
+  };
+  try {
+    const starting = select(candidateId);
+    const old = await waitForStart(1);
+    confirm(old);
+    await finishPlayback(old.id);
+    await starting;
+    snapshot(old);
+
+    vi.stubGlobal("window", new EventTarget());
+    const openPicker = () => page.receive({ type: "page_share_requested", pageId: page.id });
+    const nextId = crypto.randomUUID(), nextURL = "https://video.test/next";
+    const original = page.candidates[0];
+    page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [
+      original, { pageURL: nextURL, id: nextId, title: "Next", url: null, duration: 60 },
+    ] });
+
+    let finishSelection!: (succeeds: boolean) => void;
+    const respond = request.getMockImplementation()!;
+    request.mockImplementation(command => command.type === "page_select" && (command as { candidateId?: string }).candidateId === nextId
+      ? new Promise((resolve, reject) => {
+        finishSelection = succeeds => {
+          if (succeeds) void respond(command).then(resolve, reject);
+          else reject(new Error("page_candidate_unavailable"));
+        };
+      }) : respond(command));
+
+    openPicker();
+    const lost = expect(select(nextId)).rejects.toThrow("watch_source_unavailable");
+    const failed = await waitForStart(2);
+    expect(failed.replaceId).toBe(old.id);
+    confirm(failed);
+    await vi.waitFor(() => expect(finishSelection).toBeTypeOf("function"));
+    snapshot(failed);
+    expect(session.getSnapshot().watchPlayers.has(String(old.id))).toBe(false);
+    if (failure === "catalog") page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [original] });
+    finishSelection(failure === "catalog");
+    await lost;
+
+    const paused = session.getSnapshot().watchPlayers.get(String(failed.id));
+    expect(paused?.error).toBe("watch_source_unavailable");
+    expect(paused?.mediaState?.paused).toBe(true);
+    expect(paused?.mode).toBe("direct");
+    expect(paused?.signal.aborted).toBe(false);
+    expect(paused?.media.page).toBe(page);
+    expect(session.getSnapshot().state?.watchActivities.map(activity => activity.id)).toEqual([failed.id]);
+    expect(dispose).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "stop_watch" || command.type === "update_watch" && command.id === failed.id)).toBe(false);
+
+    openPicker();
+    expect(session.watchPage(roomId)?.pageId).toBe(page.id);
+    const recovering = select(candidateId);
+    const next = await waitForStart(3);
+    expect(next.replaceId).toBe(failed.id);
+    confirm(next);
+    snapshot(next);
+    await finishPlayback(next.id);
+    await recovering;
+    expect(session.getSnapshot().watchPlayers.get(String(next.id))?.error).toBeNull();
+    expect(paused?.signal.aborted).toBe(true);
+    expect(dispose).not.toHaveBeenCalled();
+
+    const stopping = session.stopWatch(String(next.id));
+    const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
+    expect(stop.id).toBe(next.id);
+    socket.receive({ type: "room_reply", roomId, requestId: stop.requestId, result: { type: "done" } });
+    await stopping;
+    expect(session.getSnapshot().watchPlayers.has(String(next.id))).toBe(false);
+    expect(dispose).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 

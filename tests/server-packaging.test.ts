@@ -55,11 +55,12 @@ vi.mock("node:child_process", async (original) => ({
     return { status: 0, stdout, stderr: "" };
   },
 }));
-vi.mock("../scripts/build-channel-web.mjs", () => ({ buildChannelWeb: (_root: string, options: { web?: string; version: string; revision: string }) => {
-  if (options.web) return verifyChannelWeb(options.web, options);
-  source.webBuilds++;
-  return source.web;
-} }));
+vi.mock("../scripts/build-channel-web.mjs", () => ({
+  buildChannelWeb: () => {
+    source.webBuilds++;
+    return source.web;
+  },
+}));
 vi.mock("../scripts/build-workspace.mjs", async (original) => ({
   ...await original<typeof import("../scripts/build-workspace.mjs")>(),
   resetBuildWorkspace: () => { mkdirSync(source.workspace); return source.workspace; },

@@ -176,7 +176,7 @@ describe("Local source playback", () => {
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() };
     const local = renderToStaticMarkup(createElement(ChannelStage, props));
-    expect(local).toContain("Local preview");
+    expect(local).toContain('aria-label="Shared screen / Me / Room / Local preview"');
     expect(local).toContain('aria-label="Stop watching Shared screen"');
     expect(local).not.toContain('aria-label="Stop sharing');
     const remote = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, localSource: false }] }));

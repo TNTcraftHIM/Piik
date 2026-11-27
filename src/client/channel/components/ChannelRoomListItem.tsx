@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Glyph } from "../../ui/icons";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
@@ -30,20 +30,40 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
   const watches = state?.watchActivities.filter(source => source.roomId === room.id) ?? [];
   const [over, setOver] = useState(false);
   useEffect(() => { if (!ordering?.active) setOver(false); }, [ordering?.active]);
+  const handle = useRef<HTMLButtonElement>(null);
+  const moveFocus = useRef<HTMLButtonElement | null>(null);
+  const orderIndex = ordering?.index;
+  useLayoutEffect(() => {
+    const button = moveFocus.current;
+    moveFocus.current = null;
+    if (!button?.isConnected) return;
+    // Moving the row or disabling its step at the boundary can drop native focus.
+    const { activeElement, body } = button.ownerDocument;
+    if (activeElement !== button && activeElement !== body) return;
+    (button.disabled ? handle.current : button)?.focus({ preventScroll: true });
+  }, [orderIndex]);
+
+  const step = (direction: -1 | 1, button: HTMLButtonElement) => {
+    if (!ordering) return;
+    const destination = ordering.index + direction;
+    if (destination < 0 || destination >= ordering.total) return;
+    if (button.ownerDocument.activeElement === button) moveFocus.current = button;
+    ordering.onMove(direction);
+  };
   return <div className="c3-room-list-item" data-ordering={!!ordering || undefined} data-drop={over && ordering?.active || undefined}
     onDragOver={event => { if (ordering?.active) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setOver(true); } }}
     onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false); }}
     onDrop={event => { if (ordering?.active) { event.preventDefault(); ordering.onDrop(); setOver(false); } }}>
       <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
-        orderHandle={ordering && <button type="button" className="lr-btn is-dense is-quiet c3-room-order-handle" draggable aria-keyshortcuts="ArrowUp ArrowDown" aria-describedby="c3-room-order-help"
+        orderHandle={ordering && <button ref={handle} type="button" className="lr-btn is-dense is-quiet c3-room-order-handle" draggable aria-keyshortcuts="ArrowUp ArrowDown" aria-describedby="c3-room-order-help"
           aria-label={t("room.order.move", { name: room.name, position: String(ordering.index + 1), total: String(ordering.total) })}
           onDragStart={event => { event.dataTransfer.setData("text/plain", room.id); event.dataTransfer.effectAllowed = "move"; ordering.onDrag(); }}
           onDragEnd={() => { setOver(false); ordering.onEnd(); }}
-          onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); ordering.onMove(event.key === "ArrowUp" ? -1 : 1); } }}><Glyph name="grip" size={16} /></button>}
+          onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); step(event.key === "ArrowUp" ? -1 : 1, event.currentTarget); } }}><Glyph name="grip" size={16} /></button>}
         orderSteps={ordering && <><button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === 0} aria-label={t("room.order.up", { name: room.name })}
-          onClick={() => ordering.onMove(-1)}><Glyph name="arrowUp" size={16} /></button>
+          onClick={event => step(-1, event.currentTarget)}><Glyph name="arrowUp" size={16} /></button>
         <button type="button" className="lr-btn is-dense is-quiet" disabled={ordering.index === ordering.total - 1} aria-label={t("room.order.down", { name: room.name })}
-          onClick={() => ordering.onMove(1)}><Glyph name="arrowDown" size={16} /></button></>}
+          onClick={event => step(1, event.currentTarget)}><Glyph name="arrowDown" size={16} /></button></>}
         unread={roomHasUnread(room, channel.readByRoom[room.id])} unopened={unopened}
         compact={compact} participantCount={compact ? present.length : undefined}
         participantDisclosure={showPeople ? { open: peopleOpen, count: present.length, controls: id, onToggle: () => setPeopleOpen(value => !value) } : undefined}

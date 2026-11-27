@@ -88,7 +88,7 @@ export function ChannelRoomTool({ title, voiceRoomName, caption, home, triggerHo
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
   const entry = <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
     <Tooltip kind={panelOpen ? "hint-pip-exit" : inline || overlay ? "hint-chat-open" : "hint-window-detach"} text={label}>
-      <button ref={trigger} type="button" className={`lr-btn ${triggerHome ? "is-compact" : "is-dense"} is-quiet${panelOpen ? " is-on" : ""}`} aria-label={label}
+      <button ref={trigger} type="button" className={`lr-btn is-compact is-quiet${panelOpen ? " is-on" : ""}`} aria-label={label}
         aria-haspopup="dialog" aria-expanded={panelOpen} popoverTarget={detached ? undefined : id}>
         <Glyph name={panelOpen ? "pipExit" : "pip"} size={18} />
       </button>

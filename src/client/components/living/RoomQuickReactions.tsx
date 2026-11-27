@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReactionId } from "../../../shared/room-interactions";
+import { useLayerHistory } from "../../ui/layer-history";
 import { useCopy } from "../../ui/copy";
 import { BackButton, Btn } from "./primitives";
 import { RoomReactionGrid, RoomReactionTarget, personReactionIds, type InteractionParticipant } from "./RoomReactionPicker";
@@ -26,6 +27,7 @@ export function RoomQuickReactions({ id, trigger, person, identity, selfPeerId, 
     if (menu.matches(":popover-open")) menu.hidePopover();
     menu.showPopover({ source: trigger });
   }, [trigger]);
+  useLayerHistory(panel, true);
   const quick = person.peerId === selfPeerId ? SELF_QUICK_REACTIONS : QUICK_REACTIONS;
   const choices = expanded ? reactionIds : quick.filter(id => reactionIds.includes(id));
   return <div id={id} ref={panel} popover="auto" role="dialog"

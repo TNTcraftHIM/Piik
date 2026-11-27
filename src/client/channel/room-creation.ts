@@ -33,7 +33,7 @@ export function simpleShareRoom<T extends Pick<ChannelRoom, "id" | "creatorId" |
   return rooms.find(room => room.id === rememberedId && room.creatorId === userId && room.authorized);
 }
 
-export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "picture" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };
+export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "picture" | "access" | "hidden" | "voiceBitrate" | "allowServiceRelay"> & { password: string; removePassword: boolean; relayCapacity: number };
 
 export function roomDraft(room?: ChannelRoom): RoomDraft {
   return { name: room?.name ?? "", icon: room?.icon ?? "couch", access: room?.access ?? "public", hidden: room?.hidden ?? false,

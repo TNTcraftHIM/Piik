@@ -1,6 +1,6 @@
 /* Top-layer surfaces share the caption's existing metric, independent of page scroll. */
-html[data-piik-native-window="integrated"] { --surface-inset-top: var(--native-caption-height); --living-top-size: auto; }
-html[data-piik-native-window="integrated"]:is(:fullscreen, :has(:fullscreen)) { --surface-inset-top: 0px; }
+html[data-piik-native-window="integrated"] { --surface-inset-top: var(--native-caption-height); --living-top-size: auto; --heading-caption: var(--native-caption-width); }
+html[data-piik-native-window="integrated"]:is(:fullscreen, :has(:fullscreen)) { --surface-inset-top: 0px; --heading-caption: 0px; }
 html[data-piik-native-window] .c3-app { --c3-content-width: 100%; padding: 0; }
 html[data-piik-native-window] [data-app-shell] { align-self: stretch; width: 100%; max-width: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 html[data-piik-native-window] .lr-app > main:has(> [data-app-shell]) { display: flex; flex-direction: column; padding: 0; }
@@ -10,15 +10,18 @@ html[data-piik-native-window] .lr-top-app-identity { display: inline-flex; align
 html[data-piik-native-window] [data-app-shell] .lr-launcher-identity { display: none; }
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) {
   min-height: var(--native-caption-height);
-  padding: 7px calc(var(--native-caption-width) + 16px) 7px 16px;
   position: sticky;
   top: 0;
-  z-index: 12;
-  background: var(--wall);
   app-region: drag;
 }
 html[data-piik-native-window] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
   --muted: var(--ink);
+}
+html[data-piik-native-window="integrated"] .c3-site-bar { z-index: 1; }
+html[data-piik-native-window="integrated"] :is(.lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) {
+  padding: 7px calc(var(--heading-caption) + 16px) 7px 16px;
+  z-index: 12;
+  background: var(--wall);
 }
 /* The native header stays outside the page's scrollport. */
 html[data-piik-native-window] .lr-app:has(> .lr-top) { height: 100dvh; min-height: 0; overflow: hidden; }
@@ -28,4 +31,4 @@ html[data-piik-native-window] .lr-app > .lr-top { flex: none; width: 100%; margi
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
   :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap) { app-region: no-drag; }
 html[data-piik-native-window="integrated"]:has(:fullscreen)
-  :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { padding-right: 16px; app-region: no-drag; }
+  :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { app-region: no-drag; }

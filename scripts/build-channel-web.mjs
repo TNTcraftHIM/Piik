@@ -13,9 +13,8 @@ export function verifyCheckoutWeb(root, directory) {
   return verifyChannelWeb(directory, { version: buildVersion(root, revision), revision });
 }
 
-/** @param {string} root @param {{ version: string; revision: string; cargoTarget?: string; web?: string }} options */
-export function buildChannelWeb(root, { version, revision, cargoTarget, web }) {
-  if (web !== undefined) return verifyChannelWeb(web, { version, revision });
+/** @param {string} root @param {{ version: string; revision: string; cargoTarget?: string }} options */
+export function buildChannelWeb(root, { version, revision, cargoTarget }) {
   const output = join(root, 'build', 'channel-web');
   rmSync(`${output}.build.json`, { force: true });
   let reusable = false;

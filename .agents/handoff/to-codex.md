@@ -180,8 +180,29 @@ set; and whether the local port is preserved. A counter under traffic is
 "irregular" to the present classifier, and gets 256 sockets and 1,024 probes
 where one socket and a short window would do.
 
-**What I will write, as a pure module in the core with its own tests, on a
-branch for your review before any wiring**: one model of an endpoint's
+**The owner has put this research in my hands and wants it as a small
+standalone tool for testers on hard networks.** So the model left the core:
+branch `claude/nat-model` at `3103013a` has the crate `prototype/nat` with no
+dependencies (`mapping.rs`, `stun.rs`) and the binary `piik-nat-lab`, which
+surveys a real network and prints a report with the address half masked. The
+product should depend on that crate when the time comes, and keep no copy.
+Two counters now measure and walk (one mapping measured between two
+observations, the other side walking its counter onto the named port), which
+in simulation matches two windows for a third to a fifth of the mappings.
+Its first run on a real carrier network found what neither the present
+classifier nor my model reads: several sequential cursors on one public
+address, a new mapping landing one above one of them. The model is being
+generalised to a mixture of cursors; use the tool for the census below.
+
+**What I wrote first, superseded by the above: `5b1f1536`,
+`prototype/channel-core/src/mapping.rs`.**
+Nothing calls it. Read it as a proposal for the contract and tell me what the
+wiring needs that it lacks; the wire form, the survey that fills its table and
+the Native side are yours. Its nine tests pass with the core library suite
+(162). It reads a point, a counter with its foreign rate, the span of a set
+and an RFC 7597 port set; it does not yet read whether a mapping depends on
+the destination port as well as the address, because no observer answers on a
+second port. Its content: one model of an endpoint's
 allocator, built from such a table and kept with the network attachment, and
 one planner. The planner has no table of cases. For any plan the chance of
 success is `1 - exp(-Σ P(meet))` over its pairs of mapping and probe, and it

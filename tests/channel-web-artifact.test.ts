@@ -37,7 +37,6 @@ function webFixture(directory: string, revision = identity.revision) {
 it.each(["exact", "version", "revision", "missing-file", "changed-bytes", "extra-file", "missing-linked", "no-receipt"] as const)(
   "requires the complete shared Web artifact (%s)", scenario => {
     const root = mkdtempSync(join(tmpdir(), "piik-shared-web-")), directory = join(root, "web");
-    build.calls = [];
     try {
       webFixture(directory); recordChannelWeb(directory, identity);
       const receipt = JSON.parse(readFileSync(`${directory}.build.json`, "utf8"));
@@ -54,11 +53,10 @@ it.each(["exact", "version", "revision", "missing-file", "changed-bytes", "extra
       }
       const expected = { ...identity, ...(scenario === "version" ? { version: "v3.0.0-beta.32" } : {}),
         ...(scenario === "revision" ? { revision: "b".repeat(40) } : {}) };
-      const input = () => buildChannelWeb(root, { ...expected, web: directory });
+      const input = () => verifyChannelWeb(directory, expected);
       if (scenario === "exact") expect(input()).toBe(directory);
       else expect(input).toThrow(scenario === "version" || scenario === "revision" ? "identity mismatch"
         : scenario === "missing-linked" ? "linked asset is missing" : scenario === "no-receipt" ? "ENOENT" : "differs");
-      expect(build.calls).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   },
 );

@@ -127,7 +127,7 @@ export function Tooltip({
   const triggerLabel = typeof rawTriggerLabel === "object" ? rawTriggerLabel.text
     : rawTriggerLabel && isCopyKey(rawTriggerLabel) ? say(rawTriggerLabel) : rawTriggerLabel;
   const disabledTriggerLabel = disabledTrigger ? triggerLabel : undefined;
-  const focusableWrap = disabledTrigger || (overflowing && !kind && trigger?.type !== "button");
+  const focusableWrap = enabled && (disabledTrigger || (overflowing && !kind && trigger?.type !== "button" && trigger?.type !== "select"));
 
   useLayoutEffect(() => {
     const element = overflow ? wrapRef.current?.querySelector<HTMLElement>(overflow.selector) : null;
@@ -138,8 +138,23 @@ export function Tooltip({
     }
     let disposed = false, frame = 0;
     const measure = () => {
+      if (disposed) return;
+      if (element instanceof view.HTMLSelectElement) {
+        // Native selects hide clipped text inside browser chrome. Measure the
+        // current option at its intrinsic width with the same native styling.
+        const option = element.selectedOptions[0];
+        if (!option || !overflow.text) { setOverflowing(false); return; }
+        const probe = element.cloneNode(false) as HTMLSelectElement;
+        probe.removeAttribute("id");
+        probe.style.cssText = "position: absolute; visibility: hidden; width: max-content; max-width: none";
+        probe.append(option.cloneNode(true));
+        element.after(probe);
+        setOverflowing(probe.offsetWidth > element.offsetWidth);
+        probe.remove();
+        return;
+      }
       // SVG topology labels are shortened before rendering; HTML names use CSS.
-      if (!disposed) setOverflowing(element.textContent !== overflow.text || element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight);
+      setOverflowing(element.textContent !== overflow.text || element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight);
     };
     measure();
     // A clipped label can change its focus wrapper; measure outside resize delivery.

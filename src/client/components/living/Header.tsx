@@ -9,6 +9,7 @@ import { LanguageControl } from "./LanguageControl";
 import { applyTheme, currentTheme, subscribeTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
+import { useLayerHistory } from "../../ui/layer-history";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { diagnosisGuide } from "../../channel/diagnosis";
 import { Btn } from "./primitives";
@@ -109,7 +110,9 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
   const trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
   const id = useId();
   const [open, setOpen] = useState(false);
-  useAnchoredPopover(trigger, options);
+  // Keep a scrollable menu below its trigger even when the contents grow.
+  useAnchoredPopover(trigger, options, { minVisibleHeight: 0 });
+  useLayerHistory(options, open);
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const dark = theme === "dark";
   return (
