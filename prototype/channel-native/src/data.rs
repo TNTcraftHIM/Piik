@@ -285,6 +285,11 @@ impl DataLink {
             input: writer(pair, Lane::Input, state, fifo(8), events),
         }
     }
+    pub fn control_open(&self) -> bool {
+        self.control.binding.borrow().as_ref()
+            .is_some_and(|binding| binding.state == BindingState::Open)
+    }
+
     pub fn senders(&self) -> Senders {
         Senders {
             control: self.control.input.clone(),

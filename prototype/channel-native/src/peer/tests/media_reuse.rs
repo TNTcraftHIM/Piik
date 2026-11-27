@@ -904,7 +904,7 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                 fixture.output(sibling, MediaKind::Audio) == sibling_audio
                     && fixture.output(sibling, MediaKind::Video) == sibling_video
             );
-            ensure!(fixture.driver.pairs[&sink].connected() && fixture.driver.pairs[&sink].dc_open);
+            ensure!(fixture.driver.pairs[&sink].connected() && fixture.driver.pairs[&sink].data.control_open());
             let (_, sdp) = pc.local_description().await?;
             ensure!(sdp.lines().filter(|line| line.starts_with("m=")).count() == sections);
             pc.call(|engine| {

@@ -556,7 +556,7 @@ async fn early_room_data_channels_follow_physical_slots_until_room_projection_ar
             f.driver
                 .pairs
                 .values()
-                .all(|pair| pair.connected() && pair.dc_open)
+                .all(|pair| pair.connected() && pair.data.control_open())
                 && f.driver.pairs[&sink]
                     .outputs
                     .get(&(flow, MediaKind::Video))
@@ -667,7 +667,7 @@ async fn room_data_channel_failure_preserves_media_on_the_same_physical_pair() -
         let sink = f.sink;
         let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[0].id;
         f.until(|f| {
-            f.driver.pairs.values().all(|p| p.connected() && p.dc_open)
+            f.driver.pairs.values().all(|p| p.connected() && p.data.control_open())
                 && f.driver.pairs[&sink]
                     .outputs
                     .contains_key(&(flow, MediaKind::Video))
