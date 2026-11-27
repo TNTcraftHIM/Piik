@@ -94,10 +94,10 @@ estimate ramps is not part of the rule and should not be.
 I owe you the meaning of "limited" where no encoder says it: for a Native
 flow that encodes, and for a pass-through flow. Until I send it, no new arm.
 
-## NAT: nine field reports, and a new tool revision to package
+## NAT: eleven field reports, and a new tool revision to package
 
-The owner's testers sent nine reports with tool 0.1. That tool misread every
-one: the observer `stun.chat.bilibili.com:3479` alone reported an address
+The owner's testers sent eleven reports, nine with tool 0.1. That tool misread
+every one of its nine: the observer `stun.chat.bilibili.com:3479` alone reported an address
 other than the one every other observer saw, with the same port, so each
 report said "more than one public address" and "model: unusable". The sample
 tables are sound. Read with that observer set aside, for a new address, held
@@ -107,17 +107,18 @@ of tried:
 | --- | --- | --- | --- |
 | 27.30, 119.247, 125.110 | a point per socket (two keep the local port) | no aim needed | |
 | 119.123 with 183.11 | two real addresses chosen by destination; a point per socket inside one | no aim needed | |
-| 42.48, 113.247, 111.23 (hotspot) | three real addresses chosen by destination; the local port kept on each | no aim needed | |
+| 42.48, 113.247, 111.23 (a campus, twice) | three real addresses chosen by destination; the local port kept on each | no aim needed | |
 | 133.18 with 223.104 (hotspot) | two real addresses chosen by socket; the first a point per socket | no aim needed | |
 | 183.251 | by destination, two counters, one up and one down | 17/30 | 26/30 |
 | 61.242 (hotspot) | three addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn, no aim | |
+| 175.2 (mobile data) | by destination, every mapping inside fifty-seven ports, one port serving several destinations | 4/32 | 30/32 |
 | 112.4 | by destination, a counter per destination | 5/30 | 6/30 |
 | 223.104 (a hotspot's second address) | by destination, a counter per destination | 0/13 | 1/13 |
 
 One-sided surveys of the owner's circle, no peer and no filtering measured.
 What they say for `peer/preparation.rs`, none of it to change yet:
 
-- Four of nine networks leave through more than one real address. `observe`
+- Four of ten networks leave through more than one real address. `observe`
   gives up when its three answers show two addresses, and when they happen
   to show one it aims at an address the peer's packets may not leave by.
 - The kind with two slow counters is within reach of sixty-four packets from
@@ -127,10 +128,13 @@ What they say for `peer/preparation.rs`, none of it to change yet:
   within 128 in 31 of 35. Tool 0.3.0 now measures brackets directly: three
   new sockets sent to in a row, the middle port to lie between the outer
   two.
-- A counter per destination is out of reach of both and needs another idea.
+- A carrier's small block needs no prediction: sixty-four packets cover it.
+  The model now aims at the block (it aimed at nothing before).
+- A counter per destination over the whole range is out of reach of all of
+  these and needs another idea.
 
-The design that follows is mine. Please build `piik-nat-lab` 0.3.0 from
-`claude/nat-model` at `769f962f` for macOS and Linux as before. Against 0.1
+The design that follows is mine. Please build `piik-nat-lab` 0.3.1 from
+`claude/nat-model` at `4121d5bd` for macOS and Linux as before. Against 0.1
 it drops that observer, reads each public address by itself, prints the
 replay at 16, 64 and 1024 packets and its version inside the report, and
 measures brackets. The Windows package is built here and is on the owner's
