@@ -166,14 +166,38 @@ and for layers a forwarder can drop without re-encoding, and only after the
 core paths of 3.0 are accepted. `str0m` at the pinned revision carries
 `packet/av1.rs`. Nothing to build.
 
-**Names.** The owner's two ideas for a person who arrives at an address with
-no name: a site setting that asks newcomers for one, or a generated
-identifier. I have recommended both, small: a person without a name is
-shown as the word for guest and four characters of their id, in each
-viewer's language, the stored name staying empty until they choose one
-(today every newcomer is the literal "Guest", `session.ts:475`); and one
-site-level switch, off by default, that opens the name field on a first
-visit. **Do not build either until the owner answers.**
+**Names: approved by the owner, build it.** Their words (2026-11-26):
+"新人名字的两个方案我是认可的，甚至我觉得可以参考discord那种ID#UID的感觉也不错". So three
+small things, one rule each:
+
+1. **Having no name is a state, not the string "Guest".** Today a newcomer
+   joins as the literal `"Guest"` (`session.ts:476`) and the core refuses an
+   empty name (`identity.rs:57,261,426`), so five newcomers are five
+   identical Guests in English for every viewer. A member may have no name;
+   every place that shows a person goes through one function that, for a
+   member without one, gives the viewer's own word for guest and the
+   member's tag: 访客#7F3K. History that archives an author's name archives
+   none for such a member and is read the same way. The formats are
+   private, so the wire and the stored form change without a second reader.
+2. **A tag, in the manner of name#id.** Four characters derived from the
+   member's id: stable for that member at that site, upper case, from an
+   alphabet without look-alikes, not a secret and never an authority. One
+   function owns it. It is shown always for a member without a name; for a
+   named member where another person in the same list shows the same name,
+   and on the profile card and in member management, where which Ada is
+   meant matters. Not on every message line: in a room of friends it would
+   be noise, and it is the reason Discord gave for dropping its own. If the
+   owner wants it on every name, that is one condition to remove.
+3. **A site switch, off by default: ask a new person for a name on a first
+   visit.** It is the site's, because the site owns identities. When on, a
+   person who enters with no stored name gets the profile editor's name
+   field opened and focused once; they may close it and stay a guest with
+   a tag. The browser's own memory then offers a name typed elsewhere,
+   which is why the field also needs `name="nickname"` (shown in
+   `0d2799f5`).
+
+Say if the first reaches further than it looks: I have not counted the
+places that read `name` directly.
 
 ## The NAT lab needs your machine
 
