@@ -144,8 +144,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-header-options .c3-forwarding-settings { padding-top: 6px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content { padding-top: 12px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content header { margin: 0 0 8px; }
+.lr-header-options[popover] > .c3-forwarding-settings > summary.lr-btn.is-compact,
 .lr-header-options[popover] > span > .lr-comic-tip-wrap > .lr-btn.is-compact,
-.lr-header-options[popover] .lr-help-content nav .lr-btn.is-compact { justify-content: flex-start; width: calc(100% + 16px); margin-inline: -8px; padding-inline: 8px; }
+.lr-header-options[popover] .lr-help-content nav .lr-btn.is-compact {
+  justify-content: start;
+  width: calc(100% + 16px);
+  margin-inline: -8px;
+  padding-inline: calc(8px - var(--control-border-width));
+}
 .lr-header-options .lr-help-content nav { gap: 0; }
 .lr-top .lr-leds { width: var(--control-compact-size); height: var(--control-compact-size); padding: 0; justify-content: center; }
 .lr-top .lr-leds-label { display: none; }

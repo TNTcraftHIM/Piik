@@ -59,9 +59,11 @@
 .c3-room-list-item :is(.c3-room-lead, .c3-room-manage) .lr-btn { --button-size: var(--room-line); --button-padding: 0; --button-icon-size: 16px; width: var(--room-line); min-width: var(--room-line); border: 0; border-radius: 8px; box-shadow: none; }
 /* The leading control is the disclosure of a room's people, or the handle while the list is being ordered. Its
    target reaches into the list's inset, and what it paints stays inside the row. */
-.c3-room-list-item .c3-room-lead .lr-btn { --button-icon-size: 16px; --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
+.c3-room-list-item .c3-room-lead .lr-btn { --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
   width: calc(var(--room-disclosure-width) + var(--room-disclosure-reach)); min-width: 0; margin-inline-start: calc(-1 * var(--room-disclosure-reach)); padding-inline-start: var(--room-disclosure-reach); }
+.c3-room-list-item .c3-room-lead .lr-btn[aria-expanded] { --button-icon-size: 24px; padding-inline-start: 0; }
 .c3-room-lead .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
+.c3-room-lead .lr-btn[aria-expanded]::before { inset-inline: 3px; }
 .c3-room-lead .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
 .c3-room-lead .lr-btn > svg { position: relative; }
 .c3-room-lead [aria-expanded="false"] > svg { transform: rotate(-90deg); }
@@ -69,6 +71,8 @@
 .c3-room-order-handle { cursor: grab; }
 .c3-room-order-handle:active { cursor: grabbing; }
 .c3-room-list-item :is(.c3-room-activity, .c3-room-faces) { min-height: var(--room-metadata-line); }
+/* The text and the padded television glyph sit on the painted lower edge of the metadata row. */
+.c3-room-list-item :is(.c3-room-activity, .c3-room-faces) > span { translate: 0 2px; }
 /* Who is in the room: a picture at the end of the second line, on the edge the settings end on. It is not a
    control, so the pointer passes through it to the row. */
 .c3-room-faces { grid-column: 3 / -1; grid-row: 2; justify-self: end; z-index: 1; display: flex; align-items: center; padding-inline-end: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }

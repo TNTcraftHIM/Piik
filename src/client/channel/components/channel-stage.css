@@ -26,7 +26,7 @@
 .c3-monitor-grid:has(.lr-remote-keyboard, .lr-remote-password) { grid-auto-rows: minmax(min-content, 1fr); }
 .c3-monitor-tile { position: relative; display: flex; flex-direction: column; grid-column: span 2; min-width: 0; min-height: 0; background: var(--wall); border: 1px solid var(--line); border-radius: var(--c3-surface-radius); container-type: inline-size; }
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: var(--c3-stage-picture-min); aspect-ratio: auto; }
-.c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: var(--stage-focused-width, 100cqi); justify-self: start; border-color: var(--action); box-shadow: inset 0 0 0 1px var(--action); }
+.c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: var(--stage-focused-width, 100cqi); justify-self: start; border-color: var(--action); }
 .c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; height: max-content; min-height: 0; }
 .c3-monitor-grid.is-focused[data-side-strip]:has(> .is-thumbnail) {
   grid-template-columns: minmax(0, 1fr) var(--thumbnail-width);
@@ -41,7 +41,8 @@
   min-height: 0;
 }
 .c3-monitor-grid[data-fitted].is-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow: visible; scrollbar-gutter: auto; }
-.c3-monitor-grid[data-fitted] > .c3-monitor-tile { place-self: center; width: var(--stage-picture-width); border: 0; box-shadow: 0 0 0 1px var(--line); }
+/* Fitted pictures use the full card width, so their radius matches the borderless tile. */
+.c3-monitor-grid[data-fitted] > .c3-monitor-tile { --stage-picture-radius: var(--c3-surface-radius); place-self: center; width: var(--stage-picture-width); border: 0; box-shadow: 0 0 0 1px var(--line); }
 /* Publishing settings take the adjustments on small cards. */
 .c3-monitor-grid[data-fitted] .c3-monitor-tile-actions { flex: none; }
 .c3-monitor-grid[data-fitted] .c3-monitor-source-info { min-width: min-content; }
@@ -86,8 +87,10 @@
 .c3-screen-audience-panel { width: 280px; padding: 12px; overflow-y: auto; }
 .c3-screen-audience-panel h3 { margin: 0 0 8px; font-size: 13px; }
 .c3-screen-audience-panel > p { margin: 8px 0; font-size: 12px; color: var(--muted); }
+.c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) {
+  border-radius: var(--stage-picture-radius, var(--c3-media-radius)) var(--stage-picture-radius, var(--c3-media-radius)) 0 0;
+}
 /* Keep publication controls available alongside the picture. */
-.c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0; }
 .c3-monitor-source-row { display: flex; flex-wrap: wrap; padding: 3px 6px; gap: 2px 6px; }
 .c3-monitor-source-info { display: grid; grid-template-columns: 20px minmax(5ch, 1fr) auto; flex: 1 1 min-content; align-items: center; gap: 2px; min-width: 0; }
 .c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
@@ -109,7 +112,7 @@
   --action: var(--piik-dark-action);
   --control-hover: var(--piik-dark-hover);
   display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
-  aspect-ratio: 16 / 9; padding: 18px; border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0;
+  aspect-ratio: 16 / 9; padding: 18px;
   background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px;
 }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
@@ -131,7 +134,7 @@
 .c3-monitor.is-theater .c3-theater-source { display: flex; }
 .c3-monitor.is-theater .c3-monitor-grid { display: block; flex: 1; min-height: 0; height: auto; scrollbar-gutter: auto; }
 .c3-monitor.is-theater .c3-monitor-tile:not(.is-focused) { display: none; }
-.c3-monitor.is-theater .c3-monitor-tile.is-focused { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.c3-monitor.is-theater .c3-monitor-tile.is-focused { width: 100%; height: 100%; border: 0; border-radius: 0; }
 .c3-monitor.is-theater .c3-mini-player { border-radius: 0; }
 @media (max-width: 700px) {
   .c3-monitor { --stage-padding: 12px; gap: 12px; }

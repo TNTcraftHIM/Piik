@@ -363,6 +363,20 @@ of a circle. Header utilities share compact alignment and icon scale with the
 language track. Low-frequency help stays unframed and quiet; it need not carry
 the outline or shadow of direct settings. Narrow layouts shorten captions or
 spacing before changing that hierarchy.
+
+In a room directory, the room mark and name select the row. Its leading
+chevron opens the roster independently. On a fine pointer these embedded
+actions take a 28 px line, with at least 24 px of width for the leading
+target. The control uses the list inset to keep its glyph clear of the room
+mark. On a coarse pointer the row controls use compact targets.
+[Fluent tree navigation](https://fluent2.microsoft.design/components/web/react/core/tree/usage)
+also gives expansion and navigation separate targets.
+
+The arrangement and language selectors fit their options inside a compact
+track, accounting for its padding and border. A room name in the voice dock
+is a text navigation button with at least a 24 by 24 px target, including
+short names. [WCAG target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
+measures the clickable area.
 Each reusable component loads the styles required for its own appearance and
 state layers. A meter or badge must not alter a control's grid merely because a
 sibling panel was not loaded. Check the actual product entry as well as the catalogue.
@@ -567,6 +581,7 @@ Shared buttons and chips use pill shapes and a quiet lower edge.
 Standalone buttons, chips and option tiles use the shared hover/press transforms
 and [motion roles](#motion-grammar) in `button.css`. Selected and unselected states
 use the same motion; selection changes only their colour and outline.
+Flat tonal buttons keep their position on hover and use the shared press.
 Embedded row actions follow [the content-row rule](#content-rows-and-embedded-actions)
 so their movement does not cross neighbouring content or clipping boundaries.
 Inputs and option tiles share softer corners. Press feedback uses the shared

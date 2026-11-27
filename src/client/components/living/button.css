@@ -59,10 +59,9 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn.is-quiet { border-radius: 12px; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger) { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: var(--control-hover); border-color: transparent; color: var(--ink); }
-/* Flat tonal controls use the same geometry and stay in place. */
+/* Tonal controls stay still on hover and use the shared press. */
 .lr-btn.is-tonal {
   --control-hover-transform: none;
-  --control-press-transform: none;
   border-radius: 12px;
   border-color: transparent;
   background: color-mix(in srgb, var(--ink) 10%, transparent);

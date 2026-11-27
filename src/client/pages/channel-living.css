@@ -187,6 +187,7 @@
 .c3-shell[data-layout="living"] {
   --room-list: 232px;
   --heading-line: max(48px, var(--surface-inset-top, 0px));
+  --heading-end-inset: 8px;
   --room-nav: var(--room-list);
   --room-list-edge: var(--room-nav);
   transition: --room-list-edge var(--motion-surface) cubic-bezier(.2, 0, 0, 1);
@@ -241,7 +242,7 @@
   justify-content: flex-end;
   gap: 0 4px;
   min-height: var(--heading-line);
-  padding: 0 var(--heading-caption, 0px) 0 8px;
+  padding: 0 calc(var(--heading-end-inset) + var(--heading-caption, 0px)) 0 8px;
 }
 [data-layout="living"] .c3-room-name { flex: 1 0 0; min-width: calc(25px + 5 * 20px + var(--control-compact-size) + 2 * 8px); }
 [data-layout="living"] .c3-room-title { min-inline-size: 5em; font-size: 20px; }
@@ -250,7 +251,6 @@
 [data-layout="living"] .c3-room-name > .c3-room-invitation-entry { padding-inline-start: 0; border-inline-start: 0; }
 [data-layout="living"] .c3-room-name h2 { font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
 [data-layout="living"] .c3-room-toolbar { gap: 0; }
-[data-layout="living"] .c3-monitor-layout > .lr-toggle { --selection-item-size: 30px; }
 .c3-heading-actions { display: contents; }
 .c3-living-stage-view:empty { display: none; }
 
@@ -258,12 +258,11 @@
 [data-layout="living"] .c3-site-identity { grid-area: 1 / 2; border-inline-end: 1px solid var(--line); }
 [data-layout="living"] :is(.c3-site-identity, .c3-pane-navigation) { height: var(--heading-line); }
 
-[data-layout="living"]:not([data-minimal], [data-sidebars="phone"]) .c3-site-identity { border-block-end: 1px solid var(--line); }
 html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="living"] .c3-room-name { min-height: var(--heading-line); }
 
 /* A narrow room column uses the space under the window buttons for both tool groups. */
 @container room-heading (max-width: 38rem) {
-  html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="living"] .c3-room-heading { padding-inline-end: 0; }
+  html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="living"] .c3-room-heading { padding-inline-end: var(--heading-end-inset); }
   html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="living"] .c3-room-name {
     flex-basis: 100%;
     padding-inline-end: var(--heading-caption);
@@ -410,6 +409,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 }
 .c3-shell[data-layout="living"][data-sidebars="phone"] {
   --room-inset: 12px;
+  --heading-end-inset: 4px;
   grid-template-rows: var(--living-top-size, minmax(48px, auto)) minmax(0, 1fr) auto auto;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "top" "stage" "couch" "self";
@@ -441,17 +441,17 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-heading-column { container-type: normal; }
 [data-layout="living"][data-sidebars="phone"] .c3-heading-actions { display: flex; align-items: center; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-heading { gap: 0; padding-inline-start: 4px; }
-[data-layout="living"][data-sidebars="phone"] .c3-room-name { min-width: calc(5 * 16px + var(--control-compact-size) + 4px); gap: 4px; }
+[data-layout="living"][data-sidebars="phone"] .c3-room-name { min-width: calc(5 * 16px + var(--control-compact-size) + 4px); min-height: var(--heading-line); gap: 4px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-title { font-size: 16px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-name h2 { font-size: 16px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-name > .c3-identity-mark { display: none; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-tools { gap: 0; }
 [data-layout="living"][data-sidebars="phone"] .c3-pane-back { display: inline-flex; }
 [data-layout="living"][data-sidebars="phone"] .c3-pane-navigation { display: inline-flex; align-items: center; padding-inline-start: 4px; }
-[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-heading { padding: 0; }
+[data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-room-heading { padding-inline: 0 var(--heading-end-inset); }
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] :is(.c3-room-name, .c3-room-toolbar) { display: none; }
 [data-layout="living"][data-sidebars="phone"][data-room-list-open] .c3-pane-navigation { background: var(--surface-frame); }
-[data-layout="living"][data-sidebars="phone"] .c3-global-tools { align-self: center; gap: 4px; padding-inline: 2px 4px; }
+[data-layout="living"][data-sidebars="phone"] .c3-global-tools { align-self: center; gap: 4px; padding-inline-start: 2px; }
 /* The row's own buttons give up their words on a phone. What opens from the row is not the row. */
 [data-layout="living"][data-sidebars="phone"] .c3-global-tools .lr-btn:not([popover] .lr-btn, .lr-floating-panel .lr-btn) .lr-cap { display: none; }
 [data-layout="living"][data-sidebars="phone"] > :is(.c3-chat-panel, .c3-people-panel) { border-inline-start: 0; }
@@ -474,7 +474,6 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"][data-sidebars="phone"] .c3-monitor:not(.is-theater) .c3-monitor-heading:has(.c3-monitor-layout) { display: flex; justify-content: flex-end; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor-heading > div:first-child { display: none; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor-grid { gap: 4px; }
-[data-layout="living"][data-sidebars="phone"] .c3-monitor-grid[data-fitted] > .c3-monitor-tile { border-radius: 0; box-shadow: none; }
 .c3-shell[data-layout="living"][data-sidebars="phone"][data-companion="chat"] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { flex: 0 1 auto; max-height: 42svh; container-type: inline-size; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-presence .c3-couch { zoom: 1; }
 /* Leave the room tool clear of the couch paging targets when both are shown. */
@@ -540,7 +539,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
      which are the site's and this device's. A rule parts them from the tools that follow the room's state, and
      a wider gap parts the room's from the site's. */
 [data-layout="living"] .c3-standing-room-tools:not([hidden]) { display: flex; align-items: center; gap: 2px; }
-[data-layout="living"] .c3-global-tools { position: relative; display: flex; flex: none; align-self: center; align-items: center; gap: 10px; margin: 0; padding-inline: 6px 8px; }
+[data-layout="living"] .c3-global-tools { position: relative; display: flex; flex: none; align-self: center; align-items: center; gap: 10px; margin: 0; padding-inline-start: 6px; }
 /* The two groups of the top row are parted by a short rule, which cannot be taken for a column's edge. */
 [data-layout="living"] .c3-global-tools::before { content: ""; position: absolute; inset-inline-start: 0; inset-block: calc(50% - 10px); width: 1px; background: var(--line); }
 [data-layout="living"] .c3-global-tools > .lr-top-right { flex: none; gap: 2px; margin: 0; }

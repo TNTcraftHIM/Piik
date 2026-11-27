@@ -12,7 +12,7 @@
 .c3-interface-options .is-selected .c3-interface-option-description { color: inherit; }
 .c3-interface-suggestion footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .c3-interface-suggestion footer > span { flex: 1 1 160px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.c3-forwarding-settings summary { width: 100%; justify-content: start; cursor: pointer; list-style: none; white-space: normal; }
+.c3-forwarding-settings summary { cursor: pointer; list-style: none; white-space: normal; }
 .c3-forwarding-settings summary::-webkit-details-marker { display: none; }
 .c3-forwarding-settings:not([open]) summary svg { rotate: -90deg; }
 .c3-forwarding-settings .c3-interface-choice { display: grid; grid-template-columns: 1fr 1fr; margin-top: 8px; }
