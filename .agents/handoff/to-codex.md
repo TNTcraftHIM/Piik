@@ -5,11 +5,71 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `05b41198`. Your line through `844daa7c` is merged in
-`728a0fb6` and `tsc -b` passes there. A reviewer is checking the room sweep
-on screen against the owner's three pictures and reading `7b234615`,
-`ca20eb9b` and `c1359066`; its findings follow in my next push, so the sweep
-is not yet accepted by me.
+Reviewed through `844daa7c`, merged in `728a0fb6`. On this branch `tsc -b`
+passes, the web suite passes (2,486 tests), and the Native library suite
+passes on Windows 11 with `--no-default-features` (219 pass, 2 ignored) and
+its `capture::` tests with the default features (47 pass, 2 ignored).
+
+## The room sweep on screen: most of it holds, nine places do not
+
+A reviewer measured the merged head against the owner's three pictures in
+the list, rail, minimal and phone forms; I measured the first and the eighth
+again myself. Captures and probes are on this machine, so each line carries
+its numbers.
+
+**Holds.** The side column's line is unbroken (y 20 to 835 in the rail). The
+large picture and the strip share both edges (109 and 1043). A 20 px rule
+parts the top row's groups. Ordering lives in the card with a one-line note.
+The fold control keeps its box in every form. A room's row, its settings and
+disclosure, the rail's room and a message's actions move 2 px under a press
+and not on hover. No width scrolls sideways or overlaps, the name keeps four
+characters at 375 px, and all text is 12, 14, 16 or 20 px.
+
+**Does not hold.**
+
+1. **A one-pixel step where the side column meets the top row.** The site's
+   cell ends at y 69 with a bottom border of its own, so its rule is at 68;
+   the bar ends at 70 and its rule is at 69. The side column begins at 69 and
+   the room's body at 70. One of the two borders should go
+   (`channel-living.css`, the site cell against the bar).
+2. **The focus ring has two widths**: 1 px beside the picture, 2 px beside
+   the caption, because the picture covers the inner shadow and the caption
+   does not.
+3. **The second line of a room's row has four feet.** Lock and headphones
+   end at 196.0, the picture count's digit at 194.0, its television at
+   194.75, the faces at 196.5. Your note says these are aligned.
+4. **The wrapped top row ends on two edges**: 707 and 699 at 720 px. At 320 px
+   the invitation control reaches the screen's edge (320 against 316), and at
+   360 and 320 px the first line is 2 px off the fold control's centre.
+5. **Controls outside the two sizes**: the arrangement switch is 30 px tall,
+   the dock's room-name buttons 21 and 24, the row's disclosure and handle
+   24 by 28 and its settings and steps 28 by 28. Say in the handbook which
+   of these are a third size on purpose.
+6. **In More, the forwarding disclosure stands 8 to 12 px right** of the
+   rows above and below it.
+7. **Press and hover are still two rules outside the row.** The top row's
+   buttons, the fold control, voice settings and share lift 2 px on hover,
+   which the handbook allows a standalone control. But the dock's
+   microphone, listening and leave buttons do not move at all under a press
+   (transform none at rest and held), and the owner asked for exactly that
+   answer on the controls of a room.
+8. **A phone's tiles at 360 px** have square dark corners behind a rounded
+   picture (`channel-living.css:477`).
+9. **The disclosure is still drawn 5.5 by 9.5 px.** The owner called it a
+   little small at 12 px of glyph; it is 16 now and its column is 16 wide, so
+   more needs the column, and the rail's axis with it. Your call.
+
+## `7b234615`, `ca20eb9b`, `c1359066`: no defect shown
+
+- `7b234615`: the callback completes its request and returns shutdown
+  where it panicked on a poisoned lock; its test would abort without it.
+- `ca20eb9b`: sound for the two error codes it names. Any other failure of
+  the page's selection still stops the new activity after the room has
+  removed the old one, and both are lost. Read, not run.
+- `c1359066` **has no test**: the reproduction in its message is not in the
+  tree, and reverting the line leaves every test green. The hardware encoder
+  resets the same clock on its own path (`mf.rs:392-395`); say whether it
+  needs the same care.
 
 ## Your replies to `33ebc93c` and `84e06e1b`
 
