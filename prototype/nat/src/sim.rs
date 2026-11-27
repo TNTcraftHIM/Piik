@@ -30,6 +30,12 @@ pub enum Ports {
     /// quarter and so on, and which one a mapping takes does not follow its socket from one
     /// destination to another.
     Lanes { counters: u16, block: u16, stride: u16 },
+    /// A counter for each of `counters` groups of destinations, counting up by one. A
+    /// destination's address and its port without the lowest bit choose its group, so with many
+    /// groups a destination nobody else sends to has a counter to itself. A campus network showed
+    /// this: toward sixteen ports of one address, each even port and the odd one above it shared
+    /// a counter, and 33 of 34 mappings took the port after the last.
+    Destinations { counters: u16 },
     /// A draw from all ports.
     Drawn,
 }
@@ -83,7 +89,7 @@ impl Nat {
             mappings: Vec::new(),
         };
         let counters = match ports {
-            Ports::Lanes { counters, .. } => counters,
+            Ports::Lanes { counters, .. } | Ports::Destinations { counters } => counters,
             _ => 1,
         };
         nat.counters = (0..counters).map(|_| LOWEST_PORT + (nat.draw() % u64::from(SPAN)) as u16).collect();
@@ -108,7 +114,7 @@ impl Nat {
                     false => u32::from(port) + 1 + u32::from(stride - 1) * u32::from(block),
                 }
             }
-            Ports::Kept | Ports::Drawn => u32::from(port) + 1,
+            Ports::Kept | Ports::Drawn | Ports::Destinations { .. } => u32::from(port) + 1,
         };
         (u32::from(LOWEST_PORT) + (next - u32::from(LOWEST_PORT)) % SPAN) as u16
     }
@@ -168,6 +174,10 @@ impl Nat {
             Ports::Kept => local_port(socket),
             Ports::Counter { .. } => self.take(0),
             Ports::Lanes { counters, .. } => self.take(self.lane(socket, to, counters)),
+            Ports::Destinations { counters } => {
+                let group = mix(self.secret ^ (u64::from(u32::from(*to.ip())) << 16) ^ u64::from(to.port() >> 1)) % u64::from(counters);
+                self.take(group as usize)
+            }
             Ports::Drawn => LOWEST_PORT + (self.draw() % u64::from(SPAN)) as u16,
         };
         self.mappings.push(Mapped { socket, to, port, sent: vec![to] });
