@@ -258,10 +258,10 @@ the feedback period; they do not delay that delivery.
   preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
   [ADR-0020](./adr/0020-one-vocabulary-for-extension.md). Before the first
-  release: settle message fields that a writer, a store and an archive keep
-  without knowing them, through the actual Rust, Browser and SDK consumers.
-  Editing supplies the first concrete new request; no extension interface or
-  generic capability registry is built. A part interface is weighed only by a bounded
+  release: settle message fields that a reader ignores and a writer leaves
+  out, and strict archive boundaries, through the actual Rust, Browser and
+  SDK consumers. Editing supplies the first concrete new request; no
+  extension interface or generic capability registry is built. A part interface is weighed only by a bounded
   comparison with plain lifecycle-owner extraction.
 - [ ] **Remote-writer route continuity.** Measure writer round-trip time and
   cold repair on independent networks. The

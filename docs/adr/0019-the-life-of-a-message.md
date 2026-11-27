@@ -51,8 +51,8 @@ signed, so a change to a row breaks no signature.
    events are set with the feature.
 
 Settled before the stored format is first published: a supported backup must
-not drop a row's data without notice. Room backups and room copies keep the
-fields of a row that they do not know, as a writer does.
+not drop a row's data without notice. Room backups and room copies reject
+history rows with unrecognized fields before installing the archive.
 
 ## Not Built
 

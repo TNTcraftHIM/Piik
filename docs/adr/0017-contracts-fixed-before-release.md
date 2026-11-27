@@ -20,7 +20,11 @@ Refusing what is not known and announcing a capability for each addition are
 not the way, because each leaves a check behind for every feature ever added.
 A room's writer makes this sharper than it is for a hosted service: it runs
 on a friend's App or Browser, so it is as often the oldest party in a room as
-the newest. The private implementation currently has these boundaries:
+the newest. The published 2.x line shows the cost of the other way: its
+server closes a connection over one field it does not know, its handshake
+requires one exact identifier, and its capability object has grown to
+fifteen entries, one per feature, which its promise to older peers keeps.
+The private 3.0 implementation currently has these boundaries:
 
 - Channel joins and local App discovery each require their current wire
   identifier (`prototype/channel-core/src/lib.rs`,
@@ -62,14 +66,16 @@ the newest. The private implementation currently has these boundaries:
      request as an unknown outcome and never as success. A notification of an
      unknown kind is ignored. So what must not be ignored is sent as a
      request.
-   - *An unknown field is ignored by a reader and kept by a keeper.* A reader
-     uses the fields it knows; bounds, types and required fields of those
-     stay strict. A writer, a store and an archive keep the top-level fields
-     of a message that they do not know, within one bound, and return them
-     with it. So a field is never the place for something that must be
-     understood, that names anything outside its message, or that holds
-     media: those arrive as a kind. Shapes nested inside a message stay
-     closed.
+   - *An unknown field is ignored.* A party uses the fields it knows;
+     bounds, types and required fields of those stay strict. A writer stores
+     the fields it knows, and its confirmation carries the message as stored,
+     so a sender sees what was kept. So a field is never the place for
+     something that must be understood: that arrives as a kind. A writer
+     keeps nothing it cannot read, because deleting a message, clearing media
+     and copying a room are promises about everything stored. What is written
+     to last is the exception to ignoring, since nobody is there to be told:
+     a store or an archive that holds what its reader does not know is
+     refused before anything is installed.
    - *A party gets a new form by asking for it.* A request names the optional
      parts and forms it wants. One that names none gets what the first
      release gave. A part that was not asked for, or that the answering party
@@ -102,9 +108,7 @@ the newest. The private implementation currently has these boundaries:
    concrete transactional upgrade only when a representation changes, and
    refuse a newer store before modification. No general migration framework
    is required. A store's layout number stays with its storage engine and
-   says nothing about a peer. A stored message holds what its writer does
-   not know in the same place as what it knows, so that a later version
-   which gives one of those fields a meaning changes no stored row.
+   says nothing about a peer.
 4. **Restored history.** A restore gives the room's history a new lineage that
    invalidates old read positions, and a normal restart keeps them. A position
    a released reader saved without a lineage cannot later be told apart from
@@ -160,12 +164,15 @@ their meaning, and a new form reaches only a party that asked for it.
 - A feature added after release is a new kind, a new field or a new part to
   ask for, and raises the second number. No matrix of pairs is kept, because
   every pair that shares a first number works by the same four rules.
-- Refusing unknown fields goes from the wire and from stored messages, and
-  with it the readers that exist only to refuse them. One wire field per
-  feature is not added again. The descriptions a join already carries of what
-  a party's runtime can do stay: they describe a machine, not a version.
-- A room's writer no longer limits what newer clients can show each other,
-  only what it must itself act on.
+- Refusing unknown fields goes from the wire. Stores and archives keep
+  refusing what they do not know. One wire field per feature is not added
+  again. The descriptions a join already carries of what a party's runtime
+  can do stay: they describe a machine, not a version.
+- A room is as new as its writer for whatever is stored. A person can act on
+  that sentence: the host updates. Keeping fields a writer cannot read, so
+  that newer clients could use them through an older host, was weighed and
+  left out: no feature in sight needs it, and it can be added later as one
+  more addition under these rules.
 - [Versioning](../standards/versioning.md) is rewritten to these rules for
   3.0 when this record is accepted. Until then it describes the code as it
   is.
@@ -183,8 +190,7 @@ their meaning, and a new form reaches only a party that asked for it.
   message or a presence is ignored. It is the rule of a network whose
   servers and clients are run by different people and are of different ages.
 - [PNG, chunk naming conventions](https://www.w3.org/TR/png-3/#5Chunk-naming-conventions):
-  each addition says whether a decoder may skip it and whether an editor
-  that does not know it may copy it.
+  each addition says whether a decoder that does not know it may skip it.
 - [Protocol Buffers: updating a message type](https://protobuf.dev/programming-guides/proto3/):
   adding fields is safe, and unknown values are preserved.
 - [RFC 9413, Maintaining Robust Protocols](https://www.rfc-editor.org/rfc/rfc9413.html):
