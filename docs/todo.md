@@ -70,11 +70,13 @@ the feedback period; they do not delay that delivery.
   resource. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Freeze the first public 3.0 contract.** Decide
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
-  writers and release storage fixtures. Settle the common extension and
-  partial-read contract, compatibility matrix, explicit reply outcomes, and
-  history and storage boundaries before publication. While that
-  design is under review, do not add exact-version steps, closed wire/storage
-  boundaries or individual feature flags to extend the current scheme.
+  writers and release storage fixtures. Its compatibility rule is proposed
+  as two numbers a party states and four rules (unknown kinds, unknown
+  fields, forms asked for); trace it through each connection, store and
+  archive, then settle explicit reply outcomes and history and storage
+  boundaries before publication. While it is under review, do not add
+  exact-version steps, closed wire/storage boundaries or individual feature
+  flags to extend the current scheme.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,
@@ -251,14 +253,14 @@ the feedback period; they do not delay that delivery.
 - [ ] **The life of a message.** Decide
   [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, quote
   behavior and the merge rule for text and reaction changes. Search is not
-  built. Set stored fields and capabilities with their
+  built. Set stored fields and requests with their
   consumers. Before publication, verify that supported archive round trips
   preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
   [ADR-0020](./adr/0020-one-vocabulary-for-extension.md). Before the first
-  release: settle additive message presentation fields and strict writer and
-  archive boundaries through the actual Rust, Browser and SDK consumers.
-  Editing supplies the first concrete addition; no extension interface or
+  release: settle message fields that a writer, a store and an archive keep
+  without knowing them, through the actual Rust, Browser and SDK consumers.
+  Editing supplies the first concrete new request; no extension interface or
   generic capability registry is built. A part interface is weighed only by a bounded
   comparison with plain lifecycle-owner extraction.
 - [ ] **Remote-writer route continuity.** Measure writer round-trip time and

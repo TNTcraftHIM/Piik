@@ -44,13 +44,15 @@ signed, so a change to a row breaks no signature.
    text, file descriptions) always comes. The reader matches the text, so the
    words a person searches for stay on that person's device. A participant
    program can also offer search to a room that admits one.
-7. **Edit is a capability** a writer announces, under the compatibility rule
-   of [ADR-0017](./0017-contracts-fixed-before-release.md), so it can ship
-   after the first release. Its fields and events are set with the feature.
+7. **Edit is a request of its own,** under the compatibility rule of
+   [ADR-0017](./0017-contracts-fixed-before-release.md): an older writer
+   refuses it as unsupported and a client offers it where the writer's
+   numbers include it, so it can ship after the first release. Its fields and
+   events are set with the feature.
 
 Settled before the stored format is first published: a supported backup must
-not drop a row's data without notice. Room backups and room copies reject history rows with
-unrecognized fields before installing the archive.
+not drop a row's data without notice. Room backups and room copies keep the
+fields of a row that they do not know, as a writer does.
 
 ## Not Built
 

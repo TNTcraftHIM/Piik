@@ -49,25 +49,31 @@ fixed.
      Nested structures retain their defined shapes; they are not separate
      extension points. An addition about one file or one mention sits on the
      message and names it, as inline images do.
-   - *The writer is strict and says what it stores.* A writer refuses a draft
-     that carries anything it does not know at the existing signed-command
-     boundary, with a rejection correlated to that request. A new feature
-     adds its capability to the room's existing contract together with its
-     producer and consumer. No generic capability registry is needed first.
+   - *The writer keeps what it does not act on.* The top-level fields of a
+     draft that a writer does not know are stored with the message, within
+     one bound, and returned with it; the confirmation carries the stored
+     message, so its sender sees what was kept. What a writer has to act on
+     arrives as a request of its own, which an older writer refuses as
+     unsupported in that request's reply
+     ([ADR-0017](./0017-contracts-fixed-before-release.md), decision 1). No
+     capability is announced per feature: a client reads the writer's two
+     numbers to decide what to offer.
    - *A program is a participant* (decision 5). It joins and acts through
      the wire a person's client uses, so no second interface has to keep
      step with the first, and joining never comes to depend on something only
      a browser has. The tree's own text participant already reads and writes
      this way from Node.
 
-   Tests exercise an additive message field through each actual reader,
-   preserve payload signature verification, and require unsupported drafts
-   to be rejected through the existing reply. Editing
-   ([ADR-0019](./0019-the-life-of-a-message.md)) supplies the first real
-   additional presentation field. Deleting a message removes its additions
-   with it. Archives remain strict and reject data the receiving writer
-   cannot preserve before installation. Wire and stored-format compatibility
-   remain under the existing versioning policy.
+   Tests send a field no party knows through each actual reader, writer,
+   store and archive and read it back unchanged, preserve payload signature
+   verification, and require a request no writer knows to be refused through
+   the existing reply. Editing
+   ([ADR-0019](./0019-the-life-of-a-message.md)) supplies the first real new
+   request. Deleting a message removes its additions with it. An archive
+   keeps the fields a writer keeps; what it must refuse before installation
+   is a container it cannot read. A field that a writer keeps without knowing
+   it names nothing outside its message and holds no media, so a room copy
+   and a clearing of media pass it through untouched.
 3. **Each owner undoes its own registrations.** A lifetime owner releases its
    listeners and the leases it borrowed when it ends, as
    [ADR-0015](./0015-browser-session-lifetime-owners.md) decided. Ending one
@@ -122,6 +128,9 @@ definition and no second provider or consumer.
 - [RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html): an extension
   mechanism stays usable only while it is used, a protocol's invariants are
   written down, and fewer extension points are safer than many.
+- [Protocol Buffers, unknown fields](https://protobuf.dev/programming-guides/proto3/#unknowns):
+  a party that parses a message from a newer one keeps the fields it does not
+  know and writes them out again.
 - [XEP-0428, Fallback Indication](https://xmpp.org/extensions/xep-0428.html):
   a client that does not know an extension shows the message's body.
 - [IRCv3 capability negotiation](https://ircv3.net/specs/extensions/capability-negotiation.html):
