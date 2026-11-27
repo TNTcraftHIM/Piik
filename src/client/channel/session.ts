@@ -229,7 +229,7 @@ export class ChannelSession {
   private localNativeEndpoints = new Set<string>();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
   private watching = new Map<string, ScreenWatch>();
-  private historyChannel: string | null = null;
+  private historyOwner: string | undefined;
   private histories = new Map<string, RoomHistory>();
   private readings = new Map<string, RoomReading>();
   private get reading(): RoomReading | undefined { return this.readings.get(this.roomId); }
@@ -572,10 +572,17 @@ export class ChannelSession {
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
-      const forwardingKey = JSON.stringify([event.state.channel.id, event.selfProfile.id]);
-      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences().forwardingLimitByIdentity[forwardingKey] ?? -1;
+      const identityKey = JSON.stringify([event.state.channel.id, event.selfProfile.id]);
+      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences().forwardingLimitByIdentity[identityKey] ?? -1;
       this.forwardingBudget ??= this.conversation.forwardingBudget();
       if (resumed) this.forwardingBudget?.reconnected();
+      if (this.historyOwner !== undefined && this.historyOwner !== identityKey) {
+        this.clearReadings();
+        const removed = [...this.histories.keys()];
+        this.histories.clear();
+        this.patch({ ...this.historyView(removed), readByRoom: {}, voicePlaybackByUser: new Map(), publicationReactions: new Map() });
+      }
+      this.historyOwner = identityKey;
       this.patch({ sessionId: event.sessionId, self: event.selfProfile, profiles: new Map([[event.selfProfile.id, event.selfProfile]]), connection: "connected", error: null, siteURL: this.siteURL(), forwardingLimit });
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
       for (const [id] of this.pendingWatchPlayers()) {
@@ -742,9 +749,8 @@ export class ChannelSession {
     for (const stage of this.stages.values()) stage.reconcileWatches(this.roomSnapshot, previous, restoring,
       id => { void this.stopWatchResource(id, "provider-session-ended").catch(() => {}); });
     const visible = this.projectActivity(state);
-    const sameChannel = this.historyChannel === state.channel.id;
+    const sameChannel = !previous || previous.channel.id === state.channel.id;
     if (!sameChannel) this.clearReadings();
-    this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
     const freshBindings = new Set(state.channel.rooms.filter(room => room.delivery
       && previousRooms?.find(previous => previous.id === room.id)?.delivery?.bindingId !== room.delivery.bindingId).map(room => room.id));

@@ -12211,7 +12211,7 @@ test("an approved App exports only rooms positively matched to its Native sessio
 });
 
 test.each(["registered", "registration-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
-  const { session, socket, stage, metadata, nextHost, read } = await setupRoomBackup();
+  const { session, socket, peer, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedRoomIds").mockResolvedValue([]);
@@ -12220,6 +12220,8 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
+  await peer.history([message(1)]);
+  const offline = { ...state.channel.rooms[0], available: false, delivery: undefined, reading: false, participantSessionIds: [] };
   const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
   state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", version: profileVersion }];
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
@@ -12234,7 +12236,8 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     for (const field of ["ownerKey", "roomId", "sessionId"]) expect(join).not.toHaveProperty(field);
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint",
-      state: { ...state, channel: { ...state.channel, rooms: [] } } });
+      state: { ...state, channel: { ...state.channel, rooms: [offline] } } });
+    expect.soft(session.getSnapshot().messagesByRoom.first).toBeUndefined();
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "admit_room")).toBe(true));
     const admissionRequest = admission.sent.find(command => command.type === "admit_room")!;
     expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });
