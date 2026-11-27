@@ -16,7 +16,7 @@ use piik_channel_core::{
     conversation::{self, ConversationReply, SessionSigner, SignedPacket},
 };
 use piik_channel_core::{
-    host::{RoomResult, RoomSummary},
+    host::{NewRoom, RoomResult, RoomSummary},
     wire::{
         Command, Event, Kind, PublicationInput, ReplyResult, Room, RoomAccess, RoomDelivery, Snapshot,
         VideoSettings,
@@ -338,8 +338,43 @@ struct Session {
 }
 
 pub struct OpenRoom {
-    pub policy: RoomState,
-    pub result: oneshot::Sender<Result<RoomSummary, String>>,
+    pub room: NewRoom,
+    pub creator_id: Uuid,
+    pub result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
+}
+
+#[derive(Debug)]
+pub enum OpenRoomError {
+    RejectedSettings(&'static str),
+    Operation(String),
+}
+
+impl OpenRoomError {
+    pub fn reason(&self) -> &str {
+        match self {
+            Self::RejectedSettings(reason) => reason,
+            Self::Operation(reason) => reason,
+        }
+    }
+}
+
+impl std::fmt::Display for OpenRoomError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.write_str(self.reason())
+    }
+}
+
+impl std::error::Error for OpenRoomError {}
+
+impl From<&str> for OpenRoomError {
+    fn from(reason: &str) -> Self {
+        Self::Operation(reason.to_owned())
+    }
+}
+
+enum RoomInstall {
+    Create(NewRoom, Uuid),
+    Copy(RoomSnapshot, tokio::sync::OwnedSemaphorePermit),
 }
 
 pub type ServiceAdmission = (
@@ -387,13 +422,13 @@ impl<T> Drop for LocalAnswer<T> {
 }
 struct OpeningReply {
     _local: room_owner::Admission,
-    result: LocalAnswer<Result<RoomSummary, String>>,
+    result: LocalAnswer<Result<RoomSummary, OpenRoomError>>,
     committed_error: Option<&'static str>,
 }
 impl OpeningReply {
     fn new(
         local: room_owner::Admission,
-        result: oneshot::Sender<Result<RoomSummary, String>>,
+        result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
         committed_error: Option<&'static str>,
     ) -> Self {
         Self {
@@ -407,7 +442,7 @@ impl OpeningReply {
     }
     fn finish(self, result: Result<RoomSummary, String>) {
         let result = result.map_err(|code| self.committed_error.map(str::to_owned).unwrap_or(code));
-        let _ = self.result.take().send(result);
+        let _ = self.result.take().send(result.map_err(OpenRoomError::Operation));
     }
 }
 impl OpeningRoom {
@@ -460,7 +495,7 @@ pub struct RestoreRoom {
     /// Holds Server scratch admission through staging and installation.
     pub scratch: Option<tokio::sync::OwnedSemaphorePermit>,
     pub existing: Option<ExistingRoomRestore>,
-    pub result: oneshot::Sender<Result<RoomSummary, String>>,
+    pub result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
 }
 
 #[derive(serde::Serialize)]
@@ -619,8 +654,7 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
 #[serde(
     tag = "action",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum RelayCapacityRequest {
     Read {},
@@ -676,7 +710,7 @@ pub enum HostCommand {
     CreateCopy {
         snapshot: RoomSnapshot,
         scratch: tokio::sync::OwnedSemaphorePermit,
-        result: oneshot::Sender<Result<RoomSummary, String>>,
+        result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
     },
     DeleteRetired {
         id: String,
@@ -1012,6 +1046,7 @@ impl Session {
             };
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
+                    snapshot_form: Default::default(),
                     protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
                     can_use_peer_transport: true,
                     can_prepare_udp: self.config.server_udp.is_none(),
@@ -1214,10 +1249,11 @@ impl Session {
                                 HostCommand::DeleteRetired { id, creator, result } => {
                                     self.delete_retired_room(id,creator,result)?;
                                 }
-                                HostCommand::Open(request) => self.open_room(request, None, socket).await?,
+                                HostCommand::Open(request) => {
+                                    self.open_room(RoomInstall::Create(request.room, request.creator_id), request.result)?;
+                                }
                                 HostCommand::CreateCopy { snapshot, scratch, result } => {
-                                    let request = OpenRoom { policy: snapshot.room.metadata().policy.clone(), result };
-                                    self.open_room(request, Some((snapshot,scratch)), socket).await?;
+                                    self.open_room(RoomInstall::Copy(snapshot, scratch), result)?;
                                 }
                                 HostCommand::Snapshot(request) => self.snapshot_room(request).await,
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
@@ -1513,7 +1549,7 @@ impl Session {
                                         s.files.retain(|file| file.path != path);
                                     }
                                     for reply in replies {
-                                        let _ = reply.result.take().send(Err(rejected.clone()));
+                                        let _ = reply.result.take().send(Err(OpenRoomError::Operation(rejected.clone())));
                                     }
                                     Ok(vec![])
                                 }))
@@ -1521,7 +1557,7 @@ impl Session {
                             rooms.remove(&target);
                         } else {
                             for reply in replies {
-                                let _ = reply.result.take().send(Err(rejected.clone()));
+                                let _ = reply.result.take().send(Err(OpenRoomError::Operation(rejected.clone())));
                             }
                         }
                         return Ok(());
@@ -2654,36 +2690,41 @@ impl Session {
             }))
         })
     }
-    async fn open_room(
+    fn open_room(
         &mut self,
-        request: OpenRoom,
-        copy: Option<(RoomSnapshot, tokio::sync::OwnedSemaphorePermit)>,
-        _socket: &mut Writer<'_>,
+        install: RoomInstall,
+        result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
     ) -> Result<()> {
-        let id = request.policy.id.clone();
-        let copied = copy.is_some();
+        let (id, creator) = match &install {
+            RoomInstall::Create(room, creator) => (room.id.clone(), *creator),
+            RoomInstall::Copy(snapshot, _) => {
+                let policy = &snapshot.room.metadata().policy;
+                (policy.id.clone(), policy.creator_id)
+            }
+        };
+        let copied = matches!(install, RoomInstall::Copy(..));
         let Some(hosting) = &self.hosting else {
-            let _ = request.result.send(Err("hosting_control_closed".into()));
+            let _ = result.send(Err("hosting_control_closed".into()));
             return Ok(());
         };
         let identity = hosting.identity;
         let directory = hosting.directory.clone();
         let Some(live) = &mut self.live else {
-            let _ = request.result.send(Err("hosting_unavailable".into()));
+            let _ = result.send(Err("hosting_unavailable".into()));
             return Ok(());
         };
-        if self.service_admission.is_none() && request.policy.creator_id != identity.1 {
-            let _ = request.result.send(Err("owner_mismatch".into()));
+        if self.service_admission.is_none() && creator != identity.1 {
+            let _ = result.send(Err("owner_mismatch".into()));
             return Ok(());
         }
         if copied && (live.room.rooms.contains_key(&id) || self.opening.contains_key(&id)) {
-            let _ = request.result.send(Err("room_already_exists".into()));
+            let _ = result.send(Err("room_already_exists".into()));
             return Ok(());
         }
-        live.room.rooms.reserve(&id, request.policy.creator_id);
+        live.room.rooms.reserve(&id, creator);
         let target = id.clone();
         let local = self.turn.clone();
-        let answer = LocalAnswer::new(request.result, Err("room_unavailable".into()));
+        let answer = LocalAnswer::new(result, Err("room_unavailable".into()));
         live.room.rooms.post(&id, true, false, move |host| {
             let opening = (|| -> Result<(RoomSummary, bool, PathBuf)> {
                 if host.is_none() {
@@ -2700,23 +2741,28 @@ impl Session {
                     let path = existing
                         .map(|f| f.path)
                         .unwrap_or_else(|| directory.join(format!("{target}.sqlite")));
-                    *host = Some(if let Some((copy, _scratch)) = copy {
-                        if path.try_exists()? {
-                            bail!("room_already_exists")
+                    *host = Some(match install {
+                        RoomInstall::Copy(copy, _scratch) => {
+                            if path.try_exists()? {
+                                bail!("room_already_exists")
+                            }
+                            let meta = copy.room.metadata();
+                            if meta.own_credential.is_some() || !meta.retained_files.is_empty() {
+                                bail!("backup_room_mismatch")
+                            }
+                            HostedRoom::from_backup(
+                                &path,
+                                &copy.room,
+                                (identity.0, creator),
+                            )?
                         }
-                        let meta = copy.room.metadata();
-                        if meta.own_credential.is_some() || !meta.retained_files.is_empty() {
-                            bail!("backup_room_mismatch")
+                        RoomInstall::Create(_, _) if path.try_exists()? => {
+                            HostedRoom::open(&path, &target, creator)?
                         }
-                        HostedRoom::from_backup(
-                            &path,
-                            &copy.room,
-                            (identity.0, request.policy.creator_id),
-                        )?
-                    } else if path.try_exists()? {
-                        HostedRoom::open(&path, &target, request.policy.creator_id)?
-                    } else {
-                        HostedRoom::create(&path, request.policy)?
+                        RoomInstall::Create(room, _) => {
+                            let policy = room.into_policy(creator).map_err(OpenRoomError::RejectedSettings)?;
+                            HostedRoom::create(&path, policy)?
+                        }
                     });
                 }
                 let host = host.as_ref().unwrap();
@@ -2732,7 +2778,9 @@ impl Session {
                     if empty && ctx.current {
                         s.live.as_mut().unwrap().room.rooms.remove(&target);
                     }
-                    let _ = answer.take().send(Err(e.to_string()));
+                    let error = e.downcast::<OpenRoomError>()
+                        .unwrap_or_else(|error| OpenRoomError::Operation(error.to_string()));
+                    let _ = answer.take().send(Err(error));
                     Ok(vec![])
                 }
                 Ok((summary, bound, path)) => {
@@ -3054,7 +3102,7 @@ impl Session {
             Ok(())
         })();
         if let Err(error) = admission {
-            let _ = request.result.send(Err(error.to_string()));
+            let _ = request.result.send(Err(OpenRoomError::Operation(error.to_string())));
             return Ok(());
         }
         let request_id = Uuid::new_v4().to_string();
@@ -3133,7 +3181,7 @@ impl Session {
         let (directory, identity) = match checked {
             Ok(v) => v,
             Err(e) => {
-                let _ = request.result.send(Err(e.to_string()));
+                let _ = request.result.send(Err(OpenRoomError::Operation(e.to_string())));
                 return Ok(());
             }
         };
@@ -3199,7 +3247,7 @@ impl Session {
                         if empty && ctx.current {
                             s.live.as_mut().unwrap().room.rooms.remove(&target);
                         }
-                        let _ = answer.take().send(Err(e.to_string()));
+                        let _ = answer.take().send(Err(OpenRoomError::Operation(e.to_string())));
                         Ok(vec![])
                     }
                 }

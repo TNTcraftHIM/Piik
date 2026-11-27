@@ -28,6 +28,67 @@ pub struct RoomSummary {
     pub relay_capacity: u8,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewRoom {
+    pub id: String,
+    name: String,
+    icon: crate::wire::RoomIcon,
+    picture: Option<String>,
+    access: RoomAccess,
+    hidden: bool,
+    password: Option<String>,
+    voice_bitrate: Option<u32>,
+    relay_capacity: Option<u8>,
+    allow_service_relay: Option<bool>,
+}
+
+impl NewRoom {
+    pub fn from_summary(
+        room: &RoomSummary,
+        password: Option<String>,
+        picture: Option<String>,
+        allow_service_relay: Option<bool>,
+    ) -> Self {
+        Self {
+            id: room.id.clone(),
+            name: room.name.clone(),
+            icon: room.icon.clone(),
+            access: room.access,
+            hidden: room.hidden,
+            voice_bitrate: Some(room.voice_bitrate),
+            relay_capacity: Some(room.relay_capacity),
+            password,
+            picture,
+            allow_service_relay,
+        }
+    }
+
+    pub fn into_policy(self, creator_id: Uuid) -> Result<RoomState, &'static str> {
+        let mut policy = RoomState::new(
+            self.id,
+            self.name,
+            self.icon,
+            creator_id,
+            self.access,
+            self.hidden,
+            self.password,
+        )?;
+        if let Some(capacity) = self.relay_capacity {
+            policy.relay_capacity = capacity;
+        }
+        if let Some(bitrate) = self.voice_bitrate {
+            policy.voice_bitrate = bitrate;
+        }
+        policy.appearance.picture = self.picture;
+        if let Some(allowed) = self.allow_service_relay {
+            policy.allow_service_relay = allowed;
+        }
+        policy.validate()?;
+        Ok(policy)
+    }
+}
+
 impl RoomSummary {
     pub fn new_policy(
         &self,
@@ -35,23 +96,8 @@ impl RoomSummary {
         picture: Option<String>,
         allow_service_relay: Option<bool>,
     ) -> Result<RoomState, &'static str> {
-        let mut policy = RoomState::new(
-            self.id.clone(),
-            self.name.clone(),
-            self.icon.clone(),
-            self.creator_id,
-            self.access,
-            self.hidden,
-            password,
-        )?;
-        policy.appearance.picture = picture;
-        policy.voice_bitrate = self.voice_bitrate;
-        policy.relay_capacity = self.relay_capacity;
-        if let Some(allowed) = allow_service_relay {
-            policy.allow_service_relay = allowed;
-        }
-        policy.validate()?;
-        Ok(policy)
+        NewRoom::from_summary(self, password, picture, allow_service_relay)
+            .into_policy(self.creator_id)
     }
 
     pub(crate) fn validate(&self) -> Result<(), &'static str> {

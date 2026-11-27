@@ -643,40 +643,31 @@ fn delete_messages(db: &Connection, room: &str, from: u64, through: u64) -> Stor
     Ok(())
 }
 
+fn stored_json<T: serde::de::DeserializeOwned>(text: &str, column: usize) -> rusqlite::Result<T> {
+    let mut input = serde_json::Deserializer::from_str(text);
+    crate::backup::reject_ignored(&mut input)
+        .and_then(|value| input.end().map(|()| value))
+        .map_err(|error| rusqlite::Error::FromSqlConversionFailure(
+            column, rusqlite::types::Type::Text, Box::new(error),
+        ))
+}
+
 fn read_message(row: &Row<'_>) -> rusqlite::Result<StoredMessage> {
-    use rusqlite::types::Type;
-    let attachments: String = row.get(5)?;
-    let attachments = serde_json::from_str(&attachments).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(error))
-    })?;
-    let reactions: String = row.get(6)?;
-    let reactions = serde_json::from_str(&reactions).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(6, Type::Text, Box::new(error))
-    })?;
     Ok(StoredMessage {
         message: ChatMessage {
-            mentions: serde_json::from_str(&row.get::<_, String>(9)?).map_err(|error| {
-                rusqlite::Error::FromSqlConversionFailure(9, Type::Text, Box::new(error))
-            })?,
-            reply: row
-                .get::<_, Option<String>>(10)?
-                .map(|text| serde_json::from_str(&text))
-                .transpose()
-                .map_err(|error| {
-                    rusqlite::Error::FromSqlConversionFailure(10, Type::Text, Box::new(error))
-                })?,
-            inline_images: serde_json::from_str(&row.get::<_, String>(8)?).map_err(|error| {
-                rusqlite::Error::FromSqlConversionFailure(8, Type::Text, Box::new(error))
-            })?,
+            mentions: stored_json(&row.get::<_, String>(9)?, 9)?,
+            reply: row.get::<_, Option<String>>(10)?.as_deref()
+                .map(|text| stored_json(text, 10)).transpose()?,
+            inline_images: stored_json(&row.get::<_, String>(8)?, 8)?,
             seq: row.get(0)?,
             id: read_uuid(row, 1)?,
             user_id: read_uuid(row, 2)?,
             archived_author_name: row.get(7)?,
             text: row.get(3)?,
             time: row.get(4)?,
-            attachments,
+            attachments: stored_json(&row.get::<_, String>(5)?, 5)?,
         },
-        reactions,
+        reactions: stored_json(&row.get::<_, String>(6)?, 6)?,
     })
 }
 
@@ -1276,6 +1267,49 @@ mod tests {
         );
         drop(connection);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn stored_message_extension_is_reported_by_page_and_snapshot() {
+        let mut store = Storage::open(Path::new(":memory:")).unwrap();
+        let user = Uuid::new_v4();
+        let mut file = attachment();
+        file.media_type = "image/gif".into();
+        let id = file.id;
+        let image = serde_json::json!({
+            "mediaType": "image/gif", "data": "R0lGODlhZGVm", "width": 1, "height": 1, "original": false
+        });
+        let draft = MessageDraft::new(
+            user, "example".into(), "@Sam".into(), vec![file],
+            [(id, serde_json::from_value(image.clone()).unwrap())].into(),
+            vec![crate::history::Mention { user_id: user, start: 0, end: 4 }], None, 1,
+        ).unwrap();
+        confirmed(&mut store, "reading", &draft);
+        assert_eq!(page(&mut store, "reading", None).0.len(), 1);
+        store.for_each_history_row("reading", |_| Ok(())).unwrap();
+        let read = |inline_images| HistoryRequest::Read {
+            room_id: "reading".into(), before: None, inline_images,
+        };
+        let mut extended = image;
+        extended["captionLanguage"] = serde_json::json!("en");
+        let images = serde_json::json!({(id.to_string()): extended}).to_string();
+        store.connection.execute("UPDATE message SET inline_images=?1", [&images]).unwrap();
+        let HistoryResult::Page { messages, .. } = store.history(&read(false)).unwrap() else {
+            panic!("expected text page");
+        };
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].message.inline_images.is_empty());
+        assert!(store.history(&read(true)).is_err());
+        assert!(store.for_each_history_row("reading", |_| Ok(())).is_err());
+        let saved: String = store.connection.query_row(
+            "SELECT inline_images FROM message", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(saved, images);
+        let mut mentions = serde_json::to_value(&draft.mentions).unwrap();
+        mentions[0]["captionLanguage"] = serde_json::json!("en");
+        store.connection.execute("UPDATE message SET mentions=?1", [mentions.to_string()]).unwrap();
+        assert!(store.history(&read(false)).is_err());
+        assert!(store.for_each_history_row("reading", |_| Ok(())).is_err());
     }
 
     #[test]

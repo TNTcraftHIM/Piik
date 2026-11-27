@@ -69,6 +69,7 @@ impl CoreBurst {
                 Request {
                     request_id: None,
                     command: Command::Join {
+                        snapshot_form: Default::default(),
                         protocol: CHANNEL_PROTOCOL,
                         name: format!("Owned participant {i}"),
                         credential: None,
@@ -275,6 +276,7 @@ impl CoreBurst {
 }
 fn join(credential: Option<String>, session_id: Option<String>, owner: bool) -> Command {
     Command::Join {
+        snapshot_form: Default::default(),
         protocol: CHANNEL_PROTOCOL,
         name: "Owned Native host".into(),
         credential,

@@ -1340,15 +1340,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert_eq!(active.publications.len(), 1);
     assert_eq!(active.voice.len(), 1);
     let policy = original.policy(&room);
-    let mut legacy = serde_json::to_value(original.authority.export_backup()).unwrap();
-    for user in legacy["state"]["users"].as_array_mut().unwrap().iter_mut() {
-        user["roles"] = if user["id"] == json!(policy.creator_id) {
-            json!([])
-        } else {
-            json!(["member", "moderator"])
-        };
-    }
-    let checkpoint = serde_json::to_string(&legacy).unwrap();
+    let checkpoint = serde_json::to_string(&original.authority.export_backup()).unwrap();
     assert!(!checkpoint.contains(&credential));
     assert!(!checkpoint.contains(&owner_credential));
     assert!(!checkpoint.contains(&key));
@@ -1359,13 +1351,6 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let backup: piik_channel_core::backup::DomainMetadata =
         serde_json::from_str(&checkpoint).unwrap();
     restored.authority = backup.into_authority(vec![]).unwrap();
-    assert!(
-        serde_json::to_value(restored.authority.export_backup()).unwrap()["state"]["users"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|user| user.get("roles").is_none())
-    );
     let new_page = Uuid::new_v4();
     let (_, _, initial) = admit(
         &mut restored,
@@ -1650,4 +1635,118 @@ fn resumed_host_can_retire_its_current_binding_before_registering_again() {
         .find(|room| room.id == id)
         .unwrap();
     assert!(room.delivery.is_none() && !room.available);
+}
+
+#[test]
+fn conversation_snapshot_follows_current_connection_and_room_authority() {
+    use piik_channel_core::wire_images::{StateImageDecoder, StateImageEncoder};
+
+    let mut network = core();
+    let [writer, disconnected, full, text, restored, final_text] =
+        [(); 6].map(|_| Uuid::new_v4());
+    admit(
+        &mut network,
+        writer,
+        json!({"type":"join","name":"Writer","ownerKey":"owner"}),
+    );
+    let (disconnected_session, _, _) = admit(
+        &mut network,
+        disconnected,
+        json!({"type":"join","name":"Recovering"}),
+    );
+    let effects = network.authority.disconnect(disconnected, 100);
+    network.deliver(effects);
+    let public = room(&mut network, writer, "public", false);
+    let listed = room(&mut network, writer, "private", false);
+    let hidden = room(&mut network, writer, "private", true);
+    let (session, credential, _) = admit(
+        &mut network,
+        full,
+        json!({"type":"join","name":"Reader","canUsePeerTransport":false}),
+    );
+    let effects = command(
+        &mut network,
+        full,
+        json!({"type":"browse","roomId":public,"active":true,"requestId":"browse"}),
+    );
+    let baseline = state(effects, full);
+    assert_eq!(baseline.channel.rooms.len(), 2);
+    assert!(baseline.channel.rooms.iter().any(|room| room.id == public && room.reading));
+    assert!(baseline.channel.rooms.iter().any(|room| room.id == listed && !room.authorized));
+    assert!(!baseline.channel.rooms.iter().any(|room| room.id == hidden));
+
+    let reopen = |form| json!({
+        "type":"join","name":"Reader","credential":credential,"sessionId":session,
+        "snapshotForm":form,"canUsePeerTransport":false,
+    });
+    let project = |state: &Snapshot| json!({
+        "channel":{"hostingMode":state.channel.hosting_mode,
+          "rooms":state.channel.rooms.iter().map(|room| {
+            let mut fields = json!({"id":room.id,"authorized":room.authorized,
+                "available":room.available,"reading":room.reading});
+            if let Some(delivery) = &room.delivery {
+                fields["delivery"] = json!(delivery);
+            }
+            fields
+          }).collect::<Vec<_>>()},
+        "sessions":state.sessions.iter().map(|session| json!({
+            "id":session.id,"signingKey":session.signing_key
+        })).collect::<Vec<_>>(),
+    });
+    let effects = command(&mut network, text, reopen("conversation"));
+    assert_eq!(effects.close, [full]);
+    let welcome = effects.events.iter().find_map(|(target, event)| {
+        (*target == text && matches!(event, Event::ConversationWelcome { .. })).then_some(event)
+    }).unwrap();
+    let encoded = StateImageEncoder::default().encode(welcome).unwrap();
+    let welcome: Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(welcome["type"], "welcome");
+    assert_eq!(welcome["sessionId"], json!(session));
+    assert_eq!(welcome["connectionId"], json!(text));
+    assert_eq!(welcome["selfProfile"].as_object().unwrap().len(), 1);
+    assert_eq!(welcome["state"], project(&baseline));
+    assert!(welcome["state"]["sessions"].as_array().unwrap().iter()
+        .any(|value| value["id"] == json!(disconnected_session)));
+    assert!(StateImageDecoder::default().decode(&encoded).is_err());
+
+    let effects = network.authority.disconnect(full, 100);
+    assert!(effects.events.is_empty());
+    let effects = command(
+        &mut network,
+        writer,
+        json!({"type":"update_room","roomId":public,"access":"private","requestId":"private"}),
+    );
+    let revoked = effects.events.iter().rev().find_map(|(target, event)| {
+        (*target == text && matches!(event, Event::ConversationState { .. })).then_some(event)
+    }).unwrap();
+    let revoked: Value = serde_json::to_value(revoked).unwrap();
+    assert_eq!(revoked["type"], "state");
+    assert!(revoked["state"]["channel"]["rooms"].as_array().unwrap().iter()
+        .any(|room| room["id"] == public && room["authorized"] == false && room.get("delivery").is_none()));
+
+    let effects = command(&mut network, restored, reopen("future-form"));
+    assert_eq!(effects.close, [text]);
+    let restored_state = effects.events.iter().find_map(|(target, event)| match event {
+        Event::Welcome { session_id, state, .. } if *target == restored && *session_id == session => Some(state),
+        _ => None,
+    }).unwrap();
+    assert_eq!(revoked["state"], project(restored_state));
+
+    let effects = command(&mut network, final_text, reopen("conversation"));
+    assert_eq!(effects.close, [restored]);
+    let effects = command(
+        &mut network,
+        final_text,
+        json!({"type":"leave","requestId":"leave"}),
+    );
+    assert_eq!(effects.close, [final_text]);
+    let frames: Vec<_> = effects.events.iter().filter(|(target, _)| *target == final_text)
+        .map(|(_, event)| serde_json::to_value(event).unwrap()).collect();
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0]["type"], "state");
+    assert_eq!(frames[0]["state"]["channel"]["rooms"], json!([]));
+    assert!(frames[0]["state"]["sessions"].as_array().unwrap().iter()
+        .all(|value| value["id"] != json!(session)));
+    assert_eq!(frames[1], json!({"type":"reply","requestId":"leave","result":{"type":"done"}}));
+    assert!(effects.events.iter().any(|(target, event)| *target == writer && matches!(event, Event::State { .. })));
 }

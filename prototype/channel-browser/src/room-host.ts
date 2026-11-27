@@ -30,6 +30,12 @@ function portable(row: BackupHistoryRow & { retryKey: string }): BackupHistoryRo
   return message;
 }
 function live(row: StoredRow | undefined) { return row && "id" in row ? row : undefined; }
+function storedMessage(row: StoredRow | undefined): RetainedMessage | null {
+  const message = live(row);
+  if (!message) return null;
+  const { roomId: _roomId, nonce: _nonce, retryKey: _retryKey, ...fields } = message;
+  return fields;
+}
 export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
 export interface PageResult {
   type: "page"; inlineImages: boolean; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
@@ -456,12 +462,12 @@ export class BrowserRoomHost implements HostedRoom {
         };
         read<StoredRow | undefined>(messages.index("send").get([request.roomId, retryKey]), previous => {
           if (previous && !live(previous)) throw new Error("message_unavailable");
-          if (previous) { prepare({ type: "existing", message: previous }); return; }
+          if (previous) { prepare({ type: "existing", message: storedMessage(previous) }); return; }
           read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity]), "prev"), cursor => {
             const lastSeq = cursor?.value.seq ?? 0;
             if (request.draft.reply) {
               read<StoredRow | undefined>(messages.get([request.roomId, request.draft.reply.seq]), reply => {
-                prepare({ type: "new", lastSeq, reply: live(reply) ?? null });
+                prepare({ type: "new", lastSeq, reply: storedMessage(reply) });
               }, abort);
             } else prepare({ type: "new", lastSeq });
           }, abort);
@@ -512,7 +518,7 @@ export class BrowserRoomHost implements HostedRoom {
         }, abort);
       } else if (request.type === "react") {
         read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), previous => {
-          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(live(previous) ?? null)));
+          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(storedMessage(previous))));
           if (confirmation.event) messages.put({ ...previous!, reactions: {
             revision: confirmation.snapshot.revision, counts: confirmation.snapshot.counts,
           } });
@@ -520,7 +526,7 @@ export class BrowserRoomHost implements HostedRoom {
         }, abort);
       } else if (request.type === "attachment") {
         read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), value => {
-          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(live(value) ?? null)));
+          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(storedMessage(value))));
         }, abort);
       } else if (request.type === "seek") {
         const range = IDBKeyRange.bound([request.roomId, Math.max(request.after, clearedThrough)], [request.roomId, Infinity], true);
@@ -535,9 +541,8 @@ export class BrowserRoomHost implements HostedRoom {
           const range = IDBKeyRange.bound(lower, [request.roomId, request.before ?? Infinity], true, request.before !== null);
           read(messages.openCursor(range, "prev"), value => {
             if (!value) return;
-            const row = live(value.value);
-            if (!row) return value.continue();
-            const { roomId: _roomId, nonce: _nonce, retryKey: _retryKey, ...message } = row;
+            const message = storedMessage(value.value);
+            if (!message) return value.continue();
             if (!request.inlineImages) delete message.inlineImages;
             if (page!.push(JSON.stringify(message))) value.continue();
           }, abort);

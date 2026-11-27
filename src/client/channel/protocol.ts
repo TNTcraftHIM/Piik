@@ -107,7 +107,7 @@ export const watchSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("website"), url: watchURLSchema.optional(), mediaUrl: watchURLSchema.optional() }).strict(),
 ]);
 export type WatchSource = z.infer<typeof watchSourceSchema>;
-export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: watchFormatSchema }).strict();
+export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: watchFormatSchema });
 export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
 export type WatchMode = "direct" | "peer";
 export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();
@@ -324,7 +324,7 @@ export type ChannelCommand =
   | { type: "join_watch"; roomId: string; id: string; mode: WatchMode | null }
   | { type: "set_watch_byte_source"; roomId: string; id: string; byteSource: WatchByteSource | null }
   | { type: "stop_watch"; successorScreenId?: string; roomId: string; id: string }
-  | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; canUsePeerTransport?: boolean; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
+  | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; snapshotForm?: "conversation"; canUsePeerTransport?: boolean; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
   | { type: "conversation"; packet: SignedConversationPacket }
   | { type: "set_profile"; name?: string; avatar?: string | null }
   | ({ type: "update_domain" } & Partial<DomainSettings>)

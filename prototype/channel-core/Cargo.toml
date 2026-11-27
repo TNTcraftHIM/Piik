@@ -12,6 +12,7 @@ sqlite = ["dep:rusqlite"]
 [dependencies]
 rusqlite = { version = "0.41", features = ["bundled", "backup", "fallible_uint"], optional = true }
 serde = { version = "1", features = ["derive"] }
+serde_ignored = "=0.1.14"
 serde_json = { version = "1", features = ["raw_value"] }
 argon2 = "0.5.3"
 base64ct = { version = "=1.8.3", features = ["alloc"] }

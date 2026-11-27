@@ -16,6 +16,8 @@ pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 )]
 pub enum Command {
     Join {
+        #[serde(default, skip_serializing_if = "SnapshotForm::is_full")]
+        snapshot_form: SnapshotForm,
         #[serde(default)]
         protocol: u8,
         name: String,
@@ -1050,6 +1052,64 @@ pub struct Snapshot {
     pub ice_servers: Vec<Value>,
 }
 
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", from = "String")]
+pub enum SnapshotForm {
+    Conversation,
+    #[default]
+    Full,
+}
+
+impl From<String> for SnapshotForm {
+    fn from(form: String) -> Self {
+        if form == "conversation" {
+            Self::Conversation
+        } else {
+            Self::Full
+        }
+    }
+}
+impl SnapshotForm {
+    fn is_full(&self) -> bool {
+        matches!(self, Self::Full)
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct ConversationSnapshot {
+    pub channel: ConversationChannelInfo,
+    pub sessions: Vec<SigningSession>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationChannelInfo {
+    pub hosting_mode: HostingMode,
+    pub rooms: Vec<ConversationRoomInfo>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ConversationRoomInfo {
+    pub id: String,
+    pub authorized: bool,
+    pub available: bool,
+    pub reading: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<RoomDelivery>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SigningSession {
+    pub id: Uuid,
+    pub signing_key: [u8; 32],
+}
+
+#[derive(Clone, Serialize)]
+pub struct ProfileId {
+    pub id: Uuid,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
@@ -1112,6 +1172,21 @@ pub enum Event {
     },
     State {
         state: Snapshot,
+    },
+    #[serde(rename(serialize = "welcome"), skip_deserializing)]
+    ConversationWelcome {
+        protocol: u8,
+        credential: String,
+        self_profile: ProfileId,
+        session_id: Uuid,
+        connection_id: Uuid,
+        state: ConversationSnapshot,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        invitation_origin: Option<String>,
+    },
+    #[serde(rename(serialize = "state"), skip_deserializing)]
+    ConversationState {
+        state: ConversationSnapshot,
     },
     Conversation {
         packet: crate::conversation::SignedPacket,

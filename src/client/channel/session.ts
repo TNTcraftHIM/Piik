@@ -30,8 +30,8 @@ import { messageRemoved, type ChannelActions, type HostMediaTarget, type ReportE
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { BrowserHosting, browserRoomStorage } from "./browser-hosting";
 import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage } from "../../../prototype/channel-browser/src/hosting-contract";
-import { AppPage, ChannelApp, discoverChannelAppHealth, type AppPageMediaSelection, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
-import type { NativeCaptureTarget, EncodingExecution, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
+import { AppPage, ChannelApp, RoomSettingsRejected, discoverChannelAppHealth, type AppPageMediaSelection, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
+import { nativeVideoCodecSchema, type NativeCaptureTarget, type EncodingExecution, type NativePageMpdSelection, type NativePageMpdCatalog } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
@@ -169,6 +169,12 @@ function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
     return rest;
   });
   return { ...state, channel: { ...state.channel, rooms } };
+}
+
+function captureCodec(name: string) {
+  const codec = nativeVideoCodecSchema.safeParse(name);
+  if (!codec.success) throw new Error("capture_codec_unsupported");
+  return codec.data;
 }
 
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
@@ -1581,18 +1587,19 @@ export class ChannelSession {
     }
     let creation: "reserved" | "dispatched" | "committed" = "reserved";
     try {
-      const runtime = await loadRoomHosting();
-      const policy = await runtime.createRoomPolicy({ ...settings, id: room.id, creatorId: self.id });
       current();
       if (app) {
         if (this.app !== app || !app.connected) throw new Error("app_disconnected");
         creation = "dispatched";
-        const opened = await app.open(policy, room.id);
+        const opened = await app.open({ ...settings, id: room.id });
         creation = "committed";
         current();
         await this.request({ type: "browse", roomId: opened.id, active: true });
         return opened.id;
       }
+      const runtime = await loadRoomHosting();
+      const policy = await runtime.createRoomPolicy({ ...settings, id: room.id, creatorId: self.id });
+      current();
       const storage = await browserRoomStorage(state.channel.id, self.id);
       current();
       const host = await storage.open(policy);
@@ -1602,7 +1609,7 @@ export class ChannelSession {
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
     } catch (error) {
-      if (creation === "reserved") { cancel(); throw error; }
+      if (creation === "reserved" || (creation === "dispatched" && error instanceof RoomSettingsRejected)) { cancel(); throw error; }
       throw new RoomCreationInterrupted(room.id, creation === "committed");
     }
   }, reportError);
@@ -3309,7 +3316,9 @@ export class ChannelSession {
         && this.stages.get(roomId)?.sourceSelection === selection
         && app.externalInput(share.id)?.captureId === event.captureId;
       try {
+        let codec;
         try {
+          codec = captureCodec(event.codec);
           if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: event.sessionId }, undefined, roomId);
           if (!current()) throw new DOMException("Input cancelled", "AbortError");
           await app.commitCapture(share.id, event.captureId);
@@ -3320,7 +3329,7 @@ export class ChannelSession {
         if (!current()) return;
         share.native = undefined;
         share.paused = undefined;
-        share.codec = automaticVideoCodecPreference(event.codec);
+        share.codec = automaticVideoCodecPreference(codec);
         this.retireCapture(share.id);
         const remoteControls = new Map(this.view.remoteControls);
         remoteControls.delete(share.id);
@@ -3530,6 +3539,7 @@ export class ChannelSession {
       const prepared = await preparing;
       ownsPreparation = true;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+      const codec = captureCodec(prepared.codec);
       selection.committing = true;
       this.patch({});
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
@@ -3540,7 +3550,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.native = native;
       share.paused = undefined;
-      share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
+      share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(codec) : manualVideoCodecPreference(codec);
       this.retireCapture(share.id);
       const remoteControls = new Map(this.view.remoteControls);
       if (replacesCapture) remoteControls.delete(share.id);

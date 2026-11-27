@@ -167,7 +167,7 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
                         .into(),
                     ))
                     .await?;
-                ensure!(response.await?.err().as_deref() == Some("fixture_denied"));
+                ensure!(response.await?.err().as_ref().map(OpenRoomError::reason) == Some("fixture_denied"));
                 let entries = std::fs::read_dir(directory.path())?
                     .map(|entry| entry.map(|entry| entry.file_name()))
                     .collect::<std::io::Result<Vec<_>>>()?;
@@ -183,7 +183,7 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
                 first.send(Message::Text(serde_json::to_string(&Event::Reply {
                         request_id: request.request_id.unwrap(), room_id: None, result: ReplyResult::Unknown,
                     })?.into())).await?;
-                ensure!(response.await?.err().as_deref() == Some("room_created_connection_failed"));
+                ensure!(response.await?.err().as_ref().map(OpenRoomError::reason) == Some("room_created_connection_failed"));
                 ensure!(directory.path().join(format!("{id}.sqlite")).try_exists()?);
             }
         }
@@ -275,7 +275,7 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
         ensure!(Some(description.session_id) == next_id && next_id != first_id);
         ensure!(local_endpoint(&commands).await? == next_id);
         if let Some(response) = retry_response {
-            ensure!(response.await?.err().as_deref() == Some("room_created_connection_failed"));
+            ensure!(response.await?.err().as_ref().map(OpenRoomError::reason) == Some("room_created_connection_failed"));
         }
         ensure!(directory.path().join(format!("{id}.sqlite")).try_exists()?);
         Ok::<_, anyhow::Error>(())

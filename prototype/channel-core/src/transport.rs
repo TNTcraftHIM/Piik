@@ -886,6 +886,7 @@ mod tests {
                     id,
                     user_id: id,
                     connection: Some(socket),
+                    snapshot_form: Default::default(),
                     disconnected_at: None,
                     signing_key: [0; 32],
                     capabilities: PeerCapabilities {
@@ -1354,6 +1355,7 @@ mod tests {
                     id,
                     user_id: id,
                     connection: Some(socket),
+                    snapshot_form: Default::default(),
                     disconnected_at: None,
                     signing_key: [0; 32],
                     capabilities: PeerCapabilities {

@@ -12,7 +12,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("Native metrics retain unknown measurements and reject unscoped response fields", () => {
+it("Native metrics preserve nullable measurements and omit unscoped response fields", () => {
   const id = crypto.randomUUID();
   const value = { sessionId: id, bindingId: id, connections: [{ pairId: id, connectionId: id, peerId: id,
     sampleTimestampMs: null, ageMs: null, rttMs: null, bweBps: null,
@@ -20,7 +20,10 @@ it("Native metrics retain unknown measurements and reject unscoped response fiel
       outputId: null, mid: "sound", rid: null, codec: null, sampleTimestampMs: 500, ageMs: 20, bytes: 100, packets: 2,
       rttMs: null, lossFraction: null, jitterMs: null }] }] };
   expect(nativeConnectionMetricsSchema.parse(value)).toEqual(value);
-  expect(nativeConnectionMetricsSchema.safeParse({ ...value, address: "private" }).success).toBe(false);
+  const connection = value.connections[0];
+  expect(nativeConnectionMetricsSchema.parse({ ...value, address: "private", connections: [{
+    ...connection, address: "private", streams: [{ ...connection.streams[0], address: "private" }],
+  }] })).toEqual(value);
   expect(nativeConnectionMetricsSchema.safeParse({ ...value, connections: [{ ...value.connections[0], streams: [
     { ...value.connections[0].streams[0], sampleTimestampMs: -1 },
   ] }] }).success).toBe(false);
@@ -399,7 +402,10 @@ describe("Native capture and input schemas", () => {
     const request = { id: "a".repeat(32), peerId: crypto.randomUUID(), state: "pending" };
     const view = { mode: "ask", platform: "windows", requests: [request], simultaneous: true, gamepad: false };
     expect(remoteControlStateSchema.parse(view)).toEqual(view);
-    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ ...request, endpointId: request.peerId.replaceAll("-", "") }] }).success).toBe(false);
+    const endpointId = request.peerId.replaceAll("-", "");
+    expect(remoteControlStateSchema.parse({ ...view, requests: [{ ...request, endpointId }] })).toEqual(view);
+    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ id: request.id, state: request.state, endpointId }] }).success).toBe(false);
+    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ ...request, peerId: "invalid id" }] }).success).toBe(false);
   });
 
   it("keeps exact positive physical identities and accepts system picker zero", () => {

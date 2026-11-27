@@ -191,9 +191,8 @@ impl Hub {
             return;
         }
         if let Some(origin) = &self.invitation_origin {
-            if let Event::Welcome {
-                invitation_origin, ..
-            } = &mut event
+            if let Event::Welcome { invitation_origin, .. }
+            | Event::ConversationWelcome { invitation_origin, .. } = &mut event
             {
                 *invitation_origin = Some(origin.clone());
             }
@@ -339,16 +338,13 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     let id = room.id.clone();
     let result = async {
         let commands = commands.ok_or_else(|| "hosting_unavailable".to_owned())?;
-        let policy = tokio::task::spawn_blocking(move || {
-            room.new_policy(password, picture, allow_service_relay)
-        })
-        .await
-        .map_err(|_| "hosting_unavailable")??;
+        let creator_id = room.creator_id;
+        let room = piik_channel_core::host::NewRoom::from_summary(&room, password, picture, allow_service_relay);
         let (result, response) = tokio::sync::oneshot::channel();
         commands
-            .try_send(HostCommand::Open(OpenRoom { policy, result }))
+            .try_send(HostCommand::Open(OpenRoom { room, creator_id, result }))
             .map_err(|_| "hosting_unavailable")?;
-        response.await.unwrap_or_else(|_| Err("room_creation_unconfirmed".into()))
+        response.await.map_err(|_| "room_creation_unconfirmed")?.map_err(|error| error.to_string())
     }
     .await;
     let mut hub = state.hub.lock().unwrap();

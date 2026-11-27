@@ -1,4 +1,4 @@
-use crate::access::digest;
+use crate::{access::digest, wire::SnapshotForm};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -98,6 +98,7 @@ pub struct Session {
     pub id: Uuid,
     pub user_id: Uuid,
     pub connection: Option<Uuid>,
+    pub snapshot_form: SnapshotForm,
     pub disconnected_at: Option<u64>,
     pub signing_key: [u8; 32],
     pub capabilities: PeerCapabilities,
@@ -112,6 +113,7 @@ pub struct Identity {
 }
 
 pub struct Admission<'a> {
+    pub snapshot_form: SnapshotForm,
     pub signing_key: [u8; 32],
     pub capabilities: PeerCapabilities,
     pub credential: Option<&'a str>,
@@ -333,6 +335,7 @@ impl Identity {
             id: session_id,
             user_id,
             connection: None,
+            snapshot_form: input.snapshot_form,
             disconnected_at: None,
             signing_key: input.signing_key,
             capabilities: input.capabilities,
@@ -341,6 +344,7 @@ impl Identity {
         let peer_transport_withdrawn = session.capabilities.can_use_peer_transport
             && !input.capabilities.can_use_peer_transport;
         session.capabilities = input.capabilities;
+        session.snapshot_form = input.snapshot_form;
         let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
@@ -404,6 +408,7 @@ impl Identity {
         if let Some(session) = self.sessions.get_mut(&session_id) {
             if session.connection == Some(connection) {
                 session.connection = None;
+                session.snapshot_form = SnapshotForm::Full;
                 session.disconnected_at = Some(now);
             }
         }
@@ -423,7 +428,7 @@ impl Identity {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredUser {
     pub id: Uuid,
     pub name: String,
@@ -459,6 +464,7 @@ mod tests {
         resume: Option<&'a str>,
     ) -> Admission<'a> {
         Admission {
+            snapshot_form: Default::default(),
             signing_key: [1; 32],
             capabilities: PeerCapabilities {
                 can_use_peer_transport: true,

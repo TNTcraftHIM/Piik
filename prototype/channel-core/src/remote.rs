@@ -3,7 +3,7 @@ use crate::{
     host::*,
     identity::{Endpoint, Member},
     room::RoomSnapshot,
-    wire::{Room, RoomAccess, RoomCapabilities},
+    wire::{ConversationRoomInfo, Room, RoomAccess, RoomCapabilities, RoomDelivery},
 };
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -25,6 +25,13 @@ pub(crate) struct Binding {
 }
 
 impl Binding {
+    pub(crate) fn delivery(&self) -> RoomDelivery {
+        RoomDelivery {
+            host_session_id: self.session,
+            binding_id: self.id,
+        }
+    }
+
     pub(crate) fn invalidate_scope(&mut self) {
         self.projection_floor = self.revision;
         self.scope_floor = self.revision;
@@ -449,6 +456,38 @@ impl RemoteRoom {
             }
             DirectoryView::Summary { authorized, .. } => Some(authorized),
         }
+    }
+
+    pub(crate) fn projected_binding(&self) -> Option<(&Binding, &RoomProjection)> {
+        self.binding.as_ref().zip(self.projection.as_ref())
+    }
+
+    pub(crate) fn conversation_snapshot(
+        &self,
+        member: Member,
+        session: Uuid,
+        online: bool,
+    ) -> Option<ConversationRoomInfo> {
+        let (summary, authorized, available, reading) = match self.directory_view(member, session, online)? {
+            DirectoryView::Projected(projection, view) => {
+                if !projection.visible_recipient(view) {
+                    return None;
+                }
+                (&projection.summary, view.authorized, online, view.reading)
+            }
+            DirectoryView::Summary { summary, authorized, available, .. } => {
+                (summary, authorized, available, false)
+            }
+        };
+        Some(ConversationRoomInfo {
+            id: summary.id.clone(),
+            authorized,
+            available,
+            reading,
+            delivery: self.projected_binding()
+                .filter(|_| authorized)
+                .map(|(binding, _)| binding.delivery()),
+        })
     }
 
     pub fn snapshot(&self, member: Member, session: Uuid, online: bool) -> Option<RoomSnapshot> {

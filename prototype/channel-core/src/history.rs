@@ -20,7 +20,7 @@ pub const MESSAGE_MENTION_LIMIT: usize = 64;
 pub(crate) const REPLY_TEXT_UTF16_LIMIT: usize = 160;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Mention {
     pub user_id: Uuid,
     pub start: usize,
@@ -28,7 +28,7 @@ pub struct Mention {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplyTarget {
     pub seq: u64,
     pub message_id: Uuid,
@@ -36,7 +36,7 @@ pub struct ReplyTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageReply {
     pub seq: u64,
     pub user_id: Uuid,
@@ -328,13 +328,18 @@ impl MessageDraft {
 )]
 pub enum ConfirmationInput {
     Existing {
+        #[serde(deserialize_with = "crate::backup::stored_message")]
         message: StoredMessage,
     },
     New {
         last_seq: u64,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "stored_reply")]
         reply: Option<ChatMessage>,
     },
+}
+
+fn stored_reply<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<ChatMessage>, D::Error> {
+    Ok(Option::<crate::backup::PersistedMessage>::deserialize(input)?.map(|row| row.0.message))
 }
 
 #[derive(Clone, Deserialize, Serialize)]

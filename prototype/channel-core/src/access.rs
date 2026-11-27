@@ -40,7 +40,7 @@ impl RoomAppearance {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoomState {
     pub id: String,
     pub name: String,

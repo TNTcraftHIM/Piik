@@ -3466,12 +3466,12 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
             let HostCommand::Open(open) = commands.recv().await.unwrap() else {
                 panic!("expected room open");
             };
-            let id = open.policy.id.clone();
+            let id = open.room.id.clone();
             if outcome == "room_busy" {
                 assert!(open.result.send(Err(outcome.into())).is_ok());
             } else {
                 let path = folder.path().join(format!("{id}.sqlite"));
-                let room = HostedRoom::create(&path, open.policy).unwrap();
+                let room = HostedRoom::create(&path, open.room.into_policy(open.creator_id).unwrap()).unwrap();
                 if outcome == "success" {
                     assert!(open.result.send(Ok(room.summary())).is_ok());
                 } else {
@@ -3517,7 +3517,7 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
         let HostCommand::Open(open) = commands.recv().await.unwrap() else {
             panic!("expected room open");
         };
-        let room_id = open.policy.id.clone();
+        let room_id = open.room.id.clone();
         let mut hub = domain.hub.lock().unwrap();
         let mut resumed = Endpoint::connect(&mut hub);
         resumed.request(&mut hub, json!({

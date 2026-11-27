@@ -1080,7 +1080,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
     assert_eq!(status, 200);
     assert_eq!(discovery["service"], "piik-channel-app");
-    assert_eq!(discovery["protocol"], 27);
+    assert_eq!(discovery["protocol"], 28);
     assert_eq!(
         discovery["domainProtocol"],
         piik_channel_core::wire::CHANNEL_PROTOCOL
@@ -1219,7 +1219,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let ready: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
     assert!(ready.get("result").is_some());
-    let mut policy = RoomState::new(
+    let policy = RoomState::new(
         "new".into(),
         "Saved private".into(),
         Default::default(),
@@ -1230,7 +1230,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     )
     .unwrap();
     domain.command(browser, json!({"type":"create_room","room":piik_channel_core::host::RoomSummary::from_policy(&policy),"requestId":"create-app-room"})).await;
-    policy.id = domain
+    let room = domain
         .events
         .iter()
         .find_map(|(connection, event)| match event {
@@ -1242,20 +1242,24 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             _ => None,
         })
         .unwrap();
-    let room = policy.id.clone();
-    policy.appearance.picture = Some(ROOM_PICTURE.into());
-    let policy = serde_json::to_string(&policy).unwrap();
-    let open = json!({"id":"open","type":"open","policy":policy});
+    let open = json!({"id":"open","type":"open","room":{
+        "id":room,"name":"Saved private","icon":"couch","access":"private","hidden":true,
+        "password":"room-secret","picture":ROOM_PICTURE,"creatorId":Uuid::new_v4()
+    }});
     page.send(Message::Text(open.to_string().into()))
         .await
         .unwrap();
     let binding = domain.bound(&room).await;
     let opened: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
-    assert_eq!(opened["result"]["name"], "Saved private");
-    assert_eq!(opened["result"]["access"], "private");
-    assert_eq!(opened["result"]["hasPassword"], true);
-    assert!(opened["result"].get("picture").is_none());
+    assert_eq!(opened["result"]["type"], "opened");
+    let summary = &opened["result"]["room"];
+    assert_eq!(summary["id"], room);
+    assert_eq!(summary["creatorId"], json!(user));
+    assert_eq!(summary["name"], "Saved private");
+    assert_eq!(summary["access"], "private");
+    assert_eq!(summary["hasPassword"], true);
+    assert!(summary.get("picture").is_none());
     assert!(!opened.to_string().contains(ROOM_PICTURE));
     let sites: Vec<_> = std::fs::read_dir(folder.join("rooms"))
         .unwrap()
@@ -1504,18 +1508,6 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             "failed or cancelled capture retains the existing Native room runtime lock"
         );
     }
-    let mut wrong_policy: Value = serde_json::from_str(&policy).unwrap();
-    wrong_policy["creatorId"] = json!(Uuid::new_v4());
-    page.send(Message::Text(
-        json!({"id":"wrong-owner","type":"open","policy":wrong_policy.to_string()})
-            .to_string()
-            .into(),
-    ))
-    .await
-    .unwrap();
-    let refused: Value =
-        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
-    assert_eq!(refused["error"], "owner_mismatch");
     for index in 0..31 {
         domain
             .command(
@@ -1537,17 +1529,9 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         .await;
     assert!(domain.events.iter().any(|(connection, event)| *connection == browser && matches!(event, Event::Reply { result: ReplyResult::Error { code }, request_id: id, .. } if code == "room_limit" && id == "limit-before-storage")));
     let refused_room = Uuid::new_v4().to_string();
-    let refused_policy = RoomState::new(
-        refused_room.clone(),
-        "Retained refused room".into(),
-        Default::default(),
-        user,
-        RoomAccess::Public,
-        false,
-        None,
-    )
-    .unwrap();
-    page.send(Message::Text(json!({"id":"room-limit","type":"open","policy":serde_json::to_string(&refused_policy).unwrap()}).to_string().into())).await.unwrap();
+    page.send(Message::Text(json!({"id":"room-limit","type":"open","room":{
+        "id":refused_room,"name":"Retained refused room","icon":"couch","access":"public","hidden":false
+    }}).to_string().into())).await.unwrap();
     let native_connection = domain.connection;
     domain
         .until(|connection, event| {
@@ -2163,7 +2147,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 serde_json::from_str(&control.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();
             assert!(ready.get("result").is_some());
-            let mut policy = piik_channel_core::RoomState::new(
+            let policy = piik_channel_core::RoomState::new(
                 "new".into(),
                 "Saved local room".into(),
                 Default::default(),
@@ -2174,7 +2158,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             )
             .unwrap();
             admin.send(Message::Text(json!({"type":"create_room","room":piik_channel_core::host::RoomSummary::from_policy(&policy),"requestId":"create-app-room"}).to_string().into())).await.unwrap();
-            policy.id = tokio::time::timeout(Duration::from_secs(5), async {
+            let room = tokio::time::timeout(Duration::from_secs(5), async {
                 loop {
                     let frame = admin.next().await.unwrap().unwrap();
                     let Message::Text(text) = frame else {
@@ -2195,12 +2179,14 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             })
             .await
             .unwrap();
-            let room = policy.id.clone();
-            control.send(Message::Text(json!({"id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()}).to_string().into())).await.unwrap();
+            control.send(Message::Text(json!({"id":"open","type":"open","room":{
+                "id":room,"name":"Saved local room","icon":"couch","access":"public","hidden":false
+            }}).to_string().into())).await.unwrap();
             let opened: Value =
                 serde_json::from_str(&control.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();
-            assert_eq!(opened["result"]["id"], room);
+            assert_eq!(opened["result"]["type"], "opened");
+            assert_eq!(opened["result"]["room"]["id"], room);
             let room_path = folder
                 .join("rooms")
                 .join(saved_identity()["namespace"].as_str().unwrap())

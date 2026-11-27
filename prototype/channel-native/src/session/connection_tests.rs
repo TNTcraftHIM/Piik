@@ -15,6 +15,7 @@ async fn reader_preserves_rejection_and_malformed_frame_before_close() {
         let mut peer = WebSocketStream::from_raw_socket(remote, Role::Server, None).await;
         let mut session = connection_session("ws://memory.invalid".into());
         let join = Command::Join {
+            snapshot_form: Default::default(),
             protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
             name: "Memory client".into(),
             credential: None,
@@ -88,6 +89,7 @@ async fn reader_keeps_invalid_utf8_on_carrier_recovery_path() {
 
     let mut session = connection_session("ws://memory.invalid".into());
     let join = Command::Join {
+        snapshot_form: Default::default(),
         protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
         name: "Memory client".into(),
         credential: None,

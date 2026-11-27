@@ -52,7 +52,7 @@ test("background voice shortcuts accept small clock differences and discard dela
   const now = 1_795_326_377_608;
   const clock = vi.spyOn(Date, "now").mockReturnValue(now);
   try {
-    socket.receive({ type: "voice_shortcut", action: "toggle_microphone", activatedAtMs: now + 1 });
+    socket.receive({ type: "voice_shortcut", action: "toggle_microphone", activatedAtMs: now + 1, device: "keyboard" });
     socket.receive({ type: "voice_shortcut", action: "toggle_listening", activatedAtMs: now });
     socket.receive({ type: "voice_shortcut", action: "toggle_microphone", activatedAtMs: now - 1_450 });
     socket.receive({ type: "voice_shortcut", action: "toggle_listening", activatedAtMs: now + 10_000 });
@@ -328,7 +328,7 @@ test("MPD prepare cancellation uses selection stop while closing one page preser
   } finally { app.close(); }
 });
 
-test("MPD source and catalog schemas reject URL authority and unknown track kinds without retiring control", async () => {
+test("MPD replies discard extra fields and reject unknown track kinds without retiring control", async () => {
   const { app, socket } = await setup();
   try {
     const page = await openPage(app, socket), candidate = { id: crypto.randomUUID(), name: "Manifest", hostname: "media.test" };
@@ -337,9 +337,9 @@ test("MPD source and catalog schemas reject URL authority and unknown track kind
     expect((await listing).mpdCandidates).toEqual([candidate]);
     const missing = page.mediaSources(); socket.reply({ choices: [], indexedCandidates: [], byteSource: null });
     await expect(missing).rejects.toThrow();
-    const catalog = mpdCatalog(), leaked = page.inspectMpd(candidate.id, new AbortController().signal);
-    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture" });
-    await expect(leaked).rejects.toThrow();
+    const catalog = mpdCatalog(), inspecting = page.inspectMpd(candidate.id, new AbortController().signal);
+    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture", tracks: catalog.tracks.map(track => ({ ...track, colorSpace: "bt709" })) });
+    await expect(inspecting).resolves.toEqual(catalog);
     const unknown = page.inspectMpd(candidate.id, new AbortController().signal);
     socket.reply({ ...catalog, tracks: [{ ...catalog.tracks[0], kind: "unknown" }] });
     await expect(unknown).rejects.toThrow();
@@ -431,7 +431,7 @@ test.each(["caller", "unsubscribe"])("%s cancellation stops source enumeration w
   }
 });
 
-test("App webpage selection has its own candidates and closes pending reads with the window", async () => {
+test("App webpage selection closes pending reads on an extended window-close notification", async () => {
   const { app, socket } = await setup();
   try {
     const preparing = app.preparePage("https://video.test/page", vi.fn(), new AbortController().signal);
@@ -445,11 +445,40 @@ test("App webpage selection has its own candidates and closes pending reads with
     const reading = page.read();
     const rejected = expect(reading).rejects.toThrow("watch_page_closed");
     const events: string[] = []; page.listen(event => events.push(event));
-    socket.receive({ type: "page_closed", pageId });
+    const capacity = app.relayCapacity();
+    const result = { sessionId: crypto.randomUUID(), relayOverride: 2 };
+    const confirmed = expect(capacity).resolves.toEqual(result);
+    const capacityId = socket.sent.at(-1)!.id;
+    socket.receive({ type: "page_closed", pageId, reason: "window_closed" });
     await rejected;
     expect(events).toEqual(["closed"]);
+    expect(socket.sent.at(-1)).toMatchObject({ type: "page_close", pageId });
     socket.reply(null);
+    socket.receive({ id: capacityId, result });
+    await confirmed;
     expect((app as unknown as { requests: Map<string, unknown> }).requests.size).toBe(0);
+  } finally { app.close(); }
+});
+test.each(["page_future_event", "future_event"])("unknown App notification %s leaves page listeners and correlated reads active", async type => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const candidateId = crypto.randomUUID();
+    socket.receive({ type: "page_candidates", pageId: page.id, url: page.url,
+      candidates: [{ id: candidateId, pageURL: page.url, title: "Episode", url: null, duration: 60 }] });
+    const selecting = page.select(candidateId); socket.reply(state); await selecting;
+    const listen = vi.fn();
+    page.listen(listen, candidateId);
+    const reading = expect(page.read()).resolves.toEqual(state);
+    const id = socket.sent.at(-1)!.id;
+    socket.receive({ type, id, result: { ...state, position: 25 }, pageId: page.id, candidateId });
+    for (const event of ["canplay", "closed", "blocked", "visibility-resumed"])
+      socket.receive({ type: "page_sample", pageId: page.id, candidateId, event });
+    socket.receive({ type: "page_sample", pageId: page.id, candidateId, event: "playing", origin: "player" });
+    socket.reply(state);
+    await reading;
+    expect(listen.mock.calls).toEqual([["playing"]]);
+    expect(app.connected).toBe(true);
   } finally { app.close(); }
 });
 test("page candidate descriptions can grow during another App request", async () => {
@@ -537,9 +566,11 @@ test("App 13 keeps indexed resource candidates separate from direct media choice
     const obsolete = page.mediaSources();
     socket.reply({ choices: [direct], byteSource: null });
     await expect(obsolete).rejects.toThrow();
-    const leaked = page.mediaSources();
-    socket.reply({ choices: [direct], indexedCandidates: [{ ...candidate, url: "https://media.test/private-track" }], mpdCandidates: [], byteSource: null });
-    await expect(leaked).rejects.toThrow();
+    const extended = page.mediaSources();
+    const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" };
+    socket.reply({ choices: [{ ...direct, label: "video" }], indexedCandidates: [{ ...candidate, url: "https://media.test/private-track" }],
+      mpdCandidates: [], byteSource: { ...byteSource, label: "audio" }, discoveredAt: 1 });
+    await expect(extended).resolves.toEqual({ choices: [direct], indexedCandidates: [candidate], mpdCandidates: [], byteSource });
   } finally { app.close(); }
 });
 
@@ -657,14 +688,16 @@ test("hiding and refocusing a source page preserves its requests and lifetime", 
 
 test("opening a Native room confirms the reserved room summary", async () => {
   const { app, socket } = await setup();
-  const room = { id: "room", creatorId: "user", icon: "couch", name: "Room", access: "private",
-    hidden: false, hasPassword: false, voiceBitrate: 64000, relayCapacity: 1 };
+  const settings = { id: "room", icon: "couch", name: "Room", access: "private", hidden: false } as const;
+  const room = { ...settings, creatorId: "user", hasPassword: false, voiceBitrate: 64000, relayCapacity: 1 };
   try {
-    for (const result of [{ id: room.id }, { ...room, id: "other" }, room]) {
-      const opening = app.open(JSON.stringify(room), room.id);
+    const opened = { type: "opened", room };
+    for (const result of [room, { type: "opened", room: { id: room.id } },
+      { type: "opened", room: { ...room, id: "other" } }, opened]) {
+      const opening = app.open(settings);
       await Promise.resolve();
       socket.reply(result);
-      if (result === room) await expect(opening).resolves.toEqual(room);
+      if (result === opened) await expect(opening).resolves.toEqual(room);
       else await expect(opening).rejects.toThrow("invalid_app_response");
     }
   } finally { app.close(); }
@@ -689,7 +722,6 @@ test.each([
   { name: "non-null acknowledgement", reply: { result: { type: "deferred" } } },
   { name: "empty error", reply: { error: "" } },
   { name: "non-string error", reply: { error: 42 } },
-  { name: "stray type", reply: { type: "unexpected", result: null } },
 ])("a correlated App reply with $name rejects only its request", async ({ reply }) => {
   const { app, socket } = await setup();
   try {
@@ -708,6 +740,18 @@ test.each([
     const retry = page.focus();
     socket.reply(null);
     await expect(retry).resolves.toBeUndefined();
+  } finally { app.close(); }
+});
+
+test.each([0, null])("an invalid App message type %s cannot confirm a valid read result", async type => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const reading = expect(page.read()).rejects.toThrow("watch_page_closed");
+    socket.receive({ type, id: socket.sent.at(-1)!.id, result: state });
+    await reading;
+    expect(app.connected).toBe(false);
+    expect(socket.readyState).toBe(3);
   } finally { app.close(); }
 });
 

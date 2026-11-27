@@ -1,5 +1,5 @@
 import type { NativeCaptureSelection } from "../native/capture-selection";
-import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, roomSummarySchema, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
+import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, roomSummarySchema, watchByteSourceSchema, type WatchByteSource, type RoomSettings, type RoomSummary } from "./protocol";
 import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
   nativePageResourceReadSchema, nativePageResourceResultSchema,
@@ -21,6 +21,12 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-binding";
 
+export class RoomSettingsRejected extends Error {}
+const openRoomResultSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("opened"), room: roomSummarySchema }),
+  z.object({ type: z.literal("settings_rejected"), reason: z.string().min(1) }),
+]);
+
 export const APP_PROTOCOL = 28;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
@@ -37,22 +43,22 @@ const nativeStreamMetricSchema = z.object({
   outputId: z.uuid().nullable(), mid: z.string(), rid: z.string().nullable(), codec: z.string().nullable(),
   sampleTimestampMs: measured, ageMs: measured, bytes: measured, packets: measured,
   rttMs: measured.nullable(), lossFraction: measured.max(1).nullable(), jitterMs: measured.nullable(),
-}).strict();
+});
 export const nativeConnectionMetricsSchema = z.object({
   sessionId: z.uuid(), bindingId: z.uuid(), connections: z.array(z.object({
     pairId: z.uuid(), connectionId: z.uuid(), peerId: z.uuid(),
     sampleTimestampMs: measured.nullable(), ageMs: measured.nullable(),
     rttMs: measured.nullable(), bweBps: measured.nullable(), streams: z.array(nativeStreamMetricSchema),
-  }).strict()),
-}).strict();
+  })),
+});
 /** SDK sample clocks belong to each Native connectionId, never Browser performance time. */
 export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const nativeRelayCapacitySchema = z.object({
   sessionId: z.uuid(),
   relayOverride: z.number().int().min(0).max(MAX_RELAY_CAPACITY).nullable(),
-}).strict();
+});
 export type NativeRelayCapacity = z.infer<typeof nativeRelayCapacitySchema>;
-// Descriptions may grow; selected targets and prepared results keep their strict contracts.
+// Capture lists expose only choices this Browser can select.
 const captureDescriptions = nativeCaptureTargetSchema.options.map(target => target.strip());
 const advertisedCodecs = z.array(z.string()).transform(codecs => codecs.flatMap(codec => {
   const known = nativeVideoCodecSchema.safeParse(codec);
@@ -78,24 +84,24 @@ const captureSourcesSchema = z.object({ sources: z.array(z.looseObject({ kind: z
   processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() });
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
-const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: nativeVideoCodecSchema }).strict();
+const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: z.string().min(1) });
 export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
-const externalInputSchema = z.object({ endpoint: z.string().url(), token: z.string().min(1).max(256) }).strict();
+const externalInputSchema = z.object({ endpoint: z.string().url(), token: z.string().min(1).max(256) });
 const externalInputStateSchema = z.discriminatedUnion("state", [
-  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["prepared", "live"]), ...preparedCaptureSchema.shape, error: z.string().optional(), unsupportedVideoFormat: unsupportedVideoFormatSchema.optional() }).strict(),
-  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["waiting", "closed", "error"]), error: z.string().optional(), unsupportedVideoFormat: unsupportedVideoFormatSchema.optional() }).strict(),
+  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["prepared", "live"]), ...preparedCaptureSchema.shape, error: z.string().optional(), unsupportedVideoFormat: unsupportedVideoFormatSchema.optional() }),
+  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["waiting", "closed", "error"]), error: z.string().optional(), unsupportedVideoFormat: unsupportedVideoFormatSchema.optional() }),
 ]);
 export type NativeExternalInputState = z.infer<typeof externalInputStateSchema>;
 export type NativeExternalInput = z.infer<typeof externalInputSchema> & { state: NativeExternalInputState["state"]; captureId?: string; error?: string; unsupportedVideoFormat?: UnsupportedVideoFormat };
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
-const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
-const pickerReadySchema = z.object({ type: z.literal("picker_ready"), requestId: z.uuid(), captureId: z.uuid() }).strict();
-const captureEndedSchema = z.object({ type: z.literal("capture_ended"), publicationId: z.uuid(), captureId: z.uuid(), failed: z.boolean() }).strict();
-const microphoneSchema = z.object({ enabled: z.boolean(), deviceId: z.string(), volume: z.number().min(0).max(2) }).strict();
+const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() });
+const pickerReadySchema = z.object({ type: z.literal("picker_ready"), requestId: z.uuid(), captureId: z.uuid() });
+const captureEndedSchema = z.object({ type: z.literal("capture_ended"), publicationId: z.uuid(), captureId: z.uuid(), failed: z.boolean() });
+const microphoneSchema = z.object({ enabled: z.boolean(), deviceId: z.string(), volume: z.number().min(0).max(2) });
 export type NativeSourceMicrophone = z.infer<typeof microphoneSchema>;
-const audioStateSchema = z.object({ sourceAudio: z.boolean(), microphone: microphoneSchema }).strict();
-const captureAudioStateSchema = z.object({ type: z.literal("capture_audio_state"), publicationId: z.uuid(), state: audioStateSchema }).strict();
+const audioStateSchema = z.object({ sourceAudio: z.boolean(), microphone: microphoneSchema });
+const captureAudioStateSchema = z.object({ type: z.literal("capture_audio_state"), publicationId: z.uuid(), state: audioStateSchema });
 const inputControlStateSchema = remoteControlStateSchema.extend({
   canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
   // Omitted: fixed chord. Null: system-managed, unbound. Text: actual OS chord.
@@ -104,7 +110,7 @@ const inputControlStateSchema = remoteControlStateSchema.extend({
 const stopShortcutSchema = remoteStopShortcutSchema.extend({ stopShortcutLabel: inputControlStateSchema.shape.stopShortcutLabel });
 export type ChannelStopShortcut = z.infer<typeof stopShortcutSchema>;
 export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
-const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema }).strict();
+const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema });
 function isIncompatible(error: unknown): boolean {
   return error instanceof Error && isIncompatibleProtocol(error.message);
 }
@@ -128,7 +134,7 @@ export class AppPage implements AppPagePort {
   private command(type: string, values: Record<string, unknown> = {}, signal?: AbortSignal): Promise<unknown> {
     return this.request({ type, pageId: this.id, ...values }, signal ? AbortSignal.any([this.lifetime.signal, signal]) : this.lifetime.signal);
   }
-  async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).strict().parse(await this.command("page_prepare", { url: this.url })); }
+  async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).parse(await this.command("page_prepare", { url: this.url })); }
   private owners = 1;
   private ownerReleased = false;
   hold(): () => void {
@@ -160,7 +166,7 @@ export class AppPage implements AppPagePort {
   async hide(): Promise<void> { await this.command("page_hide"); }
   async mediaSources(candidateId?: string, signal?: AbortSignal): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
     return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
-      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources", { candidateId }, signal));
+      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).parse(await this.command("page_media_sources", { candidateId }, signal));
   }
   async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal, candidateId?: string): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
     const range = nativePageMetadataReadSchema.parse({ choiceId, offset, length });
@@ -251,7 +257,8 @@ export class AppPage implements AppPagePort {
       }
       this.changed(); return;
     }
-    this.emitMedia(event.type === "page_blocked" ? "blocked" : event.event, event.candidateId);
+    if (event.type === "page_blocked") this.emitMedia("blocked", event.candidateId);
+    else if (event.event !== undefined) this.emitMedia(event.event, event.candidateId);
   }
   close(): void {
     if (!this.ownerReleased) { this.ownerReleased = true; this.releaseOwner(); }
@@ -419,8 +426,9 @@ export class ChannelApp {
     socket.onmessage = ({ data }) => {
       let failure: "schema" | "consumer" = "schema";
       try {
-        const reply = JSON.parse(String(data)) as { type?: string; id: string; result?: unknown; error?: string };
-        if (reply.type?.startsWith("page_")) {
+        const reply = JSON.parse(String(data)) as { type?: unknown; id: string; result?: unknown; error?: string };
+        if (reply.type !== undefined && typeof reply.type !== "string") throw new TypeError("invalid_app_notification_type");
+        if (nativePageEventSchema.options.some(schema => schema.shape.type.value === reply.type)) {
           const event = nativePageEventSchema.parse(reply);
           failure = "consumer";
           this.pages.get(event.pageId)?.receive(event);
@@ -503,13 +511,15 @@ export class ChannelApp {
           onExternalInput(event);
           return;
         }
+        // Only untyped results and errors can settle a control request.
+        if (reply.type !== undefined) return;
         const request = this.requests.get(reply.id);
         if (!request) return;
         this.requests.delete(reply.id);
         failure = "consumer";
         const success = "result" in reply;
         const failed = "error" in reply;
-        if (reply.type !== undefined || success === failed
+        if (success === failed
           || (failed && (typeof reply.error !== "string" || !reply.error))
           || (success && nullResultCommands.has(request.command.type) && reply.result !== null)) {
           request.reject(new Error("invalid_app_response"));
@@ -595,11 +605,13 @@ export class ChannelApp {
     }
   }
 
-  async open(policy: string, roomId: string): Promise<RoomSummary> {
+  async open(room: RoomSettings & { id: string }): Promise<RoomSummary> {
     await this.ready;
-    const room = roomSummarySchema.safeParse(await this.request({ type: "open", policy }));
-    if (!room.success || room.data.id !== roomId) throw new Error("invalid_app_response");
-    return room.data;
+    const result = openRoomResultSchema.safeParse(await this.request({ type: "open", room }));
+    if (!result.success) throw new Error("invalid_app_response");
+    if (result.data.type === "settings_rejected") throw new RoomSettingsRejected(result.data.reason);
+    if (result.data.room.id !== room.id) throw new Error("invalid_app_response");
+    return result.data.room;
   }
 
   async localEndpoint(signal?: AbortSignal): Promise<string | null> {
@@ -747,7 +759,7 @@ export class ChannelApp {
 
   async sourceMicrophones(signal?: AbortSignal): Promise<CaptureDevice[]> {
     await this.ready;
-    return z.array(z.object({ id: z.string(), label: z.string() }).strict()).parse(await this.request({ type: "microphones" }, undefined, signal));
+    return z.array(z.object({ id: z.string(), label: z.string() })).parse(await this.request({ type: "microphones" }, undefined, signal));
   }
 
   async setSourceMicrophone(publicationId: string, roomId: string, settings: NativeSourceMicrophone): Promise<void> {

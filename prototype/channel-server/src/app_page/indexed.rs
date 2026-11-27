@@ -13,7 +13,7 @@ const MAX_INIT: usize = 1024 * 1024;
 const MAX_PLAYLIST: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct TrackRecipe {
     pub choice_id: Uuid,
     pub total_size: u64,

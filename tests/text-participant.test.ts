@@ -220,7 +220,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
   const pageSize = rust.history_page_size();
   const messages = Array.from({ length: pageSize + 1 }, (_, index) => {
     const seq = index + 1;
-    return { id: randomUUID(), seq, userId: owner, text: `message ${seq}`, time: seq, attachments: [] };
+    return { id: randomUUID(), seq, userId: owner, text: `message ${seq}`, time: seq, attachments: [], reactions: { revision: 0, counts: {} } };
   });
   let malformedPage: 'empty-more' | undefined;
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
@@ -250,7 +250,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
           if (work.type === 'read') {
             const page = new rust.HistoryPage(work.inlineImages);
             for (const message of messages.filter(message => work.before == null || message.seq < work.before).slice(-pageSize).reverse())
-              page.push(JSON.stringify({ ...message, reactions: { revision: 0, counts: {} } }));
+              page.push(JSON.stringify(message));
             result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n, work.before == null ? undefined : BigInt(work.before))) } };
           } else {
             try {

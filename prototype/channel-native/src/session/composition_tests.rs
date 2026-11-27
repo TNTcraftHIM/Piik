@@ -9,6 +9,11 @@ use std::{
 mod core_burst;
 use core_burst::CoreBurst;
 
+pub(super) fn create_from_fixture(policy: &RoomState) -> RoomInstall {
+    let room = NewRoom::from_summary(&RoomSummary::from_policy(policy), None, None, None);
+    RoomInstall::Create(room, policy.creator_id)
+}
+
 fn frames(events: &[Event]) -> Result<Vec<String>> {
     let mut images = piik_channel_core::wire_images::StateImageEncoder::default();
     events
@@ -447,6 +452,7 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
         let _ = stopped.await;
     });
     let join = Command::Join {
+        snapshot_form: Default::default(),
         protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
         name: "Owned".into(),
         credential: None,
@@ -704,6 +710,27 @@ async fn media_cleanup_clears_saved_copy_without_notifying_its_other_writer() ->
 }
 
 #[tokio::test]
+async fn new_room_settings_rejection_precedes_installation() -> Result<()> {
+    let (core, mut native, dir, _ready, _welcome) = room_review_session()?;
+    let mut sink = RecordedSink::default();
+    for (setting, reason) in [
+        (serde_json::json!({"password": "a".repeat(129)}), "invalid_room_password"),
+        (serde_json::json!({"picture": "invalid"}), "invalid_identity_image"),
+    ] {
+        let id = Uuid::new_v4().to_string();
+        let mut room = serde_json::json!({"id":id,"name":"Fixture","icon":"couch","access":"private","hidden":false});
+        room.as_object_mut().unwrap().extend(setting.as_object().unwrap().clone());
+        let (reply, response) = oneshot::channel();
+        native.open_room(RoomInstall::Create(serde_json::from_value(room)?, core.user), reply)?;
+        receive_one_room(&mut native, &mut sink).await?;
+        ensure!(matches!(response.await?, Err(OpenRoomError::RejectedSettings(actual)) if actual == reason));
+        ensure!(!dir.path().join(format!("{id}.sqlite")).try_exists()?);
+        ensure!(!native.live.as_ref().unwrap().room.rooms.contains_key(&id));
+    }
+    native.release().await
+}
+
+#[tokio::test]
 async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result<()> {
     let (core, mut native, _dir, _ready, _welcome) = room_review_session()?;
     let id = Uuid::new_v4().to_string();
@@ -719,16 +746,7 @@ async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result
     .map_err(anyhow::Error::msg)?;
     let mut sink = RecordedSink::default();
     let (reply, mut old) = oneshot::channel();
-    native
-        .open_room(
-            OpenRoom {
-                policy: policy.clone(),
-                result: reply,
-            },
-            None,
-            &mut sink,
-        )
-        .await?;
+    native.open_room(create_from_fixture(&policy), reply)?;
     receive_one_room(&mut native, &mut sink).await?;
     let registration = native.opening[&id].request_id.clone();
     native
@@ -774,23 +792,14 @@ async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result
         .route_event(Event::State { state }, &mut sink)
         .await?;
     let (reply, mut new) = oneshot::channel();
-    native
-        .open_room(
-            OpenRoom {
-                policy,
-                result: reply,
-            },
-            None,
-            &mut sink,
-        )
-        .await?;
+    native.open_room(create_from_fixture(&policy), reply)?;
     resume.send(())?;
     // Process the held turn, stale Ack, and replacement open before asking the new writer to bind.
     for _ in 0..3 {
         receive_one_room(&mut native, &mut sink).await?;
     }
     ensure!(
-        matches!(old.try_recv(),Ok(Err(code)) if code=="room_unavailable"),
+        matches!(old.try_recv(),Ok(Err(code)) if code.reason()=="room_unavailable"),
         "retired registration still owns the old opener"
     );
     ensure!(matches!(
@@ -836,16 +845,7 @@ async fn room_review_failing_reservation_releases_last_ready_waiter() -> Result<
         HostedRoom::create(&dir.path().join(format!("{id}.sqlite")), policy.clone())?;
     let mut sink = RecordedSink::default();
     let (reply, result) = oneshot::channel();
-    native
-        .open_room(
-            OpenRoom {
-                policy,
-                result: reply,
-            },
-            None,
-            &mut sink,
-        )
-        .await?;
+    native.open_room(create_from_fixture(&policy), reply)?;
     native
         .route_event(
             Event::HostBound {
@@ -887,16 +887,7 @@ async fn room_review_fresh_welcome_settles_saved_registration_when_open_fails() 
     .map_err(anyhow::Error::msg)?;
     let mut sink = RecordedSink::default();
     let (reply, mut pending) = oneshot::channel();
-    native
-        .open_room(
-            OpenRoom {
-                policy,
-                result: reply,
-            },
-            None,
-            &mut sink,
-        )
-        .await?;
+    native.open_room(create_from_fixture(&policy), reply)?;
     receive_one_room(&mut native, &mut sink).await?;
     ensure!(native.opening.contains_key(&id));
     native.release().await?;
@@ -914,7 +905,7 @@ async fn room_review_fresh_welcome_settles_saved_registration_when_open_fails() 
         Err(oneshot::error::TryRecvError::Empty)
     ));
     receive_one_room(&mut native, &mut sink).await?;
-    ensure!(matches!(pending.try_recv(),Ok(Err(code)) if code=="room_unavailable"));
+    ensure!(matches!(pending.try_recv(),Ok(Err(code)) if code.reason()=="room_unavailable"));
     ensure!(!native.opening.contains_key(&id) && matches!(&*ready.borrow(), Some(Ok(()))));
     native.release().await
 }

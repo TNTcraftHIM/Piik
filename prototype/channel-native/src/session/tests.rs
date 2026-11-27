@@ -438,11 +438,11 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.await.unwrap().err().unwrap(), "forbidden");
+            assert_eq!(response.await.unwrap().err().unwrap().reason(), "forbidden");
         } else {
             session.release().await.unwrap();
             assert_eq!(
-                response.await.unwrap().err().unwrap(),
+                response.await.unwrap().err().unwrap().reason(),
                 "hosting_unavailable"
             );
         }
@@ -588,7 +588,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
         session.flush_tests(&mut socket).await.unwrap();
         if access == RoomAccess::Public {
             assert_eq!(
-                response.await.unwrap().err().unwrap(),
+                response.await.unwrap().err().unwrap().reason(),
                 "room_creation_restricted"
             );
             let host = &session.live.as_ref().unwrap().room.rooms["guest"];
@@ -757,7 +757,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         }
         session.event(Event::Reply { request_id: admission.request_id.unwrap(), room_id: None, result: ReplyResult::Done }, &mut socket).await.unwrap();
         if failure == "ambiguous-at-install" {
-            assert_eq!(restored_reply.await.unwrap().err().unwrap(), "room_unavailable");
+            assert_eq!(restored_reply.await.unwrap().err().unwrap().reason(), "room_unavailable");
             assert_eq!(std::fs::read(&path).unwrap(), original);
             assert_eq!(std::fs::read(&duplicate).unwrap(), original);
             assert!(!stage_path.exists());
@@ -796,17 +796,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             "the committed restore released its staging data"
         );
         let (opened, open_reply) = oneshot::channel();
-        session
-            .open_room(
-                OpenRoom {
-                    policy,
-                    result: opened,
-                },
-                None,
-                &mut socket,
-            )
-            .await
-            .unwrap();
+        session.open_room(super::composition_tests::create_from_fixture(&policy), opened).unwrap();
         session.flush_tests(&mut socket).await.unwrap();
         assert_eq!(
             session.opening.len(),
@@ -967,7 +957,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             }
         }
         assert_eq!(
-            restored_reply.await.unwrap().err().unwrap(),
+            restored_reply.await.unwrap().err().unwrap().reason(),
             "room_restored_connection_failed",
             "{failure}: restored bytes cannot be reported as uncommitted"
         );
@@ -977,7 +967,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             "missing-binding" => "room_unavailable",
             _ => "hosting_unavailable",
         };
-        assert_eq!(open_reply.await.unwrap().err().unwrap(), expected_open);
+        assert_eq!(open_reply.await.unwrap().err().unwrap().reason(), expected_open);
         session.release().await.unwrap();
         let reopened = HostedRoom::open(&path, "target", user).unwrap();
         assert_eq!(

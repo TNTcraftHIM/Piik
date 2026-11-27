@@ -153,6 +153,12 @@ set its readers treat as closed. A set that is meant to grow says from the
 first release what a reader does with a value it does not know, as capture
 descriptions do by skipping it.
 
+Capture preparation requires a supported codec before transferring or committing
+the source. An unsupported codec ends that preparation. Codec names in live
+observations remain descriptions. Page-media observers dispatch the DOM event
+names they understand and ignore additional names; those names cannot become
+internal page-lifecycle events.
+
 No field is added to say that a party supports one feature. What a join says
 about its runtime (peer transport, UDP preparation, video layers) describes a
 machine and stays. Whether something is available now, and whether a person

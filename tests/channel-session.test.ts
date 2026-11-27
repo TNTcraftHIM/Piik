@@ -34,7 +34,7 @@ import { QUALITY_PROFILES, screenVideoSettings, type VideoSettings } from "../sr
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { WatchBytes } from "../src/client/channel/watch-bytes";
 import { FileStore } from "../src/client/channel/file-store";
-import { CHANNEL_PROTOCOL, identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ReceivedRecord, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
+import { CHANNEL_PROTOCOL, identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ReceivedRecord, type RoomSettings, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
@@ -1882,9 +1882,9 @@ test("App hosting uses its own participant while Browser rooms retain their page
     acceptCreatedRoom(socket);
     await vi.waitFor(() => expect(app.sent.some(command => command.type === "open")).toBe(true));
     const opening = app.sent.find(command => command.type === "open")!;
-    const policy = JSON.parse(opening.policy as string) as { id: string; name: string; icon: string; creatorId: string; access: string; hidden: boolean; password: string };
-    expect(policy).toMatchObject({ name: "App room", icon: "couch", creatorId: "self", access: "private", hidden: true, password: "private-room" });
-    app.receive({ id: opening.id, result: { id: policy.id, name: policy.name, icon: policy.icon, creatorId: "self", access: "private", hidden: true, hasPassword: true } });
+    const policy = opening.room as RoomSettings & { id: string };
+    expect(policy).toEqual({ id: expect.any(String), name: "App room", icon: "couch", access: "private", hidden: true, password: "private-room" });
+    app.receive({ id: opening.id, result: { type: "opened", room: { id: policy.id, name: policy.name, icon: policy.icon, creatorId: "self", access: "private", hidden: true, hasPassword: true } } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === policy.id)).toBe(true));
     const browse = socket.sent.findLast(command => command.type === "browse" && command.roomId === policy.id)!;
     socket.receive({ type: "reply", roomId: policy.id, requestId: browse.requestId, result: { type: "done" } });
@@ -3472,7 +3472,8 @@ test("Native capability catalog retains known choices without echoing future des
     app.receive({ id: app.sent.at(-1)!.id, result: { captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(), codec: "future-codec" } });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
     app.receive({ id: app.sent.at(-1)!.id, result: null });
-    expect(await selecting).toBeInstanceOf(Error);
+    expect(await selecting).toMatchObject({ message: "capture_codec_unsupported" });
+    expect(session.getSnapshot().appConnected).toBe(true);
     expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
   } finally { session.close(); }
@@ -5601,7 +5602,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.nativeCaptureRequest("first")).toBeUndefined();
     const pendingCapture = crypto.randomUUID();
-    app.receive({ type: "picker_ready", requestId: request.id, captureId: pendingCapture });
+    app.receive({ type: "picker_ready", requestId: request.id, captureId: pendingCapture, picker: "system" });
     expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL: activationURL.replace("media#", `media/${pendingCapture}#`) });
     expect(activate).not.toHaveBeenCalled();
 
@@ -5651,7 +5652,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
   } finally { session.close(); }
 });
 
-test("external input keeps its waiting activity while each prepared stream uses the existing commit path", async () => {
+test.each(["h264", "av1"])("external input handles prepared codec %s within its own capture", async codec => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -5669,12 +5670,22 @@ test("external input keeps its waiting activity while each prepared stream uses 
     expect(watch).not.toHaveBeenCalled();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
     const captureId = crypto.randomUUID(), sessionId = crypto.randomUUID();
-    app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId, sessionId, codec: "h264" });
+    app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId, sessionId, codec });
+    if (codec === "av1") {
+      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_external_input"));
+      expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
+      app.receive({ type: "external_input_state", publicationId, state: "closed" });
+      app.receive({ id: app.sent.at(-1)!.id, result: null });
+      await vi.waitFor(() => expect(session.getSnapshot().error).toBe("capture_codec_unsupported"));
+      expect(session.externalInput("first")).toBeUndefined();
+      expect(session.getSnapshot().appConnected).toBe(true);
+      return;
+    }
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
     expect(app.sent.at(-1)).toMatchObject({ publicationId, captureId });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(watch).toHaveBeenCalledWith(publicationId, "first", expect.any(AbortSignal)));
-    app.receive({ type: "external_input_state", publicationId, state: "live", captureId, sessionId, codec: "h264" });
+    app.receive({ type: "external_input_state", publicationId, state: "live", captureId, sessionId, codec: "av1" });
     expect(session.externalInput("first")?.state).toBe("live");
     app.receive({ type: "external_input_state", publicationId, state: "waiting" });
     expect(session.externalInput("first")?.state).toBe("waiting");
@@ -6238,11 +6249,8 @@ test.each(["policy", "open"])("Browser room creation cancels its reservation aft
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
-  let prepared!: (policy: string) => void;
-  let policy = "";
   const browserOpen = vi.fn();
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
-    createRoomPolicy: (input: unknown) => { policy = JSON.stringify(input); return new Promise<string>(resolve => { prepared = resolve; }); },
     BrowserRoomHost: { open: browserOpen },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
@@ -6252,15 +6260,42 @@ test("an App failure during creation does not turn that request into a Browser r
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const creating = session.createRoom({ name: "App room", icon: "couch", access: "public", hidden: false });
-    acceptCreatedRoom(socket);
     const failed = expect(creating).rejects.toThrow("app_disconnected");
-    await vi.waitFor(() => expect(prepared).toBeTypeOf("function"));
     app.close();
-    prepared(policy);
+    acceptCreatedRoom(socket);
     await failed;
     expect(browserOpen).not.toHaveBeenCalled();
     expect(socket.sent.some(command => command.type === "host_register")).toBe(false);
     expect(session.getSnapshot().appConnected).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["settings", "registration", "disconnect", "unknown_tag", "malformed_rejection"])("App room creation handles a %s outcome after reservation", async outcome => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session);
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const creating = session.createRoom({ name: "App room", icon: "couch", access: "private", hidden: false,
+      password: outcome === "settings" ? "a".repeat(129) : "pass" });
+    acceptCreatedRoom(socket);
+    await vi.waitFor(() => expect(app.sent.some(request => request.type === "open")).toBe(true));
+    const opening = app.sent.find(request => request.type === "open")!;
+    const failed = expect(creating).rejects.toThrow(outcome === "settings" ? "invalid_room_password" : "room_creation_unconfirmed");
+    if (outcome === "settings") app.receive({ id: opening.id, result: { type: "settings_rejected", reason: "invalid_room_password" } });
+    else if (outcome === "registration") app.receive({ id: opening.id, error: "room_unavailable" });
+    else if (outcome === "disconnect") app.close();
+    else {
+      const summary = { ...opening.room as RoomSettings, id: "domain-created-room", creatorId: "self", hasPassword: true };
+      const tag = outcome === "unknown_tag" ? { type: "future_outcome" } : { type: "settings_rejected", reason: 37 };
+      app.receive({ id: opening.id, result: { ...summary, ...tag } });
+    }
+    await failed;
+    expect(socket.sent.some(command => command.type === "browse" && command.roomId === "domain-created-room")).toBe(false);
+    const cancelled = socket.sent.filter(command => command.type === "cancel_room_creation");
+    expect(cancelled).toEqual(outcome === "settings" ? [expect.objectContaining({ roomId: "domain-created-room" })] : []);
   } finally { session.close(); }
 });
 

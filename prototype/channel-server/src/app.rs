@@ -41,7 +41,7 @@ use futures_util::{
     stream::FuturesUnordered,
     FutureExt, SinkExt, StreamExt,
 };
-use piik_channel_core::RoomState;
+use piik_channel_core::host::NewRoom;
 use piik_channel_native::{
     capture::{CaptureOptions, EncodingExecution, Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
@@ -1223,10 +1223,23 @@ fn control_request(text: &str) -> Result<std::result::Result<Request, Value>> {
         .get("id")
         .and_then(Value::as_str)
         .filter(|id| !id.is_empty() && id.len() <= 256);
-    Ok(match (id, serde_json::from_str(text)) {
-        (Some(_), Ok(request)) => Ok(request),
-        _ => Err(json!({"id":id,"error":"invalid_request"})),
-    })
+    let invalid = || json!({"id":id,"error":"invalid_request"});
+    if id.is_none() || !value["type"].is_string() {
+        return Ok(Err(invalid()));
+    }
+    let request = match serde_json::from_str::<Request>(text) {
+        Ok(Request { operation: Operation::Unknown, .. }) => {
+            serde_json::from_str::<Request<page::Operation>>(text).map(|page| Request {
+                id: page.id,
+                operation: match page.operation {
+                    page::Operation::Unknown => Operation::Unknown,
+                    operation => Operation::Page(operation),
+                },
+            })
+        }
+        request => request,
+    };
+    Ok(request.map_err(|_| invalid()))
 }
 
 async fn send_control(
@@ -1238,17 +1251,22 @@ async fn send_control(
 }
 
 #[derive(Deserialize)]
-struct Request {
+struct Request<T = Operation> {
     id: String,
     #[serde(flatten)]
-    operation: Operation,
+    operation: T,
 }
+
+fn requested_codec<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<VideoCodecMode>, D::Error> {
+    let name = String::deserialize(input)?;
+    Ok(serde_json::from_value(Value::String(name)).ok())
+}
+
 #[derive(Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 enum Operation {
     Hello {
@@ -1258,7 +1276,7 @@ enum Operation {
         name: String,
     },
     Open {
-        policy: String,
+        room: NewRoom,
     },
     LocalEndpoint,
     RelayCapacity(piik_channel_native::session::RelayCapacityRequest),
@@ -1286,7 +1304,8 @@ enum Operation {
         room_id: String,
         target: Target,
         settings: Settings,
-        codec_mode: VideoCodecMode,
+        #[serde(deserialize_with = "requested_codec")]
+        codec_mode: Option<VideoCodecMode>,
         encoding_execution: EncodingExecution,
         #[serde(default)]
         audio_settings: SourceAudioSettings,
@@ -1362,8 +1381,10 @@ enum Operation {
         key: u8,
     },
     VoiceShortcuts(voice_shortcuts::Settings),
-    #[serde(untagged)]
+    #[serde(skip_deserializing)]
     Page(page::Operation),
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Default)]
@@ -1689,7 +1710,7 @@ async fn connection(
             site.to_owned(),
         ));
         let processing = async {
-            let host = loop {
+            let (host, creator_id) = loop {
                 let text = match timeout(IO_TIMEOUT, queue.recv()).await {
                     Ok(Some(text)) => text,
                     Ok(None) => return Ok("request_queue_closed"),
@@ -1704,8 +1725,9 @@ async fn connection(
                 };
                 let result = match request.operation {
                     Operation::Hello { channel_id, user_id, credential, name } => {
-                        app.hello(site, permission, channel_id, user_id, credential, name).await
+                        app.hello(site, permission, channel_id, user_id, credential, name).await.map(|host| (host, user_id))
                     }
+                    Operation::Unknown => Err(anyhow!("unsupported")),
                     _ => Err(anyhow!("hello_required")),
                 };
                 match result {
@@ -2334,14 +2356,15 @@ async fn connection(
                         }
                         result
                     }
+                    Operation::Unknown => Err(anyhow!("unsupported")),
                     Operation::Hello { .. } => Err(anyhow!("already_initialized")),
-                    Operation::Open { policy } => {
+                    Operation::Open { room } => {
                         if opening.is_some() {
                             Err(anyhow!("request_pending"))
                         } else {
                             let commands = host.clone();
                             opening = Some(async move {
-                                control_reply(request.id, open(&commands, &policy).await)
+                                control_reply(request.id, open(&commands, room, creator_id).await)
                             }.boxed());
                             continue;
                         }
@@ -2439,12 +2462,13 @@ async fn connection(
                         }
                         Ok(Value::Null)
                     }
+                    Operation::PrepareCapture { codec_mode: None, .. } => Err(anyhow!("capture_codec_unsupported")),
                     Operation::PrepareCapture {
                         publication_id,
                         room_id,
                         target,
                         settings,
-                        codec_mode,
+                        codec_mode: Some(codec_mode),
                         encoding_execution,
                         audio_settings,
                         audio,
@@ -2877,19 +2901,19 @@ async fn next_audio_state(
         .map(|_| changed.borrow_and_update().clone());
     (publication, changed, state)
 }
-async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Value> {
-    let policy: RoomState = serde_json::from_str(policy)?;
+async fn open(commands: &mpsc::Sender<HostCommand>, room: NewRoom, creator_id: Uuid) -> Result<Value> {
     let (result, opened) = oneshot::channel();
     commands
-        .send(HostCommand::Open(OpenRoom { policy, result }))
+        .send(HostCommand::Open(OpenRoom { room, creator_id, result }))
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?;
-    Ok(serde_json::to_value(
-        opened
-            .await
-            .map_err(|_| anyhow!("hosting_unavailable"))?
-            .map_err(anyhow::Error::msg)?,
-    )?)
+    match opened.await.map_err(|_| anyhow!("hosting_unavailable"))? {
+        Ok(room) => Ok(json!({"type":"opened", "room":room})),
+        Err(session::OpenRoomError::RejectedSettings(reason)) => {
+            Ok(json!({"type":"settings_rejected", "reason":reason}))
+        }
+        Err(error) => Err(anyhow!(error.to_string())),
+    }
 }
 
 async fn capture_targets() -> Result<Value> {
@@ -3223,8 +3247,8 @@ mod lifecycle_tests {
             );
         }
         assert_eq!(
-            exchange(&mut socket, json!({"id":"bad-request","type":"unknown"})).await,
-            json!({"id":"bad-request","error":"invalid_request"})
+            exchange(&mut socket, json!({"id":"bad-request","type":"unknown","future":{"part":true}})).await,
+            json!({"id":"bad-request","error":"unsupported"})
         );
         assert!(receiver.try_recv().is_err());
         socket
@@ -3288,12 +3312,36 @@ mod lifecycle_tests {
                 json!({"id":"hello","result":null})
             );
             assert_eq!(
+                exchange(&mut socket, json!({"id":"future","type":"future_control"})).await,
+                json!({"id":"future","error":"unsupported"})
+            );
+            for kind in ["input_policy", "page_prepare"] {
+                assert_eq!(
+                    exchange(&mut socket, json!({"id":"bad","type":kind})).await,
+                    json!({"id":"bad","error":"invalid_request"})
+                );
+            }
+            let mut capture_request = json!({"id":"selection","type":"prepare_capture",
+                "publicationId":Uuid::new_v4(),"roomId":"room","codecMode":"av1","encodingExecution":"auto",
+                "target":{"kind":"display","sourceId":"1","title":"Display"},
+                "settings":{"width":1280,"height":720,"fps":24,"bitrate":2500000,"degradationPreference":"balanced"}});
+            assert_eq!(exchange(&mut socket, capture_request.clone()).await,
+                json!({"id":"selection","error":"capture_codec_unsupported"}));
+            capture_request["codecMode"] = Value::Null;
+            assert_eq!(exchange(&mut socket, capture_request.clone()).await,
+                json!({"id":"selection","error":"invalid_request"}));
+            capture_request.as_object_mut().unwrap().remove("codecMode");
+            assert_eq!(exchange(&mut socket, capture_request).await,
+                json!({"id":"selection","error":"invalid_request"}));
+            assert!(receiver.try_recv().is_err());
+            assert_eq!(
                 exchange(&mut socket, hello).await,
                 json!({"id":"hello","error":"already_initialized"})
             );
             if voice_shortcuts::AVAILABLE {
                 let enable = json!({
-                    "id":"voice","type":"voice_shortcuts","enabled":true,"microphone":null,"listening":null
+                    "id":"voice","type":"voice_shortcuts","enabled":true,"microphone":null,"listening":null,
+                    "roomId":"extra"
                 });
                 let result = json!({"id":"voice","result":{"microphone":"unbound","listening":"unbound"}});
                 assert_eq!(exchange(&mut socket, enable.clone()).await, result);
@@ -3351,17 +3399,23 @@ mod lifecycle_tests {
                 }
                 assert!(target_reads.try_recv().is_err());
                 assert!(mic_reads.try_recv().is_err());
-                let policy = RoomState::new(
-                    "test-room".into(), "Test room".into(), Default::default(), key.2,
-                    piik_channel_core::wire::RoomAccess::Public, false, None,
-                ).unwrap();
+                let room = json!({"id":"test-room","name":"Test room","icon":"couch","access":"public","hidden":false,
+                    "futureSetting":true});
                 socket.send(WsMessage::Text(json!({
-                    "id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()
+                    "id":"open","type":"open","room":room
                 }).to_string().into())).await.unwrap();
                 let HostCommand::Open(opening) = timeout(IO_TIMEOUT, receiver.recv())
                     .await.unwrap().unwrap() else { panic!("room opening expected") };
+                let policy = opening.room.into_policy(opening.creator_id).unwrap();
+                assert_eq!(policy.creator_id, key.2);
+                let mut archive = json!({"kind":"room","version":piik_channel_core::backup::RoomMetadata::VERSION,
+                    "domainId":key.1,"policy":policy,"retainedFiles":[]});
+                use piik_channel_core::backup::Metadata;
+                serde_json::from_value::<Metadata>(archive.clone()).unwrap();
+                archive["policy"]["futureSetting"] = json!(true);
+                assert!(serde_json::from_value::<Metadata>(archive).is_err());
                 socket.send(WsMessage::Text(json!({
-                    "id":"second-open","type":"open","policy":serde_json::to_string(&policy).unwrap()
+                    "id":"second-open","type":"open","room":room
                 }).to_string().into())).await.unwrap();
                 let second = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(second.to_text().unwrap()).unwrap(),
@@ -3371,10 +3425,21 @@ mod lifecycle_tests {
                 let microphones = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(microphones.to_text().unwrap()).unwrap(),
                     json!({"id":"microphones","result":[{"id":"mic","label":"Fixture microphone"}]}));
-                assert!(opening.result.send(Err("fixture_open_failed".into())).is_ok());
+                assert!(opening.result.send(Err(session::OpenRoomError::RejectedSettings("invalid_room_password"))).is_ok());
                 let opened = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(opened.to_text().unwrap()).unwrap(),
-                    json!({"id":"open","error":"fixture_open_failed"}));
+                    json!({"id":"open","result":{"type":"settings_rejected","reason":"invalid_room_password"}}));
+                socket.send(WsMessage::Text(json!({
+                    "id":"open-success","type":"open","room":room
+                }).to_string().into())).await.unwrap();
+                let HostCommand::Open(opening) = timeout(IO_TIMEOUT, receiver.recv())
+                    .await.unwrap().unwrap() else { panic!("room opening expected") };
+                let policy = opening.room.into_policy(opening.creator_id).unwrap();
+                let summary = piik_channel_core::host::RoomSummary::from_policy(&policy);
+                let expected = json!({"id":"open-success","result":{"type":"opened","room":summary}});
+                assert!(opening.result.send(Ok(summary)).is_ok());
+                let opened = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(opened.to_text().unwrap()).unwrap(), expected);
                 release_targets.add_permits(1);
                 let refreshed = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(refreshed.to_text().unwrap()).unwrap(),
@@ -4593,16 +4658,16 @@ mod lifecycle_tests {
     }
 
     #[test]
-    fn publication_audio_command_has_no_picture_capture_identity() {
-        let mut wire = json!({"id":"audio","type":"capture_audio_settings","publicationId":Uuid::new_v4(),"settings":{"bitrate":128000,"gain":0}});
-        assert!(matches!(
-            serde_json::from_value::<Request>(wire.clone())
-                .unwrap()
-                .operation,
-            Operation::CaptureAudioSettings { .. }
-        ));
-        wire["captureId"] = json!(Uuid::new_v4());
-        assert!(serde_json::from_value::<Request>(wire).is_err());
+    fn publication_audio_command_uses_its_publication_and_known_settings() {
+        let publication = Uuid::new_v4();
+        let mut wire = json!({"id":"audio","type":"capture_audio_settings","publicationId":publication,
+            "captureId":Uuid::new_v4(),"settings":{"bitrate":128000,"gain":0,"extra":true}});
+        let request = control_request(&wire.to_string()).unwrap().unwrap();
+        let Operation::CaptureAudioSettings { publication_id, settings } = request.operation else { panic!() };
+        assert_eq!(publication_id, publication);
+        assert_eq!(settings, SourceAudioSettings { bitrate: 128000, gain: 0.0 });
+        wire.as_object_mut().unwrap().remove("publicationId");
+        assert!(control_request(&wire.to_string()).unwrap().is_err());
     }
 
     #[tokio::test]
@@ -4811,8 +4876,7 @@ mod tests {
         ));
         for invalid in [
             valid.replace(r#""microphone":null,"#, ""),
-            valid.replace(r#""microphone":null"#, r#""microphone":null,"roomId":"private""#),
-            valid.replace(r#""meta":false"#, r#""meta":false,"muted":true"#),
+            valid.replace(r#""meta":false"#, r#""meta":"false""#),
             valid.replace(r#""meta":false"#, r#""meta":false,"meta":true"#),
         ] {
             assert!(serde_json::from_str::<Request>(&invalid).is_err(), "{invalid}");
@@ -4962,7 +5026,7 @@ mod tests {
             room_id,
             target,
             settings,
-            codec_mode,
+            codec_mode: Some(codec_mode),
             encoding_execution,
             audio_settings,
             audio,
@@ -5157,11 +5221,16 @@ mod page_contract_tests {
     #[test]
     fn page_commands_share_the_authorized_app_envelope() {
         let id = Uuid::new_v4();
-        let request:Request=serde_json::from_value(json!({"id":"request","type":"page_prepare","pageId":id,"url":"https://example.com/watch"})).unwrap();
+        let request = control_request(&json!({"id":"request","type":"page_prepare","pageId":id,"url":"https://example.com/watch"}).to_string()).unwrap().unwrap();
         assert!(
             matches!(request.operation,Operation::Page(page::Operation::PagePrepare{page_id,..}) if page_id==id)
         );
-        assert!(serde_json::from_value::<Request>(json!({"id":"request","type":"page_patch","pageId":id,"patch":{"position":1,"cookie":"secret"}})).is_err());
+        let command = json!({"id":"request","type":"page_patch","pageId":id,"extra":true,
+            "patch":{"position":1.5,"paused":true,"rate":1.25,"cookie":"extra"}});
+        let request = control_request(&command.to_string()).unwrap().unwrap();
+        let Operation::Page(page::Operation::PagePatch { page_id, patch }) = request.operation else { panic!() };
+        assert_eq!(page_id, id);
+        assert_eq!(serde_json::to_value(patch).unwrap(), json!({"position":1.5,"paused":true,"rate":1.25}));
     }
 }
 
@@ -5172,7 +5241,7 @@ fn actual_browser_mpd_commands_deserialize_at_app_boundary() {
         serde_json::from_str(include_str!("app_page/mpd_request_fixture.json")).unwrap();
     for fixture in fixtures {
         let command = fixture["command"].clone();
-        let parsed: Request = serde_json::from_value(command.clone()).unwrap();
+        let parsed = control_request(&command.to_string()).unwrap().unwrap();
         match command["type"].as_str().unwrap() {
             "page_media_prepare_mpd" => assert!(matches!(
                 parsed.operation,

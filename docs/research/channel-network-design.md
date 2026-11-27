@@ -83,6 +83,10 @@ reading, forwarding preference, subscriptions and file plans. The domain assembl
 the existing complete client view only for an admitted recipient; it does not infer
 private-room grants from the common activity. Binding and revision checks still
 fence the whole projection, including host retirement and recovery.
+Each connection may select a conversation view at Join. The domain constructs
+that view from the same admission, binding and signing facts, without media
+plans or pictures. The default remains the full view. Reconnection selects
+anew; final Leave uses the departing connection's view after removing it.
 Room admission, initial offer/answer and broken-tree repair instructions travel
 through this existing domain rendezvous to the room
 runtime; establishing or repairing the tree cannot depend on that tree already
@@ -117,6 +121,9 @@ cannot replace newer routes, but an earlier authorized action can still complete
 Successful domain-mediated policy/activity actions are acknowledged after the domain has installed a
 projection covering that turn. Until then, the existing pending request retains
 its result; explicit failures do not wait for a projection.
+An unsupported host input settles its original waiter. If it also owns an
+uncovered read barrier, the domain requests the writer's ordinary synchronization;
+reads resume only after the writer supplies a covering projection.
 Confirmation follows the requester's current session and room permission facts;
 another participant leaving cannot invalidate it. Room entry uses that same
 authenticated session and confirmation boundary after the site handshake.

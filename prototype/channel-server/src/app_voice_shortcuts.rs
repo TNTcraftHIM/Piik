@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 pub(super) const AVAILABLE: bool = cfg!(all(windows, feature = "capture"));
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 pub(super) struct Settings {
     enabled: bool,
     #[serde(deserialize_with = "Deserialize::deserialize")]
@@ -14,7 +13,6 @@ pub(super) struct Settings {
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 struct Binding {
     key: String,
     ctrl: bool,
@@ -128,6 +126,18 @@ impl Connection<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extensions_keep_the_selected_shortcut_binding() {
+        let settings: Settings = serde_json::from_value(serde_json::json!({
+            "enabled":true,"roomId":"extra","microphone":null,
+            "listening":{"key":"F10","ctrl":true,"alt":false,"shift":true,"meta":false,"muted":true}
+        })).unwrap();
+        assert!(settings.enabled && settings.microphone.is_none());
+        let binding = settings.listening.unwrap();
+        assert_eq!(binding.virtual_key().unwrap(), 0x79);
+        assert!(binding.ctrl && !binding.alt && binding.shift && !binding.meta);
+    }
 
     #[test]
     fn configure_rejects_reserved_stop_chords() {

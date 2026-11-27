@@ -49,6 +49,7 @@ pub(crate) enum ConversationDelivery {
     AdvancedHistory,
 }
 
+#[derive(Default)]
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
     pub state_changed: bool,
@@ -1444,7 +1445,7 @@ impl Channel {
 
     pub(crate) fn unsupported_host_input(
         &mut self, id: &str, session: Uuid, connection: Uuid, binding_id: Uuid, revision: u64,
-    ) -> Result<Vec<RoomReply>, &'static str> {
+    ) -> Result<HostAcceptance, &'static str> {
         let binding = self.host_binding(id, session, connection, binding_id, revision)?;
         let reply = match binding.replies.get(&revision) {
             Some(ReplyOwner::Request { context, completion: None, .. }) => Some(RoomReply {
@@ -1452,9 +1453,14 @@ impl Channel {
                 result: RoomResult::Error { code: "unsupported".into() },
             }),
             Some(ReplyOwner::RouteWake) => None,
-            _ => return Ok(Vec::new()),
+            _ => return Ok(HostAcceptance::default()),
         };
-        Ok(self.finish_host_output(id, revision, reply, false).replies)
+        let needs_read_policy = revision == binding.read_floor && binding.applied_revision < revision;
+        let mut accepted = self.finish_host_output(id, revision, reply, false);
+        if needs_read_policy {
+            accepted.repair_input = Some(self.host_input(id, HostAction::Sync)?);
+        }
+        Ok(accepted)
     }
 
     pub(crate) fn accept_host(
@@ -2271,12 +2277,35 @@ impl Channel {
         })
     }
 
+    fn snapshot_member(&self, session_id: Uuid) -> Option<crate::identity::Member> {
+        let session = self.identity.sessions.get(&session_id)?;
+        self.identity.member(session.user_id).ok()
+    }
+
+    fn directory_rooms(&self, member: crate::identity::Member) -> impl Iterator<Item = &RemoteRoom> {
+        self.remote.values().filter(move |room| {
+            member.user_id == room.summary.creator_id
+                || self.room_creation_policy.permits(Some(self.identity.owner_id), &room.summary)
+        })
+    }
+
+    pub(crate) fn conversation_snapshot(&self, session_id: Uuid) -> ConversationSnapshot {
+        let rooms = self.snapshot_member(session_id).into_iter().flat_map(|member| {
+            self.directory_rooms(member).filter_map(move |room| {
+                room.conversation_snapshot(member, session_id, Self::host_online(&self.identity, room))
+            })
+        }).collect();
+        ConversationSnapshot {
+            channel: ConversationChannelInfo { hosting_mode: self.hosting_mode, rooms },
+            sessions: self.identity.sessions.values().map(|session| SigningSession {
+                id: session.id,
+                signing_key: session.signing_key,
+            }).collect(),
+        }
+    }
+
     pub fn snapshot(&self, session_id: Uuid) -> Snapshot {
-        let member = self
-            .identity
-            .sessions
-            .get(&session_id)
-            .and_then(|session| self.identity.member(session.user_id).ok());
+        let member = self.snapshot_member(session_id);
         let mut rooms = Vec::new();
         let mut publications = Vec::new();
         let mut watch_activities = Vec::new();
@@ -2286,14 +2315,7 @@ impl Channel {
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
         if let Some(member) = member {
-            for room in self.remote.values() {
-                if member.user_id != room.summary.creator_id
-                    && !self
-                        .room_creation_policy
-                        .permits(Some(self.identity.owner_id), &room.summary)
-                {
-                    continue;
-                }
+            for room in self.directory_rooms(member) {
                 if let Some(projection) =
                     room.projection.as_ref().filter(|_| room.binding.is_some())
                 {
@@ -2330,13 +2352,10 @@ impl Channel {
                 if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
                 {
-                    let bound = room.binding.as_ref().zip(room.projection.as_ref());
-                    if let Some((binding, projection)) = bound.filter(|_| snapshot.room.authorized)
+                    if let Some((binding, projection)) =
+                        room.projected_binding().filter(|_| snapshot.room.authorized)
                     {
-                        snapshot.room.delivery = Some(RoomDelivery {
-                            host_session_id: binding.session,
-                            binding_id: binding.id,
-                        });
+                        snapshot.room.delivery = Some(binding.delivery());
                         if snapshot.room.available
                             && binding.applied_revision >= binding.projection_floor
                         {
