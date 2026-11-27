@@ -58,12 +58,30 @@ yet.
    admission that harmed no viewer. A share of frames delivered has no
    denominator that means the same in every runtime. The proposed reading
    asks the owner each runtime already has: whether a flow's own adaptation
-   reports that the path or the device limits it, and for how much of the
-   window. A trial fails when a flow that was not limited becomes limited,
-   and a sender whose flows are already limited is not tried. Recorded
-   controls decide whether that follows what receivers present. Otherwise the
-   new child alone is withdrawn, by its generation, and that sender is not
-   tried again without fresh evidence. A node healthy with N children has
+   holds it below what was asked of it, and for how much of the window. In a
+   Browser that is a limitation reason other than none on the sending stream,
+   which today serves the encoding pool and not admission. Native has no such
+   reading. Three of its owners hold observations that bear on it: an
+   encoder's quality policy restricts pixels or frames, the allocator selects
+   less than a parent supplies or pauses, and a pair holds a flow at its least
+   representation above the estimate. None of them is a flow's limitation yet.
+   The policy's restriction is the tighter of two causes and does not say
+   which. A paused or lowered selection has causes other than want of budget.
+   A new child is an ordinary selected flow, and the allocator judges inside
+   one pair, not across the pairs a new child shares an uplink or a processor
+   with. A lower target rate with none of these is in any case not limited.
+   So nothing is built to report a cause the code does not know. A matched
+   control comes first: at one sender, one admission that harms what
+   receivers present and one that does not, with those three observations
+   recorded beside the receivers' frames, freezes and size. A reading is
+   accepted when it tells the two apart, and it then takes the Browser's
+   form, seconds accumulated per reason, so that one comparison serves both
+   runtimes. Until then no trial is admitted automatically. The rule the
+   reading will serve stands: a trial fails when a flow that was not limited
+   becomes limited, a sender whose flows are already limited is not tried,
+   and a flow that cannot say is evidence for neither side. A trial that
+   fails withdraws the new child alone, by its generation, and that sender is
+   not tried again without fresh evidence. A node healthy with N children has
    proved N for that workload, nothing more, and the room's number is where it
    starts. A person's explicit limit, zero included, is kept, and each kind
    keeps its own budget. Memory across days is a later stage.

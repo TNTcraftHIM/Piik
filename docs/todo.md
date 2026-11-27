@@ -75,7 +75,9 @@ the feedback period; they do not delay that delivery.
   is set: trace it through each connection, bring the private code to it and
   exercise it in tests, then settle explicit reply outcomes and history and
   storage boundaries before publication. Do not add exact-version steps,
-  closed wire boundaries or individual feature flags meanwhile.
+  closed wire boundaries or individual feature flags meanwhile. Open: whether
+  the objects nested in a request or a message ignore unknown fields as the
+  top level does; until that is settled they keep their contracts.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,
@@ -87,10 +89,9 @@ the feedback period; they do not delay that delivery.
   history selection before page budgeting, preserving omitted image data in
   complete readers. Settle unknown terminal replies without treating them as
   rejection or retiring healthy sibling operations.
-- [ ] **Local ownership reductions.** Carry capture options through the Native
-  command chain as one value, remove redundant SDP handoff state and avoid
-  unchanged history-view copies. Keep platform queue retirement semantics and
-  the destination writer's validation. Review SQLite single-row storage and a
+- [ ] **Remaining ownership reductions.** Preserve platform queue retirement
+  semantics and the destination writer's validation when sharing their owners.
+  Review SQLite single-row storage and a
   full byte-tree wire change only with their concrete ownership benefit and
   regression cost; neither is a demonstrated runtime defect.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the

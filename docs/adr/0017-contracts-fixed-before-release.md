@@ -56,8 +56,8 @@ The private 3.0 implementation currently has these boundaries:
    side to update. Four rules make any two second numbers work together.
    None of them is a flag for one feature or a path for one older peer.
    - *A party states its two numbers once,* where it is already described: a
-     session when it joins, the Domain in its welcome, the App in its
-     discovery. The Domain publishes a session's numbers beside its key, so
+     session when it joins, the Domain in its welcome or in the refusal that
+     takes its place, the App in its discovery. The Domain publishes a session's numbers beside its key, so
      the numbers of a room's writer are those of its host's session. They
      decide what a client offers to its person. No result depends on them.
    - *An unknown kind gets an answer where one is waited for.* A request of a
@@ -67,10 +67,9 @@ The private 3.0 implementation currently has these boundaries:
      unknown kind is ignored. A new action an older receiver must decline
      uses a distinct request. Changes to state older observers already display
      retain their baseline update semantics.
-   - *An unknown field is ignored at an extensible object by its final
-     recipient.* Relays forward enclosed signed payloads unchanged. Known
-     bounds, types and required fields stay strict, and nested objects keep
-     their defined contracts. A writer stores
+   - *An unknown field is ignored by its final recipient at every depth.*
+     Relays forward enclosed signed payloads unchanged. Known bounds, types,
+     required fields and kind values keep their defined contracts. A writer stores
      the fields it knows, and its confirmation carries the message as stored,
      so a sender sees what was kept. A new constraint whose omission would
      widen authority, lifetime, recipients or the target uses a distinct

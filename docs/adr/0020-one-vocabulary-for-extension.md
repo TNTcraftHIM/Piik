@@ -46,9 +46,8 @@ fixed.
      on that message. An older reader may ignore those fields and display
      the recognized text and files, including an attachment-only message.
      The signature covers the original payload before this projection.
-     Nested structures retain their defined shapes; they are not separate
-     extension points. An addition about one file or one mention sits on the
-     message and names it, as inline images do.
+     The same rule applies to nested object members. Known types, required
+     fields, bounds and operation meanings retain their contracts.
    - *The writer stores what it knows.* A field of a draft that a writer
      does not know is no error: it is left out, and the confirmation carries
      the message as stored, so its sender sees what was kept. What a writer
