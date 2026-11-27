@@ -243,8 +243,8 @@ the feedback period; they do not delay that delivery.
 - [ ] **Quiet topology improvement.** Decide
   [ADR-0018](./adr/0018-quiet-topology-improvement.md). Stage 0 is offline:
   replay the planner on exported diagnostics and look for an opportunity that
-  recurs. The first production step is one leaf moved to a strictly better
-  place with the present proof, then one more child tried on unmet demand.
+  recurs. The first production step is one more child tried on unmet demand,
+  then one leaf moved to a strictly better place with the present proof.
   The [evidence](./research/topology-improvement-design.md) lists the
   remaining comparisons. Retain the room's explicit voice limit and compare
   Native forwarding cost with the measured Browser hops. Extend relay-exit controls to media-only loss while

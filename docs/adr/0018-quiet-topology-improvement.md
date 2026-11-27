@@ -48,11 +48,18 @@ yet.
    source capture, parent ingress, a shared access network or parent egress.
    They say whether a trial is worth its cost. The trial decides.
 5. **Auto capacity grows by demand.** When a demand cannot be placed, one more
-   child is tried at a parent under the existing allocator, and it stays only
-   if every sibling still proves healthy. A node healthy with N children has
-   proved N for that workload, nothing more. A person's explicit limit, zero
-   included, is kept, and each kind keeps its own budget. Memory across days
-   is a later stage.
+   child is tried at a sender that already plays the publication, under the
+   existing allocator. The trial stays only if the new child reaches proved
+   playback and every sibling still proves healthy through the same window;
+   otherwise the new child alone is withdrawn, by its generation, and that
+   sender is not tried again without fresh evidence. A node healthy with N
+   children has proved N for that workload, nothing more, and the room's
+   number is where it starts. A sender takes part only while it reports
+   headroom: one yes or no for each kind, decided on the device from what its
+   own connections measure, which refuses a trial and never proves one. The
+   measurements stay on the device. A person's explicit limit, zero included,
+   is kept, and each kind keeps its own budget. Memory across days is a later
+   stage.
 6. **Placement uses negotiated facts.** The generations a path costs depend on
    the formats and the implementation negotiated for that flow, not on a
    platform label. An unknown cost is not zero, and a pair's estimate is not
@@ -89,8 +96,8 @@ them.
 | Stage | Step | Shown by |
 | --- | --- | --- |
 | 0 | Offline traces and a replayed decision | Nothing; it produces the evidence |
-| 1 | One leaf moved to a strictly better place, with the present proof | A missed opportunity that recurs in the traces |
-| 2 | One more child tried on unmet demand | Viewers refused or placed deeper while a parent stayed healthy |
+| 1 | One more child tried on unmet demand | Viewers left unplaced while a sender stayed healthy: with twenty endpoints that reach only the source, the planner serves 2 of 19 at the room's default and 4 with a limit of 4 |
+| 2 | One leaf moved to a strictly better place, with the present proof | A missed opportunity that recurs in the traces |
 | 3 | A targeted spare connection | Receivers that lost their only relay |
 | 4 | Quality comparisons gated by observations; memory across days | Impairment that outlasts natural recovery; capacity that repeats |
 
