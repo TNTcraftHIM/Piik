@@ -12,13 +12,13 @@ Reviewed through `9b44927b`. At `b29f3712`, where beta.59 is frozen,
 
 ### 1. Release blockers: `release-blockers.md`, beside this file
 
-Twenty-two faults of the kinds AGENTS.md lists as phase blockers, ten of
-them P0, each with its place, scenario, chain and shortest reproduction.
+Twenty-two findings, each with its place, scenario, chain and shortest
+reproduction; ten stand as work, by the rules below.
 Every one survived a second reader who tried to defeat it; almost none was
 run, so reproduce before fixing. I read 1, 2, 4, 5, 9, 10 and 21 in the
 code. Delete the file when its items are fixed or in the ledger.
 
-Five rules cover most of them:
+The rules:
 
 1. **What grows with ordinary use is cleared by hand** (the owner's
    decision: keep the software simple, no retention rules). One action at
@@ -27,15 +27,12 @@ Five rules cover most of them:
    rooms, roles and settings. This answers the growth in 2 and 7 that comes
    from use: a friend behind a temporary address is a new member each day,
    and a message may carry 512 KiB of image.
-2. **Against deliberate flooding, a few fixed limits and nothing more.**
-   Clearing does not help while someone with the link holds every session
-   or fills the disk faster than it is cleared. Read and idle timeouts and
-   a connection cap on the HTTP entries (9); one rate limit per connection
-   at the hub (7, 12, 16, 19); a cap on sessions and sockets per address
-   (11, 22); fixed caps on members (2), grants per room (3) and candidates
-   per pair (10); a reader that stops reading is dropped (15, 18); exports
-   and the restore slot time out (6, 14, 17). Each is a constant with a
-   clear refusal, in the one place the thing enters.
+2. **Deliberate flooding is left to fail** (the owner: "这种情况属于erlang let it
+   crash"). The [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
+   already says so: a limit, timeout or queue needs a report, measurement
+   or trace of the impact. A site that someone floods may stop; a restart
+   and the clearing action bring it back. So items 3, 6, 9, 10, 11, 14, 15,
+   16, 17, 18, 19 and 22 are not to be fixed.
 3. **The App's control port knows its caller by a secret of this launch.**
    Host and Origin headers can be written by any local program (4).
 4. **One rule for what the App fetches on a page's word**: public addresses
@@ -44,10 +41,12 @@ Five rules cover most of them:
    approval button and the native prompts act only in a window that is on
    top and has been for a moment (8; notes 23 and 24).
 
-Singly: bound the Argon2 parameters a stored hash may carry (5); a restore
-that replaces a person's own credential keeps the old one until confirmed
-(13); the session left behind when the recovery deadline fires (20); the
-stop shortcut fires whatever else is held (21).
+Singly: refuse a stored hash whose Argon2 parameters are outside what this
+build writes (5: input from a backup); attempts at a room's password are
+limited per connection (12: this decides who enters a private room, not
+load); a restore that replaces a person's own credential keeps the old one
+until confirmed (13); the session left behind when the recovery deadline
+fires (20); the stop shortcut fires whatever else is held (21).
 
 ### 2. Members without a name, and tags
 
