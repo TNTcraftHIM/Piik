@@ -11643,7 +11643,11 @@ test("a copy without room information round-trips real ZIP content and remaps hi
   hash.update(new Uint8Array(await file.arrayBuffer()));
   const attachment = { id: crypto.randomUUID(), name: file.name, size: file.size,
     mediaType: "application/octet-stream" as const, sha256: hash.finish() };
-  Object.assign(row, { id: messageId, userId: author, nonce: "owned-copy-nonce", archivedAuthorName: "Archived author",
+  const quotedAuthor = crypto.randomUUID();
+  vi.spyOn(session, "loadProfiles").mockImplementation(async ids => ids.includes(quotedAuthor)
+    ? [{ id: quotedAuthor, name: "Guest", avatar: null, version: "0".repeat(64) }] : []);
+  Object.assign(row, { seq: 2, id: messageId, userId: author, nonce: "owned-copy-nonce", archivedAuthorName: "Archived author",
+    reply: { seq: 1, userId: quotedAuthor, text: "Original message", notify: true },
     attachments: [attachment], reactions: { revision: 1, counts: { wave: 1 } } });
   vi.spyOn(session.attachments, "retained").mockResolvedValue([
     { key: { roomId: "first", messageSeq: row.seq, attachmentId: attachment.id }, attachment, file },
@@ -11655,7 +11659,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const metadata = await backupArchive.readBackup(archive, {
       metadata: () => {}, row: value => { history.push(value); }, content: (digest, value) => { content.set(digest, value); },
     });
-    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: {}, retainedFiles: [{ messageSeq: row.seq, attachment }] });
+    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: { [quotedAuthor]: "Guest" }, retainedFiles: [{ messageSeq: row.seq, attachment }] });
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
@@ -11678,8 +11682,9 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const copied = JSON.parse(importer.accept(JSON.stringify(history[0]))) as BackupHistoryRow;
     importer.finish();
     expect(copied).toMatchObject({ seq: row.seq, text: row.text, attachments: [attachment],
-      archivedAuthorName: "Archived author", reactions: row.reactions });
+      archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "Guest" } });
     if (!("id" in copied)) throw new Error("expected live archive message");
+    expect(copied.reply!.userId).not.toBe(quotedAuthor);
     expect(copied.id).not.toBe(messageId); expect(copied.userId).not.toBe(author); expect(copied.nonce).not.toBe(row.nonce);
     const policy = JSON.parse(core.create_room_policy(JSON.stringify({ id: crypto.randomUUID(), creatorId: creator,
       name: "New copy", icon: "couch", access: "private", hidden: false })));

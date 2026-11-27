@@ -1755,9 +1755,12 @@ export class ChannelSession {
     for await (const row of snapshot.rows) {
       check();
       if (!("attachments" in row)) continue;
-      if (metadata.kind === "room_copy" && !row.archivedAuthorName) {
-        authors.add(row.userId);
-        if (authors.size >= PROFILE_PAGE_SIZE) await readAuthors();
+      if (metadata.kind === "room_copy") {
+        for (const source of [row, row.reply]) {
+          if (!source || source.archivedAuthorName !== undefined) continue;
+          authors.add(source.userId);
+          if (authors.size >= PROFILE_PAGE_SIZE) await readAuthors();
+        }
       }
       for (const attachment of row.attachments) {
         const entry = byKey.get(JSON.stringify([row.seq, attachment.id]));
