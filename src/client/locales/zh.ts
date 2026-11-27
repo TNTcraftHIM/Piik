@@ -163,7 +163,7 @@ export const zh = {
   "room.settings.browserStorageBestEffort": "存储空间不足时，浏览器可能会清理此房间的记录。",
   "room.settings.browserStorageUnknown": "无法确认浏览器是否会在存储空间不足时保留此房间的记录。",
   "room.settings.clearLocalCache": "清除本机房间缓存",
-  "room.settings.localCacheScope": "清除当前身份在本机为此房间缓存的附件。",
+  "room.settings.localCacheScope": "你在线时，同房间的其他成员可以下载本机缓存的附件，清除缓存后，这些副本就不再供下载。",
   "room.settings.confirmClearLocalCache": "清除此身份在本机为「{name}」缓存的附件？房间记录和已保存的下载会保留。仅在本机有副本的文件，请先保存。",
   "room.backup.title": "房间备份",
   "invite.room.title": "邀请进入 {name}",

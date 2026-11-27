@@ -165,7 +165,7 @@ export const en: Record<CopyKey, string> = {
   "room.settings.browserStorageBestEffort": "Your browser may remove these room records when storage is low.",
   "room.settings.browserStorageUnknown": "This browser’s protection against automatic cleanup could not be checked.",
   "room.settings.clearLocalCache": "Clear local room cache",
-  "room.settings.localCacheScope": "Remove cached attachments for this room and identity on this device.",
+  "room.settings.localCacheScope": "Other room members can download attachments cached on this device while you’re connected. Clearing the cache stops those copies from being shared.",
   "room.settings.confirmClearLocalCache": "Clear your cached attachments for {name} on this device? Room records and saved downloads are kept. If this device has the only copy of a file, save it first.",
   "room.backup.title": "Room backup",
   "invite.room.title": "Invite to {name}",
