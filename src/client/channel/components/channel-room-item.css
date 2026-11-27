@@ -63,7 +63,6 @@
   width: calc(var(--room-disclosure-width) + var(--room-disclosure-reach)); min-width: 0; margin-inline-start: calc(-1 * var(--room-disclosure-reach)); padding-inline-start: var(--room-disclosure-reach); }
 .c3-room-list-item .c3-room-lead .lr-btn[aria-expanded] { --button-icon-size: 24px; padding-inline-start: 0; }
 .c3-room-lead .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
-.c3-room-lead .lr-btn[aria-expanded]::before { inset-inline: 3px; }
 .c3-room-lead .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
 .c3-room-lead .lr-btn > svg { position: relative; }
 .c3-room-lead [aria-expanded="false"] > svg { transform: rotate(-90deg); }
