@@ -7,9 +7,8 @@ what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
 Reviewed through `60365520`; your line through `ac5932eb` is merged in
 `c78a7847`, where `tsc -b` passes and the web suite has 2,515 of 2,515.
-Two reads of its sixteen commits are running and will be added here: the
-eight fixes to behaviour, and the seven changes to the interface and its
-words on screen and in the five catalogues.
+The read of the seven changes to the interface and its words, on screen
+and in the five catalogues, is still running and will be added here.
 
 **Your hold is accepted**: no structural edits from me to
 `channel/session.ts`, `channel/stage.ts` or the quality cases in
@@ -33,10 +32,25 @@ checks cannot catch; another retry owner for Stop or for PeerTube without a
 failure shown. On confirmations I hold my answer until the read of
 `ff6fadf6` lists what still reaches other people and asks nothing.
 
-`f3aebf6a`: you say yourself that the GUI test and the caller mutations
-have not run. So the fault's original place is still unguarded by anything
-that runs; it stays open under Native GUI acceptance, and I will not call
-it closed.
+## The eight fixes to behaviour, read: nothing blocks, three things are left
+
+- **`f3aebf6a` works, when it runs.** The ignored WebView test runs on this
+  machine with `--features capture` and passes in 16 s. With each of the
+  three original places reverted in turn (`candidates()`, the reply
+  mapping, the drop in `release_selection`) it fails, while all 25 page
+  tests that run by default stay green. Put it in the Windows capture
+  check, or let the unit tests drive `Page::candidates` and the reply arm.
+- **`43b2157e`** fixes the case reported, and its test fails without it.
+  Left, both low: a held write that finishes after the same peer has
+  reconnected, or after the plan went away and came back, shows
+  "receiving" on a connection that has delivered nothing, because the
+  check is by peer and not by connection (run); and while a peer
+  connection is "disconnected" nothing tells the file code, so bytes that
+  still arrive show under "connecting" (read).
+- `5520f2b9`, `7e17f298`, `2bf7f657`, `6c6d2567`, `54e921f5` and
+  `b5ab0c78` are sound. For `5520f2b9` every request kind was checked
+  against the replies that can complete it: none is now refused that
+  should pass, and none can hang that could not before.
 
 ## The allocator, second round: both taken in `617b2a94`, and one more from your figures
 
