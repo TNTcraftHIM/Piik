@@ -312,7 +312,22 @@ address it has seen, the window they bound when there is one; the other side
 sends to the windows first and then to the whole range, each in bit-reversed
 order. Two sides that both cannot name a port remain out of reach.
 
-One reading of the present product path rests on the same data. Its three
+None of this starts from nothing. Predicting a port from a counter is the
+[2003 draft](https://datatracker.ietf.org/doc/html/draft-takeda-symmetric-nat-traversal-00)
+this document already cites, a pool against random probes is the
+[analysis](https://tailscale.com/blog/how-nat-traversal-works) the product's
+pool follows, and a
+[2016 measurement](https://arxiv.org/abs/1605.05606) of carrier NATs found
+ports kept, counted and drawn in comparable shares, from one destination per
+session. A search on 2026-11-27, read from abstracts only, found no
+measurement of a counter per destination and no search order that serves a
+run and a draw alike; that is an absence in one search, not a claim of
+novelty.
+
+One reading of the present product path rests on the same data. On the
+campus with three addresses and on the hotspot with three, the three default
+servers each answered through a different address in the latest runs, so
+`observe` ends its enhancement there every time; ordinary discovery goes on. Its three
 default STUN servers share a port. On the campus they read three neighbouring
 ports from one socket in one run, which the survey classifies as sequential,
 while a peer's destination would take another counter; in an earlier run on
