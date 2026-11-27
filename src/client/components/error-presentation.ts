@@ -52,6 +52,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.roomRestoredConnectionFailed", true);
   if (error === "room_host_unavailable" || error === "stale_backup")
     return display("channel.error.backupStateUnavailable");
+  if (error === "backup_identity_not_saved") return display("channel.error.backupIdentityNotSaved");
   if (error === "backup_identity_required")
     return display("channel.error.backupIdentityRequired");
   if (error === "backup_room_mismatch")

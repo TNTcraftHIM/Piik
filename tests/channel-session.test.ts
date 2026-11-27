@@ -12233,6 +12233,12 @@ test.each(["close during handshake", "close during admission", "rejected handsha
       expect(await completion).toBeInstanceOf(Error);
       expect(ChannelSocket.current).toBe(admission);
       expect(session.getSnapshot().connection).toBe("closed");
+      // Page cache resumes this instance; a reload constructs a new one.
+      for (const resumed of [session, new ChannelSession()]) {
+        resumed.start(); await ChannelSocket.current.onopen?.();
+        expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+        resumed.close();
+      }
     }
   } finally { session.close(); }
 });
@@ -12293,13 +12299,13 @@ test("an approved App exports only rooms positively matched to its Native sessio
   } finally { session.close(); }
 });
 
-test.each(["registered", "registration-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
+test.each(["registered", "registration-failed", "account-storage-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
   const { session, socket, peer, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedRoomIds").mockResolvedValue([]);
   nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
-  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  const saved = vi.spyOn(localStorage, "setItem");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
@@ -12320,11 +12326,15 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint",
       state: { ...state, channel: { ...state.channel, rooms: [offline] } } });
+    expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("credential");
     expect.soft(session.getSnapshot().messagesByRoom.first).toBeUndefined();
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "admit_room")).toBe(true));
     const admissionRequest = admission.sent.find(command => command.type === "admit_room")!;
     expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });
     expect(stage.replace).not.toHaveBeenCalled();
+    if (outcome === "account-storage-failed") {
+      saved.mockImplementationOnce(() => { throw new DOMException("Storage unavailable", "QuotaExceededError"); });
+    }
     admission.receive({ type: "state", state });
     admission.receive({ type: "ack", requestId: admissionRequest.requestId });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "host_register")).toBe(true));
@@ -12351,6 +12361,16 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     const browse = admission.sent.find(command => command.type === "browse" && command.roomId === "imported")!;
     admission.receive({ type: "ack", requestId: browse.requestId });
     await expect(importing).resolves.toEqual({ roomId: "imported", cached: true }); expect(cache).toHaveBeenCalledOnce();
+    if (outcome === "account-storage-failed") {
+      expect(session.getSnapshot().self?.id).toBe("archived-user");
+      expect(session.getSnapshot().error).toBe("backup_identity_not_saved");
+    }
+    session.close();
+    const fresh = new ChannelSession();
+    try {
+      fresh.start(); await ChannelSocket.current.onopen?.();
+      expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: outcome === "account-storage-failed" ? "credential" : "accepted-credential" });
+    } finally { fresh.close(); }
   } finally { session.close(); }
 });
 
