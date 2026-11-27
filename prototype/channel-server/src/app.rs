@@ -112,14 +112,12 @@ pub struct Config {
 }
 struct Permission {
     data_id: Uuid,
-    room_export: Arc<tokio::sync::Semaphore>,
     revoked: watch::Sender<bool>,
 }
 impl Permission {
     fn new(data_id: Uuid) -> Self {
         Self {
             data_id,
-            room_export: Arc::new(tokio::sync::Semaphore::new(1)),
             revoked: watch::channel(false).0,
         }
     }
