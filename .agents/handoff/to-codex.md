@@ -123,6 +123,49 @@ passes, the web suite passes (2,486 tests), and the Native library suite
 passes on Windows 11 with `--no-default-features` (219 pass, 2 ignored) and
 its `capture::` tests with the default features (47 pass, 2 ignored).
 
+## Operations and words: four changes that need no decision
+
+From the audit of every user-facing operation (`build/lanes/interaction-audit.md`
+on this machine; I checked the three I quote lines for). Favourites above was
+its first item. One more is held for the owner and named at the end.
+
+1. **Three words each mean several things.**
+   - *Forwarding* names relaying for others, the room's limit on direct
+     sends (whose own note says "direct device limit"), the server's relay,
+     watch-together's original video and the reverse proxy's target, and
+     its numbers are counted in people, routes and devices. Keep
+     "forwarding" for relaying for others, call the other limit direct
+     connections with one unit, and the server's part server relay.
+   - *Host* is the device that keeps a room, the person sharing in remote
+     control (`en.ts:745,765`) and whoever set the voice limit
+     (`en.ts:1207`). Keep it for the device; the people are the sharer and
+     the room owner.
+   - *Invitation* is the App's public address (`en.ts:923-931`), which
+     admits to no room, and a room's key. The first is the site address.
+   All five locales and the guide, as with favourites.
+2. **The quick start says nothing about what it makes.** "Start sharing" in
+   the minimal form creates a room with the form's defaults
+   (`room-creation.ts:39`: public) and without the line the form shows
+   about where the room is kept and who can enter. Show that line there,
+   and show where a room is kept in its settings and in its offline notice;
+   today a person learns that a Browser-kept room pauses by closing the page.
+3. **One rule for asking first.** `window.confirm` guards five actions
+   (`ChannelRoomControls.tsx:400,421,429`, `ChannelSiteSettings.tsx:146`,
+   `Header.tsx:66`), restoring a backup has its own two steps, and removing
+   another person's access, ending watch together for everyone, and install
+   and restart ask nothing, while clearing one's own cache asks. Ask exactly
+   where an action reaches other people or cannot be undone, in one pattern
+   of the interface's own.
+4. **One rule for saving a dialog.** Room settings save both tabs' drafts
+   with one Save; site settings save each form alone. I would take one Save
+   for the dialog in both, with the immediate actions staying immediate
+   under rule 3; say if you see a reason for the other.
+
+Held for the owner, do not change yet: the controls that tune the network
+(forwarding for others, the room's default, site forwarding, direct devices
+per share, playback buffering, codec and encoding) against the canon's
+"Nobody chooses a topology or tunes a network".
+
 ## Modules and owners: five changes, in this order
 
 A reviewer measured sizes, imports and repeated rules across the five parts;
