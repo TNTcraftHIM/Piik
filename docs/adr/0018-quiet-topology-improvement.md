@@ -55,12 +55,14 @@ yet.
    the trial as it ends any flow, but a flow can get worse without failing, so
    the absence of a report does not show that. Which reading shows it is not
    settled. A flow's target rate does not: it fell by three quarters on an
-   admission that harmed no viewer. The proposed reading is each flow's
-   delivered share, what it sends of what the sender had to send in the same
-   seconds. Its source and output observations must first be mapped to each
-   flow and selected representation; recorded controls decide whether it
-   follows what receivers present. Otherwise the new child
-   alone is withdrawn, by its generation, and that sender is not
+   admission that harmed no viewer. A share of frames delivered has no
+   denominator that means the same in every runtime. The proposed reading
+   asks the owner each runtime already has: whether a flow's own adaptation
+   reports that the path or the device limits it, and for how much of the
+   window. A trial fails when a flow that was not limited becomes limited,
+   and a sender whose flows are already limited is not tried. Recorded
+   controls decide whether that follows what receivers present. Otherwise the
+   new child alone is withdrawn, by its generation, and that sender is not
    tried again without fresh evidence. A node healthy with N children has
    proved N for that workload, nothing more, and the room's number is where it
    starts. A person's explicit limit, zero included, is kept, and each kind
@@ -126,5 +128,5 @@ the actuator. A number that a person has to set.
   a trial does to the incumbent and to siblings.
 - Source-stars that start from a stable single viewer, one that the added
   viewer overloads and one that it does not, the newcomer on the source
-  itself: each flow's delivered share and the other sender and pool readings,
-  beside what each receiver presents, recorded independently.
+  itself: what each flow's adaptation reports and the other sender and pool
+  readings, beside what each receiver presents, recorded independently.
