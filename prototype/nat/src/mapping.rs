@@ -420,17 +420,25 @@ pub struct Replay {
     pub no_aim: u16,
     /// Fewer mappings came before it than a reading is asked to have.
     pub too_early: u16,
+    /// It was made together with others, which moved the cursors themselves.
+    pub in_bursts: u16,
 }
 
 /// Replays a survey: for each new mapping, would the windows aimed from the mappings before it
 /// have held its port? `made` are the new mappings in the order made, each with the number of the
 /// group it was sent in. The mappings of one group were all sent before any of their answers was
-/// read, so a target reads only groups before its own. A target with fewer than `least` readable
+/// read, so a target reads only groups before its own. Only a mapping made alone is judged: one
+/// of a burst lands behind the others of its burst, which no aim made before the burst could know,
+/// and a NAT takes a burst in the order it arrives. A target with fewer than `least` readable
 /// mappings before it is counted apart, and so is one whose history gives no windows: neither is a
 /// miss, and leaving them out would change what the rest is a share of.
 pub fn replay(made: &[(u32, Sample)], least: usize, holdout: Holdout) -> Replay {
     let mut replay = Replay::default();
     for (group, target) in made {
+        if made.iter().filter(|(other, _)| other == group).count() > 1 {
+            replay.in_bursts += 1;
+            continue;
+        }
         let known: Vec<(u32, u16)> = made
             .iter()
             .filter(|(earlier, sample)| {
@@ -608,16 +616,18 @@ fn cursors(allocations: &[(u32, u16)]) -> Option<Vec<Cursor>> {
 /// chances add up to no more than one over all ports, and a port joins the run that gives it the
 /// larger one. As a draw, a port is one of those the set still has.
 ///
-/// The ratio is taken port by port. So for draws from a set at least as large as the one assumed
-/// here its expectation never rises, and it reaches a value `v` in at most one survey in `v`. The
-/// set assumed is the smallest the ports allow: their span or the port set they share, and no
-/// fewer than [`SMALLEST_SET`]. A sparser set of a shape this module does not know is outside
-/// that statement. Reading cursors when the ratio passes one is the choice of the likelier of
-/// the two, not a test at a level.
+/// The ratio is taken port by port against the set assumed, which is fitted to the ports and so
+/// is not fixed while they arrive: the ratio itself may rise in expectation. What holds is this.
+/// Taken against the set the ports were really drawn from, the same product never rises in
+/// expectation and so reaches a value `v` in at most one survey in `v`; and the ratio here is no
+/// larger than that product whenever the set assumed is no larger than the real one, since each
+/// factor grows with the set. The set assumed is the smallest this module knows of that holds the
+/// ports ([`least_set`]): so the bound holds for draws from a run of at least [`SMALLEST_SET`]
+/// ports in a row, from the whole range, or from a port set of a shape listed here, and says
+/// nothing of a sparser set of another shape. Reading cursors when the ratio passes one is the
+/// choice of the likelier of the two, not a test at a level.
 fn runs(allocations: &[(u32, u16)]) -> (Vec<Vec<(u32, u16)>>, f64) {
-    let ports = || allocations.iter().map(|&(_, port)| f64::from(port));
-    let span = ports().fold(f64::MIN, f64::max) - ports().fold(f64::MAX, f64::min) + 1.0;
-    let set = span.min(f64::from(port_set(allocations).size())).max(SMALLEST_SET);
+    let set = least_set(allocations);
     let every = f64::from(u16::MAX - LOWEST_PORT) + 1.0;
     let gaps: f64 = (1..=MAX_GAP).map(|gap| 1.0 / f64::from(gap)).sum();
     let mut runs: Vec<Vec<(u32, u16)>> = Vec::new();
@@ -659,6 +669,22 @@ fn runs(allocations: &[(u32, u16)]) -> (Vec<Vec<(u32, u16)>>, f64) {
         }
     }
     (runs, odds)
+}
+
+/// The size of the smallest set this module knows of that holds these ports: the span they
+/// cover, or a port set of a listed shape that they all belong to, and no fewer than
+/// [`SMALLEST_SET`]. A shape counts as soon as the ports fit it, without the evidence
+/// [`port_set`] asks before it names one: two ports far apart may be two of a port set's 240.
+fn least_set(allocations: &[(u32, u16)]) -> f64 {
+    let ports = || allocations.iter().map(|&(_, port)| port);
+    let span = u32::from(ports().max().unwrap_or(0)) - u32::from(ports().min().unwrap_or(0)) + 1;
+    let shaped = PORT_SET_SHAPES.iter().filter_map(|&(offset, length)| {
+        let free = 16 - offset - length;
+        let psid = (ports().next()? >> free) & ((1 << length) - 1);
+        let set = PortSet::Shared { offset, length, psid };
+        ports().all(|port| set.contains(port)).then(|| set.size())
+    });
+    f64::from(shaped.fold(span, u32::min)).max(SMALLEST_SET)
 }
 
 /// The cursor a run of ports shows. It moves the way its ports did between the earliest and the
@@ -849,6 +875,16 @@ mod tests {
     }
 
     #[test]
+    fn the_set_assumed_is_no_larger_than_one_the_ports_could_come_from() {
+        let timed = |ports: &[u16]| -> Vec<(u32, u16)> { ports.iter().enumerate().map(|(index, port)| (index as u32 * EVERY_MS, *port)).collect() };
+        // Two ports of one port set of 240 lie 57,345 apart: the set assumed is the 240.
+        assert_eq!(least_set(&timed(&[4_096, 61_440])), 240.0);
+        // Ports that fit no shape are taken to fill their span, and a few in a row to come from a small block.
+        assert_eq!(least_set(&timed(&[20_000, 20_500, 21_001])), 1_002.0);
+        assert_eq!(least_set(&timed(&[20_000, 20_001])), SMALLEST_SET);
+    }
+
+    #[test]
     fn draws_seldom_pass_for_cursors() {
         // The ratio reaches a hundred in at most one survey of draws in a hundred. The first case
         // is the one that broke the density this replaced: 64 ports in a row, given again and again.
@@ -885,14 +921,14 @@ mod tests {
         let mut short = made.clone();
         short.remove(3);
         assert_eq!(replay(&short, 8, Holdout::Nothing), Replay { too_early: 8, ..Replay::default() });
-        // Four mappings sent as one group know nothing of each other. They land on a counter that
-        // nothing before them showed, so all four are missed; had each read the ones sent with it,
-        // the window past the first would have held the rest.
+        // Four mappings sent as one group are not judged: each lands behind the others of its
+        // group, which nothing made before the group could tell. Given a group each, the first
+        // lands on a counter nothing showed and is missed, and the window past it holds the rest.
         let mut burst: Vec<(u32, Sample)> = made[..8].to_vec();
         burst.extend((8..12).map(|index| (8, sample(index, observer(index as u8 % 4), 45_000 + index as u16))));
-        assert_eq!(replay(&burst, 8, Holdout::Nothing), Replay { missed: 4, too_early: 8, ..Replay::default() });
-        let leaked: Vec<(u32, Sample)> = burst.iter().enumerate().map(|(index, (_, sample))| (index as u32, *sample)).collect();
-        assert_eq!(replay(&leaked, 8, Holdout::Nothing).held, 3);
+        assert_eq!(replay(&burst, 8, Holdout::Nothing), Replay { in_bursts: 4, too_early: 8, ..Replay::default() });
+        let apart: Vec<(u32, Sample)> = burst.iter().enumerate().map(|(index, (_, sample))| (index as u32, *sample)).collect();
+        assert_eq!(replay(&apart, 8, Holdout::Nothing), Replay { held: 3, missed: 1, too_early: 8, ..Replay::default() });
     }
 
     #[test]
