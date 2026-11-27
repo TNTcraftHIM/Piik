@@ -70,17 +70,33 @@ the feedback period; they do not delay that delivery.
   resource. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Freeze the first public 3.0 contract.** Decide
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
-  writers and release storage fixtures. Settle the common extension and
-  partial-read contract, compatibility matrix, explicit reply outcomes, and
-  history and storage boundaries before publication. While that
-  design is under review, do not add exact-version steps, closed wire/storage
-  boundaries or individual feature flags to extend the current scheme.
+  writers and release storage fixtures. The
+  [rule for extending interfaces](./standards/versioning.md#extending-interfaces)
+  is set: trace it through each connection, bring the private code to it and
+  exercise it in tests, then settle explicit reply outcomes and history and
+  storage boundaries before publication. Do not add exact-version steps,
+  closed wire boundaries or individual feature flags meanwhile.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,
   Browser and SDK readers. Keep API/Bot capabilities within existing actions
   and authority. [Adopted architecture](./adr/0016-shared-rust-core.md) ·
   [Design review](./research/clean-room-design-review.md)
+- [ ] **Conversation results and reads.** Return the stored message with its
+  reaction revision in the existing send confirmation. Add the text-only
+  history selection before page budgeting, preserving omitted image data in
+  complete readers. Settle unknown terminal replies without treating them as
+  rejection or retiring healthy sibling operations.
+- [ ] **Local ownership reductions.** Carry capture options through the Native
+  command chain as one value, remove redundant SDP handoff state and avoid
+  unchanged history-view copies. Keep platform queue retirement semantics and
+  the destination writer's validation. Review SQLite single-row storage and a
+  full byte-tree wire change only with their concrete ownership benefit and
+  regression cost; neither is a demonstrated runtime defect.
+- [ ] **Reserved stop shortcuts.** Exclude Ctrl+Alt+F1–F11, with optional Shift
+  and Win, from voice bindings at the shared Browser and App validators. Keep
+  other saved bindings when one slot is invalid. Register only the selected
+  stop key's existing platform variants.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -239,7 +255,11 @@ the feedback period; they do not delay that delivery.
 - [ ] **Quiet topology improvement.** Decide
   [ADR-0018](./adr/0018-quiet-topology-improvement.md). Stage 0 is offline:
   replay the planner on exported diagnostics and look for an opportunity that
-  recurs. The first production step is one more child tried on unmet demand,
+  recurs. Resolve the Native observation boundary against receiver playback:
+  encoder restrictions, representation selection and pair allocation do not
+  yet establish one per-flow limitation reason. Keep automatic trial admission
+  on hold until that comparison distinguishes harmless and harmful admission.
+  The first production step is one more child tried on unmet demand,
   then one leaf moved to a strictly better place with the present proof.
   The [evidence](./research/topology-improvement-design.md) lists the
   remaining comparisons. Retain the room's explicit voice limit and compare
@@ -251,15 +271,15 @@ the feedback period; they do not delay that delivery.
 - [ ] **The life of a message.** Decide
   [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, quote
   behavior and the merge rule for text and reaction changes. Search is not
-  built. Set stored fields and capabilities with their
+  built. Set stored fields and requests with their
   consumers. Before publication, verify that supported archive round trips
   preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
   [ADR-0020](./adr/0020-one-vocabulary-for-extension.md). Before the first
-  release: settle additive message presentation fields and strict writer and
-  archive boundaries through the actual Rust, Browser and SDK consumers.
-  Editing supplies the first concrete addition; no extension interface or
-  generic capability registry is built. A part interface is weighed only by a bounded
+  release: settle message fields that a reader ignores and a writer leaves
+  out, and strict archive boundaries, through the actual Rust, Browser and
+  SDK consumers. Editing supplies the first concrete new request; no
+  extension interface or generic capability registry is built. A part interface is weighed only by a bounded
   comparison with plain lifecycle-owner extraction.
 - [ ] **Remote-writer route continuity.** Measure writer round-trip time and
   cold repair on independent networks. The
@@ -322,6 +342,10 @@ the feedback period; they do not delay that delivery.
   concurrent use. [Random-mapping and linear-extension controls](./research/nat-traversal.md#random-mapping-collision-control)
   Compare parallel surveys and search budgets under the same preparation deadline
   before changing the accepted limits.
+  Prepare the isolated survey observer independently of the Demo service.
+  Package the survey client only after carrying forward its candidate-window
+  and reply-origin corrections; verify same-IP filtering separately from
+  cross-IP mapping and preserve destination identity in offline replay.
   Evaluate the isolated allocator proposal against held-out per-destination
   mappings, including burst allocations and missing observations; then verify a
   bounded schedule through authenticated preparation and ICE transfer.

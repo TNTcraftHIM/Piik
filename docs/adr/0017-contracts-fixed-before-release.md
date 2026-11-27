@@ -1,7 +1,7 @@
 # ADR-0017: Contracts Fixed Before The First 3.0 Release
 
 - Status: proposed
-- Date: 2026-11-25
+- Date: 2026-11-25, compatibility rule rewritten 2026-11-27
 
 ## Context
 
@@ -11,13 +11,33 @@ and room stores hold the released shapes, and later versions have to work with
 them. Some contracts are costly to change after that; others can wait for a
 consumer. [Versioning](../standards/versioning.md) promises that an older App
 keeps working with a newer site within a major version, and that forward
-upgrades preserve durable authority. The private implementation currently has
-these boundaries:
+upgrades preserve durable authority.
+
+The owner's direction for that promise: the first number of a version is the
+protocol, the second counts features and the third repairs; any two second
+numbers of one first number work together; and the way there is kept clean.
+Refusing what is not known and announcing a capability for each addition are
+not the way, because each leaves a check behind for every feature ever added.
+A room's writer makes this sharper than it is for a hosted service: it runs
+on a friend's App or Browser, so it is as often the oldest party in a room as
+the newest. The published 2.x line shows the cost of the other way: its
+server closes a connection over one field it does not know, its handshake
+requires one exact identifier, and its capability object has grown to
+fifteen entries, one per feature, which its promise to older peers keeps.
+The private 3.0 implementation currently has these boundaries:
 
 - Channel joins and local App discovery each require their current wire
   identifier (`prototype/channel-core/src/lib.rs`,
   `src/client/channel/app-link.ts`). Capture descriptions accept additions;
-  selected capture results remain strict.
+  selected capture results remain strict. Most Domain commands and the
+  signed room commands and records are decoded closed: one field they do not
+  know fails the whole of it (`prototype/channel-core/src/wire.rs`,
+  `conversation.rs`).
+- A room's writer verifies who asks before it reads what is asked, so a
+  command it cannot read is refused in that request's reply
+  (`prototype/channel-core/src/host.rs`). A reader loses that with a record
+  it cannot read: the request it answers is read first and then dropped with
+  the failure (`conversation.rs`).
 - The Browser's pending request validates its terminal result
   (`src/client/channel/session.ts`). Unknown or mismatched outcomes reject that
   operation. The first published reader must retain this boundary when an
@@ -31,19 +51,51 @@ these boundaries:
 
 ### Settled before the first public release
 
-1. **Compatibility.** A stable wire baseline, plus extensions the recipient
-   selects. A written matrix covers an old client with a new domain, an old
-   writer with a new domain, unsupported actions, and the direction of
-   stored-data upgrades. Readers ignore additions defined as descriptive, not
-   unknown authority or an unknown final outcome: an unknown reply type is an
-   error, and an unknown host-input action needs a positive capability check.
-   Extension points are explicit instead of a general tolerance
-   ([RFC 9413](https://www.rfc-editor.org/rfc/rfc9413.html)). The first
-   release's readers decide what later versions may add.
-   An unselected result kind is a sender protocol error. A reader that cannot
-   decode the event may end the session; one that can correlate the reply
-   rejects its unknown terminal outcome. Only the expected outcome confirms
-   the operation.
+1. **Compatibility.** Two parties work together when the first numbers of
+   their versions are equal; when they differ, each tells its person which
+   side to update. Four rules make any two second numbers work together.
+   None of them is a flag for one feature or a path for one older peer.
+   - *A party states its two numbers once,* where it is already described: a
+     session when it joins, the Domain in its welcome, the App in its
+     discovery. The Domain publishes a session's numbers beside its key, so
+     the numbers of a room's writer are those of its host's session. They
+     decide what a client offers to its person. No result depends on them.
+   - *An unknown kind gets an answer where one is waited for.* A request of a
+     kind its receiver does not know is refused as unsupported in that
+     request's reply. A reply of a kind its requester does not know ends that
+     request as an unknown outcome and never as success. A notification of an
+     unknown kind is ignored. A new action an older receiver must decline
+     uses a distinct request. Changes to state older observers already display
+     retain their baseline update semantics.
+   - *An unknown field is ignored at an extensible object by its final
+     recipient.* Relays forward enclosed signed payloads unchanged. Known
+     bounds, types and required fields stay strict, and nested objects keep
+     their defined contracts. A writer stores
+     the fields it knows, and its confirmation carries the message as stored,
+     so a sender sees what was kept. A new constraint whose omission would
+     widen authority, lifetime, recipients or the target uses a distinct
+     request; baseline requests retain all their defined constraints. A writer
+     keeps nothing it cannot read, because deleting a message, clearing media
+     and copying a room are promises about everything stored. What is written
+     to last is the exception to ignoring, since nobody is there to be told:
+     a store or an archive that holds what its reader does not know is
+     refused before anything is installed.
+   - *A party gets a new form by asking for it.* A request names the optional
+     parts and forms it wants. One that names none gets what the first
+     release gave. A part that was not asked for, or that the answering party
+     does not know, is absent, and absent never means empty or deleted.
+
+   What the four cannot express, which is changing or removing something
+   that exists, waits for the next first number. That number also removes
+   every branch written for an older peer, so such branches live for one
+   first number at most. The first release exercises the rules at each
+   independently implemented wire boundary, including a real mixed-version
+   path. Tests cover unknown fields, requests, replies and notifications and
+   a peer with a higher second number; shared decoders share boundary tests.
+   An extension mechanism that is not used stops working
+   ([RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)). Until the first
+   release the one private number keeps its present job of telling apart
+   builds that were not made for each other.
 2. **Replies.** A request ends in an explicit terminal outcome that tells
    rejected from unknown, and a copy sent to an observer is separate from the
    requester's reply. Idempotency is scoped by operation: chat already has
@@ -59,7 +111,8 @@ these boundaries:
    defaults; they never replace saved identity or restore authority. Add a
    concrete transactional upgrade only when a representation changes, and
    refuse a newer store before modification. No general migration framework
-   is required.
+   is required. A store's layout number stays with its storage engine and
+   says nothing about a peer.
 4. **Restored history.** A restore gives the room's history a new lineage that
    invalidates old read positions, and a normal restart keeps them. A position
    a released reader saved without a lineage cannot later be told apart from
@@ -77,11 +130,10 @@ At the first public release, the owner selects the matched App, Web and Server
 revision. Its retained readers and writer-produced storage fixtures define the
 baseline protected by [versioning](../standards/versioning.md).
 
-Compatible releases keep the baseline protocol identifiers. Older Apps with
-newer Sites, newer Apps with older Sites, and older room writers with newer
-channels keep their established commands and results. A new command, result kind
-or automatic-selection output is sent only after the receiving peer selects
-support through the existing feature owner.
+Releases that share the first number keep what that baseline's parties rely
+on. Older Apps with newer Sites, newer Apps with older Sites, and older room
+writers with newer channels keep their established requests and replies with
+their meaning, and a new form reaches only a party that asked for it.
 
 ### Deferred until a consumer needs it
 
@@ -113,13 +165,36 @@ support through the existing feature owner.
 
 - Any concrete incompatible wire or storage correction lands before release
   under the present rule for private experiments.
-- [Versioning](../standards/versioning.md) states the compatibility matrix the
-  code implements, and a feature added after release is an extension the
-  recipient selects, not a new major version.
+- A feature added after release is a new kind, a new field or a new part to
+  ask for, and raises the second number. No matrix of pairs is kept, because
+  every pair that shares a first number works by the same four rules.
+- Refusing unknown fields goes from the wire. Stores and archives keep
+  refusing what they do not know. One wire field per feature is not added
+  again. The descriptions a join already carries of what a party's runtime
+  can do stay: they describe a machine, not a version.
+- A room is as new as its writer for whatever is stored. A person can act on
+  that sentence: the host updates. Keeping fields a writer cannot read, so
+  that newer clients could use them through an older host, was weighed and
+  left out: no feature in sight needs it, and it can be added later as one
+  more addition under these rules.
+- [Versioning](../standards/versioning.md#extending-interfaces) states the
+  rule for 3.0, whose direction the owner confirmed. The distance of the
+  private code from it is release work.
 
 ## References
 
 - [Design review against clean-room designs](../research/clean-room-design-review.md)
+- [Semantic Versioning 2.0.0](https://semver.org/): the three numbers.
+- [RFC 9110, sections 2.5 and 5.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-2.5):
+  a minor version advertises what its sender can understand; a new field
+  needs no new version when it is safe to ignore; a proxy forwards the fields
+  it does not recognise and other recipients ignore them.
+- [RFC 6120, section 8.4](https://www.rfc-editor.org/rfc/rfc6120.html#section-8.4):
+  an unknown request is answered with an error, and unknown content of a
+  message or a presence is ignored. It is the rule of a network whose
+  servers and clients are run by different people and are of different ages.
+- [PNG, chunk naming conventions](https://www.w3.org/TR/png-3/#5Chunk-naming-conventions):
+  each addition says whether a decoder that does not know it may skip it.
 - [Protocol Buffers: updating a message type](https://protobuf.dev/programming-guides/proto3/):
   adding fields is safe, and unknown values are preserved.
 - [RFC 9413, Maintaining Robust Protocols](https://www.rfc-editor.org/rfc/rfc9413.html):

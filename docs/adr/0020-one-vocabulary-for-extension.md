@@ -49,25 +49,27 @@ fixed.
      Nested structures retain their defined shapes; they are not separate
      extension points. An addition about one file or one mention sits on the
      message and names it, as inline images do.
-   - *The writer is strict and says what it stores.* A writer refuses a draft
-     that carries anything it does not know at the existing signed-command
-     boundary, with a rejection correlated to that request. A new feature
-     adds its capability to the room's existing contract together with its
-     producer and consumer. No generic capability registry is needed first.
+   - *The writer stores what it knows.* A field of a draft that a writer
+     does not know is no error: it is left out, and the confirmation carries
+     the message as stored, so its sender sees what was kept. What a writer
+     has to act on arrives as a request of its own, which an older writer
+     refuses as unsupported in that request's reply
+     ([ADR-0017](./0017-contracts-fixed-before-release.md), decision 1). No
+     capability is announced per feature: a client reads the writer's two
+     numbers to decide what to offer.
    - *A program is a participant* (decision 5). It joins and acts through
      the wire a person's client uses, so no second interface has to keep
      step with the first, and joining never comes to depend on something only
      a browser has. The tree's own text participant already reads and writes
      this way from Node.
 
-   Tests exercise an additive message field through each actual reader,
-   preserve payload signature verification, and require unsupported drafts
-   to be rejected through the existing reply. Editing
-   ([ADR-0019](./0019-the-life-of-a-message.md)) supplies the first real
-   additional presentation field. Deleting a message removes its additions
-   with it. Archives remain strict and reject data the receiving writer
-   cannot preserve before installation. Wire and stored-format compatibility
-   remain under the existing versioning policy.
+   Tests send a field no party knows through each actual reader and writer,
+   preserve payload signature verification, and require a request no writer
+   knows to be refused through the existing reply. Editing
+   ([ADR-0019](./0019-the-life-of-a-message.md)) supplies the first real new
+   request. Deleting a message removes its additions with it. Archives remain
+   strict and reject data the receiving writer cannot preserve before
+   installation.
 3. **Each owner undoes its own registrations.** A lifetime owner releases its
    listeners and the leases it borrowed when it ends, as
    [ADR-0015](./0015-browser-session-lifetime-owners.md) decided. Ending one

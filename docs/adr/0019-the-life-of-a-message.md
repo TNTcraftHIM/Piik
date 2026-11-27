@@ -22,20 +22,21 @@ signed, so a change to a row breaks no signature.
 2. **Edit.** Only the author edits, and only the text and its mentions. The
    writer replaces them and records when. No earlier version is kept, and
    there is no time limit. The interface marks the message as edited, because
-   others may have read the original. How a reply's quote follows an edit is
-   decided with the feature: a reply stores a short copy of the quoted text
-   today, and refreshing every quote in one transaction has no bound.
+   others may have read the original.
 3. **Delete.** As today: the author or someone who manages the room removes
    the row, an opaque marker stops the same send from being accepted again,
    and its files stop being delivered. Copies that people already received
-   cannot be recalled. Whether a reply keeps a marker for a deleted target is
-   decided with its interface.
-4. **Announcing a change.** A changed message is announced to the readers
+   cannot be recalled.
+4. **A reply points at its target and keeps no copy of it.** The reader shows
+   the target as it is when read: its present text, or that the original
+   message was deleted. So an edit needs no second write and a deletion
+   leaves nothing of the text behind in other rows.
+5. **Announcing a change.** A changed message is announced to the readers
    present, and a reader who was away sees the current row when it fetches
    that page. Nothing else synchronises. The rule that merges a change of text
    with a change of reactions is set when editing is built; a later change of
    reactions must never hide an earlier change of text.
-5. **Search is not built.** Nothing in a release depends on it. A page of
+6. **Search is not built.** Nothing in a release depends on it. A page of
    history carries each message's pictures with its text, so a reader cannot
    search a long history cheaply through the read as it is. When search is
    wanted, the one read serves it: its request names the optional parts of a
@@ -43,13 +44,15 @@ signed, so a change to a row breaks no signature.
    text, file descriptions) always comes. The reader matches the text, so the
    words a person searches for stay on that person's device. A participant
    program can also offer search to a room that admits one.
-6. **Edit is a capability** a writer announces, under the compatibility rule
-   of [ADR-0017](./0017-contracts-fixed-before-release.md), so it can ship
-   after the first release. Its fields and events are set with the feature.
+7. **Edit is a request of its own,** under the compatibility rule of
+   [ADR-0017](./0017-contracts-fixed-before-release.md): an older writer
+   refuses it as unsupported and a client offers it where the writer's
+   numbers include it, so it can ship after the first release. Its fields and
+   events are set with the feature.
 
 Settled before the stored format is first published: a supported backup must
-not drop a row's data without notice. Room backups and room copies reject history rows with
-unrecognized fields before installing the archive.
+not drop a row's data without notice. Room backups and room copies reject
+history rows with unrecognized fields before installing the archive.
 
 ## Not Built
 

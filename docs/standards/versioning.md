@@ -25,7 +25,9 @@ state; automatic publication follows the product-change boundary below.
 Current numeric values are in source and [status](../status.md#accepted-release-contract).
 Keep those internal values at the first public release: resetting schema or
 authorization counters for visual consistency can invalidate data or stale-work
-fences. A room number is a user-facing address, not a software version.
+fences. The two 3.0 wire identifiers are the exception: the first 3.0 release
+puts the product's first two numbers in their place
+([Extending Interfaces](#extending-interfaces)). A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
 Local test candidates may explicitly set `PIIK_BUILD_VERSION=v3.0.0-beta.4`.
 This prerelease build identity does not declare a public release: stable-tag
@@ -54,8 +56,8 @@ not interfaces the current implementation must continue to serve.
 The current owning contracts form the implementation baseline. Changes to
 scheduling, resource cleanup, code organization and presentation alone do not
 require new wire or storage identities. Review the actual message and data
-contracts, including nested payloads. Extend an existing operation or advertise a concrete
-optional capability before introducing an incompatible representation.
+contracts, including nested payloads. Extend an existing operation before
+introducing an incompatible representation.
 Protocol identifiers reject mismatched private builds; they do not require
 compatibility bridges. An incompatible change needs a concrete requirement that
 the existing contract cannot express. Update matched App, Web, Server, previews
@@ -73,8 +75,9 @@ symbols, capture sidecar details within a matched bundle, and undocumented
 diagnostic fields are not separately supported public APIs.
 
 - Within a public major, newer releases preserve established workflows and
-  accepted configuration/data for older public releases in that major. New features
-  require support at the receiving end; they are not sent speculatively.
+  accepted configuration/data for older public releases in that major. A new
+  feature needs the other end to know it; where it does not, the feature is
+  unavailable there and nothing else breaks.
 - A Site serves its own Web build, but an already-open page or installed App
   can be older. Compatibility is checked at their actual contracts, not by
   requiring identical product versions or SHAs. New App with older Site keeps
@@ -90,9 +93,10 @@ diagnostic fields are not separately supported public APIs.
   explain the impact rather than silently redefining compatibility.
 
 This does not require retaining every historical implementation. Keep one stable
-baseline contract; introduce a small optional capability only for a concrete
-new feature. Do not add a version-range solver, general adapter framework,
-parallel authority writers or blanket old-client fallback paths.
+baseline contract and add to it under the rule for
+[extending interfaces](#extending-interfaces). Do not add a flag per feature,
+a version-range solver, a general adapter framework, parallel authority
+writers or blanket old-client fallback paths.
 
 Within a published major, substantial new functionality can remain a minor
 release when older peers retain established behavior and new behavior is
@@ -103,53 +107,93 @@ avoid a major justifies mislabeling an incompatible release.
 
 ## Extending Interfaces
 
+### From the first 3.0 release
+
+[ADR-0017](../adr/0017-contracts-fixed-before-release.md), decision 1, records
+the reasons and the sources. The rule:
+
+- **Two numbers.** A party states the first two numbers of its product version
+  once, where it is already described: a session in its join, the Domain in
+  its welcome, the App in its discovery. The Domain publishes a session's
+  numbers with its other facts, so the numbers of a room's writer are those of
+  its host's session. Parties with equal first numbers work together. When the
+  first numbers differ the connection is refused and each side says which one
+  to update. The second number decides only what a client offers to its
+  person. No result depends on it.
+- **Unknown kinds.** A request of a kind its receiver does not know is refused
+  as unsupported in that request's reply. A reply of a kind its requester does
+  not know ends that request as an unknown outcome, never as success. A
+  notification of an unknown kind is ignored.
+- **Unknown fields.** At an extensible wire object the final recipient ignores
+  fields it does not know. A relay forwards the enclosed signed payload
+  unchanged. Known bounds, types and required fields stay strict, and nested
+  objects keep their defined contracts. A writer stores the
+  fields it knows, and its confirmation carries the message as stored. Stores
+  and archives are the exception, because nobody is there to be told: content
+  their reader does not know is refused before anything is installed.
+- **Where an addition goes.** A new action an older receiver must decline uses
+  a distinct request. The same applies to a new constraint whose omission
+  would widen authority, lifetime, recipients or the operation's target.
+  Every implementation understands the constraints defined for its baseline
+  requests. Changes to state older observers already display retain their
+  baseline update semantics.
+- **New forms.** A request names the optional parts and forms it wants, and
+  one that names none gets what the first release gave. A part that was not
+  asked for, or that the answering party does not know, is absent. Absent is
+  neither empty nor deleted.
+- **Everything else**, which is changing or removing something that exists,
+  waits for the next first number. That number also removes every branch
+  written for an older peer.
+
+A new required field changes something that exists. So does a new value in a
+set its readers treat as closed. A set that is meant to grow says from the
+first release what a reader does with a value it does not know, as capture
+descriptions do by skipping it.
+
+No field is added to say that a party supports one feature. What a join says
+about its runtime (peer transport, UDP preparation, video layers) describes a
+machine and stays. Whether something is available now, and whether a person
+may do it, keep their own owners: neither a number nor a description grants an
+action, and the owner of an action still checks authorization, identity,
+generation and state.
+
+The first release exercises these rules at each independently implemented wire
+boundary, including a real mixed-version path: unknown fields, requests,
+replies and notifications, and a peer with a higher second number. A shared
+decoder needs one boundary test. A tolerant current reader does not change a
+released reader's contract: verify the released readers and the new producers
+in both directions before calling a change additive.
+
+Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
+offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt
+an active share just because an unrelated product/build label changed.
+
+### The private 3.0 code today
+
+Joins and App discovery each require one exact private identifier. Domain and
+App senders use the fields defined for each command, and most command variants
+reject unknown keys. A few parameterless commands, including Domain `leave`
+and App `targets`, ignore extra keys and execute the ordinary operation.
+Native accepts extra Domain-event fields. Browser generally strips them and
+passes room-host payloads through to Core. Nested schemas retain their own
+checks. The [Core wire types](../../prototype/channel-core/src/wire.rs) and
+[Browser decoder](../../src/client/channel/protocol.ts) own these
+distinctions. Closing the distance to the rule above is release work in
+[TODO](../todo.md).
+
+### Published 2.x
+
 Published 2.x command/event contracts reject unknown keys, with an explicit
 [receive-side exception](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md#room-interactions) for the bounded
-display-only reaction identifier. Current 3.0 Domain and App senders use the
-fields defined for each command. Most command variants reject unknown keys.
-A few parameterless commands, including Domain `leave` and App `targets`,
-ignore extra keys and execute the ordinary operation. Native accepts extra
-Domain-event fields. Browser generally strips them and passes room-host
-payloads through to Core. Nested schemas retain their own checks. The
-[Core wire types](../../prototype/channel-core/src/wire.rs) and
-[Browser decoder](../../src/client/channel/protocol.ts) own these distinctions.
-
-Required fields and closed enums can still make an addition incompatible.
-Compatibility applies at every published boundary, including HTTP discovery,
-WebSocket messages and their nested payloads. An unchanged signaling identifier
-does not establish compatibility at another boundary.
-
-Runtime capabilities and App discovery ignore unknown descriptive fields while
-validating known types, bounds and required identity. An absent new optional
-capability means unavailable; established required fields keep their contract.
-Commands, credentials and authority checks remain strict. Accepting unknown
-descriptive metadata establishes neither support for an action nor permission to
-perform it.
-
-A sender preserves baseline commands, results and established behavior for a peer
-that has not selected an extension. It sends a new command, closed enum value or
-behavior-changing payload only after the receiving implementation's support for
-that feature is known. Server-initiated extension events require the recipient's
-advertised support or a concrete request selecting those events. A new client
-keeps a strict baseline handshake unchanged until support for an extension is known.
-
-Use the existing discovery, operation result or current room-host capability
-projection to advertise a concrete feature. Descriptions and selections retire
-with their existing App connection, room-host binding or source owner. The action
-owner still validates current authorization, identity, generation and operation
-state. A tolerant current reader does not change a released reader's contract;
-verify the affected released readers and new producers in both directions before
-calling a change additive.
+display-only reaction identifier. A 2.x addition advertises an optional
+capability and is exchanged only with sessions that selected it. Those rules
+stay with the [maintenance line's standard](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/versioning.md#extending-interfaces).
 
 In the 2.0 contract, numeric media descriptions and retry progress
 are independent of current implementation limits and retry policy. Extending
 those policies does not require another count-specific capability flag.
 Representation acceptance still requires local operation/resource admission;
 it is not a promise that every same-major peer can produce a new media format.
-
-Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
-offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt
-an active share just because an unrelated product/build label changed.
 
 ## Release And Recovery
 
