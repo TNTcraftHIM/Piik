@@ -342,7 +342,21 @@ pub fn walk(seen: u16, step: i16, to: u16) -> Option<u16> {
 /// The readings on each side may have reached the NAT in any order among themselves, but all of
 /// `before` must have reached it before the mapping and all of `after` after it.
 pub fn located(before: &[(u32, u16)], at_ms: u32, after: &[u16]) -> Vec<u16> {
-    let Some(cursors) = cursors(before) else { return Vec::new() };
+    let (mut found, guessed) = traced(before, at_ms, after);
+    found.extend(guessed);
+    found
+}
+
+/// The ports of [`located`] that lie between a reading before and a reading after on one cursor:
+/// each was taken by a mapping made between the two, the caller's or another subscriber's. Several
+/// mappings made together are all among them when their cursors were read on both sides.
+pub fn holes(before: &[(u32, u16)], at_ms: u32, after: &[u16]) -> Vec<u16> {
+    traced(before, at_ms, after).0
+}
+
+/// The ports found between readings, and the ports only guessed at.
+fn traced(before: &[(u32, u16)], at_ms: u32, after: &[u16]) -> (Vec<u16>, Vec<u16>) {
+    let Some(cursors) = cursors(before) else { return (Vec::new(), Vec::new()) };
     // How far other traffic can have carried each cursor since its last reading.
     let carried: Vec<Option<(u32, u32)>> = cursors
         .iter()
@@ -377,9 +391,9 @@ pub fn located(before: &[(u32, u16)], at_ms: u32, after: &[u16]) -> Vec<u16> {
         }
     }
     let read = |port: &u16| after.contains(port) || before.iter().any(|(_, seen)| seen == port);
-    between.extend(begun.into_iter().filter(|port| !read(port)));
-    between.extend(beyond);
-    between
+    let mut guessed: Vec<u16> = begun.into_iter().filter(|port| !read(port)).collect();
+    guessed.extend(beyond);
+    (between, guessed)
 }
 
 /// What the side with allocator `local` does about its peer's aim. `own` is the aim it sent, and
@@ -747,6 +761,9 @@ mod tests {
         assert_eq!(located(&before, 600, &[30_004, 50_003]), [30_003]);
         // Other traffic took a port there as well: both are named.
         assert_eq!(located(&before, 600, &[30_005, 50_003]), [30_003, 30_004]);
+        // Only those were found between readings; the ports of an unread cursor's window are guesses.
+        assert_eq!(holes(&before, 600, &[30_005]), [30_003, 30_004]);
+        assert!(located(&before, 600, &[30_005]).len() > 2);
         // No later reading landed on the second cursor, so the ports of its window follow.
         assert_eq!(located(&before, 600, &[30_004])[..2], [30_003, 50_003]);
         // A reading far from every cursor begins a run, and the mapping may be the port before it.

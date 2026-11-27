@@ -302,4 +302,134 @@ mod tests {
         assert!(many_one.0 > few_one.0 && many_eight.0 > few_eight.0);
         assert!(many_eight.0 * 2 > TRIALS);
     }
+
+    /// What one side has read of its own NAT: each mapping's time, port and destination.
+    struct Side {
+        nat: Nat,
+        read: Vec<(u32, u16, SocketAddrV4)>,
+        sockets: u32,
+    }
+    impl Side {
+        fn new(nat: Nat) -> Self {
+            Self { nat, read: Vec::new(), sockets: 0 }
+        }
+        /// A new socket sends to `to`; the port is returned as an observer would tell it.
+        fn open(&mut self, to: SocketAddrV4, now_ms: u32) -> u16 {
+            self.sockets += 1;
+            self.nat.send(self.sockets, to, now_ms)
+        }
+        fn ask(&mut self, to: SocketAddrV4, now_ms: u32) -> u16 {
+            let port = self.open(to, now_ms);
+            self.read.push((now_ms, port, to));
+            port
+        }
+        fn allocations(&self) -> Vec<(u32, u16)> {
+            self.read.iter().map(|&(at_ms, port, _)| (at_ms, port)).collect()
+        }
+    }
+
+    /// How a trial of two lane NATs ended.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum End {
+        Met,
+        NoCounter,
+        PastTheNamed,
+        NoHoleIsAMapping,
+        AnotherHoleTookThePort,
+        NothingLandedOnTheCounter,
+    }
+
+    /// Two NATs with lanes. B names the ports next past the counter its readings landed on most.
+    /// For each of them A opens `sockets` toward it and names the holes they left between its
+    /// readings. B reads its counter again and opens sockets toward A's holes for the port that
+    /// is now next; the first of them to land on that counter holds the port named. Returns
+    /// how it ended and the sockets each side used.
+    fn lanes_meet_lanes(seed: u64, observers: u32, sockets: u32, rungs: u16, tries: u32) -> (End, u32, u32) {
+        const LATENCY_MS: u32 = 200;
+        const HOLES: usize = 64;
+        let hard = |seed, address| Nat::new(seed, address, Scope::AddressAndPort, Scope::AddressAndPort, LANES, 0.5);
+        let (mut a, mut b) = (Side::new(hard(seed, HARD)), Side::new(hard(seed + 50_000, EASY)));
+        let mut now_ms = 0;
+        // Both read their counters through every destination, three times each.
+        for _ in 0..3 {
+            for index in 0..observers {
+                now_ms += 20;
+                a.ask(observer(index), now_ms);
+                b.ask(observer(index), now_ms);
+            }
+        }
+        let used = |a: &Side, b: &Side| (a.sockets, b.sockets);
+        let Allocator::Cursors(cursors) = Allocator::of(&b.allocations()) else { return (End::NoCounter, a.sockets, b.sockets) };
+        let (frontier, step) = (cursors[0].last, i32::from(cursors[0].step));
+        let on_counter = |port: u16, from: u16| (1..=40).contains(&((i32::from(port) - i32::from(from)) * step));
+        // The destinations whose mappings landed on that counter read it again later.
+        let readers: Vec<SocketAddrV4> = b.read.iter().filter(|&&(_, port, _)| port == frontier || on_counter(frontier, port)).map(|&(_, _, to)| to).collect();
+        let named: Vec<u16> = (1..=rungs).map(|rung| (i32::from(frontier) + step * i32::from(rung)) as u16).collect();
+        now_ms += LATENCY_MS;
+        // A, for each port named: readings, the sockets toward it, readings, and the holes between.
+        let mut holes: Vec<Vec<u16>> = Vec::new();
+        for &port in &named {
+            let before = a.allocations();
+            now_ms += 20;
+            let opened_ms = now_ms;
+            for _ in 0..sockets {
+                a.open(SocketAddrV4::new(EASY, port), opened_ms);
+            }
+            now_ms += 20;
+            // Two readings toward every destination: a run is found when one of them lands past it.
+            let after: Vec<u16> = (0..2 * observers).map(|index| a.ask(observer(index % observers), now_ms)).collect();
+            holes.push(crate::mapping::holes(&before, opened_ms, &after).into_iter().take(HOLES).collect());
+        }
+        now_ms += LATENCY_MS;
+        // B reads its counter again to learn which named port is next.
+        let mut next = None;
+        for index in 0..8 {
+            now_ms += 5;
+            let port = b.ask(readers[index % readers.len()], now_ms);
+            if on_counter(port, frontier) {
+                next = Some((i32::from(port) + step) as u16);
+                break;
+            }
+        }
+        let Some(rung) = next.and_then(|next| named.iter().position(|port| *port == next)) else { return (End::PastTheNamed, a.sockets, b.sockets) };
+        let live = |a: &Side, hole: u16| a.nat.receive(hole, SocketAddrV4::new(EASY, named[rung])).is_some();
+        if !holes[rung].iter().any(|hole| live(&a, *hole)) {
+            return (End::NoHoleIsAMapping, a.sockets, b.sockets);
+        }
+        for _ in 0..tries {
+            for &hole in &holes[rung] {
+                now_ms += 1;
+                if b.open(SocketAddrV4::new(HARD, hole), now_ms) == named[rung] {
+                    // This socket holds the port named. It meets A when the hole is a mapping of A's.
+                    let met = live(&a, hole) && b.nat.receive(named[rung], SocketAddrV4::new(HARD, hole)).is_some();
+                    let (a_used, b_used) = used(&a, &b);
+                    return (if met { End::Met } else { End::AnotherHoleTookThePort }, a_used, b_used);
+                }
+            }
+        }
+        (End::NothingLandedOnTheCounter, a.sockets, b.sockets)
+    }
+
+    #[test]
+    fn two_lane_nats_meet_sometimes() {
+        const TRIALS: u64 = 300;
+        let rate = |observers, sockets, rungs, tries| {
+            let (mut ends, mut a_used, mut b_used) = ([0u64; 6], 0u64, 0u64);
+            for seed in 0..TRIALS {
+                let (end, a, b) = lanes_meet_lanes(seed, observers, sockets, rungs, tries);
+                ends[end as usize] += 1;
+                a_used += u64::from(a);
+                b_used += u64::from(b);
+            }
+            (ends, a_used / TRIALS, b_used / TRIALS)
+        };
+        let small = rate(12, 8, 3, 6);
+        let large = rate(24, 24, 3, 8);
+        let wide = rate(24, 24, 2, 8);
+        eprintln!("lanes x lanes of {TRIALS}, ([met, no counter, past the named, no hole is a mapping, another hole took the port, nothing landed], A's sockets, B's sockets):
+  12 destinations read, 8 sockets for each of 3 ports named: {small:?}
+  24 destinations, 24 sockets, 3 ports: {large:?}
+  24 destinations, 24 sockets, 2 ports: {wide:?}");
+        assert!(small.0[End::Met as usize] > 0);
+    }
 }
