@@ -200,11 +200,25 @@ impl Model {
             Allocator::Point { port, .. } => Some(Aim::Port(*port)),
             Allocator::Set(set) => Some(Aim::Set(*set)),
             Allocator::Cursors(cursors) => {
-                let windows: Vec<Window> = cursors.iter().filter_map(|cursor| cursor.window(lead_ms)).collect();
+                let windows: Vec<Window> = windowed(cursors, lead_ms).map(|(_, window)| window).collect();
                 (!windows.is_empty()).then_some(Aim::Windows(windows))
             }
         }
     }
+}
+
+/// The cursors that have a window at `lead_ms`, each with it, in the allocator's order. The aim and
+/// the score both read this list, so a cursor without a window is absent from both.
+fn windowed(cursors: &[Cursor], lead_ms: u32) -> impl Iterator<Item = (&Cursor, Window)> {
+    cursors.iter().filter_map(move |cursor| Some((cursor, cursor.window(lead_ms)?)))
+}
+
+/// The share of a survey's landings that fell on cursors it saw: one less the share that fell on
+/// cursors seen once, which estimates how often the next lands on one never seen (Good-Turing).
+fn seen(cursors: &[Cursor]) -> f64 {
+    let total: f64 = cursors.iter().map(|cursor| f64::from(cursor.landings)).sum();
+    let once = cursors.iter().filter(|cursor| cursor.landings == 1).count() as f64;
+    1.0 - once / total
 }
 
 impl Cursor {
@@ -241,6 +255,10 @@ pub struct Window {
 impl Window {
     pub fn last(&self) -> u16 {
         (i32::from(self.first) + i32::from(self.step) * (i32::from(self.count) - 1)) as u16
+    }
+    /// The port one step past the window, when it is a port that is searched.
+    pub fn past(&self) -> Option<u16> {
+        u16::try_from(i32::from(self.last()) + i32::from(self.step)).ok().filter(|port| *port >= LOWEST_PORT)
     }
 }
 
@@ -280,7 +298,8 @@ pub enum Part {
     /// Open one socket to `port` between two observations, and report the port [`measured`] gives.
     Measure { port: u16 },
     /// On the peer's report, read the counter with one new mapping and open [`walk`] sockets that
-    /// send to the reported port; the last of them lands on `to`.
+    /// send to the reported port; the last of them lands on `to`. The reading takes a port of the
+    /// counter itself, so `to` is one step past the window.
     Walk { to: u16, step: i16 },
 }
 
@@ -317,9 +336,10 @@ pub fn part(local: &Model, own: &Aim, remote: &Aim, peer: Ipv4Addr, budget: Budg
             if let ([_], [_]) = (&own[..], &theirs[..]) {
                 // Two plain counters: one is measured and the other walks.
                 let walker = walks((mine.count, mine.first, local.address), (yours.count, yours.first, peer))?;
-                (mine.count < budget.mappings && yours.count < budget.mappings).then(|| match walker {
-                    true => Part::Walk { to: mine.last(), step: mine.step },
-                    false => Part::Measure { port: yours.last() },
+                let (to, port) = (mine.past()?, yours.past()?);
+                (mine.count < budget.mappings && yours.count < budget.mappings).then_some(match walker {
+                    true => Part::Walk { to, step: mine.step },
+                    false => Part::Measure { port },
                 })
             } else {
                 // Several cursors on a side: a socket cannot choose the cursor it lands on, so each
@@ -350,7 +370,8 @@ pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms:
         // and that cursor's traffic must stay inside its window.
         (Allocator::Cursors(cursors), _, Part::Sweep(swept)) => {
             let total: f64 = cursors.iter().map(|cursor| f64::from(cursor.landings)).sum();
-            cursors.iter().take(swept.len()).map(|cursor| f64::from(cursor.landings) / total * cursor.covered(lead_ms)).sum()
+            let reached: f64 = windowed(cursors, lead_ms).take(swept.len()).map(|(cursor, _)| f64::from(cursor.landings) / total * cursor.covered(lead_ms)).sum();
+            seen(cursors) * reached
         }
         // Measured: nothing may fall inside the measurement.
         (Allocator::Cursors(cursors), Part::Measure { .. }, _) => (-2.0 * cursors[0].per_second() * BURST_SPACING_US / 1e6).exp(),
@@ -363,7 +384,7 @@ pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms:
         (Allocator::Cursors(cursors), Part::Open { sockets, .. }, Part::Open { .. }) => {
             let total: f64 = cursors.iter().map(|cursor| f64::from(cursor.landings)).sum();
             let needed = cursors[0].window(lead_ms).map_or(u16::MAX, |window| window.count);
-            cursors[0].covered(lead_ms) * binomial_at_least(*sockets, f64::from(cursors[0].landings) / total, needed)
+            seen(cursors) * cursors[0].covered(lead_ms) * binomial_at_least(*sockets, f64::from(cursors[0].landings) / total, needed)
         }
         (Allocator::Set(set), Part::Open { sockets, .. }, Part::Search { count, .. }) => 1.0 - missed(*set, *count).powi(i32::from(*sockets)),
         _ => 1.0,
@@ -650,7 +671,9 @@ mod tests {
         let Some(Part::Sweep(swept)) = part(&point, &Aim::Port(40_000), &aim, WAN, BUDGET) else { panic!("no sweep") };
         assert_eq!(swept.iter().map(|window| window.first).collect::<Vec<_>>(), [63_301, 34_192, 6_255, 21_020, 14_157]);
         assert_eq!(swept.iter().map(|window| u32::from(window.count)).sum::<u32>(), 35);
-        assert!(chance(&point, 40, &network, lead(ports.len()), BUDGET).unwrap() > 0.998);
+        // Two of the fourteen landings were on cursors seen once, so one landing in seven is taken
+        // to fall on a cursor not seen at all.
+        assert!((0.855..0.858).contains(&chance(&point, 40, &network, lead(ports.len()), BUDGET).unwrap()));
         // Two such networks: each opens enough sockets for its most used cursor to reach its window.
         let sockets = (u32::from(swept[0].count) * 14 * 2).div_ceil(6) as u16;
         assert_eq!(part(&network, &aim, &aim, PEER, BUDGET), Some(Part::Open { sockets, port: swept[0].last() }));
@@ -737,10 +760,13 @@ mod tests {
         assert_eq!(part(&quiet, &aim(&quiet), &aim(&point), PEER, BUDGET), Some(Part::Open { sockets: 1, port: 40_000 }));
         // Two counters: the busier walks onto the last port of its own window and the other
         // measures one mapping to it. Alike in window and port, the higher address walks.
-        assert_eq!(part(&busy, &aim(&busy), &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: busy_window.last(), step: 1 }));
-        assert_eq!(part(&quiet, &aim(&quiet), &aim(&busy), PEER, BUDGET), Some(Part::Measure { port: busy_window.last() }));
-        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: quiet_window.last(), step: 1 }));
-        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), Ipv4Addr::new(203, 0, 113, 9), BUDGET), Some(Part::Measure { port: quiet_window.last() }));
+        // The port named is one past the window, because the walker's reading takes one.
+        assert_eq!(part(&busy, &aim(&busy), &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: busy_window.last() + 1, step: 1 }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&busy), PEER, BUDGET), Some(Part::Measure { port: busy_window.last() + 1 }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: quiet_window.last() + 1, step: 1 }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), Ipv4Addr::new(203, 0, 113, 9), BUDGET), Some(Part::Measure { port: quiet_window.last() + 1 }));
+        // A reading on the window's last port still leaves one socket to open.
+        assert_eq!(walk(quiet_window.last(), 1, quiet_window.last() + 1), Some(1));
         assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), WAN, BUDGET), None);
         // The measured port is the one between two observations a step apart on each side; the
         // walker opens as many sockets as steps remain.
@@ -758,6 +784,18 @@ mod tests {
         assert_eq!(part(&set, &aim(&set), &aim(&quiet), PEER, BUDGET), None);
         assert_eq!(part(&quiet, &aim(&quiet), &aim(&set), PEER, BUDGET), None);
         assert_eq!(part(&set, &aim(&set), &aim(&set), PEER, BUDGET), None);
+    }
+
+    #[test]
+    fn a_cursor_without_a_window_keeps_no_weight() {
+        // Two quiet cursors, the heavier on the last port: only the lighter has a window, and the
+        // sweep is scored with its three landings of eight.
+        let cursor = |last, landings| Cursor { last, at_ms: 6_000, step: 1, landings, foreign: 0, watched_ms: 6_000 };
+        let network = Model { address: WAN, allocator: Allocator::Cursors(vec![cursor(65_535, 5), cursor(40_002, 3)]) };
+        let point = model(1, &[40_000, 40_000, 40_000]);
+        assert_eq!(windows(&network, 6_001), [Window { first: 40_003, step: 1, count: 1 }]);
+        let expected = 3.0 / 8.0 * (6_000.0f64 / 6_001.0).sqrt();
+        assert!((chance(&point, 40, &network, 6_001, BUDGET).unwrap() - expected).abs() < 1e-9);
     }
 
     #[test]

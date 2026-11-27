@@ -66,7 +66,10 @@ fn send(socket: &UdpSocket, observer: SocketAddrV4) -> Option<[u8; 12]> {
 fn receive(socket: &UdpSocket, observer: SocketAddrV4, transaction: [u8; 12]) -> Option<SocketAddrV4> {
     let deadline = Instant::now() + ANSWER;
     let mut packet = [0; 512];
-    while Instant::now() < deadline {
+    loop {
+        // The socket waits only for what is left of the deadline, so a stray packet does not renew it.
+        let left = deadline.checked_duration_since(Instant::now()).filter(|left| !left.is_zero())?;
+        socket.set_read_timeout(Some(left)).ok()?;
         let Ok((length, source)) = socket.recv_from(&mut packet) else { return None };
         if source != SocketAddr::V4(observer) {
             continue;
@@ -75,7 +78,6 @@ fn receive(socket: &UdpSocket, observer: SocketAddrV4, transaction: [u8; 12]) ->
             return Some(mapped);
         }
     }
-    None
 }
 
 /// A random number from the standard library's hasher, which is keyed from the system's randomness.
@@ -110,8 +112,19 @@ fn local_address(target: &str) -> Option<IpAddr> {
     Some(socket.local_addr().ok()?.ip())
 }
 
+const USAGE: &str = "usage: piik-nat-lab [--full]\n\nAsks public STUN servers which address they see for this machine and prints what that says\nabout the NAT in front of it. Nothing else is sent anywhere.\n\n  --full   show the whole public address in the report (it shows half by default)\n  --help   show this text";
+
 fn main() {
-    let full = std::env::args().any(|argument| argument == "--full");
+    // Arguments are read before any name is resolved or any socket opened.
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.iter().any(|argument| argument == "--help" || argument == "-h") {
+        return println!("{USAGE}");
+    }
+    if let Some(unknown) = arguments.iter().find(|argument| *argument != "--full") {
+        eprintln!("unknown argument: {unknown}\n\n{USAGE}");
+        std::process::exit(2);
+    }
+    let full = !arguments.is_empty();
     println!("piik-nat-lab {}: asking public STUN servers which address they see.", env!("CARGO_PKG_VERSION"));
     let mut survey = Survey { started: Instant::now(), samples: Vec::new(), local_ports: Vec::new() };
     let (Some((first, first_number)), Some((second, second_number))) = (survey.socket(), survey.socket()) else {

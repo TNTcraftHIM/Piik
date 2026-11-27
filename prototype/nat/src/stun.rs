@@ -22,20 +22,25 @@ pub fn mapped(packet: &[u8], transaction: [u8; 12]) -> Option<SocketAddr> {
     if header[..2] != BINDING_SUCCESS.to_be_bytes() || header[4..8] != MAGIC_COOKIE || header[8..] != transaction {
         return None;
     }
-    let mut attributes = packet.get(20..20 + usize::from(u16::from_be_bytes([header[2], header[3]])))?;
-    let mut plain = None;
-    while let [kind_high, kind_low, length_high, length_low, rest @ ..] = attributes {
+    // The length in the header is the whole of what follows it, and every attribute lies inside it
+    // with its padding (RFC 8489, section 6.3): a packet that says otherwise is not an answer.
+    let mut attributes = &packet[20..];
+    if attributes.len() != usize::from(u16::from_be_bytes([header[2], header[3]])) {
+        return None;
+    }
+    let (mut masked, mut plain) = (None, None);
+    while !attributes.is_empty() {
+        let [kind_high, kind_low, length_high, length_low, rest @ ..] = attributes else { return None };
         let length = usize::from(u16::from_be_bytes([*length_high, *length_low]));
         let value = rest.get(..length)?;
         match u16::from_be_bytes([*kind_high, *kind_low]) {
-            XOR_MAPPED_ADDRESS => return address(value, Some(&header[4..20])),
-            MAPPED_ADDRESS => plain = address(value, None),
+            XOR_MAPPED_ADDRESS => masked = Some(address(value, Some(&header[4..20]))?),
+            MAPPED_ADDRESS => plain = Some(address(value, None)?),
             _ => {}
         }
-        // Attributes are padded to four bytes.
-        attributes = rest.get(length.div_ceil(4) * 4..).unwrap_or(&[]);
+        attributes = rest.get(length.div_ceil(4) * 4..)?;
     }
-    plain
+    masked.or(plain)
 }
 
 /// A MAPPED-ADDRESS value, or an XOR-MAPPED-ADDRESS value with the cookie and transaction that mask it.
@@ -109,5 +114,12 @@ mod tests {
         assert_eq!(mapped(&success(&plain), [0; 12]), None);
         assert_eq!(mapped(&request(TRANSACTION), TRANSACTION), None);
         assert_eq!(mapped(&success(&plain)[..25], TRANSACTION), None);
+        // Bytes past the declared length, an attribute that runs past the end, and padding that is
+        // missing are all refused.
+        let mut longer = success(&plain);
+        longer.push(0);
+        assert_eq!(mapped(&longer, TRANSACTION), None);
+        assert_eq!(mapped(&success(&[0x00, 0x01, 0x00, 0x08, 0x00, 0x01]), TRANSACTION), None);
+        assert_eq!(mapped(&success(&[0x80, 0x22, 0x00, 0x01, b'x']), TRANSACTION), None);
     }
 }
