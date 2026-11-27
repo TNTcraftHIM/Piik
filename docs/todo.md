@@ -16,19 +16,10 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Windows remote-control stop with extra modifiers.** Keep the local
-  stop chord effective when a controller holds Shift or Win. Reuse the existing
-  shortcut and input executor owners; validate modifier handling, key rebinding
-  and release of held input without changing the voice shortcuts.
 - [ ] **Manual host cleanup.** Clear the selected host's retained files and
-  image renditions while preserving text, rooms, roles and settings. Determine
-  which member references the host can prove before removing unused identities;
-  an offline room on another device does not expose its private grants. Resolve
-  historical author names and reader refresh at the existing storage owners.
-- [ ] **App operation waiting.** Preserve a visible outcome for an unanswered
-  operation without treating a late committed change as failure. Keep user-led
-  source selection and microphone permission waits with their cancellation owner;
-  validate the finite setting path separately before choosing a common deadline.
+  image renditions while preserving text, rooms, every member, roles and settings.
+  Verify post-commit reader refresh, disk reclamation and scoped cache deletion,
+  including delayed pages, selected original files and saved-download receipts.
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
   operation feedback and the remaining capture, embed
@@ -408,6 +399,8 @@ the feedback period; they do not delay that delivery.
 
 ## Held By Owner
 
+- [ ] **Browser/App pairing codes.** Keep automatic App discovery and existing
+  per-site approval. A separate first-connection pairing step is declined.
 - [ ] **Non-Web desktop interface.** Keep the graphical status-window proof and
   native widget rewrite out of the desktop product.
   [Runtime assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)

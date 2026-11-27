@@ -12,7 +12,6 @@ use uuid::Uuid;
 
 struct Owner {
     commands: mpsc::Sender<HostCommand>,
-    room_export: Arc<tokio::sync::Semaphore>,
     credential: OwnCredential,
     ready: watch::Receiver<Option<Result<(), String>>>,
     stopped: watch::Receiver<bool>,
@@ -58,7 +57,6 @@ async fn owner(
         .ok_or_else(forbidden)?;
     Ok(Owner {
         commands: host.commands.clone(),
-        room_export: permission.room_export.clone(),
         credential: OwnCredential {
             user_id: user,
             credential: credential.into(),
@@ -76,7 +74,7 @@ pub(super) async fn export(
 ) -> ApiResult {
     let owner = owner(&app, &headers, domain, user).await?;
     owner.require_ready()?;
-    backup::export(owner.commands, room, None, owner.credential, owner.room_export).await
+    backup::export(owner.commands, room, None, owner.credential).await
 }
 
 pub(super) async fn describe(

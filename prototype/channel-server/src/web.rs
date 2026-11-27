@@ -7,8 +7,7 @@ use axum::{
     routing::{get_service, MethodRouter},
     Router,
 };
-use axum_server::{accept::NoDelayAcceptor, tls_rustls::RustlsConfig, Server};
-use hyper_util::rt::TokioTimer;
+use axum_server::tls_rustls::RustlsConfig;
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,20 +24,14 @@ use tower_http::{
 // One HTTP drain budget for both bound entries, using the existing server owner.
 pub(crate) const HTTP_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub(crate) fn http_server(listener: TcpListener) -> Server<SocketAddr, NoDelayAcceptor> {
-    let mut server = Server::from_listener(listener).acceptor(NoDelayAcceptor::new());
-    // Hyper's default HTTP/1 header deadline needs a runtime clock.
-    server.http_builder().http1().timer(TokioTimer::new());
-    server
-}
-
 pub(crate) async fn serve_http(
     listener: TcpListener,
     routes: Router,
     stop: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
     let handle = axum_server::Handle::new();
-    let server = http_server(listener)
+    let server = axum_server::from_tcp(listener.into_std()?)?
+        .acceptor(axum_server::accept::NoDelayAcceptor::new())
         .handle(handle.clone())
         .serve(routes.into_make_service());
     tokio::pin!(server, stop);
@@ -654,27 +647,6 @@ mod shutdown_tests {
             .unwrap();
         let response = client.await.unwrap();
         assert!(response.starts_with("HTTP/1.1 200") && response.ends_with("completed"));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn http1_header_deadline_expires_before_shutdown() {
-        use hyper_util::{rt::TokioIo, service::TowerToHyperService};
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut server = http_server(listener);
-        let (mut client, io) = tokio::io::duplex(512);
-        client.write_all(b"GET / HTTP/1.1\r\n").await.unwrap();
-        let connection = server.http_builder().serve_connection_with_upgrades(
-            TokioIo::new(io),
-            TowerToHyperService::new(Router::new()),
-        );
-        let start = tokio::time::Instant::now();
-        let error = timeout(Duration::from_secs(31), connection)
-            .await
-            .expect("HTTP/1 header deadline did not fire")
-            .unwrap_err();
-        assert!(error.to_string().contains("header"), "{error}");
-        assert!(start.elapsed() >= Duration::from_secs(30));
     }
 
     #[tokio::test]

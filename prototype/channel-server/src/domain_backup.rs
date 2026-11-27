@@ -92,7 +92,7 @@ pub(super) async fn export(
     headers: HeaderMap,
 ) -> ApiResult {
     let (commands, credential) = room_creator(&domain, &headers, &room)?;
-    backup::export(commands, room, Some(credential.user_id), credential, domain.room_export).await
+    backup::export(commands, room, Some(credential.user_id), credential).await
 }
 
 pub(super) async fn describe(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {

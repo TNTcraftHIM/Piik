@@ -209,7 +209,6 @@ impl Hub {
 pub struct Domain {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
-    room_export: Arc<Semaphore>,
     room_restore: Arc<Semaphore>,
     closing: watch::Sender<bool>,
     origin: String,
@@ -684,7 +683,6 @@ impl Domain {
                 room_commands: None,
             })),
             sockets: Arc::new(Semaphore::new(2 * piik_channel_core::MAX_SESSIONS)),
-            room_export: Arc::new(Semaphore::new(1)),
             room_restore: Arc::new(Semaphore::new(1)),
             closing: watch::channel(false).0,
             origin,
@@ -848,8 +846,8 @@ impl Domain {
         servers.push(http.boxed());
         let stop_https = axum_server::Handle::new();
         if let Some(https) = https {
-            let server = crate::web::http_server(https.listener)
-                .map(|tcp| axum_server::tls_rustls::RustlsAcceptor::new(https.config).acceptor(tcp))
+            let server = axum_server::from_tcp_rustls(https.listener.into_std()?, https.config)?
+                .map(|acceptor| acceptor.acceptor(axum_server::accept::NoDelayAcceptor::new()))
                 .handle(stop_https.clone())
                 .serve(app.into_make_service());
             servers.push(server.boxed());

@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-26
+Last updated: 2026-11-27
 
 Internal 3.0 evidence spans several revisions. Each package receipt identifies the
 build and workload it covers. Delivery readiness and published 2.x verification
@@ -8,6 +8,12 @@ have separate records. [3.0 status](./status.md#isolated-30-prototype) ·
 [2.x verification](https://github.com/TNTcraftHIM/Piik/blob/main/docs/verification-status.md)
 
 ## Current Evidence
+
+An isolated Windows runner at `0b2519be` exercised the actual WebView2 window
+lifecycle and local stop shortcut. It verified candidate retirement, window and
+browser-process exit, profile cleanup, and all four combinations of extra Shift
+and Win while stopping remote control. Held input was released and the same
+shortcut could be rebound. [Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45955148938/job/140359799475)
 
 The Windows x64 review builds opened WebView2, created a room and
 decoded a synthetic screen from an independent Browser on loopback. Main-window
