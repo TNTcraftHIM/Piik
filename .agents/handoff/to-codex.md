@@ -5,11 +5,117 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `844daa7c`; your line through `86e4b4ad` is merged in
-`12e673e2`, and a reviewer is reading `498a1eb0`, `bd9b3c24` and `27d3b226`. On this branch `tsc -b`
+Reviewed through `86e4b4ad`; your line through `f28d8205` is merged in
+`ae5366a5`. There `tsc -b` passes and the web suite has 2,501 of 2,502:
+the test named below still fails at your head, because your last push
+answered `7e341852` and this file had moved on. A reviewer is measuring
+`814b0988` against the nine places and reading your six new commits.
+
+## Favourites: the owner has chosen, and it is small
+
+The owner's words (2026-11-27): "临时地址无法收藏是意料之内的...持久地址可以收藏
+是合理的". The record already says why
+([ordinary URLs and identity](../../docs/research/channel-storage-and-identity.md#ordinary-urls-and-identity)):
+a bookmark is an address, and a quick tunnel's address ends with its run. So
+the feature keeps its meaning and stops pretending for the other case:
+
+1. **A temporary address is not offered for saving.** A quick tunnel is
+   known by its host name. Where the App would offer to save such a site,
+   it does not, or says that the address ends when the host restarts.
+2. **A saved address that no longer answers says what happened.** Today it
+   shows `client.bookmarks.unavailable`. For an address known to be
+   temporary the message is that it was temporary and the host has the
+   current link.
+3. **The list appears when it has something in it.** Opening a link is the
+   launcher's first action; saved sites are not on that path when empty.
+4. **One name.** The copy calls this "Saved sites", "Sites", "Bookmark",
+   "Saved", "Add site" and "Remove bookmark" (`en.ts:967-990`), and the
+   "Sites" list also holds sites approved to use the App, so two lists that
+   look alike differ. Choose one word for a saved address and one for an
+   approved site, in all five locales and the guide.
+
+Nothing here adds a mechanism: no identity for a site, no discovery of a new
+address. What a person keeps across addresses is a separate question that is
+with the owner now; do not build for it yet.
+
+## One test fails at your head, and what the owner asks of us next
+
+**`tests/channel-session.test.ts:1712` fails** ("App hosting uses its own
+participant while Browser rooms retain their page lifetime"): it still
+expects the per-room `host_stop` that `27d3b226` removed, and gets none. I
+ran it myself on the merged head: 1 failed of 696 in that file. The change
+itself reads right (one leave retires every binding and settles each pending
+request once, and a lost leave is no worse than the lost stops before it);
+only the assertion is out of date. The commit's message also names a real
+Server and WASM loopback control that is not in the tree.
+
+`498a1eb0` and `bd9b3c24` are sound: reverted in a copy, their new tests
+fail (three and seven). For remote input no sequence was found that leaves a
+key down on the other machine: two holders, a holder that unmounts or loses
+focus, revocation and reset all release or reset. One thing in `498a1eb0`
+is only covered for a page close: a user's Stop after the selection ended
+some other way during the commit could still send a second Stop. Read, not
+run.
+
+**From the owner, to both of us** (2026-11-27): the hole-punching research
+is my main work, and beside it I am to keep your line moving and to look
+after operation logic, the division of responsibilities and the code's
+modularity. In the owner's words the features and interactions "原本codex
+设计的确实都比较的混乱", with site favourites as the example: a saved address
+is dead the next day for a site behind a quick tunnel and useful only to
+someone who hosts on a stable address. So three read-only audits ran on this side. The first two are back and
+the favourites task above is their first result; more will come as short,
+ordered lists once the owner has decided the product questions in them
+(what "forwarding" and "host" each name, which network controls a person
+should see at all, one rule for confirmations). The third, on modules and
+their owners, is still running. Your queue now: the failing test, the
+favourites task, and whatever the reviewer finds in `814b0988`. On this branch `tsc -b`
 passes, the web suite passes (2,486 tests), and the Native library suite
 passes on Windows 11 with `--no-default-features` (219 pass, 2 ignored) and
 its `capture::` tests with the default features (47 pass, 2 ignored).
+
+## Modules and owners: five changes, in this order
+
+A reviewer measured sizes, imports and repeated rules across the five parts;
+I checked the two I call defects. These are the ones that remove code or
+close a gap and move no behaviour. The larger ones (the App control socket's
+1,199-line `connection`, `Session::apply_event`, `ChannelSession`'s 224
+members, and `Authority` reaching into `Channel` 63 times) come after, each
+with a page from me first.
+
+1. **A protocol tie-break is decided by locale collation.** The Browser
+   computes `polite` with `sessionId.localeCompare(plan.peerId) > 0`
+   (`media.ts:195`); Native compares the identifiers' bytes
+   (`peer.rs:2081`). For lowercase UUID text the two agree today, which is
+   why nothing fails, but a rule both ends must reach alike should not pass
+   through a locale. Compare code units (`sessionId > plan.peerId`); no wire
+   change.
+2. **Rules copied by hand between Rust and TypeScript.** The Browser's
+   recovery timer is a literal 20000 (`session.ts:3771`) where Native imports
+   the core's `RECOVERY_MS`; the protocol number, the session limit, the
+   profile page size and the frame sizes are literals too, although six
+   other constants already come through WASM getters. The voice-bitrate
+   bound has four copies, two of them in Rust (`access.rs:75`,
+   `native/peer.rs:153`), and the 4000 ms screen-buffer limit three in
+   TypeScript. Give each one source, and one test that ties any literal that
+   must stay to the WASM value.
+3. **The Browser re-derives a core rule**: `is_watch_frame` at
+   `session.ts:281`. Export the core's.
+4. **Shared interface kept under `channel/` makes five directory cycles**
+   (`components/living` with `channel/components`, `channel` and
+   `room-voice`; `lib` with `channel` through `room-preferences.ts`;
+   `media` with `ui`). Moving `diagnosis.ts`, `error-presentation.ts`,
+   `ChannelDiagnosisHelp.tsx` and the `useSettingsAction` hook that lives
+   inside `ChannelSettingsDialog.tsx` down to where both sides can import
+   them removes the cycles.
+5. **Eleven components keep their own pending and error state** where the
+   action hook exists, and only two of the five watch adapters send errors
+   through the helper that keeps a source's URL out of a message. One hook
+   and one helper; the second is also a privacy gap.
+
+Left alone on purpose, because they are large and cohesive: `room.rs`,
+`routes.rs`, `transport.rs` and `wire.rs` in the core, Native's
+`peer/transport.rs`, the client's `channel/transport.ts`.
 
 ## The room sweep on screen: most of it holds, nine places do not
 
