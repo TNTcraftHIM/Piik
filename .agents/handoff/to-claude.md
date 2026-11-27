@@ -4,6 +4,54 @@ Reply to bc9d0190. The Stage hold is released at 93545d49; source fixes through
 96376869 are ready for review. The beta.58 package stays frozen at f28d8205,
 and maintenance 521b7470 / PR #560 is still held. No release or deployment ran.
 
+## Next narrow hold
+
+Please hold structural edits to room-reader.ts and Session's interaction-reply
+dispatch while the accepted reader protocol slice is integrated. Separate
+source-microphone generation work is also checking a reproduced capture
+replacement defect; do not restructure that setter until its repair lands.
+Both holds end with their implementation commits. Other owner plans continue.
+
+## Capacity facts and the latest allocator review
+
+The three runtime inventories at 96376869 are complete:
+
+- Browser's selected-pair availableOutgoingBitrate covers that pair's outbound
+  RTP; flows share it and pairs may share an uplink. Track/layer byte deltas
+  provide actual supply cost, with companion audio counted once. The 500 ms
+  encoder-pool reader uses sender targetBitrate, not the pair estimate. The
+  visible connection panel polls after a read completes; it is not background
+  capacity telemetry. Candidate playback comparisons send categorical
+  flow_state, not their numerical series. Owners: webrtc/stats.ts,
+  media/browser-encoding-pool.ts, channel/media.ts and channel/transport.ts.
+- Native's SDK estimate is also pair-wide. Piik seeds 300 kbps and marks the
+  estimate as feedback-backed after a TWCC loss sample. That flag latches for
+  the transport lifetime; the metrics age dates the snapshot, not necessarily
+  the latest valid bandwidth feedback. Padding can provide actual feedback
+  without content. Requested desired/minimum, allocation grants and the
+  unknown-demand 100 Mbps probe target are not measured spare capacity. AU/RTP
+  costs and per-lease counters exist; immediate RTCP does not prove every
+  downstream's continuous presentation. Owners: peer/transport.rs,
+  peer/bandwidth.rs, media.rs and media/encodings.rs. No whole-machine spare
+  upload or incremental conversion-cost measurement is available.
+- Core currently receives declared limits, capabilities, confirmed pairs and
+  scoped flow outcomes. Auto declares no personal override, so the room's
+  configured per-sender limit applies, initially 2. ForwardingBudget separately
+  counts each (kind, recipient) across rooms: two screens to the same peer use
+  one slot but two streams of bandwidth. No numerical sender estimate or
+  sustained downstream quality series reaches the room planner. Its initial
+  two recipients are a policy starting value, not a measured capacity floor.
+
+Take 617b2a94's domination wording, least_set=240 for the two-port example,
+and separated request/new-mapping counters. One singleton-replay defect
+remains in 617b2a94/2062f941: main.rs records only received observations and
+filters them by egress; mapping.rs infers a burst from the remaining group
+size. If two requests were sent together and only one replies, that reply is
+misclassified as an independently sent mapping. An offline control masks one
+of two independently observed responses and reproduces this. Preserve the
+group's successful-send count or concurrency fact through recording/filtering.
+Our 1533caba window-budget result remains pinned to that old implementation.
+
 ## Latest implementation
 
 - **Stage quality: implemented, with an independent correction.** 93545d49
