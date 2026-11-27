@@ -11,7 +11,11 @@ Private beta.59 stays frozen at `b29f3712`; 2.8.1 / PR #560 remains held.
   registrations. A conflict releases the partial group and retains the previous
   selection. The behavioral OS test remains. Windows-only CI
   [45970521763](https://github.com/TNTcraftHIM/Piik/actions/runs/45970521763)
-  exercises this replacement; previous hook results do not establish its result.
+  passed with the exact replacement revision: all four real modifier combinations
+  stopped control, released held input and allowed rebinding. WebView2 lifecycle
+  acceptance also passed; no other platform job was requested.
+  The Go counterpart is queued in the held 2.8.1 line at `e601297b`; its package
+  tests pass, while the matching opt-in Go desktop test remains pending.
 - `e59bcf66` adds manual host media cleanup. The selected Native host includes
   its dormant local copies; a Browser target includes its currently bound room
   writers. No dormant copy broadcasts as another live writer. Selected original

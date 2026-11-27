@@ -9,13 +9,12 @@ have separate records. [3.0 status](./status.md#isolated-30-prototype) ·
 
 ## Current Evidence
 
-An isolated Windows runner at `0b2519be` exercised the actual WebView2 window
+An isolated Windows runner at `a80a7181` exercised the actual WebView2 window
 lifecycle and local stop shortcut. It verified candidate retirement, window and
 browser-process exit, profile cleanup, and all four combinations of extra Shift
 and Win while stopping remote control. Held input was released and the same
-shortcut could be rebound. That run covered the previous hook implementation.
-The four-registration implementation still needs a Windows runtime check of
-activation and collision cleanup. [Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45955148938/job/140359799475)
+shortcut could be rebound. This run used the required group of four registered
+shortcuts. [Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45970521763/job/140409547713)
 
 The Windows x64 review builds opened WebView2, created a room and
 decoded a synthetic screen from an independent Browser on loopback. Main-window
