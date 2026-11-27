@@ -309,7 +309,7 @@ in conversation, room lists and compact tool panels:
 | Pointer over a message | A quiet background change; message text stays selectable. No full-row button outline. |
 | Jump to a referenced message | Brief background emphasis on the destination, using its existing navigation owner. |
 | Keyboard focus | A visible focus indicator, contained within the scroll area; never remove keyboard feedback to fix pointer decoration. |
-| Reply, react or fold within a row | Compact shared controls without positional lift across the row boundary. Hover, press and selected colours still respond. Reserve each action's hit area without narrowing unrelated content. |
+| Embedded action | Use compact shared controls that stay in place on hover and focus. On press, only the object being activated moves down 2 px and springs back on release. With reduced motion, keep positional feedback still. Preserve state colours and the inset focus ring. Reserve the hit area without narrowing neighbouring content. |
 | Selected room | The shared navigation selection treatment; selecting a room is distinct from hovering over its child actions. |
 
 Use a reply arrow for quoting a message and the straight back arrow for navigation.

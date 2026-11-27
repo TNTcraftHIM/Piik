@@ -62,19 +62,24 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
   sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
 }) {
   const { t } = useCopy();
-  const id = useId(), details = useRef<HTMLDetailsElement>(null);
+  const id = useId(), details = useRef<HTMLDetailsElement>(null), summary = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false), [draft, setDraft] = useState("");
   const { error, run } = useSettingsAction(open);
   const pending = channel.pending.has(`title:${sharing.id}`);
   const automatic = screenTitle({ ...sharing, title: null }, t);
   const { message } = channelErrorPresentation(error, t);
-  const close = () => { if (details.current) details.current.open = false; };
+  const close = () => {
+    const disclosure = details.current;
+    if (!disclosure) return;
+    if (disclosure.contains(disclosure.ownerDocument.activeElement)) summary.current?.focus({ preventScroll: true });
+    disclosure.open = false;
+  };
   return <details ref={details} className="c3-share-title" onToggle={event => {
     if (event.target !== event.currentTarget) return;
     setOpen(event.currentTarget.open);
     if (event.currentTarget.open) setDraft(sharing.title ?? "");
   }}>
-    <summary>{t("screen.shareTitle")}</summary>
+    <summary ref={summary}>{t("screen.shareTitle")}</summary>
     {open && <form onSubmit={event => {
       event.preventDefault();
       if (!disabled && !pending) void run(() => channel.setScreenTitle(sharing.id, draft.trim() || null), close);
@@ -172,9 +177,11 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     ? t("screen.switchRoomSource", { room: roomName })
     : label;
   // The inner grid scrolls independently, so its clipped outer scrollHeight cannot size placement.
-  useAnchoredPopover(trigger, panel, { maxHeight: 560, preferredHeight: 560, minVisibleHeight: 360 });
+  const sourceButton = useCallback(() => trigger.current?.querySelector<HTMLButtonElement>("button[popovertarget]"), []);
+  useAnchoredPopover(trigger, panel, { maxHeight: 560, preferredHeight: 560, minVisibleHeight: 360, returnFocus: sourceButton });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, preferredHeight: 640, minVisibleHeight: 240 });
-  const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
+  const closePicker = useCallback(() => panel.current?.hidePopover(), []);
+  const close = useCallback(() => { closePicker(); settingsPanel.current?.hidePopover(); }, [closePicker]);
   const refresh = useCallback(() => {
     request.current?.abort();
     const current = request.current = new AbortController();
@@ -263,6 +270,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const split = variant === "split" && hasSettings && !captureRequest && !cancellable;
   const actionTone = sharing || watching ? undefined : "primary";
   const tonal = split && !actionTone ? " is-tonal" : "";
+  const cancelId = `${id}-cancel`;
   const sourceControl = <span ref={trigger} className="c3-share-control">
     {captureRequest ? <span className="c3-app-confirmation">
         <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
@@ -272,11 +280,18 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
       disabled={!canOpenSourcePicker} busy={sourcePending} expanded={open}
       hasPopup="dialog" controls={id} popoverTarget={id} />}
-    {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
+    {cancellable && <Btn id={cancelId} icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
       cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
-      onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}).finally(() => {
-        trigger.current?.ownerDocument.defaultView?.requestAnimationFrame(() => trigger.current?.querySelector<HTMLButtonElement>("button")?.focus());
-      }); }} />}
+      onClick={() => {
+        const ownerDocument = trigger.current?.ownerDocument;
+        const cancelButton = ownerDocument?.getElementById(cancelId);
+        void channel.cancelScreenSelection(roomId).catch(() => {}).finally(() => {
+          ownerDocument?.defaultView?.requestAnimationFrame(() => {
+            const { activeElement, body } = ownerDocument;
+            if (activeElement === body || activeElement === cancelButton) sourceButton()?.focus({ preventScroll: true });
+          });
+        });
+      }} />}
   </span>;
   const panelHasActions = compactCaption && hasPublicationActions && !captureRequest && !cancellable;
   const settingsUnavailable = !!(disabled || busy || qualityPending);
@@ -376,9 +391,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           else start(reportError => channel.startExternalScreen(roomId, reportError), () => setExternalOpen(true));
         } : undefined}
         onNative={selection => start(reportError => startNativeScreen(roomId, selection, reportError))}
-        onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
-          close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
-        }} />}
+        onPreview={channel.nativePreview} onRefresh={refresh} onCancel={closePicker} />}
     </div>
     {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`) || channel.sourceSelectionCommitting(roomId)}
       onStop={() => {

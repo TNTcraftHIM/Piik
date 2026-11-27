@@ -11,7 +11,7 @@
 .c3-monitor-offer-identity > div { min-width: 0; }
 .c3-monitor-offer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; margin-inline-start: auto; }
 .c3-monitor-offer strong, .c3-monitor-source strong { display: block; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
-.c3-monitor-offer small, .c3-monitor-source small { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+.c3-monitor-offer small { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
 .c3-monitor-offer .lr-btn { flex: none; }
 .c3-monitor-offer > .c3-picture-failure { flex-basis: 100%; }
 .c3-monitor-heading { flex: none; justify-content: space-between; gap: 8px 16px; font-size: 13px; font-weight: 650; }
@@ -21,12 +21,12 @@
 .c3-theater-source { display: none; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
 .c3-theater-source select { width: 100%; max-width: min(260px, 40cqi); }
 .c3-monitor-grid { --stage-tile-min: 280px; display: grid; flex: 1; min-height: min-content; grid-template-columns: repeat(calc(var(--stage-columns, 1) * 2), minmax(0, 1fr)); grid-auto-rows: minmax(var(--c3-stage-picture-min), 1fr); gap: 14px; }
-.c3-monitor-grid.is-focused { container-type: inline-size; min-height: 0; --thumbnail-width: clamp(min(280px, 100cqi), 24cqi, 320px); grid-template-columns: repeat(var(--stage-thumbnails), var(--thumbnail-width)); grid-template-rows: minmax(min-content, 1fr); overflow: auto; overscroll-behavior: contain; justify-content: start; }
+.c3-monitor-grid.is-focused { container-type: inline-size; reading-flow: grid-order; min-height: 0; --thumbnail-width: clamp(min(280px, 100cqi), 24cqi, 320px); grid-template-columns: repeat(var(--stage-thumbnails), var(--thumbnail-width)); grid-template-rows: minmax(min-content, 1fr); overflow: auto; overscroll-behavior: contain; justify-content: start; }
 .c3-monitor-grid.is-focused:has(> .is-thumbnail) { grid-template-rows: minmax(min-content, 1fr) auto; }
 .c3-monitor-grid:has(.lr-remote-keyboard, .lr-remote-password) { grid-auto-rows: minmax(min-content, 1fr); }
 .c3-monitor-tile { position: relative; display: flex; flex-direction: column; grid-column: span 2; min-width: 0; min-height: 0; background: var(--wall); border: 1px solid var(--line); border-radius: var(--c3-surface-radius); container-type: inline-size; }
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: var(--c3-stage-picture-min); aspect-ratio: auto; }
-.c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: 100cqi; justify-self: start; border-color: var(--action); box-shadow: inset 0 0 0 1px var(--action); }
+.c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: var(--stage-focused-width, 100cqi); justify-self: start; border-color: var(--action); box-shadow: inset 0 0 0 1px var(--action); }
 .c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; height: max-content; min-height: 0; }
 .c3-monitor-grid.is-focused[data-side-strip]:has(> .is-thumbnail) {
   grid-template-columns: minmax(0, 1fr) var(--thumbnail-width);
@@ -61,6 +61,9 @@
   height: var(--stage-picture-height);
 }
 .c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { flex: none; min-height: 90px; aspect-ratio: 16 / 9; }
+/* Waiting messages and their actions can outgrow the picture box. */
+.c3-monitor-grid[data-fitted] > .c3-monitor-tile > .c3-monitor-wait,
+.c3-monitor-tile.is-thumbnail > .c3-monitor-wait { min-height: min-content; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-source-row { padding: 0 4px; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */
 .c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions > :not(.c3-monitor-close, .c3-monitor-publishing, .c3-monitor-layout-action),
@@ -73,12 +76,8 @@
 .c3-monitor-source-row { align-items: center; min-width: 0; }
 .c3-monitor-source-info > svg { width: 20px; height: 26px; flex: none; }
 .c3-monitor-source { min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
-.c3-monitor-source > .lr-comic-tip-wrap { display: block; min-width: 0; }
-.c3-monitor-source > .lr-comic-tip-wrap:first-child { flex: none; }
-.c3-monitor-source > .lr-comic-tip-wrap:last-child { flex: none; }
-.c3-monitor-source small { margin-top: 0; }
-.c3-monitor-source small > svg { vertical-align: -2px; margin-inline-end: 4px; }
-.c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-monitor-source > .lr-comic-tip-wrap { display: block; flex: none; min-width: 0; }
+.c3-monitor-source strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-monitor-tile-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; margin-inline-start: auto; }
 .c3-monitor-publishing { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; }
 .c3-source-audio { display: inline-flex; flex: none; }
@@ -94,7 +93,7 @@
 .c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
 
 .c3-monitor-social > .c3-message-reactions { flex: 1; min-width: 0; flex-wrap: nowrap; }
-.c3-monitor-source-row .c3-message-reaction-counts { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+.c3-monitor-source-row .c3-message-reaction-counts { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; padding-block-end: 2px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
 .c3-monitor-source-row .c3-message-reaction-counts:empty { display: none; }
 .c3-monitor-source-row .c3-message-reaction-counts > button, .c3-monitor-source-row .c3-message-action { flex: none; }
 @container (max-width: 360px) {

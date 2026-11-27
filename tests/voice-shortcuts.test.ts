@@ -178,7 +178,7 @@ describe("microphone mode settings", () => {
       background: { available: false, enabled: false, enable: vi.fn(), report: undefined, error: undefined, pending: false, recordReady: true },
     } as ReturnType<typeof useVoiceShortcuts>;
     setCopy({ lang: "en" });
-    return renderToStaticMarkup(createElement(ChannelVoiceSettingsForm, { channel, available: true, shortcuts }));
+    return renderToStaticMarkup(createElement(ChannelVoiceSettingsForm, { channel, available: true, shortcuts, run: vi.fn() }));
   };
   const talkRow = t("en", "voice.shortcuts.edit", { action: t("en", "voice.mode.push"), shortcut: "Ctrl + Shift + V" });
 

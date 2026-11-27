@@ -5,7 +5,6 @@
 /* A press is answered: the room's card gives under the pointer and springs back, and so does each control inside
    it. Nothing lifts on hover, so no control leaves its place in the row. */
 .c3-room-item:has(.c3-room-link:active) { transform: var(--control-press-transform); transition-duration: var(--motion-press); }
-.c3-room-item .lr-embedded-actions { --control-press-transform: inherit; }
 .c3-room-item:hover, .c3-room-item:focus-within { background: var(--row-hover); }
 .c3-room-item[data-selected] { background: var(--control-selected); }
 /* The selected room's bar stands on the column's edge, in the list's inset: the same place in the list and in the
@@ -35,7 +34,7 @@
 .c3-room-link > .c3-identity-mark { grid-column: 1; grid-row: 1; justify-self: center; }
 .c3-room-link strong { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 20px; }
 .c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
-.c3-room-activity { grid-column: 2; grid-row: 2; min-height: 20px; }
+.c3-room-activity { grid-column: 2; grid-row: 2; }
 .c3-room-activity:empty { display: none; }
 
 /* In the list a row has two lines. The first is the room and what acts on it: the disclosure of its people, its
@@ -43,7 +42,7 @@
    end. The four columns are the disclosure, the mark, the text and the row's end, so each line ends on one edge.
    The disclosure's column and the mark's are sized so that the mark stands where it stands in the rail. The
    columns belong to the whole list, so its headings can stand over the names. */
-.c3-room-navigation { --room-row-padding: 6px; --room-line: 28px; --room-disclosure-width: 16px; --room-icon-size: 24px; --room-content-gap: 8px; --room-end-inset: 6px;
+.c3-room-navigation { --room-row-padding: 6px; --room-line: 28px; --room-disclosure-width: 16px; --room-icon-size: 24px; --room-content-gap: 8px; --room-end-inset: 6px; --room-metadata-line: 20px;
   --room-text-start: calc(var(--room-disclosure-width) + var(--room-icon-size) + var(--room-content-gap)); }
 .c3-room-list-item > .c3-room-item { display: grid; grid-template-columns: var(--room-disclosure-width) var(--room-icon-size) minmax(0, 1fr) auto; grid-template-rows: var(--room-line) auto;
   align-items: center; padding: var(--room-row-padding) var(--room-end-inset) var(--room-row-padding) 0; }
@@ -69,23 +68,27 @@
 .c3-room-lead [aria-expanded] > svg { transition: transform var(--motion-control) var(--spring); }
 .c3-room-order-handle { cursor: grab; }
 .c3-room-order-handle:active { cursor: grabbing; }
+.c3-room-list-item :is(.c3-room-activity, .c3-room-faces) { min-height: var(--room-metadata-line); }
 /* Who is in the room: a picture at the end of the second line, on the edge the settings end on. It is not a
    control, so the pointer passes through it to the row. */
-.c3-room-faces { grid-column: 3 / -1; grid-row: 2; justify-self: end; z-index: 1; display: flex; align-items: center; min-height: 20px; padding-inline-end: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.c3-room-faces > .lr-person { width: 16px; height: 20px; }
+.c3-room-faces { grid-column: 3 / -1; grid-row: 2; justify-self: end; z-index: 1; display: flex; align-items: center; padding-inline-end: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.c3-room-faces > .lr-person { width: 16px; height: 16px; }
 .c3-room-faces > .lr-person + .lr-person { margin-inline-start: -5px; }
 .c3-room-faces > span { margin-inline-start: 4px; }
 /* The people of a room are one level in: each stands under the room's name. */
 .c3-room-people { padding: 0 8px 6px var(--room-text-start); }
-.c3-room-people .c3-user { min-height: 28px; padding: 0; }
-.c3-room-people .c3-person-identity { gap: 8px; }
+.c3-room-people .c3-user { padding: 0; }
+.c3-room-people .c3-person { min-height: 28px; }
+.c3-room-people .c3-person-identity { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; }
+.c3-room-people .c3-person-identity > svg { justify-self: center; }
+.c3-room-people .c3-avatar-preview { width: 100%; min-height: 28px; }
 .c3-room-people .c3-person-identity :is(.lr-person, .c3-avatar-preview > .lr-person) { width: 18px; height: 22px; }
 /* A person under a room is written in the room’s own size, a weight lighter than its name. */
 .c3-room-list-item .c3-room-people .c3-person-copy strong { font-size: 14px; font-weight: 500; }
 .c3-room-people .c3-person-copy small { display: none; }
 
 /* Ordering has one note, in one line, over the names. */
-.c3-room-order-help { margin: 0 0 6px; padding-inline: var(--room-text-start) 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.c3-room-order-help { margin: 0 0 6px; padding-inline: var(--room-text-start) var(--room-end-inset); color: var(--muted); font-size: 12px; line-height: 1.5; }
 .c3-room-list-item[data-drop] { outline: 2px solid var(--ink); outline-offset: -2px; }
 /* A finger gets the larger target; a mouse beside a touch screen does not pay for it. */
 @media (pointer: coarse) {

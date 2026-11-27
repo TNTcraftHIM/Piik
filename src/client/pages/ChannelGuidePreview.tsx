@@ -22,7 +22,6 @@ import { useCopy } from "../ui/copy";
 import type { NativeCaptureSources } from "../channel/app-link";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { SOURCES, previewCameras, previewSource } from "./preview-sources";
-import "./channel-preview.css";
 import "./channel-guide-preview.css";
 
 const invitation = "https://friends.example/#room=friday&invite=sample";

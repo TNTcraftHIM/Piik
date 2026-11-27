@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { rememberRoom } from "./navigation";
 
-type RoomPane = "room" | "rooms";
+type RoomPane = "room" | "rooms" | "people" | "chat";
 type SidePane = Exclude<RoomPane, "room">;
 
 function closeLayer(element: HTMLElement) {
@@ -12,7 +12,7 @@ function closeLayer(element: HTMLElement) {
 
 function paneFromHistory(): RoomPane {
   const pane = typeof history !== "undefined" && history.state?.piikRoomPane;
-  return pane === "rooms" ? pane : "room";
+  return pane === "rooms" || pane === "people" || pane === "chat" ? pane : "room";
 }
 
 function rememberPane(pane: SidePane) {

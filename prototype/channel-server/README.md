@@ -101,7 +101,7 @@ offer no forwarding.
 This policy applies to both Server-hosted rooms and rooms hosted by a Browser
 or App on the site. A site started from Piik App uses participant connections.
 Room managers can turn off **Use site forwarding** under **Room settings →
-Connection**. The setting defaults to on, stays with the room across
+Network**, then select **Save**. The setting defaults to on, stays with the room across
 reconnections, and returns to the default when copied to a new room.
 
 Piik uses an offered kind when assigning a route that participants cannot carry.

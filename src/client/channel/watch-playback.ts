@@ -111,7 +111,7 @@ export class WatchPlayer {
     this.error = failure;
     this.changed();
   }
-  private sourceUnavailable(): void {
+  sourceUnavailable(): void {
     if (this.signal.aborted || this.failure === retiredSource) return;
     const state = this.localState;
     if (state) {
@@ -120,7 +120,7 @@ export class WatchPlayer {
     }
     this.failure = retiredSource;
     this.changed();
-    if (this.owner && state) void this.publish(true).catch(() => {});
+    if (this.publishPlayback && state) void this.publish(true).catch(() => {});
   }
   private listening?: Pick<HTMLVideoElement, "volume" | "muted">;
   inheritListening(previous?: WatchPlayer): void {
