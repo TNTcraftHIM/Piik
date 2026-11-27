@@ -6,144 +6,75 @@ export type SignalConnectionState =
 export type MediaPath = "direct" | "unknown";
 export type NativeEdgeQualityState = "unknown" | "healthy" | "degraded";
 
-export interface ConnectionMetrics {
-  sampleTimestampMs: number | null;
-  sampleWindowMs: number | null;
-  rtpStatsId: string | null;
-  rtpSsrc: number | null;
-  rtpMid: string | null;
-  rtpRid: string | null;
-  trackIdentifier: string | null;
-  selectedCandidatePairId: string | null;
-  captureWidth: number | null;
-  captureHeight: number | null;
-  captureFramesPerSecond: number | null;
-  mediaSourceFramesPerSecond: number | null;
-  path: MediaPath;
-  natTraversalPath: NatTraversalPath;
-  iceProtocol: string | null;
-  localCandidateType: string | null;
-  remoteCandidateType: string | null;
-  localCandidateAddress: string | null;
-  localCandidatePort: number | null;
-  remoteCandidateAddress: string | null;
-  remoteCandidatePort: number | null;
-  rttMs: number | null;
-  bitrateKbps: number | null;
-  availableOutgoingKbps: number | null;
-  framesPerSecond: number | null;
-  frameWidth: number | null;
-  frameHeight: number | null;
-  resolution: string | null;
-  packetsLost: number | null;
-  intervalPacketsSent: number | null;
-  intervalPacketsReceived: number | null;
-  intervalPacketsLost: number | null;
-  packetLossPercent: number | null;
-  jitterMs: number | null;
-  framesDropped: number | null;
-  intervalFramesDecoded: number | null;
-  intervalFramesDropped: number | null;
-  intervalFreezeCount: number | null;
-  intervalFreezeDurationMs: number | null;
-  intervalPauseCount: number | null;
-  intervalPauseDurationMs: number | null;
-  intervalRetransmittedPackets: number | null;
-  intervalRetransmittedBytes: number | null;
-  codec: string | null;
-  codecProfile: string | null;
-  codecParameters: string | null;
-  audioBitrateKbps: number | null;
-  audioPacketLossPercent: number | null;
-  audioJitterMs: number | null;
-  audioVideoPlayoutDeltaMs: number | null;
-  videoJitterBufferDelayMs: number | null;
-  audioJitterBufferDelayMs: number | null;
-  audioConcealedSamplesPercent: number | null;
-  intervalAudioConcealmentEvents: number | null;
-  audioCodec: string | null;
-  audioCodecClockRate: number | null;
-  audioCodecChannels: number | null;
-  audioCodecParameters: string | null;
-  scalabilityMode: string | null;
-  encoderImplementation: string | null;
-  powerEfficientEncoder: boolean | null;
-  intervalFramesEncoded: number | null;
-  intervalFramesSent: number | null;
-  intervalEncodeTimeMs: number | null;
-  intervalEncodeMs: number | null;
-  intervalDecodeMs: number | null;
-  qualityLimitationReason: string | null;
-  nativeEdgeQualityState: NativeEdgeQualityState;
-}
-
-export const EMPTY_METRICS: ConnectionMetrics = {
-  sampleTimestampMs: null,
-  sampleWindowMs: null,
-  rtpStatsId: null,
-  rtpSsrc: null,
-  rtpMid: null,
-  rtpRid: null,
-  trackIdentifier: null,
-  selectedCandidatePairId: null,
-  captureWidth: null,
-  captureHeight: null,
-  captureFramesPerSecond: null,
-  mediaSourceFramesPerSecond: null,
-  path: "unknown",
-  natTraversalPath: "unknown",
-  iceProtocol: null,
-  localCandidateType: null,
-  remoteCandidateType: null,
-  localCandidateAddress: null,
-  localCandidatePort: null,
-  remoteCandidateAddress: null,
-  remoteCandidatePort: null,
-  rttMs: null,
-  bitrateKbps: null,
-  availableOutgoingKbps: null,
-  framesPerSecond: null,
-  frameWidth: null,
-  frameHeight: null,
-  resolution: null,
-  packetsLost: null,
-  intervalPacketsSent: null,
-  intervalPacketsReceived: null,
-  intervalPacketsLost: null,
-  packetLossPercent: null,
-  jitterMs: null,
-  framesDropped: null,
-  intervalFramesDecoded: null,
-  intervalFramesDropped: null,
-  intervalFreezeCount: null,
-  intervalFreezeDurationMs: null,
-  intervalPauseCount: null,
-  intervalPauseDurationMs: null,
-  intervalRetransmittedPackets: null,
-  intervalRetransmittedBytes: null,
-  codec: null,
-  codecProfile: null,
-  codecParameters: null,
-  audioBitrateKbps: null,
-  audioPacketLossPercent: null,
-  audioJitterMs: null,
-  audioVideoPlayoutDeltaMs: null,
-  videoJitterBufferDelayMs: null,
-  audioJitterBufferDelayMs: null,
-  audioConcealedSamplesPercent: null,
-  intervalAudioConcealmentEvents: null,
-  audioCodec: null,
-  audioCodecClockRate: null,
-  audioCodecChannels: null,
-  audioCodecParameters: null,
-  scalabilityMode: null,
-  encoderImplementation: null,
-  powerEfficientEncoder: null,
-  intervalFramesEncoded: null,
-  intervalFramesSent: null,
-  intervalEncodeTimeMs: null,
-  intervalEncodeMs: null,
-  intervalDecodeMs: null,
-  qualityLimitationReason: null,
-  nativeEdgeQualityState: "unknown",
+export const EMPTY_METRICS = {
+  sampleTimestampMs: null as number | null,
+  sampleWindowMs: null as number | null,
+  rtpStatsId: null as string | null,
+  rtpSsrc: null as number | null,
+  rtpMid: null as string | null,
+  rtpRid: null as string | null,
+  trackIdentifier: null as string | null,
+  selectedCandidatePairId: null as string | null,
+  captureWidth: null as number | null,
+  captureHeight: null as number | null,
+  captureFramesPerSecond: null as number | null,
+  mediaSourceFramesPerSecond: null as number | null,
+  path: ("unknown" satisfies MediaPath) as MediaPath,
+  natTraversalPath: ("unknown" satisfies NatTraversalPath) as NatTraversalPath,
+  iceProtocol: null as string | null,
+  localCandidateType: null as string | null,
+  remoteCandidateType: null as string | null,
+  localCandidateAddress: null as string | null,
+  localCandidatePort: null as number | null,
+  remoteCandidateAddress: null as string | null,
+  remoteCandidatePort: null as number | null,
+  rttMs: null as number | null,
+  bitrateKbps: null as number | null,
+  availableOutgoingKbps: null as number | null,
+  framesPerSecond: null as number | null,
+  frameWidth: null as number | null,
+  frameHeight: null as number | null,
+  resolution: null as string | null,
+  packetsLost: null as number | null,
+  intervalPacketsSent: null as number | null,
+  intervalPacketsReceived: null as number | null,
+  intervalPacketsLost: null as number | null,
+  packetLossPercent: null as number | null,
+  jitterMs: null as number | null,
+  framesDropped: null as number | null,
+  intervalFramesDecoded: null as number | null,
+  intervalFramesDropped: null as number | null,
+  intervalFreezeCount: null as number | null,
+  intervalFreezeDurationMs: null as number | null,
+  intervalPauseCount: null as number | null,
+  intervalPauseDurationMs: null as number | null,
+  intervalRetransmittedPackets: null as number | null,
+  intervalRetransmittedBytes: null as number | null,
+  codec: null as string | null,
+  codecProfile: null as string | null,
+  codecParameters: null as string | null,
+  audioBitrateKbps: null as number | null,
+  audioPacketLossPercent: null as number | null,
+  audioJitterMs: null as number | null,
+  audioVideoPlayoutDeltaMs: null as number | null,
+  videoJitterBufferDelayMs: null as number | null,
+  audioJitterBufferDelayMs: null as number | null,
+  audioConcealedSamplesPercent: null as number | null,
+  intervalAudioConcealmentEvents: null as number | null,
+  audioCodec: null as string | null,
+  audioCodecClockRate: null as number | null,
+  audioCodecChannels: null as number | null,
+  audioCodecParameters: null as string | null,
+  scalabilityMode: null as string | null,
+  encoderImplementation: null as string | null,
+  powerEfficientEncoder: null as boolean | null,
+  intervalFramesEncoded: null as number | null,
+  intervalFramesSent: null as number | null,
+  intervalEncodeTimeMs: null as number | null,
+  intervalEncodeMs: null as number | null,
+  intervalDecodeMs: null as number | null,
+  qualityLimitationReason: null as string | null,
+  nativeEdgeQualityState: ("unknown" satisfies NativeEdgeQualityState) as NativeEdgeQualityState,
 };
+
+export type ConnectionMetrics = typeof EMPTY_METRICS;

@@ -51,7 +51,7 @@ export function codecContractWarnings(
   return warnings;
 }
 
-function secondaryMetrics(
+export function secondaryMetrics(
   metrics: ConnectionMetrics,
   direction: "send" | "receive",
   t: (key: CopyKey, vars?: Record<string, string>) => string,
@@ -175,8 +175,15 @@ function secondaryMetrics(
   return groups.filter(group => group.values.length);
 }
 
-export function hasDetailedMetrics(metrics: ConnectionMetrics, direction: "send" | "receive", media: "video" | "audio" = "video") {
-  return secondaryMetrics(metrics, direction, key => key, media).length > 0;
+export function MetricGroups({ groups, id }: { groups: readonly MetricGroup[]; id?: string }) {
+  const { t } = useCopy();
+  if (!groups.length) return null;
+  return <div id={id} className="lr-metric-groups" role="group" aria-label={t("stats.more")}>
+    {groups.map(group => <section className="lr-metric-group" key={group.label} aria-label={t(group.label)}>
+      <h4 className="lr-metric-group-label">{t(group.label)}</h4>
+      <div className="lr-meter">{group.values.map(value => <MetricCell key={value.label} {...value} />)}</div>
+    </section>)}
+  </div>;
 }
 
 export function CaptureMetricCells({ resolution, frameRate, codec, hasSourceAudio }: {
@@ -287,19 +294,8 @@ export function MetricCells({
       {primary && <div className="lr-meter" role="group" aria-label={t("stats.title")}>
         {primaryValues.map((value) => <MetricCell key={value.label} {...value} />)}
       </div>}
-      {secondary.length > 0 ? (
-        <>
-          {onToggle && <MetricDetailsToggle expanded={expanded} onToggle={onToggle} controls={secondaryId} />}
-          {expanded ? (
-            <div id={secondaryId} className="lr-metric-groups" role="group" aria-label={t("stats.more")}>
-              {secondary.map(group => <section className="lr-metric-group" key={group.label} aria-label={t(group.label)}>
-                <h4 className="lr-metric-group-label">{t(group.label)}</h4>
-                <div className="lr-meter">{group.values.map(value => <MetricCell key={value.label} {...value} />)}</div>
-              </section>)}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      {secondary.length > 0 && onToggle && <MetricDetailsToggle expanded={expanded} onToggle={onToggle} controls={secondaryId} />}
+      {expanded && <MetricGroups groups={secondary} id={secondaryId} />}
       {primary && warnings.map((warning) => (
         <Pill icon="alert" label={warning} comic="warning" key={warning} />
       ))}
