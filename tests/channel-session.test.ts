@@ -11912,7 +11912,8 @@ test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file or
   Object.assign(row, { id: crypto.randomUUID(), userId: crypto.randomUUID(), archivedAuthorName: "Archived author", attachments: [attachment],
     inlineImages: { [attachment.id]: { data: btoa("GIF89a"), mediaType: "image/gif", original: true, width: 1, height: 1 } } });
   const rows = [row, { ...row, id: crypto.randomUUID(), seq: 2, nonce: "second-send", text: "Older and recent rows both remain" }];
-  Object.defineProperty(snapshot, "rows", { get: () => (async function* () { yield* rows; })() });
+  const readRows = vi.fn(() => (async function* () { yield* rows; })());
+  Object.defineProperty(snapshot, "rows", { get: readRows });
   const retained = vi.spyOn(session.attachments, "retained").mockRejectedValue(new Error("file_inventory_must_not_be_opened"));
   const content = vi.fn(), restored: BackupHistoryRow[] = [];
   try {
@@ -11920,7 +11921,10 @@ test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file or
       : await session.exportRoomCopy("first", kind === "copy-with-settings", false);
     const metadata = await backupArchive.readBackup(archive, { metadata: () => {}, row: value => { restored.push(value); }, content });
     expect(metadata).toMatchObject({ kind: kind === "backup" ? "room" : "room_copy", retainedFiles: [] });
-    if (kind === "backup") expect(metadata).toMatchObject({ domainId: state.channel.id, policy });
+    if (kind === "backup") {
+      expect(metadata).toMatchObject({ domainId: state.channel.id, policy });
+      expect(readRows).toHaveBeenCalledOnce();
+    }
     else if (kind === "copy-with-settings") expect(metadata).toMatchObject({ roomInfo: { name: policy.name, icon: "rocket", picture, voiceBitrate: policy.voiceBitrate, relayCapacity: policy.relayCapacity } });
     else expect(metadata).not.toHaveProperty("roomInfo");
     expect(restored).toEqual(rows); expect(content).not.toHaveBeenCalled(); expect(retained).not.toHaveBeenCalled();

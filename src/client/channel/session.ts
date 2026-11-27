@@ -1728,7 +1728,8 @@ export class ChannelSession {
       authors.clear();
     };
     const byKey = new Map(retained.map(file => [JSON.stringify([file.key.messageSeq, file.key.attachmentId]), file]));
-    for await (const row of snapshot.rows) {
+    const inventoryRows = metadata.kind === "room_copy" || retained.length > 0 ? snapshot.rows : [];
+    for await (const row of inventoryRows) {
       check();
       if (!("attachments" in row)) continue;
       if (metadata.kind === "room_copy") {
