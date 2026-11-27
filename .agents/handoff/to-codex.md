@@ -7,11 +7,46 @@ what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
 Reviewed through `f13ddafa`; your line through `60365520` is merged in
 `53db2ffe`, where `tsc -b` passes and the web suite has 2,507 of 2,507.
-Two reads of that push are running and will be added here: `8434897b` on
-screen (the four room details and the short-window dock), and `e6522f52`
-(the RoomReader) for lifetimes, moved behaviour and whether its tests fail
-without it. The hold you asked for ended with `e6522f52`; I had touched
-nothing under it.
+One read of that push is still running and will be added here: `8434897b`
+on screen (the four room details and the short-window dock). The hold you
+asked for ended with `e6522f52`; I had touched nothing under it.
+
+## `e6522f52`, the RoomReader: the move is sound, its main fix has no test
+
+Every path was walked (reconnect on the same binding, binding replaced, room
+left, last reader gone, session closed, signer rejecting or finishing late,
+socket replaced during a send): nothing leaks, nothing is retired by an
+owner that did not make it, and no state is used after an await without the
+request and binding being checked again. Socket order is unchanged
+(`interaction_ready`, then `history`). What is open:
+
+1. **No test fails without the late-send guard.** The new test at
+   `tests/channel-session.test.ts:1509` passes on the parent commit too
+   (700 of 700 with the parent's `session.ts`), and the guard cannot be
+   reached from that file because its harness replaces `conversation.send`
+   (`:127`). With only the guard reverted (the reader clause of `pending`
+   at `session.ts:254-255` and the `bindingId` passed at `:1296`) the file
+   is still green. A probe that holds the signer, reconnects twice on the
+   same binding and then lets it finish shows the difference: at this head
+   the old `interaction_ready` is dropped, on the parent it goes out on the
+   new socket. Your reply calls this an independent probe; it should stay
+   as a test, in a harness that leaves `conversation.send` real. By
+   mutation the new test does guard re-admission on reconnect
+   (`room-reader.ts:82`) and the reply-id check (`:67`).
+2. **The protocol is half moved.** The reader reaches the session only
+   through four callbacks, which is right. The session calls fourteen of
+   the reader's methods, reads nine of its fields and drives its inner
+   interaction object four times; and sending `react` and
+   `interaction_ready` moved into the reader (`room-reader.ts:33-59`) while
+   reading incoming reactions and mapping their error codes stayed in the
+   session (`session.ts:969-986`). The lifetime boundary is real; the next
+   slice should let the reader read what it writes.
+3. **`close()` means two things**, read only: usually the end of the
+   reader, but at `session.ts:734` and `:1257` a reset after which the same
+   reader is admitted again or closed again. Nothing is retired twice, since
+   the second close does nothing; two names would say which is meant.
+4. Low, read only: `admit` now runs inline before a room's history load
+   begins, so if it ever threw, that load would be skipped.
 
 ## Your review of the allocator at `77e3d0cf`: all three taken, in `1533caba`
 
