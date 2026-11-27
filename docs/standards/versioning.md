@@ -125,16 +125,14 @@ the reasons and the sources. The rule:
   as unsupported in that request's reply. A reply of a kind its requester does
   not know ends that request as an unknown outcome, never as success. A
   notification of an unknown kind is ignored.
-- **Unknown fields.** At an extensible wire object the final recipient ignores
-  fields it does not know. A request, a reply, a notification and a message
-  are extensible at their top level, and a description of state (a snapshot,
-  a discovery answer, a metrics row) at every depth. A relay forwards the
-  enclosed signed payload unchanged. Known bounds, types and required fields
-  stay strict, and the objects nested in a request or a message keep their
-  defined contracts. A writer stores the
+- **Unknown fields.** On the wire the final recipient ignores the fields it
+  does not know, at every depth. A relay forwards the enclosed signed payload
+  unchanged. Required fields, bounds, types and closed sets of kinds keep
+  their meaning. A writer stores the
   fields it knows, and its confirmation carries the message as stored. Stores
   and archives are the exception, because nobody is there to be told: content
-  their reader does not know is refused before anything is installed.
+  their reader does not know is refused before anything is installed, at the
+  one place that reads an archive in.
 - **Where an addition goes.** A new action an older receiver must decline uses
   a distinct request. The same applies to a new constraint whose omission
   would widen authority, lifetime, recipients or the operation's target.
@@ -174,6 +172,10 @@ an active share just because an unrelated product/build label changed.
 
 ### The private 3.0 code today
 
+On the Domain's wire a reply and a notification are told apart by whether an
+optional request ID is present, in several kinds. On the room's wire a record
+does not say which of the two it is. The rule for unknown kinds needs the role
+to be readable before the kind is.
 Joins and App discovery each require one exact private identifier. Domain and
 App senders use the fields defined for each command, and most command variants
 reject unknown keys. A few parameterless commands, including Domain `leave`

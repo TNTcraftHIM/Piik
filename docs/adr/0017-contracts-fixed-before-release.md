@@ -67,10 +67,10 @@ The private 3.0 implementation currently has these boundaries:
      unknown kind is ignored. A new action an older receiver must decline
      uses a distinct request. Changes to state older observers already display
      retain their baseline update semantics.
-   - *An unknown field is ignored at an extensible object by its final
-     recipient.* Relays forward enclosed signed payloads unchanged. Known
-     bounds, types and required fields stay strict, and nested objects keep
-     their defined contracts. A writer stores
+   - *An unknown field is ignored by its final recipient, at every depth of
+     the wire.* Relays forward enclosed signed payloads unchanged. Required
+     fields, bounds, types and closed sets of kinds keep their meaning. A
+     writer stores
      the fields it knows, and its confirmation carries the message as stored,
      so a sender sees what was kept. A new constraint whose omission would
      widen authority, lifetime, recipients or the target uses a distinct
