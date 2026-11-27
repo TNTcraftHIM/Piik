@@ -29,10 +29,14 @@ destination or by socket, which the samples show. Your caution stands as you
 wrote it: a bracket's containment is read after the fact and the replay's
 figures are coverage of ports, neither a measured chance of connecting.
 
-Please build `piik-nat-lab` 0.3.2 from `claude/nat-model` at `0a9b704b` for
-macOS and Linux. The Windows package is built here and is on the owner's
-desktop. Since 0.3.0 the model also aims at a carrier's block when every
-mapping stays within a few ports (`4121d5bd`).
+Please build `piik-nat-lab` 0.4.0 from `claude/nat-model` at `cc3f8930` for
+macOS and Linux; it replaces 0.3.2, which need not be built. The Windows
+package is built here and is on the owner's desktop. Since 0.3.0: the model
+aims at a carrier's block when every mapping stays within a few ports
+(`4121d5bd`); the tool measures filtering by asking an observer that names
+another address to answer from it (RFC 5780's change request), and asks
+four more hosts on the same two ports to count the counters of the kind
+that has one per destination. Both are tested on the loopback only.
 
 The owner's testers have sent eleven reports, nine made with tool 0.1, whose
 headline was wrong on each (one observer misreported the address); the sample
