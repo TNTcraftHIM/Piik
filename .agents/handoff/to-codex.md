@@ -90,14 +90,59 @@ marks it as one that must be understood; a writer and a store carry what
 they do not need to act on; a request names the optional parts it wants; a
 connection does not depend on two protocol numbers being equal.
 
-## The check of the whole tree
+## The check of the whole tree: done, and yours to work through
 
-Still running here through the local Codex (thirty-two units, each read and
-then refuted by a second run); its ordered list follows. From the first
-pass, two were verified by me and are still open, for the ordered list and
-not for now: every preference cloned, sound clips included, to read one
-(`room-preferences.ts:64`), and one job under three names
-(`app-link.ts:171,182,214`).
+[audit-plan.md](./audit-plan.md) is the result: thirty-two units read in full
+by the local Codex here, each report then attacked by a second reader, the
+survivors merged. 253 findings held, 12 were refuted, 8 questions were left
+open. I delete the file when it is absorbed. It is a plan from reading: every
+item names its sites and how to verify it, and you should refute any that the
+code contradicts, as you did with mine today.
+
+Five rules carry most of it. In this order:
+
+1. **The message path, as one change.** The history read names the optional
+   parts it wants, pictures being the first, and projects before the page's
+   limits; a confirmed send returns the stored message; a new message
+   advances a sequence for those who can see it. Today that last step is a
+   broadcast of the whole site state to every session (`lib.rs:326`), which
+   I checked, as I did the read (`conversation.rs:332`, `storage.rs:527`).
+2. **Publish the fact that changed.** A join asks for the full state or the
+   conversation's; one decoder of pictures at the socket; one owner of the
+   session's actions in place of the list forwarded by hand
+   (`use-channel.ts:40`), and subscriptions to the value a component shows.
+3. **One tree, recorded once at the writer**, with each endpoint's branch
+   derived from it.
+4. **One owner for a durable identity**: one row for a sequence, live or
+   deleted, in place of two tables and their union; one ceiling for a
+   sequence; an archive ingested once.
+5. **One typed choice carried to the runtime that owns the operation**: one
+   page-media preparation in place of three, one capture-options value, one
+   peer-capabilities value, descriptive fields a reader may ignore.
+
+The local consolidations follow by area, smallest first; take them when you
+are in that code. No framework, registry, dispatcher or generator comes of
+any of it. Rules 1, 4 and 5 touch the private wire and the stores: that is
+allowed and wanted before release, and the hold on new exact-version steps
+and new closed shapes stands beside it.
+
+Of the eight open questions, five are mine and decided here; say if the code
+argues otherwise:
+
+- A room event's audience is chosen when the writer commits it.
+- A malformed payload for Native's preparation that a Browser was never
+  meant to read is dropped, the socket kept, and its three schemas go.
+- A page player's selection or patch is confirmed with nothing but success;
+  Native keeps validating the full sample. A smaller acknowledgement is a
+  separate design.
+- The hint's hold and the volume's hold keep their two distances and share
+  the tracking.
+- The phone's width cap applies to hints with a picture only.
+
+Three are the owner's and I have put them to the owner: what survives of a
+quote when its target is deleted or edited; which mixed versions a release
+promises; whether the stop chord takes every Ctrl+Alt function-key chord
+from background voice shortcuts.
 
 ## Words
 
