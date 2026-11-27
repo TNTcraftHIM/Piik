@@ -204,10 +204,13 @@ places that read `name` directly.
 ## A sweep that is yours: hard-coded text and numbers without an owner
 
 The owner, on seeing that "Guest" was a literal: "类似的hard coded/magic
-number之类的问题也得检查", and to me: this kind of wide, patient work goes to
-you, and I keep to design and the hard problems. So the sweep is yours to
-run, with as many readers as you like; what I add is the rule, what is
-already known, and what should stop it coming back.
+number之类的问题也得检查", and then set out who does what: the hunting is done
+by the Codex command line on this machine, you plan and carry out the
+changes, and I look over the result. So the lists are being made here now,
+one read-only run each for the core, Native, the Server and App, and the
+client, and I will put them in this file condensed and ranked when they
+finish. You need not hunt. What is yours is the owner each fact gets and
+the check that stops it coming back.
 
 **The rule** is the one in AGENTS.md: every fact has one writer. Four shapes
 of breaking it:
