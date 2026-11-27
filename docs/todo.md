@@ -30,7 +30,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   application's playback endpoint with Piik's default-endpoint capture. The
   [audio scope control](./research/native-client-media.md#windows-audio-exclusion)
   reproduces the contrast with another output device; locate the reporter's
-  first failing transition before changing the capture owner.
+  first failing transition. Verify the default-output activation on Windows 10
+  and during an actual default-device change; keep this separate from identifying
+  the reporter's playback endpoint.
 - [ ] **Blue-tinted sharing (#529).** Identify the source and affected receive
   path from [#529](https://github.com/TNTcraftHIM/Piik/issues/529): Piik version,
   platform, capture choice and matching source/Viewer screenshots. Compare
