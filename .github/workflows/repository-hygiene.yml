@@ -200,9 +200,14 @@ jobs:
             Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
       - name: Compile the Windows App library tests
         if: runner.os == 'Windows'
+        env:
+          # The hosted MSVC linker exceeds its PDB symbol limit for this test binary.
+          _LINK_: '/DEBUG:NONE'
         run: cargo +1.91.0 test --locked --manifest-path prototype/channel-server/Cargo.toml --features capture --lib --no-run
       - name: Run the Windows WebView2 window lifecycle regression
         if: runner.os == 'Windows'
+        env:
+          _LINK_: '/DEBUG:NONE'
         timeout-minutes: 2
         shell: pwsh
         run: |
