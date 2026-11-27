@@ -3690,6 +3690,8 @@ export class ChannelSession {
       this.releaseMedia();
       this.releaseHosts();
       this.patch({ sessionId: null, state: null, self: null, error: "session_expired" });
+      // An in-flight Join can still name the session whose media just expired.
+      if (this.socket) this.reconnect();
     }, session_recovery_ms());
   }
 

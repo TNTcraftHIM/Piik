@@ -2900,6 +2900,50 @@ test("closing during microphone permission releases the pending context and late
   expect(raw.stop).toHaveBeenCalledOnce();
 });
 
+test("an expired resume cannot reclaim the screen publisher on a fresh connection", async () => {
+  const { session, socket } = await setup(1000, false);
+  const oldTrack = remoteTrack("video"), newTrack = remoteTrack("video");
+  const capture = vi.fn().mockResolvedValueOnce(remoteStream("old", [oldTrack])).mockResolvedValueOnce(remoteStream("new", [newTrack]));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: capture } });
+  try {
+    const publish = async (target: ChannelSocket) => {
+      const next = nextSocketCommand(target, "publish");
+      const starting = session.startScreen("first");
+      const command = await next;
+      target.receive({ type: "ack", requestId: command.requestId });
+      await starting;
+      return command.publication as Extract<ChannelCommand, { type: "publish" }>["publication"];
+    };
+    const first = await publish(socket);
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [publicationSchema.parse({ ...first, audience: [], sessionId: "endpoint", userId: "self", title: null, paused: false })];
+    socket.receive({ type: "state", state });
+    vi.useFakeTimers();
+    socket.close();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const pending = ChannelSocket.current;
+    await pending.onopen?.();
+    expect(pending.sent[0]).toMatchObject({ type: "join", sessionId: "endpoint" });
+    await vi.advanceTimersByTimeAsync(19_000);
+    expect(oldTrack.stop).toHaveBeenCalledOnce();
+    const welcome = { type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state };
+    pending.receive(welcome);
+    expect(session.getSnapshot().sessionId).toBeNull();
+    const fresh = ChannelSocket.current;
+    expect(fresh).not.toBe(pending);
+    await fresh.onopen?.();
+    expect(fresh.sent[0]).toMatchObject({ type: "join", credential: "credential" });
+    expect(fresh.sent[0]).not.toHaveProperty("sessionId");
+    state.sessions = state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value);
+    state.channel.rooms[0].participantSessionIds = ["new-endpoint"];
+    state.publications = [];
+    fresh.receive({ ...welcome, sessionId: "new-endpoint", state });
+    expect(session.getSnapshot().sessionId).toBe("new-endpoint");
+    expect((await publish(fresh)).id).not.toBe(first.id);
+    expect(newTrack.stop).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
 test("a new admitted session can request a microphone while retired permission is still pending", async () => {
   const { session, socket } = await setup(1000, false);
   const state = structuredClone(session.getSnapshot().state!);
