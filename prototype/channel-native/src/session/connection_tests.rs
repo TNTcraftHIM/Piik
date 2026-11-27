@@ -145,6 +145,35 @@ async fn reader_services_ping_while_business_has_not_consumed_its_frame() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn reader_resumes_a_valid_frame_when_the_previous_turn_releases_its_bytes() {
+    let a = r#"{"type":"ack","requestId":"a"}"#;
+    let b = r#"{"type":"ack","requestId":"b"}"#;
+    let capacity = a.len() + std::mem::size_of::<Incoming>();
+    let budget = Arc::new(tokio::sync::Semaphore::new(capacity));
+    let mut wire = futures_util::stream::iter([a, b].map(|s| Ok(Message::Text(s.into()))))
+        .chain(futures_util::stream::pending());
+    let (tx, mut rx) = mpsc::channel(2);
+    let mut reader = Box::pin(read_budgeted(&mut wire, tx, budget.clone()));
+
+    assert!(futures_util::poll!(&mut reader).is_pending());
+    let observed = Instant::now();
+    let first = rx.try_recv().unwrap();
+    assert_eq!(first.text, a);
+    time::advance(SIGNALING_IDLE_TIMEOUT / 2).await;
+    assert!(futures_util::poll!(&mut reader).is_pending());
+    assert!(rx.try_recv().is_err());
+    drop(first);
+    assert!(futures_util::poll!(&mut reader).is_pending());
+    assert_eq!(rx.try_recv().unwrap().text, b);
+    assert_eq!(budget.available_permits(), capacity);
+
+    // Local queue progress cannot renew the physical carrier deadline.
+    time::advance(SIGNALING_IDLE_TIMEOUT / 2).await;
+    assert!(reader.await.unwrap_err().is::<time::error::Elapsed>());
+    assert_eq!(observed.elapsed(), SIGNALING_IDLE_TIMEOUT);
+}
+
 fn connection_session(url: String) -> Session {
     Session {
         release_error: None,

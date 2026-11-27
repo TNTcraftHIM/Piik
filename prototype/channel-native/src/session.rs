@@ -79,15 +79,18 @@ async fn read_budgeted(
     messages: mpsc::Sender<Incoming>,
     budget: Arc<tokio::sync::Semaphore>,
 ) -> Result<()> {
+    let mut deadline = Instant::now() + SIGNALING_IDLE_TIMEOUT;
     loop {
-        let message = time::timeout(SIGNALING_IDLE_TIMEOUT, reader.next()).await?;
+        let message = time::timeout_at(deadline, reader.next()).await?;
+        deadline = Instant::now() + SIGNALING_IDLE_TIMEOUT;
         match message {
             Some(Ok(Message::Text(text))) => {
                 let charge = text.len() + std::mem::size_of::<Incoming>();
-                let permit = budget
-                    .clone()
-                    .try_acquire_many_owned(charge.try_into()?)
-                    .map_err(|_| anyhow!("native_signaling_backpressure"))?;
+                // The session can finish admitted turns while its reader waits. Keep
+                // the last observed wire deadline across this wait and the next read.
+                let permit =
+                    time::timeout_at(deadline, budget.clone().acquire_many_owned(charge.try_into()?))
+                        .await??;
                 messages
                     .try_send(Incoming {
                         text,
