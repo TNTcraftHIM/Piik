@@ -167,7 +167,7 @@ async fn participant() -> Result<()> {
                     Event::Signal { pair_id, payload, .. } => {
                         peers.as_ref().context("signal before admission")?.signal(pair_id, payload).await?; None
                     }
-                    Event::Error { code, .. } => bail!("domain rejected operation: {code}"),
+                    Event::Error { code, .. } | Event::Reply { result: piik_channel_core::wire::ReplyResult::Error { code }, .. } => bail!("domain rejected operation: {code}"),
                     _ => None,
                 };
                 if let Some(state) = state {

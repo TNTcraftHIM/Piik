@@ -163,19 +163,39 @@ export const channelTopologySchema = z.object({
 }).strict();
 export type ChannelTopology = z.infer<typeof channelTopologySchema>;
 export const channelWelcomeSchema = z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() });
+
+const typeHeaderSchema = z.object({ type: z.string() });
+const replyResultSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("done") }),
+  z.object({ type: z.literal("error"), code: z.string() }),
+  profilePageSchema.extend({ type: z.literal("profiles") }),
+  z.object({ type: z.literal("room_created"), room: roomSummarySchema }),
+  z.object({ type: z.literal("watch_ready"), serverTime: z.number().int().nonnegative() }),
+  z.object({ type: z.literal("deleted"), dataRemoved: z.boolean() }),
+  z.object({ type: z.literal("topology"), topology: channelTopologySchema }),
+  z.object({ type: z.literal("invite"), key: id }),
+  z.object({ type: z.literal("invite_state"), invitation: roomInvitationSchema }),
+  z.object({ type: z.literal("unknown_outcome") }),
+]);
+const replyResultTypes = new Set<string>(replyResultSchema.options.map(option => option.shape.type.value));
+const replySchema = z.object({
+  type: z.literal("reply"),
+  requestId: id,
+  roomId: id.optional(),
+  result: typeHeaderSchema.passthrough().transform(result =>
+    replyResultTypes.has(result.type) ? result : { type: "unknown_outcome" },
+  ).pipe(replyResultSchema),
+});
 export const eventSchema = z.discriminatedUnion("type", [
   channelWelcomeSchema,
-  profilePageSchema.extend({ type: z.literal("profiles"), requestId: id }),
+  replySchema,
   z.object({ type: z.literal("conversation"), packet: signedConversationPacketSchema }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
   z.object({ type: z.literal("input_state"), registrations: z.array(z.object({ publicationId: id, controllerSessionId: id, flowId: id, secret: signingKey })) }),
   z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
-  z.object({ type: z.literal("room_created"), room: roomSummarySchema, requestId: id.optional() }),
-  z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
-  z.object({ type: z.literal("room_reply"), roomId: id, requestId: id.optional(), result: z.object({ type: z.string(), code: z.string().optional() }).passthrough() }),
+  z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id, hostSessionId: id }).passthrough() }),
   z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: receivedSignalSchema }),
-  z.object({ type: z.literal("ack"), requestId: id }),
-  z.object({ type: z.literal("error"), code: z.string(), requestId: id.optional() }),
+  z.object({ type: z.literal("error"), code: z.string(), roomId: id.optional() }),
 ]);
 
 export type ChannelSnapshot = z.infer<typeof snapshotSchema>;
@@ -213,6 +233,7 @@ export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
 
 export const CHANNEL_EVENT_BYTES = 4 * 1024 * 1024;
+const eventTypes = new Set<string>(eventSchema.options.map(option => option.shape.type.value));
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /** One physical socket's last validated snapshot supplies omitted identity pictures. */
@@ -221,9 +242,12 @@ export class ChannelEventDecoder {
   private channelIcon: string | undefined;
   private roomPictures = new Map<string, string>();
 
-  decode(raw: unknown, wireBytes: number): ChannelEvent {
+  decode(raw: unknown, wireBytes: number): ChannelEvent | undefined {
     if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
-    if (record(raw) && raw.type === "profiles" && wireBytes > 1024 * 1024) throw new Error("Profile page exceeds frame limit");
+    const { type } = typeHeaderSchema.parse(raw);
+    if (!eventTypes.has(type)) return;
+    if (wireBytes > 1024 * 1024 && record(raw) && type === "reply" && record(raw.result) && raw.result.type === "profiles")
+      throw new Error("Profile page exceeds frame limit");
     let fullBytes = wireBytes;
     if (record(raw) && (raw.type === "welcome" || raw.type === "state") && record(raw.state)) {
       const channel = raw.state.channel;
@@ -253,7 +277,9 @@ export class ChannelEventDecoder {
     return event;
   }
 }
-export type ChannelReply = Extract<ChannelEvent, { type: "ack" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
+export type DomainReplyResult = Extract<ChannelEvent, { type: "reply" }>["result"];
+export type ChannelReply = DomainReplyResult | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
+export const HISTORY_INLINE_IMAGES = "inlineImages";
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
@@ -266,7 +292,7 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "history_cleared"; throughSeq: number }
   | { type: "room_media_cleared"; throughSeq: number }
   | { type: "history_seek_result"; after: number; seq: number | null }
-  | { type: "history_page"; messages: StoredMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
+  | { type: "history_page"; parts?: string[]; messages: StoredMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
 export type ConversationNotice = ConversationAddress & { notice: ConversationReply["record"] };
@@ -311,13 +337,14 @@ export type ChannelCommand =
   | { type: "admit_room"; room: RoomSummary }
   | { type: "delete_room"; roomId: string; deleteData: boolean }
   | { type: "host_output"; roomId: string; output: unknown }
+  | { type: "host_unsupported"; roomId: string; bindingId: string; revision: number }
   | { type: "host_stop"; roomId: string; bindingId: string }
   | { type: "browse"; roomId: string; active: boolean }
   | { type: "relay_capacity"; roomId: string; capacity: number | null }
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
   | { type: "history_seek"; roomId: string; after: number }
-  | { type: "history"; roomId: string; before?: number }
+  | { type: "history"; roomId: string; before?: number; parts?: readonly string[] }
   | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string }
   | { type: "clear_history"; roomId: string; throughSeq: number }
   | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, ImageRendition> } & ChatOptions)

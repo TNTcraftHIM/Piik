@@ -110,9 +110,11 @@ Avatars use PNG or WebP data URLs. The complete URL can contain at most 24 KiB.
 
 - `ready` follows successful room Browse. With no `roomId`, `connect()`
   establishes the site session and the caller selects a room with `browse()`.
-- `live` delivers new verified room messages. `history(before?)` reads a
+- `live` delivers new verified room messages. `history(before?, options?)` reads a
   bounded retained page. Use the first message's sequence for the preceding
-  page when `hasMore` is true.
+  page when `hasMore` is true. The default requests inline images. Pass
+  `{ parts: [] }` to omit image renditions. The returned `parts` lists the
+  optional contents the writer supplied.
 - `confirmed` reports the Host's receipt for this participant's send, including
   a retained receipt returned on retry. `chat()` resolves to the same stored
   message, including its current reaction counts and revision.

@@ -121,13 +121,16 @@ method rejects another author's message with `own_confirmed_message_required`,
 including when the participant manages the room. If the deletion receipt is
 lost, read history again to check whether the message remains.
 
-`history()` returns `{ messages, hasMore, oldestSeq, before }` for the latest page.
+`history()` returns `{ messages, hasMore, oldestSeq, before, parts }` for the latest page.
 Messages are ordered oldest to newest. While `hasMore` is true, pass the first
 message's sequence to read the preceding page. `oldestSeq` is the room's oldest
 retained sequence, **not the next-page cursor**; `before` is the upper bound of
 the completed request (`null` for the latest page). Core returns `hasMore: false`
 for an empty page, including when the requested bound precedes retained history.
-History does not emit `live` events or execute conversational commands.
+The SDK requests `inlineImages` by default. Pass `{ parts: [] }` as the second
+argument to read text, file descriptors, and reactions with image renditions
+omitted. `parts` reports the optional contents supplied by the writer, including
+for an empty page. History does not emit `live` events or execute conversational commands.
 
 ```ts
 let page = await participant.history();

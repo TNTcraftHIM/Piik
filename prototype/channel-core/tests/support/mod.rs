@@ -1,3 +1,4 @@
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     wire::{AudienceState, Event, PublicationAudience, Request, RoomAccess, Snapshot},
     Authority, Effects, RoomState, StoredRoomHost,
@@ -146,7 +147,7 @@ impl RoomNetwork {
             .events
             .into_iter()
             .find_map(|(_, event)| match event {
-                Event::RoomCreated { room, .. } => Some(room.id),
+                Event::Reply { result: ReplyResult::RoomCreated { room }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { room }, .. } => Some(room.id),
                 _ => None,
             })
             .expect("domain assigned room identity");
@@ -166,7 +167,7 @@ impl RoomNetwork {
         assert!(!registered
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
         assert!(self.states[&connection]
             .channel
             .rooms

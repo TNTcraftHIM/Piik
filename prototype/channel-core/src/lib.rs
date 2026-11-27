@@ -48,7 +48,7 @@ use host::{HostOutput, RequestContext, RoomReply, RoomResult};
 use identity::{Admission, PeerCapabilities};
 use serde_json::Value;
 use uuid::Uuid;
-use wire::{Command, Event, Request, CHANNEL_PROTOCOL};
+use wire::{Command, Event, ReplyResult, Request, CHANNEL_PROTOCOL};
 
 /// Events are addressed to physical connections, not reusable endpoint sessions.
 /// Deliver events before closing the listed connections so leave can acknowledge.
@@ -58,6 +58,24 @@ pub struct Effects {
     pub close: Vec<Uuid>,
     /// A member submitted a signed conversation request to its current room writer.
     pub conversation_to_writer: bool,
+}
+
+impl Effects {
+    fn done(&mut self, connection: Uuid, request_id: Option<String>) {
+        if let Some(request_id) = request_id {
+            self.events.push((connection, Event::Reply {
+                request_id,
+                room_id: None,
+                result: ReplyResult::Done,
+            }));
+        }
+    }
+
+    fn room_error(&mut self, connection: Uuid, id: Option<String>, room: &str, code: &str) {
+        self.events.push((connection, Event::completion(
+            id, Some(room.into()), ReplyResult::Error { code: code.into() },
+        )));
+    }
 }
 
 #[derive(Clone)]
@@ -312,9 +330,7 @@ impl Authority {
         };
         // Transport completion can arrive after its last lease has retired.
         if !self.channel.current_report(session_id, &request.command) {
-            if let Some(request_id) = request.request_id {
-                effects.events.push((connection, Event::Ack { request_id }));
-            }
+            effects.done(connection, request.request_id);
             return effects;
         }
         if let Command::Conversation { packet } = request.command {
@@ -348,11 +364,10 @@ impl Authority {
                         self.channel
                             .identity
                             .profiles(ids.as_deref(), *after, query.as_deref())
-                            .map(|(profiles, total, next_cursor)| Event::Profiles {
+                            .map(|(profiles, total, next_cursor)| Event::Reply {
                                 request_id,
-                                profiles,
-                                total,
-                                next_cursor,
+                                room_id: None,
+                                result: ReplyResult::Profiles { profiles, total, next_cursor },
                             })
                     }) {
                     Ok(event) => effects.events.push((connection, event)),
@@ -362,9 +377,7 @@ impl Authority {
             }
             Command::CancelRoomCreation { room_id } => {
                 self.cancel_reservation(session_id, room_id, &mut effects);
-                if let Some(request_id) = request.request_id {
-                    effects.events.push((connection, Event::Ack { request_id }));
-                }
+                effects.done(connection, request.request_id);
                 return effects;
             }
             Command::CreateRoom { room, .. } => {
@@ -373,10 +386,7 @@ impl Authority {
                         self.broadcast(None, &mut effects);
                         effects.events.push((
                             connection,
-                            Event::RoomCreated {
-                                room,
-                                request_id: request.request_id,
-                            },
+                            Event::completion(request.request_id, None, ReplyResult::RoomCreated { room }),
                         ));
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
@@ -387,9 +397,7 @@ impl Authority {
                 match self.channel.admit_room(session_id, room.clone()) {
                     Ok(()) => {
                         self.broadcast(None, &mut effects);
-                        if let Some(request_id) = request.request_id {
-                            effects.events.push((connection, Event::Ack { request_id }));
-                        }
+                        effects.done(connection, request.request_id);
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
@@ -404,7 +412,7 @@ impl Authority {
                 let hosted_data = self.hosting_mode() == wire::HostingMode::Hosted
                     && room.is_some_and(|room| room.reservation.is_none());
                 if let Err(code) = self.channel.can_remove_room(session_id, room_id) {
-                    Self::error(connection, request.request_id, code, &mut effects);
+                    effects.room_error(connection, request.request_id, room_id, code);
                 } else if self.channel.room_online(room_id)
                     && (hosted_data
                         || (*delete_data
@@ -420,7 +428,7 @@ impl Authority {
                     ) {
                         Ok((session, event)) => self.deliver(session, event, &mut effects),
                         Err(code) => {
-                            Self::error(connection, request.request_id, code, &mut effects)
+                            effects.room_error(connection, request.request_id, room_id, code)
                         }
                     }
                 } else {
@@ -435,13 +443,11 @@ impl Authority {
                     self.broadcast(None, &mut effects);
                     effects.events.push((
                         connection,
-                        Event::RoomReply {
-                            room_id: room_id.clone(),
-                            request_id: request.request_id,
-                            result: RoomResult::Deleted {
-                                data_removed: false,
-                            },
-                        },
+                        Event::completion(
+                            request.request_id,
+                            Some(room_id.clone()),
+                            ReplyResult::Deleted { data_removed: false },
+                        ),
                     ));
                 }
                 return effects;
@@ -456,13 +462,9 @@ impl Authority {
                 {
                     Ok(topology) => effects.events.push((
                         connection,
-                        Event::RoomReply {
-                            room_id: room_id.clone(),
-                            request_id: request.request_id,
-                            result: RoomResult::Topology { topology },
-                        },
+                        Event::completion(request.request_id, Some(room_id.clone()), ReplyResult::Topology { topology }),
                     )),
-                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                    Err(code) => effects.room_error(connection, request.request_id, room_id, code),
                 }
                 return effects;
             }
@@ -485,8 +487,17 @@ impl Authority {
                             self.deliver(session, event, &mut effects);
                         }
                         self.broadcast(None, &mut effects);
-                        if let Some(request_id) = request.request_id {
-                            effects.events.push((connection, Event::Ack { request_id }));
+                        effects.done(connection, request.request_id);
+                    }
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
+            Command::HostUnsupported { room_id, binding_id, revision } => {
+                match self.channel.unsupported_host_input(room_id, session_id, connection, *binding_id, *revision) {
+                    Ok(replies) => {
+                        for reply in replies {
+                            self.room_reply(room_id, reply, &mut effects);
                         }
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
@@ -518,9 +529,7 @@ impl Authority {
                             self.room_reply(&room, reply, &mut effects);
                         }
                         self.broadcast(None, &mut effects);
-                        if let Some(request_id) = request.request_id {
-                            effects.events.push((connection, Event::Ack { request_id }));
-                        }
+                        effects.done(connection, request.request_id);
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
@@ -531,7 +540,7 @@ impl Authority {
         if let Some(room) = self.channel.command_room(session_id, &request.command) {
             match self.channel.forward_room(&room, context, request.command) {
                 Ok((session, event)) => self.deliver(session, event, &mut effects),
-                Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                Err(code) => effects.room_error(connection, request.request_id, &room, code),
             }
             return effects;
         }
@@ -558,19 +567,14 @@ impl Authority {
                         },
                     ));
                 }
-                if let Some(request_id) = request.request_id {
-                    effects.events.push((connection, Event::Ack { request_id }));
-                }
+                effects.done(connection, request.request_id);
                 if outcome.leave {
                     effects.close.push(connection);
                 }
             }
             Err(code) => effects.events.push((
                 connection,
-                Event::Error {
-                    code: code.into(),
-                    request_id: request.request_id,
-                },
+                Event::completion(request.request_id, None, ReplyResult::Error { code: code.into() }),
             )),
         }
         effects
@@ -629,12 +633,7 @@ impl Authority {
     fn join(&mut self, connection: Uuid, request: Request, now: u64, effects: &mut Effects) {
         if matches!(&request.command, Command::Join { protocol, .. } if *protocol != CHANNEL_PROTOCOL)
         {
-            Self::error(
-                connection,
-                request.request_id,
-                "incompatible_protocol",
-                effects,
-            );
+            Self::error(connection, None, "incompatible_protocol", effects);
             effects.close.push(connection);
             return;
         }
@@ -654,7 +653,7 @@ impl Authority {
                 connection,
                 Event::Error {
                     code: "join_required".into(),
-                    request_id: request.request_id,
+                    room_id: None,
                 },
             ));
             effects.close.push(connection);
@@ -697,9 +696,6 @@ impl Authority {
                         invitation_origin: None,
                     },
                 ));
-                if let Some(request_id) = request.request_id {
-                    effects.events.push((connection, Event::Ack { request_id }));
-                }
                 self.sync_hosts(effects, admitted.peer_transport_withdrawn);
                 self.broadcast(Some(admitted.session_id), effects);
             }
@@ -708,7 +704,7 @@ impl Authority {
                     connection,
                     Event::Error {
                         code: code.into(),
-                        request_id: request.request_id,
+                        room_id: None,
                     },
                 ));
                 effects.close.push(connection);
@@ -731,10 +727,7 @@ impl Authority {
     fn error(connection: Uuid, request_id: Option<String>, code: &str, effects: &mut Effects) {
         effects.events.push((
             connection,
-            Event::Error {
-                code: code.into(),
-                request_id,
-            },
+            Event::completion(request_id, None, ReplyResult::Error { code: code.into() }),
         ));
     }
 
@@ -792,11 +785,7 @@ impl Authority {
         };
         effects.events.push((
             context.connection,
-            Event::RoomReply {
-                room_id: room_id.into(),
-                request_id: context.request_id,
-                result: completion,
-            },
+            Event::completion(context.request_id, Some(room_id.into()), completion.into()),
         ));
     }
 

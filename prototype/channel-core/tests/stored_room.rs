@@ -320,7 +320,7 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
         );
     }
     for command in [
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
         delete(1, original_id),
         clear(),
     ] {
@@ -355,7 +355,7 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
         &mut host,
         owner,
         owner,
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     )
     .unwrap() else {
         panic!("history expected")
@@ -390,7 +390,7 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
     assert_eq!(fresh.message.message.seq, 3);
     peer_with_owner(&mut host, owner, moderator, moderator, clear()).unwrap();
     assert!(
-        matches!(peer(&mut host, owner, author, ConversationCommand::History { before: None }),
+        matches!(peer(&mut host, owner, author, ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }),
         Ok(HistoryResult::Page { messages, .. }) if messages.len() == 1 && messages[0].message.seq == 3)
     );
     peer_with_owner(
@@ -464,7 +464,7 @@ fn deleting_room_policy_and_history_is_one_commit_and_keeps_other_stores() {
         "history failure rolled back policy deletion"
     );
     assert!(
-        matches!(retained.history(&HistoryRequest::Read { room_id: "deleted".into(), before: None }).unwrap(), HistoryResult::Page { messages, .. } if messages.len() == 1)
+        matches!(retained.history(&HistoryRequest::Read { room_id: "deleted".into(), before: None, inline_images: true }).unwrap(), HistoryResult::Page { messages, .. } if messages.len() == 1)
     );
     connection
         .execute_batch("DROP TRIGGER reject_delete")
@@ -481,7 +481,7 @@ fn deleting_room_policy_and_history_is_one_commit_and_keeps_other_stores() {
     ));
     assert!(retained.load().unwrap().is_none());
     assert!(
-        matches!(retained.history(&HistoryRequest::Read { room_id: "deleted".into(), before: None }).unwrap(), HistoryResult::Page { messages, .. } if messages.is_empty())
+        matches!(retained.history(&HistoryRequest::Read { room_id: "deleted".into(), before: None, inline_images: true }).unwrap(), HistoryResult::Page { messages, .. } if messages.is_empty())
     );
     assert!(Storage::open(&sibling_path)
         .unwrap()
@@ -805,7 +805,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             &mut copied_host,
             new_owner,
             new_owner,
-            ConversationCommand::History { before: Some(2) },
+            ConversationCommand::History { before: Some(2), parts: vec!["inlineImages".into()] },
         )
         .unwrap() else {
             panic!("history expected")
@@ -912,7 +912,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         &mut host,
         owner,
         owner,
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     )
     .unwrap() else {
         panic!("history expected");
@@ -970,7 +970,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         &mut host,
         owner,
         owner,
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     )
     .unwrap() else {
         panic!("history expected");
@@ -1011,7 +1011,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     .unwrap();
     host.replace(&empty).unwrap();
     assert!(matches!(
-        peer(&mut host, owner, owner, ConversationCommand::History { before: None }).unwrap(),
+        peer(&mut host, owner, owner, ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }).unwrap(),
         HistoryResult::Page { messages, .. } if messages.is_empty()
     ));
     drop((host, backup, staged, rejected, empty));
@@ -1124,7 +1124,7 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
         &mut host,
         owner,
         viewer,
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     )
     .unwrap() else {
         panic!("history expected")
@@ -1439,7 +1439,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
                 && view.files.is_empty()
         }));
         assert!(
-            matches!(peer(&mut restored, owner, owner, ConversationCommand::History { before: None }).unwrap(),
+            matches!(peer(&mut restored, owner, owner, ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }).unwrap(),
                 HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.text == room)
         );
         drop(restored);

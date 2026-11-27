@@ -2,8 +2,9 @@
 
 mod support;
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
-    host::RoomResult,
+
     wire::{Event, FlowBinding, RoomAccess},
     Effects,
 };
@@ -34,11 +35,7 @@ fn join(net: &mut RoomNetwork) -> Endpoint {
 fn command(net: &mut RoomNetwork, socket: Uuid, value: Value, now: u64) -> Effects {
     let result = net.command_at(socket, value, now);
     for (_, event) in &result.events {
-        if let Event::Error { code, .. }
-        | Event::RoomReply {
-            result: RoomResult::Error { code },
-            ..
-        } = event
+        if let Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } = event
         {
             panic!("command rejected: {code}");
         }

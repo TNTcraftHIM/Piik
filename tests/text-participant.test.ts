@@ -58,11 +58,11 @@ test('Node text conversation ignores unrelated media descriptions and retains si
             const reply = (record: object, field = "record") => socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host,
               JSON.stringify({ ...address, sender: host, recipient: local, [field]: record }))) }));
             if (request.command.type === 'history') {
-              reply({ type: 'history_page', messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
+              reply({ type: 'history_page', parts: ['inlineImages'], messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
             } else if (request.command.type === 'delete_message') {
               expect(request.command).toEqual({ type: 'delete_message', messageSeq: message.seq, messageId: message.id });
-              socket.send(JSON.stringify({ type: 'ack', requestId: address.requestId }));
-              socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: address.requestId, result: { type: 'done' } }));
+              socket.send(JSON.stringify({ type: 'reply', requestId: address.requestId, result: { type: 'done' } }));
+              socket.send(JSON.stringify({ type: 'reply', roomId: 'room', requestId: address.requestId, result: { type: 'done' } }));
               reply({ type: 'live_message', message }, 'notice');
               reply({ type: 'future_activity' }, 'notice');
               if (futureDelete) reply({ type: 'future_result' });
@@ -80,16 +80,16 @@ test('Node text conversation ignores unrelated media descriptions and retains si
         const packet = JSON.parse(signer.sign(host, JSON.stringify({ roomId: 'room', bindingId: binding,
           sender: host, recipient: local, requestId: randomUUID(), notice: { type: 'live_message', message } })));
         request.socket.cork();
-        socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: command.requestId, result: { type: 'done' } }));
+        socket.send(JSON.stringify({ type: 'reply', roomId: 'room', requestId: command.requestId, result: { type: 'done' } }));
         socket.send(JSON.stringify({ type: 'conversation', packet }));
         request.socket.uncork();
-      } else if (command.type !== 'conversation') socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+      } else if (command.type !== 'conversation') socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'done' } }));
     } catch (error) { errors.push(error); socket.terminate(); }
   }));
   try {
     await client.connect();
     expect(client.summary()).toMatchObject({ userId: user, roomId: 'room', available: true, reading: true, bindingId: binding });
-    expect(await client.history()).toEqual({ messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
+    expect(await client.history()).toEqual({ parts: ['inlineImages'], messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
     expect(await firstLive).toEqual(message);
     const delivered = once(client, 'live');
     const confirmed = await client.chat('notice');
@@ -144,12 +144,12 @@ test('a rejected room selection can be retried without exposing or mixing unconf
       socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential',
         sessionId, selfProfile: { id: userId }, state: state(false) }));
     } else if (command.type === 'browse' && command.roomId === 'missing') {
-      socket.send(JSON.stringify({ type: 'error', code: 'room_unavailable', requestId: command.requestId }));
+      socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'error', code: 'room_unavailable' } }));
     } else if (command.type === 'browse' && command.roomId === 'valid') {
       socket.send(JSON.stringify({ type: 'state', state: state(true) }));
-      socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+      socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'done' } }));
     } else if (command.type === 'leave') {
-      socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+      socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'done' } }));
     }
   }));
   try {
@@ -248,7 +248,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
         if (result.Ok?.type === 'history') {
           const work = result.Ok.value;
           if (work.type === 'read') {
-            const page = new rust.HistoryPage();
+            const page = new rust.HistoryPage(work.inlineImages);
             for (const message of messages.filter(message => work.before == null || message.seq < work.before).slice(-pageSize).reverse())
               page.push(JSON.stringify({ ...message, reactions: { revision: 0, counts: {} } }));
             result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n, work.before == null ? undefined : BigInt(work.before))) } };
@@ -265,14 +265,14 @@ test('text pagination, replies and mentions use signed Core commands and host co
           if (reply.record.type === 'history_page' && malformedPage === 'empty-more') reply.record.hasMore = true;
           socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
         }
-      } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+      } else socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'done' } }));
     } catch (error) { errors.push(error); socket.terminate(); }
   }));
   try {
     await client.connect();
     const latestPage = await client.history();
     let page = latestPage;
-    expect(page).toMatchObject({ hasMore: true, oldestSeq: 1, before: null });
+    expect(page).toMatchObject({ parts: ['inlineImages'], hasMore: true, oldestSeq: 1, before: null });
     expect(page.messages.map(message => message.seq)).toEqual(messages.slice(1).map(message => message.seq));
     const sequences = page.messages.map(message => message.seq);
     let pages = 1;
@@ -285,13 +285,13 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(sequences).toEqual(messages.map(message => message.seq));
     expect(new Set(sequences).size).toBe(sequences.length);
     expect(page).toMatchObject({ hasMore: false, oldestSeq: 1, before: 2 });
-    expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
+    expect(await client.history(1)).toEqual({ parts: ['inlineImages'], messages: [], hasMore: false, oldestSeq: 1, before: 1 });
     const options = { mentions: [{ userId: owner, start: 0, end: 7, extra: 'discard' }],
       reply: { seq: 2, messageId: messages[1].id, notify: true, extra: 'discard' }, nonce: 'caller-send', text: 'override', extra: 'discard' };
     const confirmed = await client.chat('@friend hi', options);
     expect(confirmed).toMatchObject({ userId: user, text: '@friend hi', mentions: [{ userId: owner, start: 0, end: 7 }],
       reply: { seq: 2, userId: owner, text: 'message 2', notify: true } });
-    expect(received[1]).toEqual({ type: 'history', before: 2 });
+    expect(received[1]).toEqual({ type: 'history', before: 2, parts: ['inlineImages'] });
     expect(received[3]).toEqual({ type: 'chat', text: '@friend hi', attachments: [], nonce: expect.any(String),
       mentions: [{ userId: owner, start: 0, end: 7 }], reply: { seq: 2, messageId: messages[1].id, notify: true } });
     expect(received[3].nonce).toBe(options.nonce);
@@ -299,7 +299,9 @@ test('text pagination, replies and mentions use signed Core commands and host co
     await expect(client.chat('reply', { reply: { seq: 99, messageId: randomUUID(), notify: false } })).rejects.toThrow('message_unavailable');
     await expect(client.history(-1)).rejects.toThrow('invalid_conversation');
     await expect(client.chat('reply', { reply: { seq: 1, messageId: '', notify: false } })).rejects.toThrow('invalid_conversation');
-    expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
+    expect(await client.history(1)).toEqual({ parts: ['inlineImages'], messages: [], hasMore: false, oldestSeq: 1, before: 1 });
+    expect(await client.history(2, { parts: [] })).toMatchObject({ parts: [], before: 2, messages: [{ seq: 1 }] });
+    expect(received.at(-1)).toEqual({ type: 'history', before: 2 });
     malformedPage = 'empty-more';
     await expect(client.history(1)).rejects.toThrow('incomplete_history');
     expect(live).toEqual([]);
@@ -363,7 +365,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
         if (loseConfirmation) { loseConfirmation = false; socket.terminate(); }
         else for (const reply of replies) socket.send(JSON.stringify({ type: 'conversation',
           packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
-      } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+      } else socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'done' } }));
     } catch (error) { errors.push(error); socket.terminate(); }
   }));
   try {
@@ -427,7 +429,7 @@ test('text message reactions use advertised support and Core counted-history non
         stored = { ...stored, reactions: { revision: confirmation.snapshot.revision, counts: confirmation.snapshot.counts } };
         result = { Ok: { type: 'history', value: confirmation } };
       } else {
-        const page = new rust.HistoryPage(); page.push(JSON.stringify(stored));
+        const page = new rust.HistoryPage(work.inlineImages); page.push(JSON.stringify(stored));
         result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n)) } };
       }
     }
@@ -464,7 +466,7 @@ test('text message reactions use advertised support and Core counted-history non
             transition = undefined;
           }
         }
-      } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+      } else socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'done' } }));
     } catch (error) { errors.push(error); socket.terminate(); }
   }));
   try {

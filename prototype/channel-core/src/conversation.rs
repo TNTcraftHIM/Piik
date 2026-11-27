@@ -368,6 +368,8 @@ impl ConversationAddress {
         }
     }
 }
+pub const HISTORY_INLINE_IMAGES: &str = "inlineImages";
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
@@ -402,6 +404,8 @@ pub enum ConversationCommand {
     },
     History {
         before: Option<u64>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        parts: Vec<String>,
     },
     HistorySeek {
         after: u64,
@@ -489,6 +493,8 @@ pub enum ConversationRecord {
         seq: Option<u64>,
     },
     HistoryPage {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        parts: Vec<String>,
         #[serde(deserialize_with = "history_messages")]
         messages: Vec<StoredMessage>,
         has_more: bool,
@@ -664,6 +670,7 @@ impl ConversationAddress {
                 vec![ConversationRecord::HistorySeekResult { after, seq }]
             }
             Ok(ConversationResult::History(HistoryResult::Page {
+                inline_images,
                 messages,
                 has_more,
                 oldest_seq,
@@ -673,6 +680,11 @@ impl ConversationAddress {
                     return Err("invalid_conversation_result");
                 }
                 vec![ConversationRecord::HistoryPage {
+                    parts: if inline_images {
+                        vec![HISTORY_INLINE_IMAGES.into()]
+                    } else {
+                        Vec::new()
+                    },
                     messages,
                     has_more,
                     oldest_seq,
@@ -708,7 +720,7 @@ mod tests {
                 recipient: Uuid::new_v4(),
                 request_id: "request".into(),
             },
-            command: ConversationCommand::History { before: None },
+            command: ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
         }
     }
     #[test]
@@ -841,7 +853,7 @@ mod tests {
 
         // Read through the byte-bounded page owner, including an oversized
         // first row. It keeps the accepted large message reachable on its own page.
-        let mut page = crate::history::HistoryPage::default();
+        let mut page = crate::history::HistoryPage::new(true);
         assert!(!page.push(message.clone()).unwrap());
         let replies = request.address.replies(Ok(ConversationResult::History(
             page.finish(Some(1), Some(101)),
@@ -1083,7 +1095,7 @@ mod room_tests {
                     user_id: actor.user_id,
                 },
             },
-            ConversationCommand::History { before: None },
+            ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
         ] {
             let request = ConversationRequest {
                 address: address.clone(),

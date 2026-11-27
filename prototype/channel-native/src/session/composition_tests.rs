@@ -31,7 +31,7 @@ async fn restored_host_catalog_preserves_event_order_and_expired_carrier_authori
         .iter()
         .filter(|e| matches!(e, Event::HostInput { .. }))
         .count();
-    ensure!(events.len() == 98 && host_inputs == 32);
+    ensure!(events.len() == 97 && host_inputs == 32);
     let restored = events
         .iter()
         .rev()
@@ -308,7 +308,7 @@ fn addressed_input(core: &mut CoreBurst, index: usize, name: &str) -> Result<Eve
     ensure!(
         !e.events
             .iter()
-            .any(|(_, e)| matches!(e, Event::RoomReply { .. })),
+            .any(|(_, e)| matches!(e, Event::Reply { .. })),
         "room confirmation preceded actual Host storage"
     );
     e.events
@@ -393,6 +393,22 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
     })?;
     let mut native = session(&mut core, state);
     let mut sink = RecordedSink::default();
+    let Event::HostInput { room_id, mut input } = addressed_input(&mut core, 0, "Future action")? else {
+        unreachable!()
+    };
+    let revision = input.revision;
+    let binding = input.binding_id;
+    input.action = piik_channel_core::host::HostAction::Unknown;
+    native.event(Event::HostInput { room_id: room_id.clone(), input }, &mut sink).await?;
+    ensure!(sink.messages.len() == 1);
+    let unsupported = piik_channel_core::wire::Request::parse(sink.messages.pop().unwrap().to_text()?)
+        .map_err(|e| anyhow!("parse unsupported {e:?}"))?;
+    ensure!(matches!(&unsupported.command, Command::HostUnsupported { room_id: target, binding_id, revision: rev }
+        if target == &room_id && *binding_id == binding && *rev == revision));
+    let refused = core.authority.handle(core.connection, unsupported, core.now);
+    ensure!(refused.events.iter().any(|(_, event)| matches!(event, Event::Reply {
+        request_id, result: ReplyResult::Error { code }, ..
+    } if request_id == "owned-update-0" && code == "unsupported")));
     let first = addressed_input(&mut core, 0, "Committed before reply")?;
     ensure!(core.stored_name(0)? == "Owned room 0");
     native.event(first, &mut sink).await?;
@@ -404,7 +420,7 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
     let confirmed = core
         .authority
         .handle(core.connection, request, core.now + 1);
-    ensure!(confirmed.events.iter().any(|(_,e)|matches!(e,Event::RoomReply{request_id:Some(id),result:RoomResult::Done,..}if id=="owned-update-0")),"actual HostOutput did not confirm stored update");
+    ensure!(confirmed.events.iter().any(|(_,e)|matches!(e,Event::Reply{request_id:id,result:ReplyResult::Done,..}if id=="owned-update-0")),"actual HostOutput did not confirm stored update");
     let inputs = vec![
         addressed_input(&mut core, 1, "Committed but carrier blocked")?,
         addressed_input(&mut core, 2, "Must remain queued")?,
@@ -676,6 +692,7 @@ async fn media_cleanup_clears_saved_copy_without_notifying_its_other_writer() ->
         .history(&HistoryRequest::Read {
             room_id: b.clone(),
             before: None,
+            inline_images: true,
         })
         .map_err(anyhow::Error::msg)?
     else {
@@ -740,9 +757,7 @@ async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result
     started.await?;
     native
         .route_event(
-            Event::Ack {
-                request_id: registration.clone(),
-            },
+            Event::Reply { request_id: registration.clone(), room_id: None, result: ReplyResult::Done },
             &mut sink,
         )
         .await?;
@@ -794,7 +809,7 @@ async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result
         )
         .await?;
     native
-        .route_event(Event::Ack { request_id: next }, &mut sink)
+        .route_event(Event::Reply { request_id: next, room_id: None, result: ReplyResult::Done }, &mut sink)
         .await?;
     for _ in 0..2 {
         receive_one_room(&mut native, &mut sink).await?;
@@ -926,7 +941,7 @@ async fn confirmed_registration_replies_locally_after_its_carrier_disconnects() 
         }
         let bound = matches!(&event, Event::HostBound { room_id, .. } if room_id == &id);
         let input = matches!(&event, Event::HostInput { room_id, .. } if room_id == &id);
-        let ack = matches!(&event, Event::Ack {request_id: returned} if Some(returned) == request_id.as_ref());
+        let ack = matches!(&event, Event::Reply {request_id: returned, result: ReplyResult::Done, ..} if Some(returned) == request_id.as_ref());
         native.route_event(event, &mut wire).await?;
         if bound {
             receive_one_room(&mut native, &mut wire).await?;

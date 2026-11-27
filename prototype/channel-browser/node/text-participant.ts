@@ -6,12 +6,15 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ReceivedConversation, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, HISTORY_INLINE_IMAGES, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ReceivedConversation, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
 }>;
-export type TextHistoryPage = Omit<Extract<ConversationReply['record'], { type: 'history_page' }>, 'type'>;
+export interface TextHistoryOptions {
+  parts?: readonly (typeof HISTORY_INLINE_IMAGES)[];
+}
+export type TextHistoryPage = Omit<Extract<ConversationReply['record'], { type: 'history_page' }>, 'type' | 'parts'> & { parts: string[] };
 export type TextReactionResult = {
   type: 'reaction';
   nonce: number;
@@ -40,7 +43,7 @@ function decodeTextEvent(raw: unknown, wireBytes: number): TextEvent | undefined
       if (header.protocol !== CHANNEL_PROTOCOL) throw new Error('incompatible_protocol');
       return textWelcomeSchema.parse(raw);
     case 'state': return textStateSchema.parse(raw);
-    case 'conversation': case 'room_created': case 'room_reply': case 'ack': case 'error': return eventSchema.parse(raw);
+    case 'conversation': case 'reply': case 'error': return eventSchema.parse(raw);
     // This participant neither installs media nor hosts rooms.
     default: return;
   }
@@ -57,13 +60,13 @@ export interface TextParticipantOptions {
 type ConversationResult = 'confirmed' | 'history_page' | 'interaction_ready' | 'reaction' | 'message_deleted';
 type Pending = {
   roomId?: string;
-  expects: 'ack' | 'room_created' | ConversationResult;
+  expects: 'done' | 'room_created' | ConversationResult;
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 };
 function expectsWriterResult(expects: Pending['expects']): boolean {
-  return expects !== 'ack' && expects !== 'room_created';
+  return expects !== 'done' && expects !== 'room_created';
 }
 /** Only socket/request I/O; the existing Core WASM signs and validates every room record. */
 export type TextParticipantEvents = {
@@ -201,7 +204,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (admission?.inviteKey !== undefined || admission?.password !== undefined)
         await this.request({ type: 'enter_room', roomId, ...admission });
       this.checkSocket(socket);
-      await this.request({ type: 'browse', roomId, active: true }, 'ack', { accepted: accept });
+      await this.request({ type: 'browse', roomId, active: true }, 'done', { accepted: accept });
       this.checkSocket(socket);
     } finally {
       if (this.acceptBrowse === accept) this.acceptBrowse = undefined;
@@ -231,7 +234,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     this.socket.send(JSON.stringify({ ...command, requestId }));
   }
 
-  private request(command: ChannelCommand, expects: Pending['expects'] = 'ack',
+  private request(command: ChannelCommand, expects: Pending['expects'] = 'done',
     { requestId = randomUUID(), accepted }: { requestId?: string; accepted?: () => void } = {}): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -272,8 +275,8 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     }, 'confirmed') as StoredMessage;
   }
 
-  async history(before?: number): Promise<TextHistoryPage> {
-    return await this.conversation({ type: 'history', roomId: this.selectedRoomId(), before }, 'history_page') as TextHistoryPage;
+  async history(before?: number, { parts = [HISTORY_INLINE_IMAGES] }: TextHistoryOptions = {}): Promise<TextHistoryPage> {
+    return await this.conversation({ type: 'history', roomId: this.selectedRoomId(), before, parts: parts.length ? parts : undefined }, 'history_page') as TextHistoryPage;
   }
 
   async deleteOwnMessage(message: ChannelMessage): Promise<void> {
@@ -338,29 +341,19 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       this.emit('state', this.summary());
       return;
     }
-    if (event.type === 'error' && event.requestId) {
-      this.complete(event.requestId, undefined, Error(event.code));
+    if (event.type === 'error') {
+      this.emit('failure', new Error(event.code));
       return;
     }
-    if (event.type === 'room_created' && event.requestId) {
-      if (this.pending.get(event.requestId)?.expects === 'room_created')
-        this.complete(event.requestId, event.room);
-      return;
-    }
-    if (event.type === 'room_reply' && event.requestId) {
-      const pending = this.pending.get(event.requestId);
-      if (!pending || pending.roomId !== event.roomId) return;
-      if (event.result.type === 'error')
-        this.complete(event.requestId, undefined, Error(event.result.code));
+    if (event.type === 'reply') {
+      const { requestId, roomId, result } = event;
+      const pending = this.pending.get(requestId);
+      if (!pending || (roomId !== undefined && pending.roomId !== roomId)) return;
+      if (result.type === 'error') this.complete(requestId, undefined, Error(result.code));
       else if (expectsWriterResult(pending.expects)) return;
-      else if (pending.expects === 'ack' && event.result.type === 'done')
-        this.complete(event.requestId, event.result);
-      else this.complete(event.requestId, undefined, Error('invalid_response'));
-      return;
-    }
-    if (event.type === 'ack') {
-      if (this.pending.get(event.requestId)?.expects === 'ack')
-        this.complete(event.requestId);
+      else if (result.type === 'unknown_outcome') this.complete(requestId, undefined, Error('unknown_outcome'));
+      else if (pending.expects !== result.type) this.complete(requestId, undefined, Error('invalid_response'));
+      else this.complete(requestId, result.type === 'room_created' ? result.room : undefined);
       return;
     }
     if (event.type !== 'conversation' || !this.state || !this.sessionId)
@@ -396,7 +389,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (record.hasMore && !record.messages.length)
         this.complete(reply.requestId, undefined, new Error('incomplete_history'));
       else
-        this.complete(reply.requestId, { messages: record.messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before });
+        this.complete(reply.requestId, { messages: record.messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before, parts: record.parts ?? [] });
     }
     if (record.type === 'confirmed') {
       if (pending?.expects === 'confirmed') this.complete(reply.requestId, record.message);

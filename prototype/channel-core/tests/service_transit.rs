@@ -1,9 +1,10 @@
 #![cfg(feature = "sqlite")]
 
 mod support;
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     conversation::ConversationCommand,
-    host::{RoomResult, ServiceEndpoint, ServiceTransit, TransitKinds},
+    host::{ServiceEndpoint, ServiceTransit, TransitKinds},
     wire::{AudienceState, Event, PairInfo, RoomAccess},
     Effects,
 };
@@ -15,11 +16,7 @@ fn accepted(effects: Effects) {
     assert!(
         !effects.events.iter().any(|(_, event)| matches!(
             event,
-            Event::Error { .. }
-                | Event::RoomReply {
-                    result: RoomResult::Error { .. },
-                    ..
-                }
+            Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. }
         )),
         "{}",
         serde_json::to_string(&effects.events).unwrap()
@@ -73,11 +70,11 @@ fn register_service_kinds(
 fn private_room(net: &mut RoomNetwork, host: Uuid, viewer: Uuid) -> String {
     let room = net.create(host, RoomAccess::Private, true);
     let invite = net
-        .command(host, json!({"type":"room_invite","roomId":room}))
+        .command(host, json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -219,10 +216,7 @@ fn topology(
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply {
-                result: RoomResult::Topology { topology },
-                ..
-            } => Some(topology),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Topology { topology }, .. } | Event::Deferred { result: ReplyResult::Topology { topology }, .. } => Some(topology),
             _ => None,
         })
         .unwrap()
@@ -329,9 +323,9 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         };
         assert!(
             denied.events.iter().any(|(_, event)| matches!(event,
-            Event::Error { code, .. } if code == expected)
+            Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == expected)
                 || matches!(event,
-            Event::RoomReply { result: RoomResult::Error { code }, .. } if code == expected)),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Error { code }, .. } if code == expected)),
             "{}",
             serde_json::to_string(&denied.events).unwrap()
         );
@@ -472,7 +466,7 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
             .peer_request(
                 connection,
                 &room,
-                ConversationCommand::History { before: None }
+                ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }
             )
             .result
             .is_err());
@@ -504,7 +498,7 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         json!({"type":"join_watch","roomId":room,"id":activity,"mode":"peer"}),
     ] {
         assert!(net.command(service, denied).events.iter().any(|(_, event)| matches!(event,
-            Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "room_unavailable"
+            Event::Error { room_id: Some(_), code } if code == "room_unavailable"
         )));
     }
     assert_eq!(
@@ -608,7 +602,7 @@ fn public_owner_opt_in_readback_distinguishes_availability_selection_and_work() 
     assert!(state.service_available && !state.service_enabled && state.transit_session.is_none());
     let request = preference(&net, &room, true);
     let denied = net.command(viewer, request);
-    assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "forbidden")));
+    assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { room_id: Some(_), code } if code == "forbidden")));
     set_preference(&mut net, host, &room, true);
     let state = topology(&mut net, host, &room);
     assert_eq!(projected(&net, host), Some((true, true)));
@@ -695,7 +689,7 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
     off["requestId"] = json!("committed-off");
     let stopped = net.command(host, off);
     assert!(stopped.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. }
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done }
             if id == "committed-off"
     )));
     accepted(stopped);
@@ -706,7 +700,7 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
         json!({"type":"host_output","roomId":room,"output":old_allow}),
     );
     assert!(delayed.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. }
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done }
             if id == "delayed-allow"
     )));
     accepted(delayed);
@@ -871,7 +865,7 @@ fn channel_rejects_service_work_of_a_kind_its_operator_turned_off() {
             let request = piik_channel_core::wire::Request::parse(&request.to_string()).unwrap();
             let reply = net.authority.handle(connection, request, 100);
             rejected |= reply.events.iter().any(|(_, event)| {
-                matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")
+                matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection")
             });
         }
     }
@@ -914,7 +908,7 @@ fn public_read_grants_the_registered_server_no_participant_role() {
     // The authority knows this socket belongs to the Server with forwarding off.
     let reply = net.command(service, json!({"type":"browse","roomId":room,"active":true}));
     assert!(reply.events.iter().any(|(_, event)| matches!(event,
-        Event::Error { code, .. } if code == "invalid_room_projection"
+        Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection"
     )));
     let state = net.state(host);
     let view = state.channel.rooms.iter().find(|view| view.id == room).unwrap();

@@ -409,9 +409,9 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
 }
 
 #[test]
-fn unknown_sender_fields_fail_with_the_request_id_intact() {
+fn malformed_known_command_preserves_request_id() {
     let request = Request::parse(
-        r#"{"type":"chat","requestId":"operation","roomId":"living","text":"spoof","nonce":"n","userId":"other"}"#,
+        r#"{"type":"set_profile","requestId":"operation","name":false}"#,
     );
     assert!(
         matches!(request, Err((Some(request_id), "invalid_request")) if request_id == "operation")
@@ -559,4 +559,33 @@ fn consecutive_profile_and_domain_patches_merge_before_projection() {
         serde_json::json!({"type":"set_profile","avatar":"bad"})
     )
     .is_err());
+}
+
+#[test]
+fn domain_terminals_and_notifications_have_distinct_wire_roles() {
+    use crate::wire::{Event, ReplyResult, Request};
+    use serde_json::json;
+
+    let scoped = |result| json!({"type":"reply", "requestId":"a", "roomId":"r", "result":result});
+    let invite = scoped(json!({"type":"invite", "key":"k"}));
+    let event: Event = serde_json::from_value(invite.clone()).unwrap();
+    assert_eq!(serde_json::to_value(event).unwrap(), invite);
+    let unknown: Event = serde_json::from_value(scoped(json!({"type":"future", "detail":3}))).unwrap();
+    assert!(matches!(unknown, Event::Reply { request_id, room_id: Some(room), result: ReplyResult::Unknown }
+        if request_id == "a" && room == "r"));
+    for malformed in [
+        json!({"type":"reply","result":{"type":"done"}}),
+        json!({"type":"reply","requestId":"","result":{"type":"done"}}),
+        scoped(json!({"type":"invite"})),
+        scoped(json!({"type":"room_created"})),
+    ] {
+        assert!(serde_json::from_value::<Event>(malformed).is_err());
+    }
+    let notice: Event = serde_json::from_value(json!({"type":"later_notice","requestId":"a"})).unwrap();
+    assert!(matches!(notice, Event::Unknown));
+    assert!(matches!(Request::parse(r#"{"type":"later_command","requestId":"a","detail":3}"#),
+        Err((Some(id), "unsupported")) if id == "a"));
+    let deferred = Event::completion(None, Some("r".into()), ReplyResult::Deleted { data_removed: true });
+    assert!(matches!(deferred, Event::Deferred { .. }));
+    assert!(serde_json::to_value(deferred).is_err());
 }

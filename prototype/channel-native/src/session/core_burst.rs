@@ -2,7 +2,7 @@
 use crate::hosted_room::HostedRoom;
 use anyhow::{anyhow, ensure, Result};
 use piik_channel_core::{
-    wire::{Command, Event, Request, RoomAccess, CHANNEL_PROTOCOL},
+    wire::{Command, Event, ReplyResult, Request, RoomAccess, CHANNEL_PROTOCOL},
     Authority, Effects, RoomState,
 };
 use std::{
@@ -169,6 +169,7 @@ impl CoreBurst {
             if recipient != self.connection {
                 continue;
             }
+            if matches!(event, Event::Deferred { .. }) { continue; }
             seen.push(event.clone());
             match event {
                 Event::HostBound {
@@ -189,7 +190,7 @@ impl CoreBurst {
                     let next = self.command(Command::HostOutput { room_id, output }, None);
                     todo.extend(next.events);
                 }
-                Event::Error { code, .. } => return Err(anyhow!("Core rejected fixture: {code}")),
+                Event::Reply { result: ReplyResult::Error { code }, .. } | Event::Error { code, .. } => return Err(anyhow!("Core rejected fixture: {code}")),
                 _ => {}
             }
         }
@@ -204,7 +205,7 @@ impl CoreBurst {
         let effects = self.authority.handle(
             self.connection,
             Request {
-                request_id: Some("owned-resume".into()),
+                request_id: None,
                 command: join(
                     Some(self.credential.clone()),
                     Some(self.session.to_string()),
@@ -239,7 +240,7 @@ impl CoreBurst {
                 None,
             );
             for (to, event) in effects.events {
-                if to == self.connection {
+                if to == self.connection && !matches!(event, Event::Deferred { .. }) {
                     if let Event::Error { code, .. } = &event {
                         return Err(anyhow!("resume host rejected: {code}"));
                     }

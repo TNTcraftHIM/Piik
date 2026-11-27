@@ -126,7 +126,7 @@ async fn request(socket: &mut Socket, mut command: Value) -> Value {
         .send(Message::Text(command.to_string().into()))
         .await
         .unwrap();
-    next_event(socket, |event| event["requestId"] == id).await
+    next_event(socket, |event| event["type"] == "reply" && event["requestId"] == id).await["result"].clone()
 }
 
 #[tokio::test]
@@ -221,7 +221,7 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
         }),
     )
     .await;
-    assert_eq!(changed["type"], "ack", "{changed}");
+    assert_eq!(changed["type"], "done", "{changed}");
     process.kill().await.unwrap();
 
     let mut command = server(&demo_data, &frontend);

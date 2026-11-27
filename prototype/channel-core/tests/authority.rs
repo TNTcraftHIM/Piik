@@ -1,3 +1,4 @@
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     wire::{Event, Request, Snapshot},
     Authority, Effects,
@@ -63,7 +64,7 @@ fn profiles(
     .events
     .into_iter()
     .find_map(|(_, event)| match event {
-        Event::Profiles { profiles, .. } => Some(profiles),
+        Event::Reply { result: ReplyResult::Profiles { profiles, .. }, .. } => Some(profiles),
         _ => None,
     })
     .unwrap()
@@ -101,7 +102,7 @@ fn unnamed_member_and_site_prompt_round_trip_through_the_domain_archive() {
     assert!(rejected
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "forbidden")));
     assert!(
         state(&apply(&mut core, owner, setting, 2), member)
             .channel
@@ -192,12 +193,10 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
             .events
             .into_iter()
             .find_map(|(_, event)| match event {
-                Event::Profiles {
-                    profiles,
+                Event::Reply { result: ReplyResult::Profiles { profiles,
                     total,
                     next_cursor,
-                    ..
-                } => Some((profiles, total, next_cursor)),
+                    .. }, .. } => Some((profiles, total, next_cursor)),
                 _ => None,
             })
             .unwrap();
@@ -221,7 +220,7 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
             }),
             0,
         );
-        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Profiles {profiles,total:76,next_cursor:None,..} if profiles.is_empty())));
+        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Reply { result: ReplyResult::Profiles { profiles,total:76,next_cursor:None,.. }, .. } if profiles.is_empty())));
     }
     for query in [
         json!({"type":"profiles","requestId":"bad","ids":vec![owner_id;33]}),
@@ -229,7 +228,7 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
         json!({"type":"profiles","requestId":"bad","query":"x".repeat(41)}),
     ] {
         assert!(apply(&mut core, owner, query, 0).events.iter().any(
-            |(_, e)| matches!(e, Event::Error { code, .. } if code == "invalid_profile_query")
+            |(_, e)| matches!(e, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_profile_query")
         ));
     }
     let checkpoint = serde_json::to_value(core.export_backup()).unwrap();
@@ -297,7 +296,7 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
             );
             assert!(
                 found.events.iter().any(
-                    |(_, event)| matches!(event, Event::Profiles { profiles, total:1, .. }
+                    |(_, event)| matches!(event, Event::Reply { result: ReplyResult::Profiles { profiles, total:1, .. }, .. }
                 if profiles.len()==1 && profiles[0].id==self_profile.id && profiles[0].name==name)
                 ),
                 "name {name:?} must match query {query:?}"
@@ -318,7 +317,7 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
         5,
     );
     assert!(found.events.iter().any(
-        |(_, event)| matches!(event, Event::Profiles { profiles, total:1, .. }
+        |(_, event)| matches!(event, Event::Reply { result: ReplyResult::Profiles { profiles, total:1, .. }, .. }
         if profiles.len()==1 && profiles[0].id==self_profile.id && profiles[0].name==name)
     ));
 }
@@ -346,7 +345,7 @@ fn domain_protocol_rejects_old_clients_before_admission() {
         }
         let effects = core.handle(connection, Request::parse(&join.to_string()).unwrap(), 0);
         assert!(effects.close.contains(&connection));
-        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "incompatible_protocol")));
+        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "incompatible_protocol")));
         assert!(!effects
             .events
             .iter()
@@ -384,7 +383,7 @@ fn open_site_preserves_personal_identity_and_reserves_metadata_for_its_operator(
     assert!(apply(&mut core, visitor, change.clone(), 1)
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { code,.. } if code=="forbidden")));
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code=="forbidden")));
     assert_eq!(
         state(&apply(&mut core, operator, change, 1), visitor)
             .channel
@@ -506,7 +505,7 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
         assert!(!effects
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     }
     let flow = core
         .state(watcher)
@@ -627,7 +626,7 @@ fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation()
         serde_json::to_value(retry.message).unwrap()
     );
     assert!(
-        matches!(core.peer_request(author, &room, ConversationCommand::History { before:Some(12) }).result,
+        matches!(core.peer_request(author, &room, ConversationCommand::History { before:Some(12), parts: vec!["inlineImages".into()] }).result,
         Ok(ConversationResult::History(HistoryResult::Page { messages, .. })) if messages.len() == 1)
     );
 }
@@ -658,7 +657,7 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
     );
     assert!(created.close.is_empty());
     assert!(
-        matches!(created.events.last(), Some((target, Event::RoomCreated { room, request_id:Some(request_id) }))
+        matches!(created.events.last(), Some((target, Event::Reply { request_id, result: ReplyResult::RoomCreated { room }, .. }))
         if *target == guest && room.creator_id == guest_user && request_id == "create")
     );
     let left = apply(
@@ -669,7 +668,7 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
     );
     assert_eq!(left.close, vec![guest]);
     assert!(
-        matches!(left.events.last(), Some((target, Event::Ack { request_id })) if *target == guest && request_id == "leave")
+        matches!(left.events.last(), Some((target, Event::Reply { request_id, result: ReplyResult::Done, .. })) if *target == guest && request_id == "leave")
     );
     assert!(!state(&left, owner)
         .sessions
@@ -700,7 +699,7 @@ fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
     assert!(full
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "channel_full")));
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "channel_full")));
     let current = Uuid::new_v4();
     let renewed = apply(
         &mut core,
@@ -828,14 +827,14 @@ fn profile_update_and_clear_follow_the_user_across_live_endpoints() {
         assert_eq!(user.version, profile.version);
     }
     assert!(updated.events.iter().any(|(target, event)| *target == first
-        && matches!(event, Event::Ack { request_id } if request_id == "profile")));
+        && matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "profile")));
     let repeated = apply(
         &mut core,
         second,
         json!({"type":"set_profile", "name":" Same friend ", "avatar":avatar, "requestId":"repeat"}),
         3,
     );
-    assert!(matches!(repeated.events.as_slice(), [(target, Event::Ack { request_id })]
+    assert!(matches!(repeated.events.as_slice(), [(target, Event::Reply { request_id, result: ReplyResult::Done, .. })]
         if *target == second && request_id == "repeat"));
     core.disconnect(first, 4);
     let resumed = Uuid::new_v4();

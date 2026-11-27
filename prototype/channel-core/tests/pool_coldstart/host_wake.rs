@@ -1,3 +1,4 @@
+use piik_channel_core::wire::ReplyResult;
 use super::*;
 use piik_channel_core::wire::Request;
 
@@ -243,5 +244,5 @@ fn confirmation_during_scope_change_wakes_the_host_after_ack() {
     assert!(!effects
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::HostInput { .. } | Event::Error { .. })));
+        .any(|(_, event)| matches!(event, Event::HostInput { .. } | Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
 }

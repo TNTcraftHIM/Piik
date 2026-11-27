@@ -1,6 +1,7 @@
 #![cfg(feature = "sqlite")]
 
 mod support;
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     conversation::{ConversationCommand, ConversationResult},
     history::HistoryResult,
@@ -34,11 +35,7 @@ fn command(network: &mut RoomNetwork, connection: Uuid, command: Value) {
     assert!(
         !effects.events.iter().any(|(_, event)| matches!(
             event,
-            Event::Error { .. }
-                | Event::RoomReply {
-                    result: piik_channel_core::host::RoomResult::Error { .. },
-                    ..
-                }
+            Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. }
         )),
         "authorized production command failed"
     );
@@ -125,11 +122,11 @@ fn physical_pair(network: &RoomNetwork, endpoint: Uuid, peer: Uuid) -> Option<Uu
 fn warm_pair(network: &mut RoomNetwork, source: Uuid, viewer: Uuid, source_session: Uuid) -> Uuid {
     let room = network.create(source, RoomAccess::Private, true);
     let invitation = network
-        .command(source, json!({"type":"room_invite","roomId":room}))
+        .command(source, json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -204,15 +201,11 @@ fn topology(
     );
     let (recipient, event) = effects.events.into_iter().next().unwrap();
     assert_eq!(recipient, connection);
-    let Event::RoomReply {
-        request_id,
-        result: piik_channel_core::host::RoomResult::Topology { topology },
-        ..
-    } = event
+    let Event::Reply { room_id: Some(_), request_id, result: ReplyResult::Topology { topology } } = event
     else {
         panic!("scoped topology reply");
     };
-    assert_eq!(request_id.as_deref(), Some("topology"));
+    assert_eq!(request_id, "topology");
     topology
 }
 
@@ -449,7 +442,6 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
 
 #[test]
 fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
-    use piik_channel_core::host::RoomResult;
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();
     let viewer = Uuid::new_v4();
@@ -502,7 +494,7 @@ fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
         );
         assert!(
             rejected.events.iter().any(|(_, event)| matches!(event,
-            Event::RoomReply { result: RoomResult::Error { code: actual }, .. } if actual == code))
+            Event::Error { room_id: Some(_), code: actual } if actual == code))
         );
     }
     command(
@@ -872,7 +864,7 @@ fn input_registration_is_private_and_follows_only_the_committed_picture() {
         };
         let operator_flow = incoming(&network, 0, true).1;
         let denied = network.command(connections[0], json!({"type":"input_register","publicationId":publication,"flowId":operator_flow,"secret":vec![7u8;32]}));
-        assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "unassigned_input_route")), "room administration without watching does not grant input");
+        assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "unassigned_input_route")), "room administration without watching does not grant input");
         for index in [0, relay] {
             command(
                 &mut network,
@@ -985,7 +977,7 @@ fn input_registration_is_private_and_follows_only_the_committed_picture() {
         );
         let trial = incoming(&network, 3, false);
         let denied = network.command(connections[3], json!({"type":"input_register","publicationId":publication,"flowId":trial.1,"secret":vec![9u8;32]}));
-        assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "unassigned_input_route")), "a prepared trial cannot replace the committed input secret");
+        assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "unassigned_input_route")), "a prepared trial cannot replace the committed input secret");
         if commit {
             for index in [relay, 3] {
                 let (pair, flow) = incoming(&network, index, false);
@@ -1005,7 +997,7 @@ fn input_registration_is_private_and_follows_only_the_committed_picture() {
             assert!(stale
                 .events
                 .iter()
-                .any(|(_, event)| matches!(event, Event::Error { .. })));
+                .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
             let fresh = incoming(&network, 3, true).1;
             let registered = network.command(connections[3], json!({"type":"input_register","publicationId":publication,"flowId":fresh,"secret":vec![9u8;32]}));
             assert!(registered.events.iter().any(|(connection, event)| *connection == connections[source] && matches!(event, Event::InputState { registrations } if registrations.len() == 1 && registrations[0].secret == [9;32] && registrations[0].flow_id == fresh)));
@@ -1035,11 +1027,11 @@ fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
         .collect();
     let room = network.create(connections[0], RoomAccess::Private, true);
     let invitation = network
-        .command(connections[0], json!({"type":"room_invite","roomId":room}))
+        .command(connections[0], json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -1728,11 +1720,11 @@ fn file_copy_selection_uses_the_last_link_confirmation_without_an_extra_sync() {
     browse(&mut network, copy, &room, true);
     let warm_room = network.create(copy, RoomAccess::Private, true);
     let invitation = network
-        .command(copy, json!({"type":"room_invite","roomId":warm_room}))
+        .command(copy, json!({"type":"room_invite","roomId":warm_room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -2064,7 +2056,7 @@ fn file_activity_follows_room_grants_and_disappears_with_its_host() {
     let receive = json!({"type":"file_receive","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"enabled":true});
     let denied = network.command(viewer, receive.clone());
     assert!(denied.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "room_access_required")));
+        Event::Error { room_id: Some(_), code } if code == "room_access_required")));
     assert!(file_activity(&network, host, &room).is_empty());
 
     command(
@@ -2928,7 +2920,7 @@ fn internal_screen_source_uses_three_confirmed_connections_and_shared_nonviewer_
 
 #[test]
 fn publication_completion_waits_for_installed_projection_and_keeps_request_ownership() {
-    use piik_channel_core::{host::RoomResult, wire::Request, RoomState};
+    use piik_channel_core::{wire::Request, RoomState};
     for outcome in [
         "pending",
         "already-applied",
@@ -2991,7 +2983,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                 );
                 assert!(
                     rejected.events.iter().any(|(_, event)| matches!(
-                        event, Event::Error { code, .. } if code == "invalid_room_projection"
+                        event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection"
                     )),
                     "accepted invalid observation ({count}, {authorized}, {reading})"
                 );
@@ -3003,7 +2995,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
             host,
             json!({"type":"host_output","roomId":room,"output":invalid}),
         );
-        assert!(rejected.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")));
+        assert!(rejected.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection")));
         // Rejecting a bad projection must not consume its valid request owner.
         // Another endpoint's real failure arrives while the committed result is in flight.
         let failure = network.authority.handle(
@@ -3041,11 +3033,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                 .events
                 .iter()
                 .find_map(|(recipient, event)| match event {
-                    Event::RoomReply {
-                        request_id: Some(id),
-                        result,
-                        ..
-                    } if *recipient == publisher && id == "publication-order" => {
+                    Event::Reply { room_id: Some(_), request_id: id, result } if *recipient == publisher && id == "publication-order" => {
                         Some(result.clone())
                     }
                     _ => None,
@@ -3053,14 +3041,14 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         };
         if outcome == "already-applied" {
             assert!(
-                matches!(completion(&completed), Some(RoomResult::Done)),
+                matches!(completion(&completed), Some(ReplyResult::Done)),
                 "an installed newer projection covers a late result"
             );
             continue;
         }
         if outcome == "error" {
             assert!(
-                matches!(completion(&completed), Some(RoomResult::Error { .. })),
+                matches!(completion(&completed), Some(ReplyResult::Error { .. })),
                 "an explicit failure does not wait for projection"
             );
             continue;
@@ -3086,7 +3074,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                     json!({"type":"host_output","roomId":room,"output":repair}),
                 );
                 let state = delivered.events.iter().position(|(recipient, event)| *recipient == publisher && matches!(event, Event::State { state } if state.publications.iter().any(|entry| entry.id == publication))).unwrap();
-                let reply = delivered.events.iter().position(|(recipient, event)| *recipient == publisher && matches!(event, Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "publication-order")).unwrap();
+                let reply = delivered.events.iter().position(|(recipient, event)| *recipient == publisher && matches!(event, Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id == "publication-order")).unwrap();
                 assert!(
                     state < reply,
                     "installed State must precede successful completion"
@@ -3137,7 +3125,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                     completion(&late).is_none(),
                     "a replacement binding cannot replay old completion"
                 );
-                assert!(late.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
+                assert!(late.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "stale_room_host")));
             }
             _ => unreachable!(),
         }
@@ -3192,7 +3180,7 @@ fn room_default_reduction_converges_through_the_room_host() {
 #[test]
 fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
     use piik_channel_core::{
-        host::{HostAction, RoomResult},
+        host::HostAction,
         wire::Request,
     };
     let mut network = RoomNetwork::new();
@@ -3317,13 +3305,13 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
     );
     assert!(
         !late.events.iter().any(|(target, event)| *target == a
-            && matches!(event,Event::RoomReply{request_id:Some(id),..}if id=="earlier")),
+            && matches!(event,Event::Reply { room_id: Some(_), request_id: id, .. }if id=="earlier")),
         "success waits until the wake's covering projection is installed"
     );
     assert!(!network.authority.expire(deadline+1).events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::RouteWake))),"old projection cannot reinsert a consumed wake deadline");
     let completed = network.deliver(effects);
     assert!(completed.events.iter().any(|(target, event)| *target == a
-        && matches!(event, Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "earlier")),
+        && matches!(event, Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id == "earlier")),
         "wake preserves and completes the earlier request after applying its projection");
     let repair = network
         .state(b)
@@ -3370,7 +3358,7 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
 
 #[test]
 fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_projection() {
-    use piik_channel_core::{host::RoomResult, wire::Request};
+    use piik_channel_core::{wire::Request};
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();
     let viewer = Uuid::new_v4();
@@ -3426,9 +3414,7 @@ fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_project
     assert!(
         late.events.iter().any(|(recipient, event)| {
             *recipient == viewer
-                && matches!(event, Event::RoomReply {
-                    request_id: Some(id), result: RoomResult::Done, ..
-                } if id == "before-failure")
+                && matches!(event, Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id == "before-failure")
         }),
         "physical pair failure does not revoke a completed Browse request"
     );
@@ -3444,7 +3430,7 @@ fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_project
 
 #[test]
 fn unrelated_leave_does_not_invalidate_an_earlier_browse_reply_or_revive_retired_activity() {
-    use piik_channel_core::{host::RoomResult, wire::Request};
+    use piik_channel_core::{wire::Request};
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();
     let b = Uuid::new_v4();
@@ -3519,16 +3505,12 @@ fn unrelated_leave_does_not_invalidate_an_earlier_browse_reply_or_revive_retired
         .events
         .iter()
         .find_map(|(recipient, event)| match event {
-            Event::RoomReply {
-                request_id: Some(id),
-                result,
-                ..
-            } if *recipient == b && id == "before-c-leaves" => Some(result),
+            Event::Reply { room_id: Some(_), request_id: id, result } if *recipient == b && id == "before-c-leaves" => Some(result),
             _ => None,
         })
         .expect("B receives its original request result");
     assert!(
-        matches!(reply, RoomResult::Done),
+        matches!(reply, ReplyResult::Done),
         "unrelated C leaving does not revoke B's completed Browse request"
     );
     for connection in [host, b] {
@@ -4766,7 +4748,7 @@ fn coordinated_udp_signals_use_the_current_pair_and_fixed_endpoint_roles() {
             result
                 .events
                 .iter()
-                .any(|(_, event)| matches!(event,Event::Error{code,..} if code=="invalid_signal")),
+                .any(|(_, event)| matches!(event,Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code=="invalid_signal")),
             !accepted
         );
     }
@@ -5007,7 +4989,7 @@ fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_prof
     let profile_event = profile_reply
         .events
         .iter()
-        .find(|(_, event)| matches!(event, Event::Profiles { .. }))
+        .find(|(_, event)| matches!(event, Event::Reply { result: ReplyResult::Profiles { .. }, .. }))
         .unwrap();
     let profile_bytes = serde_json::to_vec(&profile_event.1).unwrap().len();
     assert!(profile_bytes < 1024 * 1024);
@@ -5546,7 +5528,7 @@ fn busy_room_retries_the_personal_limit_on_the_next_snapshot() {
         .find(|u| matches!(&u.command, piik_channel_core::wire::Command::RelayCapacity { room_id, .. } if room_id == &room)).unwrap();
     let refused = network.command(socket, serde_json::to_value(update).unwrap());
     let id = refused.events.iter().find_map(|(_, event)| match event {
-        Event::Error { code, request_id } if code == "room_busy" => request_id.as_deref(),
+        Event::Reply { request_id, result: ReplyResult::Error { code }, .. } if code == "room_busy" => Some(request_id.as_str()),
         _ => None,
     }).unwrap();
     budget.capacity_reply(id);
@@ -5612,7 +5594,7 @@ fn watch_uses_an_alternate_while_a_file_keeps_the_relays_only_slot() {
     let replacement=json!({"sessionId":s,"resourceId":Uuid::new_v4(),"format":"file"});
     command(&mut net,source,json!({"type":"set_watch_byte_source","roomId":room,"id":watch,"byteSource":replacement}));
     let late=net.command(relay,refuse);
-    assert!(late.events.iter().any(|(_,event)| matches!(event, Event::RoomReply { result:piik_channel_core::host::RoomResult::Error{code}, .. } if code=="unassigned_watch_branch")));
+    assert!(late.events.iter().any(|(_,event)| matches!(event, Event::Error { room_id: Some(_), code } if code=="unassigned_watch_branch")));
     let members = [(source, s), (relay, r), (alternate, a), (viewer, v)];
     use std::collections::{BTreeMap, BTreeSet, VecDeque};
     let mut links = vec![(s, r), (s, a), (r, v), (a, v)];
@@ -5740,11 +5722,11 @@ fn resuming_without_peer_transport_retires_media_and_file_routes_but_keeps_room_
         "credential":credential,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"sessionId":participant,
         "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()})), 101);
     let pending = net.authority.handle(owner, request(json!({"type":"host_output","roomId":room,"output":old_output})), 101);
-    assert!(!pending.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::RoomReply { .. })));
+    assert!(!pending.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. } | Event::Reply { room_id: Some(_), .. })));
     net.deliver(pending);
     let effects = net.deliver(sync);
     assert_eq!(effects.events.iter().filter(|(socket, event)| *socket == owner && matches!(event,
-        Event::RoomReply {request_id: Some(id), result: piik_channel_core::host::RoomResult::Done, ..} if id == "pending-browse")).count(), 1);
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id == "pending-browse")).count(), 1);
     assert!(effects.events.iter().any(|(socket, event)| *socket == resumed
         && matches!(event, Event::Welcome {session_id, state, ..} if *session_id == participant && state.pairs.is_empty())));
     for socket in [resumed, owner] {
@@ -5755,7 +5737,7 @@ fn resuming_without_peer_transport_retires_media_and_file_routes_but_keeps_room_
         assert!(state.files.iter().all(|f| f.upstream.is_none() && f.downstream.is_empty() && f.source_id.is_none()));
         assert!(state.channel.rooms.iter().any(|r| r.id == room && r.authorized && r.reading));
     }
-    assert!(net.peer_request(resumed, &room, ConversationCommand::History { before: None }).result.is_ok());
+    assert!(net.peer_request(resumed, &room, ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }).result.is_ok());
 }
 #[test]
 fn prepared_branch_survives_host_turns_and_ancestor_retirement() {

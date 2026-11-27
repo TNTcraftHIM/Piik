@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
-    wire::{Command, Event, Request},
+    wire::{Command, Event, ReplyResult, Request},
     Authority, Effects, StoredRoomHost,
 };
 use piik_channel_native::session::{run, Config, RoomFile};
@@ -51,7 +51,7 @@ impl Domain {
     }
     async fn apply(&mut self, effects: Effects) {
         for (connection, event) in effects.events {
-            if connection == self.connection {
+            if connection == self.connection && !matches!(event, Event::Deferred { .. }) {
                 self.socket
                     .send(Message::Text(serde_json::to_string(&event).unwrap().into()))
                     .await
@@ -76,7 +76,8 @@ impl Domain {
         let effects = self.authority.handle(self.connection, request, self.now);
         if let Command::HostOutput { room_id, output } = &command {
             if let Some(code) = effects.events.iter().find_map(|(to, event)| match event {
-                Event::Error { code, .. } if *to == self.connection => Some(code),
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. }
+                    if *to == self.connection => Some(code),
                 _ => None,
             }) {
                 panic!(
@@ -356,7 +357,7 @@ async fn interrupted_unconfirmed_native_creation_reports_failure_without_replayi
     assert!(effects
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::RoomCreated { .. })));
+        .any(|(_, event)| matches!(event, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. })));
     // The reserved ID never reaches the creator, so it cannot bind its writer.
     domain.socket.close(None).await.unwrap();
     let result = tokio::time::timeout(Duration::from_secs(5), native)
@@ -421,8 +422,8 @@ async fn ordinary_native_creation_uses_the_domain_id_and_reopens_that_saved_iden
             domain.authority = previous;
         }
         let id = if first {
-            let Event::RoomCreated { room, .. } = domain
-                .until(|_, event| matches!(event, Event::RoomCreated { .. }))
+            let Event::Reply { result: ReplyResult::RoomCreated { room }, .. } = domain
+                .until(|_, event| matches!(event, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. }))
                 .await
             else {
                 unreachable!()
@@ -457,7 +458,7 @@ async fn ordinary_native_creation_uses_the_domain_id_and_reopens_that_saved_iden
             _ => None,
         });
         stop.send(()).unwrap();
-        domain.until(|_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave")).await;
+        domain.until(|_, event| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "native-leave")).await;
         tokio::time::timeout(Duration::from_secs(5), native)
             .await
             .unwrap()
@@ -562,10 +563,7 @@ async fn native_registration_refusal_keeps_its_other_room_online() {
             let packet = domain.socket.next().await.unwrap().unwrap();
             let request = Request::parse(packet.to_text().unwrap()).unwrap();
             if matches!(&request.command, Command::HostRegister { room, .. } if room.id == "one") {
-                let refused = Event::Error {
-                    code: code.into(),
-                    request_id: request.request_id,
-                };
+                let refused = Event::completion(request.request_id, None, ReplyResult::Error { code: code.into() });
                 domain
                     .socket
                     .send(Message::Text(
@@ -580,7 +578,7 @@ async fn native_registration_refusal_keeps_its_other_room_online() {
         domain.bound("two").await;
         domain.room_turn("two").await;
         stop.send(()).unwrap();
-        domain.until(|_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave")).await;
+        domain.until(|_, event| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "native-leave")).await;
         native.await.unwrap().unwrap();
         assert_eq!(
             StoredRoomHost::open(&folder.path().join("one.sqlite"))
@@ -626,8 +624,8 @@ async fn native_recovery_respects_directory_removal_and_preserves_the_room_file(
         .until(|_, event| {
             matches!(
                 event,
-                Event::RoomReply {
-                    result: piik_channel_core::host::RoomResult::Deleted {
+                Event::Reply {
+                    result: ReplyResult::Deleted {
                         data_removed: false
                     },
                     ..
@@ -656,7 +654,7 @@ async fn native_recovery_respects_directory_removal_and_preserves_the_room_file(
     stop.send(()).unwrap();
     domain
         .until(
-            |_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave"),
+            |_, event| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "native-leave"),
         )
         .await;
     native.await.unwrap().unwrap();
@@ -772,9 +770,9 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     let mut contender_domain = Domain::accept(&contender_listener).await;
     contender_domain.authority = domain.authority.clone();
     let created = contender_domain
-        .until(|_, event| matches!(event, Event::RoomCreated { .. }))
+        .until(|_, event| matches!(event, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. }))
         .await;
-    let Event::RoomCreated { room, .. } = created else { unreachable!() };
+    let Event::Reply { result: ReplyResult::RoomCreated { room }, .. } = created else { unreachable!() };
     contender_domain.bound(&room.id).await;
     assert!(contender.try_wait().unwrap().is_none());
     assert!(!contender_domain.commands.iter().any(|command| {
@@ -787,15 +785,15 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .await.expect("contender reconnects").unwrap().unwrap();
     assert!(matches!(Request::parse(join.to_text().unwrap()).unwrap().command, Command::Join { .. }));
     contender_domain.socket.send(Message::Text(serde_json::to_string(&Event::Error {
-        code: "admission_revoked".into(), request_id: None,
+        code: "admission_revoked".into(), room_id: None,
     }).unwrap().into())).await.unwrap();
     if let Some(Ok(Message::Text(text))) = tokio::time::timeout(
         Duration::from_secs(5), contender_domain.socket.next(),
     ).await.expect("contender ends the rejected admission") {
         let leave = Request::parse(&text).unwrap();
         assert!(matches!(leave.command, Command::Leave));
-        contender_domain.socket.send(Message::Text(serde_json::to_string(&Event::Ack {
-            request_id: leave.request_id.unwrap(),
+        contender_domain.socket.send(Message::Text(serde_json::to_string(&Event::Reply {
+            request_id: leave.request_id.unwrap(), room_id: None, result: ReplyResult::Done,
         }).unwrap().into())).await.unwrap();
     }
     let output = tokio::time::timeout(Duration::from_secs(5), contender.wait_with_output()).await.unwrap().unwrap();
@@ -1191,7 +1189,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let mut domain = Domain::accept(&listener).await;
     domain.authority = authority;
     domain
-        .until(|_, event| matches!(event, Event::Ack {request_id} if request_id == "native-leave"))
+        .until(|_, event| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "native-leave"))
         .await;
     let rejected: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
@@ -1236,9 +1234,10 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         .events
         .iter()
         .find_map(|(connection, event)| match event {
-            Event::RoomCreated {
-                room,
-                request_id: Some(id),
+            Event::Reply {
+                result: ReplyResult::RoomCreated { room },
+                request_id: id,
+                room_id: None,
             } if *connection == browser && id == "create-app-room" => Some(room.id.clone()),
             _ => None,
         })
@@ -1536,7 +1535,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         "access":"public","hidden":false,"hasPassword":false},"requestId":"limit-before-storage"}),
         )
         .await;
-    assert!(domain.events.iter().any(|(connection, event)| *connection == browser && matches!(event, Event::Error { code, request_id: Some(id) } if code == "room_limit" && id == "limit-before-storage")));
+    assert!(domain.events.iter().any(|(connection, event)| *connection == browser && matches!(event, Event::Reply { result: ReplyResult::Error { code }, request_id: id, .. } if code == "room_limit" && id == "limit-before-storage")));
     let refused_room = Uuid::new_v4().to_string();
     let refused_policy = RoomState::new(
         refused_room.clone(),
@@ -1553,7 +1552,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     domain
         .until(|connection, event| {
             connection == native_connection
-                && matches!(event, Event::Error {code,request_id:Some(_)} if code == "room_not_in_domain")
+                && matches!(event, Event::Reply { result: ReplyResult::Error { code }, .. } if code == "room_not_in_domain")
         })
         .await;
     let refused: Value =
@@ -1592,7 +1591,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert!(HostedRoom::open(&path, &room, user).is_err());
     stop.send(()).unwrap();
     domain
-        .until(|_, event| matches!(event, Event::Ack {request_id} if request_id == "native-leave"))
+        .until(|_, event| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "native-leave"))
         .await;
     tokio::time::timeout(Duration::from_secs(5), service)
         .await
@@ -1655,7 +1654,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     drop(saved);
     stop.send(()).unwrap();
     domain
-        .until(|_, event| matches!(event, Event::Ack {request_id} if request_id == "native-leave"))
+        .until(|_, event| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "native-leave"))
         .await;
     tokio::time::timeout(Duration::from_secs(5), service)
         .await
@@ -2182,9 +2181,10 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                         continue;
                     };
                     let event: Event = serde_json::from_str(&text).unwrap();
-                    if let Event::RoomCreated {
-                        room,
-                        request_id: Some(id),
+                    if let Event::Reply {
+                        result: ReplyResult::RoomCreated { room },
+                        request_id: id,
+                        room_id: None,
                     } = event
                     {
                         if id == "create-app-room" {
@@ -2677,7 +2677,7 @@ async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_br
     page.close(None).await.unwrap();
     stop.send(()).unwrap();
     domain
-        .until(|_, event| matches!(event,Event::Ack{request_id} if request_id=="native-leave"))
+        .until(|_, event| matches!(event,Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id=="native-leave"))
         .await;
     tokio::time::timeout(Duration::from_secs(5), service)
         .await

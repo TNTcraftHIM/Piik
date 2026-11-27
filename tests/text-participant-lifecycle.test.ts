@@ -44,6 +44,27 @@ test.each([
   }
 });
 
+
+test('only Welcome or admission refusal can finish startup', async () => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid' });
+  const credential = vi.fn();
+  client.on('credential', credential);
+  const connecting = client.connect(), socket = boundary.socket;
+  const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
+  socket.readyState = 1; socket.emit('open');
+  const rejected = expect(connecting).rejects.toThrow('invalid_credential');
+  receive({ type: 'future_notification', requestId: 'future' });
+  await Promise.resolve();
+  expect(credential).not.toHaveBeenCalled();
+  expect(socket.terminate).not.toHaveBeenCalled();
+  receive({ type: 'error', code: 'invalid_credential' });
+  await Promise.resolve();
+  expect(socket.terminate).toHaveBeenCalledOnce();
+  socket.readyState = 3; socket.emit('close');
+  await rejected;
+});
+
 test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending %s continuation before it can subscribe or announce ready', async phase => {
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   vi.useFakeTimers();
@@ -59,17 +80,17 @@ test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending 
       delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
   if (phase !== 'welcome') await Promise.resolve();
   if (phase === 'browse') {
-    receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+    receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
     await Promise.resolve();
   }
   const pending = socket.sent.at(-1)!;
   const stopping = client.stop();
   const leave = socket.sent.at(-1)!;
-  if (phase !== 'welcome') receive({ type: 'ack', requestId: pending.requestId });
+  if (phase !== 'welcome') receive({ type: 'reply', requestId: pending.requestId, result: { type: 'done' } });
   await Promise.resolve(); await Promise.resolve();
   // A successful late acknowledgement must not send the next handshake step after leave.
   const afterLeave = socket.sent.slice(socket.sent.indexOf(leave) + 1);
-  receive({ type: 'ack', requestId: leave.requestId });
+  receive({ type: 'reply', requestId: leave.requestId, result: { type: 'done' } });
   await Promise.resolve(); await Promise.resolve();
   socket.readyState = 3; socket.emit('close');
   await stopping;
@@ -94,18 +115,18 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
   socket.readyState = 1; socket.emit('open');
   receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture', sessionId: local, selfProfile: { id: user }, state });
   await Promise.resolve();
-  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await connected;
 
   const declined = client.browse(room.id);
   const declinedId = socket.sent.at(-1)!.requestId;
-  receive({ type: 'room_reply', roomId: room.id, requestId: declinedId, result: { type: 'unknown' } });
-  await expect(declined).rejects.toThrow('invalid_response');
+  receive({ type: 'reply', roomId: room.id, requestId: declinedId, result: { type: 'unknown' } });
+  await expect(declined).rejects.toThrow('unknown_outcome');
   const confirmed = client.browse(room.id);
-  receive({ type: 'room_reply', roomId: room.id, requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
+  receive({ type: 'reply', roomId: room.id, requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await confirmed;
   const history = client.history().catch((error: Error) => error.message);
-  receive({ type: 'room_reply', roomId: 'other', requestId: socket.sent.at(-1)!.requestId,
+  receive({ type: 'reply', roomId: 'other', requestId: socket.sent.at(-1)!.requestId,
     result: { type: 'error', code: 'room_busy' } });
   const observed = vi.fn();
   void history.then(observed);
@@ -123,7 +144,7 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
   await vi.advanceTimersByTimeAsync(0);
   expect(observed).toHaveBeenCalledExactlyOnceWith('room_unavailable');
   if (change === 'revoked') {
-    receive({ type: 'error', code: 'room_access_required', requestId: browseId });
+    receive({ type: 'reply', requestId: browseId, result: { type: 'error', code: 'room_access_required' } });
     await expect(browse).rejects.toThrow('room_access_required');
 
     const sent = socket.sent.length;
@@ -142,12 +163,12 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
     await expect(client.chat('offline')).rejects.toThrow(/^room_host_offline$/);
     expect(socket.sent).toHaveLength(sent);
   } else {
-    receive({ type: 'ack', requestId: browseId });
+    receive({ type: 'reply', requestId: browseId, result: { type: 'done' } });
     await browse;
-    receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+    receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   }
   const stopping = client.stop();
-  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await vi.advanceTimersByTimeAsync(0);
   socket.readyState = 3; socket.emit('close'); await stopping;
   expect(vi.getTimerCount()).toBe(0);
@@ -167,7 +188,7 @@ test('concurrent stop callers await the same leave and socket retirement, includ
     state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
       delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
   await Promise.resolve();
-  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await connected;
   const history = client.history();
   const historyResult = history.catch(error => error as Error);
@@ -178,7 +199,7 @@ test('concurrent stop callers await the same leave and socket retirement, includ
   void second.finally(() => { finished = true; }).catch(() => {});
   await Promise.resolve();
   const finishedBeforeLeave = finished;
-  receive({ type: 'error', code: 'leave_failed', requestId: socket.sent.at(-1)!.requestId });
+  receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'error', code: 'leave_failed' } });
   await Promise.resolve(); await Promise.resolve();
   const finishedBeforeClose = finished, freedBeforeClose = free.mock.calls.length;
   socket.readyState = 3; socket.emit('close');
@@ -208,7 +229,7 @@ test.each(['receipt-first', 'close-first'] as const)('browse readiness follows %
   const first = client.connect().catch(error => error as Error), old = boundary.socket;
   old.readyState = 1; old.emit('open'); old.emit('message', Buffer.from(JSON.stringify(welcome)));
   await Promise.resolve();
-  const receipt = Buffer.from(JSON.stringify({ type: 'ack', requestId: old.sent.at(-1)!.requestId }));
+  const receipt = Buffer.from(JSON.stringify({ type: 'reply', requestId: old.sent.at(-1)!.requestId, result: { type: 'done' } }));
   if (order === 'receipt-first') old.emit('message', receipt);
   const oldReady = order === 'receipt-first' ? 1 : 0;
   expect(ready).toHaveBeenCalledTimes(oldReady);
@@ -221,11 +242,11 @@ test.each(['receipt-first', 'close-first'] as const)('browse readiness follows %
   expect(ready).toHaveBeenCalledTimes(oldReady);
   next.readyState = 1; next.emit('open'); next.emit('message', Buffer.from(JSON.stringify(welcome)));
   await Promise.resolve();
-  next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
+  next.emit('message', Buffer.from(JSON.stringify({ type: 'reply', requestId: next.sent.at(-1)!.requestId, result: { type: 'done' } })));
   await replacing;
   expect(ready).toHaveBeenCalledTimes(oldReady + 1);
   const stopping = client.stop();
-  next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
+  next.emit('message', Buffer.from(JSON.stringify({ type: 'reply', requestId: next.sent.at(-1)!.requestId, result: { type: 'done' } })));
   await Promise.resolve(); await Promise.resolve();
   next.readyState = 3; next.emit('close'); await stopping;
   expect(vi.getTimerCount()).toBe(0);
@@ -253,11 +274,15 @@ test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s wr
     const room = { ...request.room as object, id: 'assigned' };
     const observed = vi.fn();
     void creation.then(observed, observed);
-    receive({ type: 'ack', requestId: request.requestId });
-    receive({ type: 'room_created', room, requestId: 'unrelated' });
+    const failure = vi.fn(); client.on('failure', failure);
+    receive({ type: 'future_notification', requestId: request.requestId });
+    receive({ type: 'error', requestId: request.requestId, code: 'directory_storage_failed' });
+    expect(failure).toHaveBeenCalledExactlyOnceWith(new Error('directory_storage_failed'));
+    expect(socket.terminate).not.toHaveBeenCalled();
+    receive({ type: 'reply', requestId: 'unrelated', result: { type: 'room_created', room } });
     await Promise.resolve(); await Promise.resolve();
     expect(observed).not.toHaveBeenCalled();
-    receive({ type: 'room_created', room, requestId: request.requestId });
+    receive({ type: 'reply', requestId: request.requestId, result: { type: 'room_created', room } });
     expect(await creation).toEqual(room);
     const ready = vi.fn(); client.on('ready', ready);
     const timedOut = expect(client.browse(room.id)).rejects.toThrow('request_timeout');
@@ -265,16 +290,16 @@ test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s wr
     await vi.advanceTimersByTimeAsync(10_000);
     await timedOut;
     const browsing = client.browse(room.id);
-    receive({ type: 'ack', requestId: retiredId });
+    receive({ type: 'reply', requestId: retiredId, result: { type: 'done' } });
     expect(ready).not.toHaveBeenCalled();
     expect(client.summary()).toMatchObject({ roomId: undefined, reading: false });
     expect(socket.sent.at(-1)).toMatchObject({ type: 'browse', roomId: room.id, active: true });
-    receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+    receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
     await browsing;
     expect(ready).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ roomId: room.id, reading: false }));
   }
   const stopping = client.stop();
-  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await Promise.resolve(); await Promise.resolve();
   socket.readyState = 3; socket.emit('close');
   await stopping;
@@ -292,7 +317,7 @@ test('failed initial browse retires the welcomed socket before connect rejects',
   receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture', sessionId: randomUUID(),
     selfProfile: { id: randomUUID() }, state: { channel: { hostingMode: 'hosted', rooms: [] }, sessions: [] } });
   await Promise.resolve();
-  receive({ type: 'error', code: 'room_unavailable', requestId: socket.sent.at(-1)!.requestId });
+  receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'error', code: 'room_unavailable' } });
   try {
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(socket.terminate).toHaveBeenCalledOnce();

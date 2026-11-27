@@ -9,7 +9,7 @@ function message(seq: number, text = ""): ChannelMessage & { reactions: { revisi
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 const end = (messages: ReturnType<typeof message>[], before: number | null, oldestSeq: number | null = null, hasMore = false) =>
-  ({ type: "history_page" as const, messages, hasMore, oldestSeq, before });
+  ({ type: "history_page" as const, parts: ["inlineImages"], messages, hasMore, oldestSeq, before });
 function merge(history: RoomHistory, requestId: string, record: ReturnType<typeof end>): boolean {
   const page = history.completePage(requestId, record);
   expect(page).toBeDefined();
@@ -122,7 +122,7 @@ test("a page saved before media cleanup cannot restore old images", () => {
   expect(new RoomHistory().visible(prior)).toEqual(prior);
 });
 
-test("a split refresh uses the writer's current renditions after a missed cleanup", () => {
+test("a split refresh requires image coverage for each page before inferring removals", () => {
   const history = new RoomHistory();
   history.openPage("latest", { bindingId: binding, replace: false });
   merge(history, "latest", end([photo(1), photo(2)], null, 1));
@@ -133,6 +133,13 @@ test("a split refresh uses the writer's current renditions after a missed cleanu
   expect(merge(history, "refresh", end([clean[1]], null, 1, true))).toBe(false);
   history.dropPage("refresh");
   history.openPage("rest", { bindingId: binding, before: 2, replace: true, refresh });
-  expect(merge(history, "rest", end([clean[0]], 2, 1))).toBe(true);
+  const base = { ...end([], 2, 1), parts: ["unknownPart"] };
+  expect(history.completePage("rest", base)).toBeUndefined();
+  expect(history.completePage("rest", end([], 1, 1))).toBeUndefined();
+  expect(history.messages).toEqual([photo(1), photo(2)]);
+  expect(history.changes).toBeUndefined();
+  history.dropPage("rest");
+  history.openPage("retry", { bindingId: binding, before: 2, replace: true, refresh });
+  expect(merge(history, "retry", end([clean[0]], 2, 1))).toBe(true);
   expect(history.messages).toEqual(clean);
 });

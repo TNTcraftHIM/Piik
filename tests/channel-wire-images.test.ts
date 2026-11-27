@@ -37,6 +37,23 @@ it("matches the compiled Core wire contract for schemas built before WASM initia
   });
 });
 
+it("WASM reports unknown host input before its first projection and completes the following sync", async () => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const creatorId = crypto.randomUUID(), hostSessionId = crypto.randomUUID(), bindingId = crypto.randomUUID();
+  const policy = core.create_room_policy(JSON.stringify({ id: "room", name: "Room", icon: "couch", creatorId, access: "public", hidden: false }));
+  const host = new core.RoomHost(policy);
+  try {
+    const dispatch = (action: object, revision: number) => JSON.parse(host.dispatch(JSON.stringify({
+      hostingMode: "lightweight", channelOwnerId: creatorId, now: 1000, bindingId, hostSessionId, revision, endpoints: {}, action,
+    })));
+    expect(dispatch({ type: "future_action" }, 1))
+      .toEqual({ type: "host_unsupported", roomId: "room", bindingId, revision: 1 });
+    dispatch({ type: "sync" }, 2);
+    expect(JSON.parse(host.finish(undefined))).toMatchObject({ bindingId, revision: 2, projection: { summary: { id: "room" } } });
+  } finally { host.free(); }
+});
+
 it("accepts the Core session budget and rejects one extra session", () => {
   const state = { ...snapshot(), sessions: Array.from({ length: CHANNEL_SESSION_LIMIT }, (_, index) => ({
     id: `endpoint-${index}`, userId: "user", online: true, signingKey: Array(32).fill(0),
@@ -70,14 +87,27 @@ it("ignores extra watch activity metadata while validating playback and source",
   expect(() => read({ ...activity, source: { ...activity.source, displayLabel: "Evening" } })).toThrow();
 });
 
+it("only a reply can carry a result, with a validated request ID and known payload", () => {
+  const decoder = new ChannelEventDecoder();
+  const reply = { type: "reply", requestId: "request", roomId: "room" };
+  expect(decode(decoder, { type: "future_notification", requestId: "request" })).toBeUndefined();
+  expect(decode(decoder, { ...reply, result: { type: "future_result" } }))
+    .toEqual({ ...reply, result: { type: "unknown_outcome" } });
+  expect(decode(decoder, { type: "error", requestId: "request", code: "storage_failed" }))
+    .toEqual({ type: "error", code: "storage_failed" });
+  expect(() => decode(decoder, { ...reply, requestId: "", result: { type: "done" } })).toThrow();
+  expect(() => decode(decoder, { ...reply, result: { type: "watch_ready" } })).toThrow();
+  expect(() => decode(decoder, { ...reply, result: { type: "topology", topology: { address: "private" } } })).toThrow();
+});
+
 describe("physical socket site and room pictures", () => {
   it("hydrates omissions and retains every other state's authoritative fields", () => {
     const decoder = new ChannelEventDecoder();
     decode(decoder, welcome());
     const wire = omitted(); wire.state.users[0].name = "Renamed";
     const event = decode(decoder, wire);
-    expect(event.type).toBe("state");
-    if (event.type !== "state") throw new Error("Unexpected event");
+    expect(event?.type).toBe("state");
+    if (event?.type !== "state") throw new Error("Unexpected event");
     expect(event.state.users[0]).toEqual({ id: "user", name: "Renamed", version });
     expect(event.state.channel.icon).toBe(picture);
     expect(event.state.channel.rooms[0]).toMatchObject({ icon: "couch", picture });
@@ -105,7 +135,7 @@ describe("physical socket site and room pictures", () => {
     const unavailable = snapshot(); unavailable.channel.rooms[0][flag] = false;
     expect(decode(decoder, { type: "state", state: unavailable })).not.toHaveProperty("state.channel.rooms[0].picture");
     const restored = decode(decoder, omitted());
-    if (restored.type !== "state") throw new Error("Unexpected event");
+    if (restored?.type !== "state") throw new Error("Unexpected event");
     expect(restored.state.channel.rooms[0].picture).toBeUndefined();
     expect(decode(decoder, { type: "state", state: snapshot() })).toMatchObject({ state: { channel: { rooms: [{ picture }] } } });
   });
@@ -127,25 +157,25 @@ describe("physical socket site and room pictures", () => {
     const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
     const invalid = snapshot(); invalid.channel.icon = "data:image/png;base64,ZGVm"; invalid.users[0].name = "x".repeat(41);
     expect(() => decode(decoder, { type: "state", state: invalid })).toThrow();
-    decode(decoder, { type: "ack", requestId: "request" });
+    decode(decoder, { type: "reply", requestId: "request", result: { type: "done" } });
     expect(decode(decoder, omitted())).toMatchObject({ state: { channel: { icon: picture } } });
   });
 
   it("reads full profiles independently of snapshot picture inheritance", () => {
     const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
     const profile = { id: "offline-user", name: "Offline friend", avatar: picture as string | null, version };
-    const page = { type: "profiles", requestId: "profiles", profiles: [profile], total: 1, nextCursor: null };
+    const page = { type: "reply", requestId: "profiles", result: { type: "profiles", profiles: [profile], total: 1, nextCursor: null } };
     expect(decode(decoder, page)).toEqual(page);
     profile.avatar = null;
-    expect(decode(decoder, page)).toMatchObject({ profiles: [{ avatar: null }] });
+    expect(decode(decoder, page)).toMatchObject({ result: { profiles: [{ avatar: null }] } });
     const { avatar, ...missing } = profile;
-    expect(() => decode(decoder, { ...page, profiles: [missing] })).toThrow();
+    expect(() => decode(decoder, { ...page, result: { ...page.result, profiles: [missing] } })).toThrow();
     expect(decode(decoder, omitted())).toMatchObject({ state: { channel: { icon: picture } } });
   });
 
   it("bounds both raw and expanded frames", () => {
     const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
-    expect(() => decoder.decode({ type: "ack", requestId: "request" }, CHANNEL_EVENT_BYTES + 1)).toThrow();
+    expect(() => decoder.decode({ type: "reply", requestId: "request", result: { type: "done" } }, CHANNEL_EVENT_BYTES + 1)).toThrow();
     const { state } = omitted();
     const wire = { type: "state", state: { ...state, channel: { ...state.channel, icon: "star" } } };
     expect(() => decoder.decode(wire, CHANNEL_EVENT_BYTES - 1)).toThrow();

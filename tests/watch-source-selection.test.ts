@@ -42,7 +42,7 @@ test.each(["commit", "cancel"] as const)("source discovery survives preparation 
   });
   const dispose = vi.fn();
   const request = vi.fn(async (_command: unknown, reply: (event: unknown) => void) => {
-    reply({ type: "room_reply", result: { type: "watch_ready", serverTime: performance.now() } });
+    reply({ type: "watch_ready", serverTime: performance.now() });
   });
   const page = new AppPage(crypto.randomUUID(), "https://source.test/watch", async command => {
     if (command.type === "page_media_sources") return catalog();

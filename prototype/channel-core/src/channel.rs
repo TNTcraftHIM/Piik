@@ -1157,10 +1157,10 @@ impl Channel {
         };
         if let Some(code) = denial {
             if body.role == ConversationRole::Record {
-                let error = Event::RoomReply {
-                    room_id: address.room_id,
-                    request_id: Some(address.request_id),
-                    result: RoomResult::Error { code: code.into() },
+                let error = Event::Reply {
+                    room_id: Some(address.room_id),
+                    request_id: address.request_id,
+                    result: crate::wire::ReplyResult::Error { code: code.into() },
                 };
                 return Ok(Some((
                     address.recipient,
@@ -1432,6 +1432,31 @@ impl Channel {
         Ok(replies)
     }
 
+    fn host_binding(&self, id: &str, session: Uuid, connection: Uuid, binding_id: Uuid, revision: u64) -> Result<&crate::remote::Binding, &'static str> {
+        let room = self.remote.get(id).ok_or("room_unavailable")?;
+        let binding = room.binding.as_ref().ok_or("stale_room_host")?;
+        if binding.id != binding_id || binding.session != session || binding.connection != connection {
+            return Err("stale_room_host");
+        }
+        if revision > binding.revision { return Err("invalid_room_revision"); }
+        Ok(binding)
+    }
+
+    pub(crate) fn unsupported_host_input(
+        &mut self, id: &str, session: Uuid, connection: Uuid, binding_id: Uuid, revision: u64,
+    ) -> Result<Vec<RoomReply>, &'static str> {
+        let binding = self.host_binding(id, session, connection, binding_id, revision)?;
+        let reply = match binding.replies.get(&revision) {
+            Some(ReplyOwner::Request { context, completion: None, .. }) => Some(RoomReply {
+                context: context.clone(),
+                result: RoomResult::Error { code: "unsupported".into() },
+            }),
+            Some(ReplyOwner::RouteWake) => None,
+            _ => return Ok(Vec::new()),
+        };
+        Ok(self.finish_host_output(id, revision, reply, false).replies)
+    }
+
     pub(crate) fn accept_host(
         &mut self,
         id: &str,
@@ -1439,17 +1464,7 @@ impl Channel {
         connection: Uuid,
         output: HostOutput,
     ) -> Result<HostAcceptance, &'static str> {
-        let room = self.remote.get(id).ok_or("room_unavailable")?;
-        let binding = room.binding.as_ref().ok_or("stale_room_host")?;
-        if binding.id != output.binding_id
-            || binding.session != session
-            || binding.connection != connection
-        {
-            return Err("stale_room_host");
-        }
-        if output.revision > binding.revision {
-            return Err("invalid_room_revision");
-        }
+        let binding = self.host_binding(id, session, connection, output.binding_id, output.revision)?;
         let reply_valid = match binding.replies.get(&output.revision) {
             Some(ReplyOwner::Request {
                 context,
@@ -2102,7 +2117,7 @@ impl Channel {
                     && self.identity.member(member.user_id).ok().as_ref() == Some(member);
                 (*revision <= binding.applied_revision
                     || !current
-                    || matches!(result, RoomResult::Error { .. }))
+                    || matches!(result, RoomResult::Unknown | RoomResult::Error { .. }))
                 .then_some((*revision, current))
             })
             .collect();

@@ -59,13 +59,19 @@ export class BrowserHosting {
   }
 
   /** Runs the domain's input on the host it is bound to. A deletion that removed the room's data retires the host. */
-  input(roomId: string, input: { bindingId: string }): void {
+  input(roomId: string, input: { bindingId: string; hostSessionId: string }): void {
     const hosted = this.rooms.get(roomId), socket = this.session.socket();
-    if (!hosted || hosted.bindingId !== input.bindingId) return;
+    if (!hosted || hosted.bindingId !== input.bindingId || this.session.view().sessionId !== input.hostSessionId) return;
     const binding = hosted.bindingId;
-    const current = () => this.rooms.get(roomId) === hosted && hosted.bindingId === binding && this.session.socket() === socket;
+    const current = () => this.rooms.get(roomId) === hosted && hosted.bindingId === binding
+      && this.session.socket() === socket && this.session.view().sessionId === input.hostSessionId;
     void hosted.host.dispatch(input, { current }).then(output => {
       if (!current()) return;
+      const unsupported = output as Extract<ChannelCommand, { type: "host_unsupported" }>;
+      if (unsupported.type === "host_unsupported") {
+        this.session.write(unsupported);
+        return;
+      }
       const result = (output as { reply?: { result?: { type?: string; dataRemoved?: boolean } } }).reply?.result;
       if (result?.type === "deleted" && result.dataRemoved === true) {
         this.rooms.delete(roomId);

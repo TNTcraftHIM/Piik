@@ -117,6 +117,7 @@ pub enum Command {
         room_id: String,
         delete_data: bool,
     },
+    HostUnsupported { room_id: String, binding_id: Uuid, revision: u64 },
     HostOutput {
         room_id: String,
         output: crate::host::HostOutput,
@@ -268,6 +269,8 @@ pub enum Command {
         ready: bool,
     },
     Leave,
+    #[serde(other, skip_serializing)]
+    Unknown,
 }
 
 #[derive(Serialize)]
@@ -290,6 +293,9 @@ impl Request {
         };
         let command =
             serde_json::from_value(input).map_err(|_| (request_id.clone(), "invalid_request"))?;
+        if matches!(command, Command::Unknown) {
+            return Err((request_id, "unsupported"));
+        }
         Ok(Self {
             request_id,
             command,
@@ -1073,11 +1079,18 @@ pub enum Event {
     InputState {
         registrations: Vec<crate::input::InputRegistration>,
     },
-    RoomReply {
-        room_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
-        result: crate::host::RoomResult,
+    Reply {
+        #[serde(deserialize_with = "reply_id")]
+        request_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "reply_room")]
+        room_id: Option<String>,
+        result: ReplyResult,
+    },
+    /// An ID-less successful operation may still require a hosted storage commit.
+    #[serde(skip)]
+    Deferred {
+        room_id: Option<String>,
+        result: ReplyResult,
     },
     HostBound {
         room_id: String,
@@ -1100,33 +1113,76 @@ pub enum Event {
     State {
         state: Snapshot,
     },
-    Profiles {
-        request_id: String,
-        profiles: Vec<UserInfo>,
-        total: usize,
-        next_cursor: Option<Uuid>,
-    },
     Conversation {
         packet: crate::conversation::SignedPacket,
-    },
-    RoomCreated {
-        room: crate::host::RoomSummary,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
     },
     Signal {
         pair_id: Uuid,
         from_session_id: Uuid,
         payload: Signal,
     },
-    Ack {
-        request_id: String,
-    },
     Error {
         code: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "reply_room")]
+        room_id: Option<String>,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
+}
+
+fn reply_id<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let id = String::deserialize(d)?;
+    if valid_id(&id) {
+        Ok(id)
+    } else {
+        Err(serde::de::Error::custom("invalid_reply_id"))
+    }
+}
+
+fn reply_room<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    reply_id(d).map(Some)
+}
+
+impl Event {
+    pub fn completion(request_id: Option<String>, room_id: Option<String>, result: ReplyResult) -> Self {
+        match (request_id, result) {
+            (Some(request_id), result) => Self::Reply { request_id, room_id, result },
+            (None, ReplyResult::Error { code }) => Self::Error { code, room_id },
+            (None, result) => Self::Deferred { room_id, result },
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum ReplyResult {
+    Profiles { profiles: Vec<UserInfo>, total: usize, next_cursor: Option<Uuid> },
+    RoomCreated { room: crate::host::RoomSummary },
+    WatchReady { server_time: u64 },
+    Done,
+    Deleted { data_removed: bool },
+    Topology { topology: crate::topology::RoomTopology },
+    Invite { key: String },
+    InviteState { invitation: RoomInvitation },
+    Error { code: String },
+    #[serde(other, rename = "unknown_outcome")]
+    Unknown,
+}
+
+impl From<crate::host::RoomResult> for ReplyResult {
+    fn from(result: crate::host::RoomResult) -> Self {
+        use crate::host::RoomResult;
+        match result {
+            RoomResult::WatchReady { server_time } => Self::WatchReady { server_time },
+            RoomResult::Done => Self::Done,
+            RoomResult::Deleted { data_removed } => Self::Deleted { data_removed },
+            RoomResult::Topology { topology } => Self::Topology { topology },
+            RoomResult::Invite { key } => Self::Invite { key },
+            RoomResult::InviteState { invitation } => Self::InviteState { invitation },
+            RoomResult::Error { code } => Self::Error { code },
+            RoomResult::Unknown => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

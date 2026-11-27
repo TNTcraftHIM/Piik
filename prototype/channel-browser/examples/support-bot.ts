@@ -33,7 +33,7 @@ export function attachSupportBot(participant: Conversation, report: (error: unkn
       let target = message;
       let answer = sharingFaq;
       if (command === '!help last') {
-        const page = await participant.history(message.seq);
+        const page = await participant.history(message.seq, { parts: [] });
         if (stopped) return;
         const previous = page.messages.findLast(item => item.userId === message.userId
           && item.text.trim().length > 0 && !item.text.trim().startsWith('!'));

@@ -181,8 +181,8 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         endpoint
             .drain()
             .into_iter()
-            .find(|event| event["type"] == "profiles")
-            .unwrap()["profiles"][0]
+            .find(|event| event["type"] == "reply" && event["requestId"] == "read-profile")
+            .unwrap()["result"]["profiles"][0]
             .clone()
     };
     {
@@ -198,12 +198,12 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         failure.execute_batch("CREATE TRIGGER reject_profile BEFORE UPDATE ON domain_user BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
         owner.request(&mut hub, json!({"type":"set_profile", "name":"New profile", "avatar":avatar, "requestId":"profile"}));
         let failed = owner.drain();
-        assert!(failed.iter().any(|event| event["type"] == "error"
-            && event["code"] == "storage_failed"
+        assert!(failed.iter().any(|event| event["type"] == "reply"
+            && event["result"] == json!({"type":"error","code":"storage_failed"})
             && event["requestId"] == "profile"));
         assert!(!failed
             .iter()
-            .any(|event| event["type"] == "ack" || event["type"] == "state"));
+            .any(|event| event["type"] == "state" || event["result"]["type"] == "done"));
         assert!(observer.drain().is_empty());
         assert_eq!(serde_json::to_value(hub.storage.load().unwrap().unwrap()).unwrap(), saved);
         assert_eq!(hub.authority.owner_name(), Some("Friend"));
@@ -215,7 +215,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         assert!(owner
             .drain()
             .iter()
-            .any(|event| event["type"] == "ack" && event["requestId"] == "retry"));
+            .any(|event| event["type"] == "reply" && event["result"]["type"] == "done" && event["requestId"] == "retry"));
         let summary = observer
             .drain()
             .into_iter()
@@ -359,7 +359,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
     assert!(retired
         .drain()
         .iter()
-        .any(|event| event["type"] == "ack" && event["requestId"] == "leaving"));
+        .any(|event| event["type"] == "reply" && event["result"]["type"] == "done" && event["requestId"] == "leaving"));
     let saved = serde_json::to_value(hub.authority.export_state()).unwrap();
     retired.request(&mut hub, json!({"type":"join","name":"Late join"}));
     assert_eq!(
@@ -405,7 +405,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
     assert!(active
         .drain()
         .iter()
-        .any(|event| event["type"] == "ack" && event["requestId"] == "active"));
+        .any(|event| event["type"] == "reply" && event["result"]["type"] == "done" && event["requestId"] == "active"));
 }
 
 fn complete_host_turn(
@@ -558,7 +558,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         viewer
             .drain()
             .iter()
-            .any(|event| event["type"] == "ack" && event["requestId"] == "retired-path"),
+            .any(|event| event["type"] == "reply" && event["result"]["type"] == "done" && event["requestId"] == "retired-path"),
         "retired signaling is acknowledged without restoring its revoked path"
     );
     let private = updates
@@ -581,7 +581,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .as_bool()
         .unwrap());
     let result = operator.drain();
-    assert!(result.iter().any(|event| event["type"] == "room_reply"
+    assert!(result.iter().any(|event| event["type"] == "reply"
         && event["requestId"] == "make-private"
         && event["result"]["type"] == "done"));
     assert!(result.iter().any(|event| event["type"] == "error"
@@ -593,17 +593,26 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         &mut hub,
         json!({"type":"room_invite","roomId":"hosted","requestId":"invite"}),
     );
+    viewer.request(
+        &mut hub,
+        json!({"type":"profiles","requestId":"profile","ids":[operator.user]}),
+    );
+    let profile = viewer.drain();
+    assert!(profile.iter().any(|event| event["type"] == "reply"
+        && event["requestId"] == "profile" && event["result"]["type"] == "profiles"));
     complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
-    let invitation = operator
-        .drain()
-        .into_iter()
-        .find(|event| event["type"] == "room_reply" && event["result"]["type"] == "invite")
-        .unwrap()["result"]["key"]
-        .clone();
+    let events = operator.drain();
+    let mut replies = events.iter().filter(|event| event["type"] == "reply");
+    let reply = replies.next().unwrap();
+    assert!(replies.next().is_none(), "{events:?}");
+    assert_eq!(reply["requestId"], "invite");
+    assert_eq!(reply["roomId"], "hosted");
+    assert_eq!(reply["result"]["type"], "invite");
+    let invitation = reply["result"]["key"].clone();
     let mut failed = Endpoint::connect(&mut hub);
     failed.request(
         &mut hub,
-        json!({"type":"join","name":"New visitor","requestId":"admission"}),
+        json!({"type":"join","name":"New visitor"}),
     );
     assert!(failed
         .drain()
@@ -632,7 +641,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     assert!(invited
         .drain()
         .iter()
-        .any(|event| event["type"] == "room_reply"
+        .any(|event| event["type"] == "reply"
             && event["requestId"] == "entry"
             && event["result"]["type"] == "done"));
     assert!(host.policy().grants.contains(&invited.user));
@@ -755,10 +764,10 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
         let client = hub.clients.get_mut(&reader.id).unwrap();
         let closing = client.close.subscribe();
         (client.events, reader.events) = mpsc::channel(1);
-        client.events.try_send(Event::Ack { request_id: "queued".into() }).unwrap();
+        client.events.try_send(Event::Reply { request_id: "queued".into(), room_id: None, result: ReplyResult::Done }).unwrap();
         let writer = hub.clients.get_mut(&host.id).unwrap();
         (writer.events, host.events) = mpsc::channel(1);
-        writer.events.try_send(Event::Ack { request_id: "queued".into() }).unwrap();
+        writer.events.try_send(Event::Reply { request_id: "queued".into(), room_id: None, result: ReplyResult::Done }).unwrap();
         (host, reader, observer, packet, page, history, closing)
     };
 
@@ -914,7 +923,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
     assert_ne!(other.message.message.id, original.message.message.id);
     let binding = rooms[0].1;
     assert!(
-        matches!(peer(&mut rooms[0].0, binding, ConversationCommand::History { before: None }).unwrap(),
+        matches!(peer(&mut rooms[0].0, binding, ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }).unwrap(),
         HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.id == original.message.message.id)
     );
     assert_eq!(
@@ -943,7 +952,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         serde_json::to_value(&original.message).unwrap()
     );
     assert!(
-        matches!(peer(&mut reopened, binding, ConversationCommand::History { before: None }).unwrap(),
+        matches!(peer(&mut reopened, binding, ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }).unwrap(),
         HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.id == original.message.message.id)
     );
     drop(reopened);
@@ -982,7 +991,7 @@ async fn state_when(socket: &mut Socket, predicate: impl Fn(&Snapshot) -> bool) 
                 Event::Welcome { state, .. } | Event::State { state } if predicate(&state) => {
                     return state
                 }
-                Event::Error { code, .. } => panic!("server command failed: {code}"),
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("server command failed: {code}"),
                 _ => {}
             }
         }
@@ -991,12 +1000,13 @@ async fn state_when(socket: &mut Socket, predicate: impl Fn(&Snapshot) -> bool) 
     .expect("server room state")
 }
 async fn send_request(socket: &mut Socket, mut value: Value) {
-    value["requestId"] = json!(Uuid::new_v4().to_string());
     if value["type"] == "join" {
         value["canUsePeerTransport"] = json!(true);
         value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
         value["signingKey"] =
             json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());
+    } else if value.get("requestId").is_none() {
+        value["requestId"] = json!(Uuid::new_v4().to_string());
     }
     socket
         .send(Message::Text(value.to_string().into()))
@@ -1549,7 +1559,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                             break;
                         }
                     }
-                    Event::Error { code, .. } => panic!("conversation failed: {code}"),
+                    Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("conversation failed: {code}"),
                     _ => {}
                 }
             }
@@ -1584,7 +1594,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                     recipient: delivery.host_session_id,
                     request_id: "page".into(),
                 },
-                command: ConversationCommand::History { before: None },
+                command: ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
             },
         )
         .unwrap();
@@ -1608,7 +1618,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                         _ => panic!("unexpected history record"),
                     }
                 }
-                Event::Error { code, .. } => panic!("history failed: {code}"),
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("history failed: {code}"),
                 _ => {}
             }
         }
@@ -1675,13 +1685,13 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         .unwrap();
     let topology = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Event::RoomReply {
+            if let Event::Reply {
                 request_id,
-                result: piik_channel_core::host::RoomResult::Topology { topology },
+                result: ReplyResult::Topology { topology },
                 ..
             } = event(&mut admin).await
             {
-                assert_eq!(request_id.as_deref(), Some("topology"));
+                assert_eq!(request_id, "topology");
                 break topology;
             }
         }
@@ -1950,7 +1960,7 @@ async fn room_conversation(
                         return records;
                     }
                 }
-                Event::Error { code, .. } => panic!("conversation failed: {code}"),
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("conversation failed: {code}"),
                 _ => {}
             }
         }
@@ -1989,8 +1999,8 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     let room = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             match event(&mut creator).await {
-                Event::RoomCreated { room, .. } => break room,
-                Event::Error { code, .. } => panic!("creation failed: {code}"),
+                Event::Reply { result: ReplyResult::RoomCreated { room }, .. } => break room,
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("creation failed: {code}"),
                 _ => {}
             }
         }
@@ -2001,8 +2011,8 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     let invite = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut creator).await {
-                Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => break key,
-                Event::Error { code, .. } => panic!("invite failed: {code}"),
+                Event::Reply { result: ReplyResult::Invite { key }, .. } => break key,
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("invite failed: {code}"),
                 _ => {}
             }
         }
@@ -2060,8 +2070,8 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
                 Event::State { state } => {
                     other_creation_state = Some(state);
                 }
-                Event::RoomCreated { room, .. } => break room,
-                Event::Error { code, .. } => panic!("creation failed: {code}"),
+                Event::Reply { result: ReplyResult::RoomCreated { room }, .. } => break room,
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("creation failed: {code}"),
                 _ => {}
             }
         }
@@ -2236,7 +2246,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         session,
         &state,
         &room.id,
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     )
     .await;
     assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryPage {messages, ..} if messages.iter().any(|message| message.message.text == "After manager left" && message.message.inline_images.is_empty() && message.message.attachments.len() == 1))));
@@ -2268,13 +2278,14 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut operator).await {
-                Event::Error { code, request_id }
-                    if request_id.as_deref() == Some("remove-private") =>
+                Event::Reply { result: ReplyResult::Error { code }, request_id, room_id: Some(room_id) }
+                    if request_id == "remove-private" && room_id == room.id =>
                 {
                     assert_eq!(code, "storage_failed");
                     break;
                 }
-                Event::RoomReply { .. } => panic!("confirmed a failed deletion"),
+                Event::Reply { request_id, .. } if request_id == "remove-private" =>
+                    panic!("invalid result for failed deletion"),
                 _ => {}
             }
         }
@@ -2315,11 +2326,14 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut operator).await {
-                Event::Error { code, .. } => {
+                Event::Reply { result: ReplyResult::Error { code }, request_id, room_id: Some(room_id) }
+                    if request_id == "remove-private" && room_id == room.id =>
+                {
                     assert_eq!(code, "storage_failed");
                     break;
                 }
-                Event::RoomReply { .. } => panic!("confirmed an uncommitted directory removal"),
+                Event::Reply { request_id, .. } if request_id == "remove-private" =>
+                    panic!("invalid result for an uncommitted directory removal"),
                 _ => {}
             }
         }
@@ -2338,14 +2352,16 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut operator).await {
-                Event::RoomReply {
-                    result: piik_channel_core::host::RoomResult::Deleted { data_removed },
-                    ..
-                } => {
+                Event::Reply {
+                    result: ReplyResult::Deleted { data_removed },
+                    request_id,
+                    room_id: Some(room_id),
+                } if request_id == "remove-private" && room_id == room.id => {
                     assert!(data_removed);
                     break;
                 }
-                Event::Error { code, .. } => panic!("retirement failed: {code}"),
+                Event::Reply { request_id, .. } if request_id == "remove-private" =>
+                    panic!("invalid retirement result"),
                 _ => {}
             }
         }
@@ -2576,7 +2592,7 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
                 session,
                 &state,
                 "healthy",
-                ConversationCommand::History { before: None },
+                ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
             )
             .await;
             assert!(history.iter().any(|record| matches!(record, ConversationRecord::HistoryPage { messages, .. } if messages.iter().any(|message| message.message.text == "Retained history"))));
@@ -2667,13 +2683,11 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
     let profile = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             match event(&mut owner).await {
-                Event::Profiles {
-                    mut profiles,
-                    total: 1,
-                    next_cursor: None,
+                Event::Reply {
+                    result: ReplyResult::Profiles { mut profiles, total: 1, next_cursor: None },
                     ..
                 } => break profiles.pop().unwrap(),
-                Event::Error { code, .. } => panic!("profile read failed: {code}"),
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("profile read failed: {code}"),
                 _ => {}
             }
         }
@@ -3289,8 +3303,8 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
     let invite = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut creator).await {
-                Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => break key,
-                Event::Error { code, .. } => panic!("invite failed: {code}"),
+                Event::Reply { result: ReplyResult::Invite { key }, .. } => break key,
+                Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("invite failed: {code}"),
                 _ => {}
             }
         }
@@ -3330,7 +3344,7 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         reader_session,
         &readable,
         &room.id,
-        ConversationCommand::History { before: None },
+        ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     )
     .await;
     let [ConversationRecord::HistoryPage { messages, .. }] = history.as_slice() else { panic!("one history page expected") };
@@ -3440,7 +3454,14 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
         }
     }).to_string()).unwrap();
 
-    for outcome in ["room_busy", "room_creation_unconfirmed", "success"] {
+    for (outcome, correlated) in [
+        ("room_busy", true), ("room_creation_unconfirmed", true), ("success", true),
+        ("room_busy", false), ("success", false),
+    ] {
+        let mut create = request();
+        if !correlated {
+            create.request_id = None;
+        }
         let writer = async {
             let HostCommand::Open(open) = commands.recv().await.unwrap() else {
                 panic!("expected room open");
@@ -3459,7 +3480,7 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
             }
             id
         };
-        let (_, id) = tokio::join!(create_room(&domain, owner.id, request()), writer);
+        let (_, id) = tokio::join!(create_room(&domain, owner.id, create), writer);
         let events = owner.drain();
         let snapshots: Vec<_> = events.iter()
             .filter(|event| event["type"] == "state")
@@ -3467,12 +3488,24 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
             .collect();
         assert!(snapshots[0].contains(&json!(id)));
         assert_eq!(snapshots.last().unwrap().contains(&json!(id)), outcome != "room_busy");
-        let last = events.last().unwrap();
-        assert_eq!(last["requestId"], "create");
-        if outcome == "success" {
-            assert_eq!(last["type"], "room_created");
+        let terminal: Vec<_> = events.iter()
+            .filter(|event| matches!(event["type"].as_str(), Some("reply" | "error")))
+            .collect();
+        if correlated {
+            assert_eq!(terminal.len(), 1, "{events:?}");
+            let reply = terminal[0];
+            assert_eq!(reply["type"], "reply");
+            assert_eq!(reply["requestId"], "create");
+            assert!(reply.get("roomId").is_none());
+            if outcome == "success" {
+                assert_eq!(reply["result"]["type"], "room_created");
+            } else {
+                assert_eq!(reply["result"], json!({"type":"error","code":outcome}));
+            }
+        } else if outcome == "success" {
+            assert!(terminal.is_empty(), "{events:?}");
         } else {
-            assert_eq!(last["code"], outcome);
+            assert_eq!(terminal, vec![&json!({"type":"error","code":outcome})]);
         }
         if outcome == "room_creation_unconfirmed" {
             owner.request(&mut domain.hub.lock().unwrap(), json!({"type":"cancel_room_creation","roomId":id}));
@@ -3548,11 +3581,11 @@ async fn room_writer_work_does_not_spend_the_socket_read_timeout() {
                 Some(Ok(Message::Text(text))) => {
                     let event: Event = serde_json::from_str(&text).unwrap();
                     match event {
-                        Event::Error { request_id: Some(id), code } if id == "create" => {
+                        Event::Reply { request_id: id, room_id: None, result: ReplyResult::Error { code } } if id == "create" => {
                             assert_eq!(code, "room_busy");
                             outcomes.push(id);
                         }
-                        Event::Ack { request_id } if request_id == "profile" => {
+                        Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "profile" => {
                             outcomes.push(request_id);
                             let _ = socket.close(None).await;
                             return (true, pings, outcomes);
@@ -3619,11 +3652,11 @@ async fn buffered_room_registrations_drain_with_one_runtime_worker() {
         loop {
             match socket.next().await {
                 Some(Ok(Message::Text(text))) => match serde_json::from_str::<Event>(&text).unwrap() {
-                    Event::Ack { request_id } if request_id.starts_with("register-") => {
+                    Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id.starts_with("register-") => {
                         acknowledgements.push(request_id);
                         if acknowledgements.len() == rooms.len() { break; }
                     }
-                    Event::Error { code, .. } => panic!("registration error: {code}"),
+                    Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => panic!("registration error: {code}"),
                     _ => {}
                 },
                 Some(Ok(Message::Ping(bytes))) => { let _ = socket.send(Message::Pong(bytes)).await; }

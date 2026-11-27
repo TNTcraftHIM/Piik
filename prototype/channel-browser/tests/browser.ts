@@ -334,9 +334,9 @@ window.runBrowserRoomCheck = async () => {
       let before: number | null = null;
       const sizes: number[] = [], received: number[] = [];
       for (;;) {
-        const replies: PeerDelivery["replies"] = (await imageHost.dispatchPeer(packet({ type: "history", before }), Date.now())).replies;
+        const replies: PeerDelivery["replies"] = (await imageHost.dispatchPeer(packet({ type: "history", before, parts: ["unknownPart", "inlineImages", "inlineImages"] }), Date.now())).replies;
         const end: ConversationReply["record"] = replies[0].record;
-        check(end.type === "history_page", "image page uses the ordinary bounded history reply");
+        check(end.type === "history_page" && end.parts?.join() === "inlineImages", "full pages report the one supported requested part");
         const bodies = end.messages;
         check(replies.length === 1 && bodies.every(body => body.reactions) && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
           "byte-bounded pages preserve rows, reactions and cursors");
@@ -349,6 +349,20 @@ window.runBrowserRoomCheck = async () => {
       }
       check(sizes.join() === "2,2,2,1" && received.sort((a, b) => a - b).join() === "1,2,3,4,5,6,7",
         "real IndexedDB cursor pages match SQLite 2/2/2/1 without dropping a boundary row");
+      for (const parts of [undefined, [], ["unknownPart"]]) {
+        const [reply] = (await imageHost.dispatchPeer(packet({ type: "history", parts }), Date.now())).replies;
+        const page = reply.record;
+        check(page.type === "history_page" && page.parts === undefined && page.before === null && page.oldestSeq === 1 && !page.hasMore
+          && page.messages.map(row => row.seq).join() === "1,2,3,4,5,6,7"
+          && page.messages.every(row => !row.inlineImages && row.attachments[0].id === image.id && row.reactions.revision === 0),
+          "base pages omit image data before budgeting and retain row order and metadata");
+      }
+      for (const parts of [undefined, ["inlineImages"]]) {
+        const [reply] = (await imageHost.dispatchPeer(packet({ type: "history", before: 1, parts }), Date.now())).replies;
+        const page = reply.record;
+        check(page.type === "history_page" && page.parts?.join() === parts?.join() && page.before === 1 && page.oldestSeq === 1
+          && page.messages.length === 0 && !page.hasMore, "empty pages report the requested coverage they supply");
+      }
       await imageHost.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId,
         hostSessionId: session, revision: 2, endpoints, action: { type: "command",
           context: { connection, sessionId: peerSession, requestId: "read-images", now: Date.now() },
@@ -383,7 +397,7 @@ window.runBrowserRoomCheck = async () => {
         "the browser writer rejects an original relabelled as a thumbnail");
       const sent = (await imageHost.dispatchPeer(packet({ ...chat, inlineImages: { [attachment.id]: thumbnail } }), Date.now())).replies;
       check(sent[0].record.type === "confirmed" && sent[0].record.message.seq === 8, "the thumbnail is confirmed");
-      const records = (await imageHost.dispatchPeer(packet({ type: "history", before: null }), Date.now())).replies;
+      const records = (await imageHost.dispatchPeer(packet({ type: "history", before: null, parts: ["inlineImages"] }), Date.now())).replies;
       check(records.some(reply => "record" in reply && reply.record.type === "history_page"
         && reply.record.messages.some(message => message.inlineImages?.[attachment.id]?.data === thumbnail.data)),
         "the writer returns the thumbnail from history without requesting the original");
@@ -649,7 +663,8 @@ window.runBrowserRoomCheck = async () => {
     check((await dispatch({ type: "browse", roomId: host.roomId, active: true })).projection.lastMessageSeq === 110,
       "reopened Browser host projects the latest committed IndexedDB sequence without reading history first");
     const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
-    check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
+    check(!original.inserted && JSON.stringify(original.message) === JSON.stringify({ ...first.message, reactions: savedReaction }),
+      "nonce survives reopen and the retry receipt includes the retained reactions");
     check((await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId,
       kind: "screen", source: { kind: "screen", name: null }, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking restart cleanup");

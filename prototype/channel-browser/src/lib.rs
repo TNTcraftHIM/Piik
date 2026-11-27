@@ -6,7 +6,7 @@ use piik_channel_core::{
         ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, StoredMessage, HISTORY_PAGE,
     },
     host::{HostInput, RoomHost as SharedRoomHost},
-    wire::{RoomAccess, RoomIcon},
+    wire::{Command, RoomAccess, RoomIcon},
     RoomState,
 };
 use serde::{Deserialize, Serialize};
@@ -216,8 +216,8 @@ pub struct HistoryPage(piik_channel_core::history::HistoryPage);
 #[wasm_bindgen]
 impl HistoryPage {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self(Default::default())
+    pub fn new(inline_images: bool) -> Self {
+        Self(piik_channel_core::history::HistoryPage::new(inline_images))
     }
 
     pub fn push(&mut self, row: &str) -> Result<bool, JsValue> {
@@ -403,12 +403,15 @@ impl RoomHost {
         )
     }
     pub fn dispatch(&mut self, input: &str) -> Result<String, JsValue> {
-        encode(
-            &self
-                .room
-                .dispatch(parse::<HostInput>(input)?)
-                .map_err(error)?,
-        )
+        let input: HostInput = parse(input)?;
+        if input.action.is_unsupported() {
+            return encode(&Command::HostUnsupported {
+                room_id: self.room_id(),
+                binding_id: input.binding_id,
+                revision: input.revision,
+            });
+        }
+        encode(&self.room.dispatch(input).map_err(error)?)
     }
     /// Called only after requested storage completes; this binding sends no network ack.
     pub fn finish(&mut self, history: Option<String>) -> Result<String, JsValue> {

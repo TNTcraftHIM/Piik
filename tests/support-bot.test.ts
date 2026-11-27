@@ -79,7 +79,7 @@ test('a fresh help command quotes the latest report from its author in the prece
     send('!help last', { userId: 'bot' });
     client.emit('live', { seq: 5, id: 'new', userId: 'friend', text: '!help last' });
     await vi.waitFor(() => expect(client.chat).toHaveBeenCalledOnce());
-    expect(client.history).toHaveBeenCalledExactlyOnceWith(5);
+    expect(client.history).toHaveBeenCalledExactlyOnceWith(5, { parts: [] });
     expect(client.chat).toHaveBeenCalledWith(expect.any(String), { reply: { seq: 2, messageId: 'second', notify: true } });
     expect(client.react).not.toHaveBeenCalled();
   } finally { await detach(); }

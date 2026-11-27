@@ -515,19 +515,28 @@ impl Storage {
                     .map_err(|_| "storage_failed")?;
                 HistoryResult::Seek { after: *after, seq }
             }
-            HistoryRequest::Read { room_id, before } => {
+            HistoryRequest::Read {
+                room_id,
+                before,
+                inline_images,
+            } => {
                 let newest = before
                     .map(|seq| seq.saturating_sub(1))
                     .unwrap_or(u64::MAX)
                     .min(i64::MAX as u64);
-                let mut page = HistoryPage::default();
+                let mut page = HistoryPage::new(*inline_images);
+                let images_column = if *inline_images {
+                    "inline_images"
+                } else {
+                    "'{}'"
+                };
                 {
                     let mut query = transaction
-                        .prepare(
-                            "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images,mentions,reply FROM message
+                        .prepare(&format!(
+                            "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,{images_column},mentions,reply FROM message
                          WHERE room_id=?1 AND seq<=?2
                          ORDER BY seq DESC LIMIT ?3",
-                        )
+                        ))
                         .map_err(|_| "storage_failed")?;
                     let rows = query
                         .query_map(params![room_id, newest, HISTORY_PAGE], read_message)
@@ -855,6 +864,7 @@ mod tests {
             .history(&HistoryRequest::Read {
                 room_id: room.into(),
                 before,
+                inline_images: true,
             })
             .unwrap()
         {
@@ -863,6 +873,7 @@ mod tests {
                 has_more,
                 oldest_seq,
                 before: cursor,
+                ..
             } => {
                 assert_eq!(cursor, before);
                 (
@@ -1023,6 +1034,7 @@ mod tests {
         let mut sizes = Vec::new();
         loop {
             let HistoryResult::Page {
+                inline_images,
                 messages,
                 has_more,
                 oldest_seq,
@@ -1031,11 +1043,13 @@ mod tests {
                 .history(&HistoryRequest::Read {
                     room_id: "images".into(),
                     before,
+                    inline_images: true,
                 })
                 .unwrap()
             else {
                 panic!("page expected")
             };
+            assert!(inline_images);
             assert_eq!(cursor, before);
             assert_eq!(oldest_seq, Some(1));
             assert!(!messages.is_empty());
@@ -1059,6 +1073,32 @@ mod tests {
         assert_eq!(sizes, [2, 2, 2, 1]);
         received.sort_unstable();
         assert_eq!(received, (1..=7).collect::<Vec<_>>());
+        for (before, expected) in [(None, 7), (Some(1), 0)] {
+            let HistoryResult::Page {
+                inline_images: false,
+                messages,
+                has_more: false,
+                oldest_seq: Some(1),
+                before: cursor,
+            } = store
+                .history(&HistoryRequest::Read {
+                    room_id: "images".into(),
+                    before,
+                    inline_images: false,
+                })
+                .unwrap()
+            else {
+                panic!("base history page expected")
+            };
+            assert_eq!(cursor, before);
+            assert_eq!(
+                messages.iter().map(|row| row.message.seq).collect::<Vec<_>>(),
+                (1..=expected).collect::<Vec<_>>(),
+            );
+            assert!(messages.iter().all(|row| {
+                row.message.inline_images.is_empty() && row.message.attachments == draft.attachments
+            }));
+        }
         assert!(page(&mut store, "images", Some(1)).0.is_empty());
         bytes.resize(crate::ATTACHMENT_LIMITS.max_inline_image_bytes, 0);
         draft.attachments[0].size = bytes.len() as u64;

@@ -433,10 +433,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         if denied {
             session
                 .event(
-                    Event::Error {
-                        code: "forbidden".into(),
-                        request_id: request.request_id,
-                    },
+                    Event::Reply { request_id: request.request_id.unwrap(), room_id: None, result: ReplyResult::Error { code: "forbidden".into() } },
                     &mut socket,
                 )
                 .await
@@ -619,9 +616,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
                 .unwrap();
             session
                 .event(
-                    Event::Ack {
-                        request_id: registration.request_id.unwrap(),
-                    },
+                    Event::Reply { request_id: registration.request_id.unwrap(), room_id: None, result: ReplyResult::Done },
                     &mut socket,
                 )
                 .await
@@ -659,7 +654,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
 #[tokio::test]
 async fn committed_restore_registration_completes_each_coalesced_reply_with_its_own_result() {
     use piik_channel_core::{backup::RoomMetadata, wire::Request, RoomBackup};
-    for failure in ["rejected", "missing-binding", "disconnected", "success", "ambiguous-at-install", "recovered-original"] {
+    for failure in ["unknown", "rejected", "missing-binding", "disconnected", "success", "ambiguous-at-install", "recovered-original"] {
         let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
         let native = session.live.as_ref().unwrap().session;
         let user = state
@@ -760,7 +755,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         if failure == "ambiguous-at-install" {
             std::fs::write(&duplicate, &original).unwrap();
         }
-        session.event(Event::Ack { request_id: admission.request_id.unwrap() }, &mut socket).await.unwrap();
+        session.event(Event::Reply { request_id: admission.request_id.unwrap(), room_id: None, result: ReplyResult::Done }, &mut socket).await.unwrap();
         if failure == "ambiguous-at-install" {
             assert_eq!(restored_reply.await.unwrap().err().unwrap(), "room_unavailable");
             assert_eq!(std::fs::read(&path).unwrap(), original);
@@ -775,7 +770,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         if failure == "recovered-original" {
             let installed = session.files.iter().find(|file| file.path != path).unwrap().path.clone();
             session.event(Event::HostBound { room_id: "target".into(), binding_id: binding }, &mut socket).await.unwrap();
-            session.event(Event::Ack { request_id: registration.request_id.unwrap() }, &mut socket).await.unwrap();
+            session.event(Event::Reply { request_id: registration.request_id.unwrap(), room_id: None, result: ReplyResult::Done }, &mut socket).await.unwrap();
             assert_eq!(restored_reply.await.unwrap().unwrap().name, "Restored");
             let imported = std::fs::read(&installed).unwrap();
             std::fs::write(&path, &original).unwrap();
@@ -838,9 +833,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                 .unwrap();
             session
                 .event(
-                    Event::Ack {
-                        request_id: registration.request_id.unwrap(),
-                    },
+                    Event::Reply { request_id: registration.request_id.unwrap(), room_id: None, result: ReplyResult::Done },
                     &mut socket,
                 )
                 .await
@@ -937,6 +930,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                 .history(&HistoryRequest::Read {
                     room_id: "target".into(),
                     before: None,
+                    inline_images: true,
                 })
                 .unwrap()
             else {
@@ -947,21 +941,17 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             continue;
         }
         match failure {
+            "unknown" => session.event(Event::Reply { request_id: registration.request_id.unwrap(), room_id: None, result: ReplyResult::Unknown }, &mut socket).await.unwrap(),
             "rejected" => session
                 .event(
-                    Event::Error {
-                        code: "forbidden".into(),
-                        request_id: registration.request_id,
-                    },
+                    Event::Reply { request_id: registration.request_id.unwrap(), room_id: None, result: ReplyResult::Error { code: "forbidden".into() } },
                     &mut socket,
                 )
                 .await
                 .unwrap(),
             "missing-binding" => session
                 .event(
-                    Event::Ack {
-                        request_id: registration.request_id.unwrap(),
-                    },
+                    Event::Reply { request_id: registration.request_id.unwrap(), room_id: None, result: ReplyResult::Done },
                     &mut socket,
                 )
                 .await
@@ -982,6 +972,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             "{failure}: restored bytes cannot be reported as uncommitted"
         );
         let expected_open = match failure {
+            "unknown" => "room_creation_unconfirmed",
             "rejected" => "forbidden",
             "missing-binding" => "room_unavailable",
             _ => "hosting_unavailable",
@@ -1221,10 +1212,10 @@ async fn capture_confirmation_returns_shared_signal_failure_to_carrier() {
         assert_eq!(frame["type"], "signal");
         Err::<(), _>(tokio_tungstenite::tungstenite::Error::ConnectionClosed)
     }));
-    let outcome = session.event(Event::RoomReply {
-        room_id: "target".into(),
-        request_id: Some(id),
-        result: RoomResult::Done,
+    let outcome = session.event(Event::Reply {
+        room_id: Some("target".into()),
+        request_id: id,
+        result: ReplyResult::Done,
     }, &mut failed).await;
     assert!(outcome.unwrap_err().is::<tokio_tungstenite::tungstenite::Error>());
     assert!(matches!(response.await, Ok(Err(code)) if code == "disconnected"));
@@ -1256,19 +1247,17 @@ async fn capture_prepare_waits_for_room_authority_before_platform_preparation() 
         let id = command["requestId"].as_str().unwrap().to_owned();
         session
             .event(
-                Event::Ack {
-                    request_id: id.clone(),
-                },
+                serde_json::from_value(serde_json::json!({"type":"future_event","requestId":id})).unwrap(),
                 &mut socket,
             )
             .await
             .unwrap();
         session
             .event(
-                Event::RoomReply {
-                    room_id: "offline".into(),
-                    request_id: Some(id.clone()),
-                    result: RoomResult::Done,
+                Event::Reply {
+                    room_id: Some("offline".into()),
+                    request_id: id.clone(),
+                    result: ReplyResult::Done,
                 },
                 &mut socket,
             )
@@ -1295,10 +1284,10 @@ async fn capture_prepare_waits_for_room_authority_before_platform_preparation() 
             .is_empty());
         session
             .event(
-                Event::RoomReply {
-                    room_id: "target".into(),
-                    request_id: Some(id),
-                    result: RoomResult::Done,
+                Event::Reply {
+                    room_id: Some("target".into()),
+                    request_id: id,
+                    result: ReplyResult::Done,
                 },
                 &mut socket,
             )
@@ -1329,10 +1318,10 @@ async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
                 "room-error" => {
                     session
                         .event(
-                            Event::RoomReply {
-                                room_id: "target".into(),
-                                request_id: Some(id.clone()),
-                                result: RoomResult::Error {
+                            Event::Reply {
+                                room_id: Some("target".into()),
+                                request_id: id.clone(),
+                                result: ReplyResult::Error {
                                     code: "room_context_changed".into(),
                                 },
                             },
@@ -1361,10 +1350,10 @@ async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
             }
             session
                 .event(
-                    Event::RoomReply {
-                        room_id: "target".into(),
-                        request_id: Some(id),
-                        result: RoomResult::Done,
+                    Event::Reply {
+                        room_id: Some("target".into()),
+                        request_id: id,
+                        result: ReplyResult::Done,
                     },
                     &mut socket,
                 )
@@ -1429,8 +1418,9 @@ async fn capture_command_completes_only_on_the_correlated_room_reply() {
         room_discovery: None,
     };
     for result in [
-        RoomResult::Done,
-        RoomResult::Error {
+        ReplyResult::Unknown,
+        ReplyResult::Done,
+        ReplyResult::Error {
             code: "room_rejected".into(),
         },
     ] {
@@ -1449,19 +1439,17 @@ async fn capture_command_completes_only_on_the_correlated_room_reply() {
         );
         session
             .event(
-                Event::Ack {
-                    request_id: id.clone(),
-                },
+                serde_json::from_value(serde_json::json!({"type":"future_event","requestId":id})).unwrap(),
                 &mut socket,
             )
             .await
             .unwrap();
         session
             .event(
-                Event::RoomReply {
-                    room_id: "other".into(),
-                    request_id: Some(id.clone()),
-                    result: RoomResult::Done,
+                Event::Reply {
+                    room_id: Some("other".into()),
+                    request_id: id.clone(),
+                    result: ReplyResult::Done,
                 },
                 &mut socket,
             )
@@ -1472,15 +1460,16 @@ async fn capture_command_completes_only_on_the_correlated_room_reply() {
             Err(oneshot::error::TryRecvError::Empty)
         ));
         let expected = match &result {
-            RoomResult::Done => Ok(()),
-            RoomResult::Error { code } => Err(code.clone()),
+            ReplyResult::Unknown => Err("unknown_outcome".into()),
+            ReplyResult::Done => Ok(()),
+            ReplyResult::Error { code } => Err(code.clone()),
             _ => unreachable!(),
         };
         session
             .event(
-                Event::RoomReply {
-                    room_id: "room".into(),
-                    request_id: Some(id.clone()),
+                Event::Reply {
+                    room_id: Some("room".into()),
+                    request_id: id.clone(),
                     result,
                 },
                 &mut socket,
@@ -1491,10 +1480,10 @@ async fn capture_command_completes_only_on_the_correlated_room_reply() {
         assert!(session.pending_captures.is_empty());
         session
             .event(
-                Event::RoomReply {
-                    room_id: "room".into(),
-                    request_id: Some(id),
-                    result: RoomResult::Done,
+                Event::Reply {
+                    room_id: Some("room".into()),
+                    request_id: id,
+                    result: ReplyResult::Done,
                 },
                 &mut socket,
             )
@@ -1649,10 +1638,10 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             assert_eq!(cleanup["publicationId"], requests[0].0.to_string());
             session
                 .event(
-                    Event::RoomReply {
-                        room_id: "affected".into(),
-                        request_id: Some(requests[0].2.clone()),
-                        result: RoomResult::Done,
+                    Event::Reply {
+                        room_id: Some("affected".into()),
+                        request_id: requests[0].2.clone(),
+                        result: ReplyResult::Done,
                     },
                     &mut socket,
                 )
@@ -1740,7 +1729,7 @@ async fn room_file_failures_keep_the_sibling_on_the_same_session() -> Result<()>
     .unwrap()
     .summary();
     room.id = "domain-created".into();
-    session.event(Event::RoomCreated { room, request_id: Some(request_id) }, &mut socket).await?;
+    session.event(Event::Reply { room_id: None, request_id, result: ReplyResult::RoomCreated { room } }, &mut socket).await?;
     let live = session.live.as_ref().unwrap();
     assert_eq!(live.session, session_id);
     assert_eq!(live.room.rooms.len(), 1);

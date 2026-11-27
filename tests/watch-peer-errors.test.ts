@@ -119,7 +119,7 @@ test("actual Session explicit peer command retains the admitted root and reader 
   const session = new ChannelSession();
   const view = session.getSnapshot();
   const request = vi.fn(async (command: unknown, reply?: (value: unknown) => void) => {
-    commands.push(command);reply?.({ type: "room_reply", result: { type: "watch_ready", serverTime: 1000 } });
+    commands.push(command);reply?.({ type: "watch_ready", serverTime: 1000 });
   });
   const stage = (session as unknown as { stage(roomId: string): Stage }).stage(activity.roomId);
   stage.useWatch(activity.id, old);

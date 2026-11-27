@@ -576,7 +576,7 @@ mod tests {
             original
         );
         assert!(
-            matches!(store.history(&piik_channel_core::history::HistoryRequest::Read { room_id: "room".into(), before: None }).unwrap(),
+            matches!(store.history(&piik_channel_core::history::HistoryRequest::Read { room_id: "room".into(), before: None, inline_images: true }).unwrap(),
                 piik_channel_core::history::HistoryResult::Page { messages, .. } if messages.is_empty())
         );
         let replacement = Uuid::new_v4();

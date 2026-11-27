@@ -125,6 +125,14 @@ pub enum HostAction {
         peer: Uuid,
         ready: bool,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
+}
+
+impl HostAction {
+    pub fn is_unsupported(&self) -> bool {
+        matches!(self, Self::Unknown | Self::Command { command: Command::Unknown, .. })
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -216,6 +224,8 @@ pub enum RoomResult {
     Error {
         code: String,
     },
+    #[serde(other, rename = "unknown_outcome")]
+    Unknown,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1725,9 +1735,15 @@ impl RoomHost {
                     now,
                 )
                 .map(ConversationWork::History),
-            ConversationCommand::History { before } => self
+            ConversationCommand::History { before, parts } => self
                 .room
-                .history(endpoint.member, before)
+                .history(
+                    endpoint.member,
+                    before,
+                    parts
+                        .iter()
+                        .any(|part| part == crate::conversation::HISTORY_INLINE_IMAGES),
+                )
                 .map(ConversationWork::History),
             ConversationCommand::HistorySeek { after } => self
                 .room
@@ -1873,6 +1889,9 @@ impl RoomHost {
     }
 
     pub fn dispatch(&mut self, input: HostInput) -> Result<HostWork, &'static str> {
+        if input.action.is_unsupported() {
+            return Err("unsupported");
+        }
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
@@ -1947,6 +1966,7 @@ impl RoomHost {
                 .transpose()?;
             match &input.action {
                 // Every dispatch has reconciled, and so expired, each publication above.
+                HostAction::Unknown => unreachable!(),
                 HostAction::Sync | HostAction::RouteWake => {}
                 HostAction::RemoveHostedRoom { .. } => {
                     work.delete = true;

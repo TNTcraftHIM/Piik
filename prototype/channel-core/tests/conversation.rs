@@ -1,5 +1,6 @@
 #![cfg(feature = "sqlite")]
 mod support;
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     conversation::{
         verify, verify_delivery, ConversationAddress, ConversationCommand, ConversationRecord,
@@ -37,7 +38,7 @@ fn relay(
         !effects
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Ack { .. })),
+            .any(|(_, event)| matches!(event, Event::Reply { result: ReplyResult::Done, .. })),
         "forwarding is not confirmation"
     );
     effects
@@ -61,9 +62,9 @@ fn refused(network: &mut RoomNetwork, connection: Uuid, target: Uuid, packet: &S
     let [(recipient, event)] = effects.events.as_slice() else { panic!("expected one refusal") };
     assert_eq!(*recipient, target);
     if target == connection {
-        assert!(matches!(event, Event::Error {code: actual, request_id: Some(id)} if actual == code && id == "chat"));
+        assert!(matches!(event, Event::Reply { request_id: id, result: ReplyResult::Error { code: actual }, .. } if actual == code && id == "chat"));
     } else {
-        assert!(matches!(event, Event::RoomReply {result: piik_channel_core::host::RoomResult::Error { code: actual }, request_id: Some(id), ..} if actual == code && id == "chat"));
+        assert!(matches!(event, Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Error { code: actual } } if actual == code && id == "chat"));
     }
 }
 
@@ -82,11 +83,11 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     join(&mut network, outsider);
     let room = network.create(owner, RoomAccess::Private, false);
     let key = network
-        .command(owner, json!({"type":"room_invite","roomId":room}))
+        .command(owner, json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -235,15 +236,18 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             reader_session,
             &ConversationRequest {
                 address: address.clone(),
-                command: ConversationCommand::History { before: None },
+                command: ConversationCommand::History {
+                    before: None,
+                    parts: vec!["unknownPart".into(), "inlineImages".into(), "inlineImages".into()],
+                },
             },
         )
         .unwrap();
     let forwarded = relay(&mut network, reader, owner, &history);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
     assert_eq!(replies.len(), 1);
-    assert!(matches!(replies[0].content(), ConversationRecord::HistoryPage { messages, .. }
-        if messages.len() == 1 && messages[0].message.id == confirmed.unwrap()));
+    assert!(matches!(replies[0].content(), ConversationRecord::HistoryPage { parts, messages, .. }
+        if parts == &["inlineImages"] && messages.len() == 1 && messages[0].message.id == confirmed.unwrap()));
     rejected(
         &mut network,
         outsider,
@@ -265,7 +269,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             reader_session,
             &ConversationRequest {
                 address: peer_address,
-                command: ConversationCommand::History { before: None },
+                command: ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
             },
         )
         .unwrap();
@@ -298,7 +302,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     let owner_user = network.policy(&room).creator_id;
     let own_revoke = network.command(owner, json!({"type":"revoke_room_access","roomId":room,"userId":owner_user}));
     assert!(own_revoke.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "forbidden")));
+        Event::Error { room_id: Some(_), code } if code == "forbidden")));
     relay(&mut network, owner, reader, &private_reply);
     let revoke = piik_channel_core::wire::Request::parse(
         &json!({"type":"revoke_room_access","roomId":room,"userId":reader_user}).to_string(),
@@ -319,7 +323,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         &json!({"type":"host_output","roomId":room,"output":revoked}).to_string(),
     ).unwrap();
     let stale = network.authority.handle(owner, output, 112);
-    assert!(!stale.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
+    assert!(!stale.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     refused(&mut network, owner, reader, &private_reply, "room_busy");
     network.deliver(cover);
     refused(&mut network, owner, reader, &private_reply, "room_access_required");
@@ -411,10 +415,10 @@ fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
     assert!(fanout.events.is_empty());
     let after = network.deliver(covering);
     assert!(after.events.iter().any(|(connection, event)| *connection == owner && matches!(event,
-        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "forbidden")));
+        Event::Error { room_id: Some(_), code } if code == "forbidden")));
     assert!(network.state(reader).channel.rooms.iter().any(|r| r.id == room && r.authorized && r.available));
     assert!(matches!(blocked.events.as_slice(),
-        [(target, Event::RoomReply { room_id, result: piik_channel_core::host::RoomResult::Error { code }, request_id: Some(id) })]
+        [(target, Event::Reply { room_id: Some(room_id), request_id: id, result: ReplyResult::Error { code } })]
             if *target == reader && room_id == &room && code == "room_busy" && id == &retry.address.request_id));
 }
 

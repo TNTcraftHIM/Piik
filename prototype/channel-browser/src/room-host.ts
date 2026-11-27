@@ -8,7 +8,7 @@ export function initializeRuntime(): Promise<void> {
   });
 }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
-import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationNotice, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
+import type { ChannelCommand, ChannelMessage, ChatOptions, ConversationAddress, ConversationNotice, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
 import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostDispatchOptions, type HostedRoom, type PeerDelivery } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
@@ -32,7 +32,7 @@ function portable(row: BackupHistoryRow & { retryKey: string }): BackupHistoryRo
 function live(row: StoredRow | undefined) { return row && "id" in row ? row : undefined; }
 export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
 export interface PageResult {
-  type: "page"; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
+  type: "page"; inlineImages: boolean; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
@@ -40,7 +40,7 @@ type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult
   | { type: "media_cleared"; throughSeq: number }
   | { type: "seek"; after: number; seq: number | null };
 interface SendRequest { type: "send"; roomId: string; draft: ChatOptions & { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
-interface ReadRequest { type: "read"; roomId: string; before: number | null }
+interface ReadRequest { type: "read"; roomId: string; before: number | null; inlineImages: boolean }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest
@@ -48,6 +48,7 @@ type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRe
   | { type: "seek"; roomId: string; after: number; excludeAuthor: string }
   | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string; authorId?: string | null }
   | { type: "clear_history"; roomId: string; throughSeq: number };
+type HostUnsupported = Extract<ChannelCommand, { type: "host_unsupported" }>;
 interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
 type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
@@ -376,7 +377,8 @@ export class BrowserRoomHost implements HostedRoom {
       if (current?.() === false || !this.bindingId || (input as { bindingId?: string } | null)?.bindingId !== this.bindingId) {
         throw new Error("stale_room_host");
       }
-      const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));
+      const work: HostWork | HostUnsupported = JSON.parse(this.room.dispatch(JSON.stringify(input)));
+      if ("type" in work) return work;
       try {
         let result: HistoryResult | undefined;
         if (work.delete) {
@@ -438,7 +440,7 @@ export class BrowserRoomHost implements HostedRoom {
   }
 
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
-    let page = request.type === "read" ? new HistoryPage() : undefined;
+    let page = request.type === "read" ? new HistoryPage(request.inlineImages) : undefined;
     let oldest: number | undefined, result: HistoryResult;
     return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "clear_media" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort, record) => {
       const clearedThrough = record.clearedThrough ?? 0;
@@ -536,6 +538,7 @@ export class BrowserRoomHost implements HostedRoom {
             const row = live(value.value);
             if (!row) return value.continue();
             const { roomId: _roomId, nonce: _nonce, retryKey: _retryKey, ...message } = row;
+            if (!request.inlineImages) delete message.inlineImages;
             if (page!.push(JSON.stringify(message))) value.continue();
           }, abort);
         }
