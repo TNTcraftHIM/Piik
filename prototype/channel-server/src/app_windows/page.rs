@@ -1437,7 +1437,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     let selected = *loading.candidates.keys().next().unwrap();
     loading.selected = Some(selected);
     // Two immediate samples can arrive before the next batched candidate report.
-    let sample = |resource: &str| json!({"kind":"sample","media":media,"resource":resource,"event":"loadedmetadata"});
+    let sample = |resource: &str| json!({"kind":"sample","media":media,"resource":resource,"revision":0,"event":"loadedmetadata"});
     send(&mut pages, sample("blob:first"));
     assert_eq!(
         pages.pages[&view].candidates[&selected].source.resource,
@@ -1487,17 +1487,19 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     let child_window = view.window.id();
     windows.insert(child_window);
     let retired = view.media.borrow().retired.subscribe();
-    view.document = Some(Uuid::new_v4());
+    let child_frame = Uuid::new_v4();
+    let child_media = Uuid::new_v4();
+    view.document = Some(child_frame);
     reopened.views.borrow_mut().insert(child, view);
     let candidate = Uuid::new_v4();
     reopened.candidates.insert(
         candidate,
         Candidate {
             view: child,
-            frame: Uuid::new_v4(),
+            frame: child_frame,
             ancestors: vec![],
             source: ReportedCandidate {
-                media: Uuid::new_v4(),
+                media: child_media,
                 resource: "blob:owned".into(),
                 revision: 0,
                 title: "Owned popup".into(),
@@ -1539,6 +1541,33 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     assert_eq!(catalog["type"], "page_candidates");
     assert_eq!(catalog["candidates"][0]["id"], json!(candidate));
 
+    // A frame can report candidate loss before the next catalog, or the catalog can arrive first.
+    let mut read = Box::pin(connection.request(Operation::PageRead { page_id, candidate_id: Some(candidate) }));
+    assert!(futures_util::poll!(&mut read).is_pending());
+    pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
+    let request = *pages.pages.values().next().unwrap().pending.keys().next().unwrap();
+    pages.message(child, &json!({
+        "kind":"reply", "document":child_frame, "frame":child_frame,
+        "request":request, "error":"page_candidate_unavailable"
+    }).to_string());
+    let frame_error = read.await.unwrap_err().to_string();
+
+    let mut select = Box::pin(connection.request(Operation::PageSelect {
+        page_id, candidate_id: candidate, original_page: true, resource_id: None,
+    }));
+    assert!(futures_util::poll!(&mut select).is_pending());
+    pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
+    assert_eq!(events.try_recv().unwrap()["type"], "page_candidates");
+    pages.message(child, &json!({
+        "kind":"candidates", "document":child_frame, "frame":child_frame,
+        "candidates":[], "removed":[child_media]
+    }).to_string());
+    let catalog_error = select.await.unwrap_err().to_string();
+    let selection_lost = events.try_recv().unwrap();
+    let empty_catalog = events.try_recv().unwrap();
+    let page = pages.pages.values().next().unwrap();
+    let retired = page.views.borrow()[&child].media.borrow().retired.subscribe();
+
     let mut close = Box::pin(connection.request(Operation::PageClose { page_id }));
     assert!(futures_util::poll!(&mut close).is_pending());
     assert_eq!(close.await.unwrap_err().to_string(), "page_player_timeout");
@@ -1570,6 +1599,12 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     );
     drop(environment);
     profile.close().unwrap();
+    assert_eq!(frame_error, "page_candidate_unavailable");
+    assert_eq!(catalog_error, "page_candidate_unavailable");
+    assert_eq!(selection_lost["type"], "page_selection_lost");
+    assert_eq!(selection_lost["candidateId"], json!(candidate));
+    assert_eq!(empty_catalog["type"], "page_candidates");
+    assert_eq!(empty_catalog["candidates"], json!([]));
 }
 
 #[cfg(test)]
