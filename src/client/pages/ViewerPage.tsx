@@ -1079,6 +1079,7 @@ export function ViewerPage({
             pendingPeer = null;
             prepareParent(null);
             peerRef.current = activatedPeer;
+            refreshScreenBufferStatus();
             activatedPeer.activatePreparedRoute();
             previousPeer?.dispose();
             applyMediaAssignment(
