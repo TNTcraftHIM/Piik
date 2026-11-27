@@ -83,7 +83,7 @@ function mpdEngineNotices(repositoryRoot) {
   return section("Bundled MPD resolver JavaScript", readFileSync(join(repositoryRoot,
     "prototype", "channel-mpd", "THIRD-PARTY-NOTICES.txt"), "utf8")) +
     // rquickjs-core's crate omits its workspace license; cargo-about uses a template.
-    section("rquickjs and rquickjs-core 0.14.0 (MIT)", pinnedNotice("rquickjs@0.14.0"));
+    section("rquickjs and rquickjs-core 0.15.0 (MIT)", pinnedNotice("rquickjs@0.15.0"));
 }
 
 export function writeServerLicenseNotices(repositoryRoot, outputFile, target) {
