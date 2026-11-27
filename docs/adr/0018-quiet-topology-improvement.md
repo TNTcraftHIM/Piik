@@ -54,11 +54,8 @@ yet.
    otherwise the new child alone is withdrawn, by its generation, and that
    sender is not tried again without fresh evidence. A node healthy with N
    children has proved N for that workload, nothing more, and the room's
-   number is where it starts. A sender takes part only while it reports
-   headroom: one yes or no for each kind, decided on the device from what its
-   own connections measure, which refuses a trial and never proves one. The
-   measurements stay on the device. A person's explicit limit, zero included,
-   is kept, and each kind keeps its own budget. Memory across days is a later
+   number is where it starts. A person's explicit limit, zero included, is
+   kept, and each kind keeps its own budget. Memory across days is a later
    stage.
 6. **Placement uses negotiated facts.** The generations a path costs depend on
    the formats and the implementation negotiated for that flow, not on a
