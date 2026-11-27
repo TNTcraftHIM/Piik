@@ -86,6 +86,13 @@ fn profile_version(name: &str, avatar: &Option<String>) -> String {
         .collect()
 }
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct PeerCapabilities {
+    pub can_use_peer_transport: bool,
+    pub can_prepare_udp: bool,
+    pub can_receive_video_layers: bool,
+}
+
 #[derive(Clone)]
 pub struct Session {
     pub id: Uuid,
@@ -93,9 +100,7 @@ pub struct Session {
     pub connection: Option<Uuid>,
     pub disconnected_at: Option<u64>,
     pub signing_key: [u8; 32],
-    pub can_use_peer_transport: bool,
-    pub can_prepare_udp: bool,
-    pub can_receive_video_layers: bool,
+    pub capabilities: PeerCapabilities,
 }
 
 #[derive(Clone)]
@@ -108,9 +113,7 @@ pub struct Identity {
 
 pub struct Admission<'a> {
     pub signing_key: [u8; 32],
-    pub can_use_peer_transport: bool,
-    pub can_prepare_udp: bool,
-    pub can_receive_video_layers: bool,
+    pub capabilities: PeerCapabilities,
     pub credential: Option<&'a str>,
     pub owner_key: Option<&'a str>,
     pub resume: Option<&'a str>,
@@ -225,7 +228,7 @@ impl Identity {
                         member: self.member(session.user_id).expect("admitted session"),
                         signing_key: session.signing_key,
                         connected: session.connection.is_some(),
-                        can_use_peer_transport: session.can_use_peer_transport,
+                        can_use_peer_transport: session.capabilities.can_use_peer_transport,
                     },
                 )
             })
@@ -332,15 +335,12 @@ impl Identity {
             connection: None,
             disconnected_at: None,
             signing_key: input.signing_key,
-            can_use_peer_transport: input.can_use_peer_transport,
-            can_prepare_udp: input.can_prepare_udp,
-            can_receive_video_layers: input.can_receive_video_layers,
+            capabilities: input.capabilities,
         });
         session.signing_key = input.signing_key;
-        let peer_transport_withdrawn = session.can_use_peer_transport && !input.can_use_peer_transport;
-        session.can_use_peer_transport = input.can_use_peer_transport;
-        session.can_prepare_udp = input.can_prepare_udp;
-        session.can_receive_video_layers = input.can_receive_video_layers;
+        let peer_transport_withdrawn = session.capabilities.can_use_peer_transport
+            && !input.capabilities.can_use_peer_transport;
+        session.capabilities = input.capabilities;
         let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
@@ -460,9 +460,10 @@ mod tests {
     ) -> Admission<'a> {
         Admission {
             signing_key: [1; 32],
-            can_use_peer_transport: true,
-            can_prepare_udp: false,
-            can_receive_video_layers: false,
+            capabilities: PeerCapabilities {
+                can_use_peer_transport: true,
+                ..PeerCapabilities::default()
+            },
             owner_key: key,
             credential,
             resume,

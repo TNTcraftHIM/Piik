@@ -171,7 +171,9 @@ impl TransportBook {
             .filter_map(|(&key @ (a, b), pair)| {
                 let first = identity.sessions.get(&a)?;
                 let second = identity.sessions.get(&b)?;
-                if !first.can_use_peer_transport || !second.can_use_peer_transport {
+                if !first.capabilities.can_use_peer_transport
+                    || !second.capabilities.can_use_peer_transport
+                {
                     return None;
                 }
                 let sockets = [first.connection, second.connection];
@@ -841,6 +843,7 @@ impl TransportBook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::PeerCapabilities;
 
     fn edge(a: u128, b: u128) -> DiscoveryEdge {
         DiscoveryEdge {
@@ -885,9 +888,10 @@ mod tests {
                     connection: Some(socket),
                     disconnected_at: None,
                     signing_key: [0; 32],
-                    can_use_peer_transport: true,
-                    can_prepare_udp: false,
-                    can_receive_video_layers: false,
+                    capabilities: PeerCapabilities {
+                        can_use_peer_transport: true,
+                        ..PeerCapabilities::default()
+                    },
                 },
             );
         }
@@ -1352,9 +1356,10 @@ mod tests {
                     connection: Some(socket),
                     disconnected_at: None,
                     signing_key: [0; 32],
-                    can_use_peer_transport: true,
-                    can_prepare_udp: false,
-                    can_receive_video_layers: false,
+                    capabilities: PeerCapabilities {
+                        can_use_peer_transport: true,
+                        ..PeerCapabilities::default()
+                    },
                 },
             );
         }

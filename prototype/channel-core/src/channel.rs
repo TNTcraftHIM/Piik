@@ -180,7 +180,9 @@ impl Channel {
                 self.identity
                     .sessions
                     .get(&id)
-                    .is_some_and(|session| session.connection.is_some() && session.can_prepare_udp)
+                    .is_some_and(|session| {
+                        session.connection.is_some() && session.capabilities.can_prepare_udp
+                    })
             })
     }
     pub(crate) fn identity(&self) -> (Uuid, Uuid) {
@@ -2395,7 +2397,7 @@ impl Channel {
                     self.identity
                         .sessions
                         .get(&peer)
-                        .is_some_and(|session| session.can_receive_video_layers)
+                        .is_some_and(|session| session.capabilities.can_receive_video_layers)
                 },
             ),
             ice_servers: self.ice_servers.clone(),

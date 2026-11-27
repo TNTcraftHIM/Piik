@@ -1,3 +1,4 @@
+use crate::identity::PeerCapabilities;
 use super::*;
 
 #[test]
@@ -101,9 +102,10 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             channel
                 .join(
                     Admission {
-                        can_use_peer_transport: true,
-                        can_prepare_udp: false,
-                        can_receive_video_layers: false,
+                        capabilities: PeerCapabilities {
+                            can_use_peer_transport: true,
+                            ..PeerCapabilities::default()
+                        },
                         name: "Participant",
                         credential: None,
                         owner_key: (index == 0).then_some("owner"),
@@ -422,9 +424,10 @@ fn text_limits_match_browser_utf16_and_room_history() {
     let owner = channel
         .join(
             Admission {
-                can_use_peer_transport: true,
-                can_prepare_udp: false,
-                can_receive_video_layers: false,
+                capabilities: PeerCapabilities {
+                    can_use_peer_transport: true,
+                    ..PeerCapabilities::default()
+                },
                 name: "Owner",
                 credential: None,
                 owner_key: Some("owner"),
@@ -518,9 +521,10 @@ fn consecutive_profile_and_domain_patches_merge_before_projection() {
     let owner = channel
         .join(
             Admission {
-                can_use_peer_transport: true,
-                can_prepare_udp: false,
-                can_receive_video_layers: false,
+                capabilities: PeerCapabilities {
+                    can_use_peer_transport: true,
+                    ..PeerCapabilities::default()
+                },
                 name: "Owner",
                 credential: None,
                 owner_key: Some("owner"),

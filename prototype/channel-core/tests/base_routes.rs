@@ -4593,12 +4593,27 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
             );
             assert_eq!(pair(&network, host, viewer_session).udp_preparation, original.udp_preparation);
         } else {
-            // Resume onto a client without this runtime capability. The same Session
-            // and existing pair remain, but the previous client's claim cannot survive.
-            let resumed = Uuid::new_v4();
-            let effects=network.command(resumed,json!({"type":"join","name":"Browser participant","credential":credential,"sessionId":viewer_session.to_string()}));
-            assert!(effects.events.iter().any(|(_,event)|matches!(event,Event::Welcome{session_id,..}if *session_id==viewer_session)));
-            assert_eq!(pair(&network, host, viewer_session).udp_preparation, None);
+            let mut previous = viewer;
+            for (offered, udp, layers) in [
+                ("canReceiveVideoLayers", false, true),
+                ("canPrepareUdp", true, false),
+            ] {
+                let resumed = Uuid::new_v4();
+                let mut offer = json!({
+                    "type":"join", "name":"Participant",
+                    "credential":credential, "sessionId":viewer_session
+                });
+                offer[offered] = json!(true);
+                let effects = network.command(resumed, offer);
+                assert_eq!(effects.close, vec![previous]);
+                assert!(effects.events.iter().any(|(_, event)| matches!(
+                    event, Event::Welcome { session_id, .. } if *session_id == viewer_session
+                )));
+                let current = pair(&network, host, viewer_session);
+                assert_eq!(current.udp_preparation.is_some(), udp);
+                assert_eq!(current.can_receive_video_layers, layers);
+                previous = resumed;
+            }
         }
         let failed_id = pair(&network, host, viewer_session).id;
         let effects = network.authority.handle(

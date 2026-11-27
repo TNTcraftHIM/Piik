@@ -45,7 +45,7 @@ pub use stored_room::{RoomBackup, StoredRoomHost};
 
 use channel::Channel;
 use host::{HostOutput, RequestContext, RoomReply, RoomResult};
-use identity::Admission;
+use identity::{Admission, PeerCapabilities};
 use serde_json::Value;
 use uuid::Uuid;
 use wire::{Command, Event, Request, CHANNEL_PROTOCOL};
@@ -240,7 +240,7 @@ impl Authority {
     ) -> Result<Effects, &'static str> {
         if service.is_some_and(|service| {
             self.channel.identity.sessions.get(&service.endpoint.session_id).is_none_or(|session| {
-                !session.can_use_peer_transport
+                !session.capabilities.can_use_peer_transport
                     || session.connection != Some(service.endpoint.connection_id)
             })
         }) {
@@ -666,9 +666,11 @@ impl Authority {
                 owner_key: owner_key.as_deref(),
                 resume: session_id.as_deref(),
                 signing_key,
-                can_use_peer_transport,
-                can_prepare_udp,
-                can_receive_video_layers,
+                capabilities: PeerCapabilities {
+                    can_use_peer_transport,
+                    can_prepare_udp,
+                    can_receive_video_layers,
+                },
             },
             connection,
             now,
