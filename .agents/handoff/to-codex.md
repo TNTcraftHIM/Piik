@@ -119,8 +119,11 @@ so ordinary discovery may still connect; on the hotspot each destination
 takes a new port from a fast counter, so it cannot.
 
 None of this is two-sided evidence. A physical pair across the campus is
-what settles it, through a private build once the order is in. The owner is
-asking when a build with the order exists; item 1 alone is one expression.
+what settles it, through a private build once the order is in. The owner
+has chosen to wait for the next private beta for that test and will not
+change a server's settings meanwhile. Item 1 and a default list on three
+ports are the least that beta should carry; say in your mailbox which build
+has them.
 
 ## The general form before release: one rule at every depth, and the envelope
 
