@@ -35,6 +35,9 @@ const BELIEVED: usize = 3;
 const SMALLEST_SET: f64 = 64.0;
 /// How often a mapping begins a cursor not seen before, as far as anything is known beforehand.
 const NEW_CURSOR: f64 = 0.5;
+/// How often a follower turns up among a run's ports and not past one of its ends: mappings made
+/// in one burst reach the NAT in any order.
+const LATE: f64 = 0.1;
 /// One busy counter leaves gaps wider than [`MAX_GAP`]. It is told from chance by five mappings
 /// that all rise or all fall, and by traffic no heavier than this many mappings a second.
 const BUSY_MAPPINGS: usize = 5;
@@ -396,6 +399,62 @@ fn traced(before: &[(u32, u16)], at_ms: u32, after: &[u16]) -> (Vec<u16>, Vec<u1
     (between, guessed)
 }
 
+/// Which of the mappings made before a target a replayed aim may read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Holdout {
+    /// All of them.
+    Nothing,
+    /// Those toward other destinations, an address and a port being one destination.
+    Destination,
+    /// Those toward other addresses, which is what is known about a peer never sent to.
+    Address,
+}
+
+/// How a survey's own mappings fare against the aims read from the mappings before them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Replay {
+    /// The aim's windows held the mapping.
+    pub held: u16,
+    pub missed: u16,
+    /// The mappings before it gave no windows to aim at.
+    pub no_aim: u16,
+    /// Fewer mappings came before it than a reading is asked to have.
+    pub too_early: u16,
+}
+
+/// Replays a survey: for each new mapping, would the windows aimed from the mappings before it
+/// have held its port? `made` are the new mappings in the order made, each with the number of the
+/// group it was sent in. The mappings of one group were all sent before any of their answers was
+/// read, so a target reads only groups before its own. A target with fewer than `least` readable
+/// mappings before it is counted apart, and so is one whose history gives no windows: neither is a
+/// miss, and leaving them out would change what the rest is a share of.
+pub fn replay(made: &[(u32, Sample)], least: usize, holdout: Holdout) -> Replay {
+    let mut replay = Replay::default();
+    for (group, target) in made {
+        let known: Vec<(u32, u16)> = made
+            .iter()
+            .filter(|(earlier, sample)| {
+                earlier < group
+                    && match holdout {
+                        Holdout::Nothing => true,
+                        Holdout::Destination => sample.observer != target.observer,
+                        Holdout::Address => sample.observer.ip() != target.observer.ip(),
+                    }
+            })
+            .map(|(_, sample)| (sample.sent_ms, sample.mapped.port()))
+            .collect();
+        let aim = Model { address: *target.mapped.ip(), allocator: Allocator::of(&known) }.aim(target.sent_ms);
+        let outcome = match aim {
+            _ if known.len() < least => &mut replay.too_early,
+            Some(Aim::Windows(windows)) if windows.iter().any(|window| window.holds(target.mapped.port())) => &mut replay.held,
+            Some(Aim::Windows(_)) => &mut replay.missed,
+            _ => &mut replay.no_aim,
+        };
+        *outcome += 1;
+    }
+    replay
+}
+
 /// What the side with allocator `local` does about its peer's aim. `own` is the aim it sent, and
 /// `peer` the address the other aim belongs to. `None` is an abstention: this module has no plan
 /// for the pair, which says nothing about whether ordinary connectivity checks would succeed.
@@ -539,42 +598,63 @@ fn cursors(allocations: &[(u32, u16)]) -> Option<Vec<Cursor>> {
     Some(cursors)
 }
 
-/// The runs of ports that follow one another, each port joining the run it lies nearest to or
-/// beginning one, and the logarithm of how many times likelier the ports are that way than as draws
-/// from the set they fit. A port may lie on either side of a run or among its ports: mappings made
-/// in one burst reach the NAT in any order.
+/// The runs of ports that follow one another, and the logarithm of how many times likelier the
+/// ports are as followers of cursors than as draws from a set.
 ///
-/// As a draw, a port has one chance in the size of the set. As a follower it comes after one of
-/// the runs so far, `g` ports from it with a chance that falls as `1/g` up to [`MAX_GAP`], which
-/// favours no step; as the first of a cursor it may be any port. The ratio is taken port by port,
-/// so under draws it is a product whose expectation stays one: it passes a value `v` at most once
-/// in `v` surveys, whatever the size of the set.
+/// As a follower a port belongs to one of the runs so far, each as likely as another. Most often
+/// it lies past one of the run's two ends, `g` ports out with a chance that falls as `1/g` up to
+/// [`MAX_GAP`], which favours no step and no direction; now and then ([`LATE`]) it is a port
+/// between the ends that no mapping holds yet. As the first of a cursor it may be any port. These
+/// chances add up to no more than one over all ports, and a port joins the run that gives it the
+/// larger one. As a draw, a port is one of those the set still has.
+///
+/// The ratio is taken port by port. So for draws from a set at least as large as the one assumed
+/// here its expectation never rises, and it reaches a value `v` in at most one survey in `v`. The
+/// set assumed is the smallest the ports allow: their span or the port set they share, and no
+/// fewer than [`SMALLEST_SET`]. A sparser set of a shape this module does not know is outside
+/// that statement. Reading cursors when the ratio passes one is the choice of the likelier of
+/// the two, not a test at a level.
 fn runs(allocations: &[(u32, u16)]) -> (Vec<Vec<(u32, u16)>>, f64) {
-    let set = f64::from(port_set(allocations).size()).max(SMALLEST_SET);
-    let ports = f64::from(u16::MAX - LOWEST_PORT) + 1.0;
+    let ports = || allocations.iter().map(|&(_, port)| f64::from(port));
+    let span = ports().fold(f64::MIN, f64::max) - ports().fold(f64::MAX, f64::min) + 1.0;
+    let set = span.min(f64::from(port_set(allocations).size())).max(SMALLEST_SET);
+    let every = f64::from(u16::MAX - LOWEST_PORT) + 1.0;
     let gaps: f64 = (1..=MAX_GAP).map(|gap| 1.0 / f64::from(gap)).sum();
     let mut runs: Vec<Vec<(u32, u16)>> = Vec::new();
     let mut odds = 0.0;
-    for &(at_ms, port) in allocations {
-        let joined = runs
+    for (index, &(at_ms, port)) in allocations.iter().enumerate() {
+        // The chance of this port as a follower of each run, and the run that gives the most.
+        let follows = runs
             .iter()
             .enumerate()
-            .filter_map(|(index, run)| {
-                let gap = run.iter().map(|&(_, member)| (i32::from(port) - i32::from(member)).abs().max(1)).min()?;
-                (gap <= MAX_GAP).then_some((gap, index))
+            .filter_map(|(run_index, run)| {
+                let members = || run.iter().map(|&(_, member)| i32::from(member));
+                let (low, high, port) = (members().min()?, members().max()?, i32::from(port));
+                let beyond = (low - port).max(port - high);
+                let chance = match beyond {
+                    1..=MAX_GAP => (1.0 - LATE) / 2.0 / (f64::from(beyond) * gaps),
+                    // A port a mapping already holds cannot be given again.
+                    _ if beyond < 0 && members().all(|member| member != port) => LATE / f64::from(high - low + 1),
+                    _ => return None,
+                };
+                Some((chance, run_index))
             })
-            .min();
-        match joined {
-            Some((gap, index)) => {
-                // The two sides of the run share the chance.
-                odds += ((1.0 - NEW_CURSOR) / runs.len() as f64 / 2.0 / (f64::from(gap) * gaps) * set).ln();
-                runs[index].push((at_ms, port));
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        let drawn = 1.0 / (set - index as f64).max(1.0);
+        match follows {
+            Some((chance, run_index)) => {
+                odds += ((1.0 - NEW_CURSOR) / runs.len() as f64 * chance / drawn).ln();
+                runs[run_index].push((at_ms, port));
             }
             None => {
                 if !runs.is_empty() {
-                    odds += (NEW_CURSOR * set / ports).ln();
+                    odds += (NEW_CURSOR / every / drawn).ln();
                 }
-                runs.push(vec![(at_ms, port)]);
+                // A port seen twice stays with the run that has it; any other begins one.
+                match runs.iter().position(|run| run.iter().any(|&(_, member)| member == port)) {
+                    Some(held) => runs[held].push((at_ms, port)),
+                    None => runs.push(vec![(at_ms, port)]),
+                }
             }
         }
     }
@@ -748,8 +828,71 @@ mod tests {
         assert!(matches!(Allocator::of(&wide), Allocator::Set(PortSet::Span { low: 5_150, high: 64_100, seen: 18 })));
         // So is a crowd inside a carrier's block of a thousand ports, where many come close by chance.
         let block = timed(&[20_512, 20_101, 20_877, 20_530, 20_120, 20_333, 20_890, 20_050, 20_700, 20_345, 20_990, 20_560, 20_222, 20_130, 20_640, 20_015, 20_800, 20_410]);
-        assert_eq!(runs(&block).0.len(), 12);
+        assert!(runs(&block).0.len() < 18);
         assert!(matches!(Allocator::of(&block), Allocator::Set(PortSet::Span { .. })));
+    }
+
+    /// Draws from `set` consecutive ports, with or without giving a port twice, from a seed.
+    fn draws(seed: u64, set: u64, count: usize, again: bool) -> Vec<(u32, u16)> {
+        let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let mut ports: Vec<u16> = Vec::new();
+        while ports.len() < count {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            let port = 20_000 + (state.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 33) % set;
+            if again || !ports.contains(&(port as u16)) {
+                ports.push(port as u16);
+            }
+        }
+        ports.into_iter().enumerate().map(|(index, port)| (index as u32 * EVERY_MS, port)).collect()
+    }
+
+    #[test]
+    fn draws_seldom_pass_for_cursors() {
+        // The ratio reaches a hundred in at most one survey of draws in a hundred. The first case
+        // is the one that broke the density this replaced: 64 ports in a row, given again and again.
+        for (set, count, again) in [(64, 18, true), (64, 32, true), (64, 18, false), (1_000, 18, false), (64_000, 18, false), (64_000, 40, false)] {
+            let surveys = 4_000;
+            let (mut passed, mut read) = (0, 0);
+            for seed in 0..surveys {
+                let odds = runs(&draws(seed, set, count, again)).1;
+                passed += u32::from(odds >= 100f64.ln());
+                read += u32::from(matches!(Allocator::of(&draws(seed, set, count, again)), Allocator::Cursors(_)));
+            }
+            assert!(passed * 100 <= surveys as u32, "{passed} of {surveys} surveys of {count} draws from {set} reached a hundred");
+            assert!(read * 20 <= surveys as u32, "{read} of {surveys} surveys of {count} draws from {set} were read as cursors");
+        }
+    }
+
+    #[test]
+    fn a_replay_reads_only_what_was_known_and_counts_what_it_cannot_judge() {
+        let observer = |index: u8| SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1 + index / 2), 3478 + u16::from(index % 2));
+        let sample = |index: u32, observer: SocketAddrV4, port: u16| Sample { socket: index as u16, local_port: 50_000, observer, sent_ms: index * 100, mapped: SocketAddrV4::new(WAN, port) };
+        // One counter read eight times, one group each, toward four destinations on two addresses.
+        let mut made: Vec<(u32, Sample)> = (0..8).map(|index| (index, sample(index, observer(index as u8 % 4), 40_000 + index as u16))).collect();
+        // The first eight have too little before them; none is a miss.
+        assert_eq!(replay(&made, 8, Holdout::Nothing), Replay { too_early: 8, ..Replay::default() });
+        // A ninth is held by the aim from the eight, whichever of them the aim may read.
+        made.push((8, sample(8, observer(0), 40_008)));
+        assert_eq!(replay(&made, 8, Holdout::Nothing), Replay { held: 1, too_early: 8, ..Replay::default() });
+        // Asked for four before it, more are judged, and none is missed whichever the aim may read:
+        // toward other destinations, or toward other addresses, which leaves fewer.
+        assert_eq!(replay(&made, 4, Holdout::Destination), Replay { held: 4, too_early: 5, ..Replay::default() });
+        assert_eq!(replay(&made, 4, Holdout::Address), Replay { held: 3, too_early: 6, ..Replay::default() });
+        // With one of the eight unanswered the ninth has too little before it: it is counted so,
+        // and does not vanish from the count.
+        let mut short = made.clone();
+        short.remove(3);
+        assert_eq!(replay(&short, 8, Holdout::Nothing), Replay { too_early: 8, ..Replay::default() });
+        // Four mappings sent as one group know nothing of each other. They land on a counter that
+        // nothing before them showed, so all four are missed; had each read the ones sent with it,
+        // the window past the first would have held the rest.
+        let mut burst: Vec<(u32, Sample)> = made[..8].to_vec();
+        burst.extend((8..12).map(|index| (8, sample(index, observer(index as u8 % 4), 45_000 + index as u16))));
+        assert_eq!(replay(&burst, 8, Holdout::Nothing), Replay { missed: 4, too_early: 8, ..Replay::default() });
+        let leaked: Vec<(u32, Sample)> = burst.iter().enumerate().map(|(index, (_, sample))| (index as u32, *sample)).collect();
+        assert_eq!(replay(&leaked, 8, Holdout::Nothing).held, 3);
     }
 
     #[test]
@@ -893,8 +1036,10 @@ mod tests {
         let busy = model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]);
         let (low, high, _) = predicted(7, 2_000, 300).unwrap();
         assert_eq!(windows(&busy, lead(6)), [Window { first: 40_012 + 1 + low as u16, step: 1, count: (high - low + 1) as u16 }]);
-        // A counter that would run past the last port has no aim.
-        assert_eq!(model(1, &[65_520, 65_524, 65_528]).aim(lead(3)), None);
+        // A counter that would run past the last port has no aim. Three ports four apart are not
+        // yet likelier a counter than draws from a small block; five that all rise are read as one.
+        assert!(matches!(model(1, &[65_520, 65_524, 65_528]).allocator, Allocator::Set(_)));
+        assert_eq!(model(1, &[65_512, 65_516, 65_520, 65_524, 65_528]).aim(lead(5)), None);
     }
 
     #[test]

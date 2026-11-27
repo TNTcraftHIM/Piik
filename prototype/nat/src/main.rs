@@ -7,7 +7,7 @@
 //! Where new mappings follow cursors it also tries the two things a pair of such networks needs,
 //! with an observer standing in for the peer, because the observer says where the mapping really
 //! landed: finding a mapping after it was made, and taking the ports next past a reading.
-use piik_nat::mapping::{located, measured, walk, Aim, Allocator, Cursor, Model, PortSet, Sample};
+use piik_nat::mapping::{located, measured, replay, walk, Allocator, Cursor, Holdout, Model, PortSet, Sample};
 use piik_nat::stun;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
@@ -47,6 +47,11 @@ const CLIMB_SOCKETS: usize = 8;
 struct Survey {
     started: Instant,
     samples: Vec<Sample>,
+    /// For each sample, the group it was sent in. The requests of one group were all sent before
+    /// any of their answers was read, so none of them knew another's answer.
+    groups: Vec<u32>,
+    /// Requests that got no answer; their mappings were made all the same.
+    unanswered: u32,
     /// The local port of each socket, by its number.
     local_ports: Vec<u16>,
 }
@@ -58,9 +63,19 @@ impl Survey {
         let mapped = receive(socket, observer, transaction).or_else(|| {
             socket.send_to(&stun::request(transaction), observer).ok()?;
             receive(socket, observer, transaction)
-        })?;
-        self.samples.push(Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped });
+        });
+        let Some(mapped) = mapped else {
+            self.unanswered += 1;
+            return None;
+        };
+        self.record(&[Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped }]);
         Some(mapped)
+    }
+    /// Records the answers of one group of requests.
+    fn record(&mut self, answers: &[Sample]) {
+        let group = self.groups.last().map_or(0, |last| last + 1);
+        self.groups.extend(answers.iter().map(|_| group));
+        self.samples.extend(answers);
     }
     fn socket(&mut self) -> Option<(UdpSocket, u16)> {
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
@@ -93,7 +108,8 @@ impl Survey {
                 Some(Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped })
             })
             .collect();
-        self.samples.extend(answers.iter().flatten());
+        self.unanswered += answers.iter().filter(|answer| answer.is_none()).count() as u32;
+        self.record(&answers.iter().flatten().copied().collect::<Vec<_>>());
         answers
     }
     /// The new mappings seen on `address` so far, in the order they were made.
@@ -215,26 +231,10 @@ fn allocations_on(samples: &[Sample], address: &Ipv4Addr) -> Vec<(u32, u16)> {
     made_on(samples, address).iter().map(|sample| (sample.sent_ms, sample.mapped.port())).collect()
 }
 
-/// Replays the survey. For each mapping: would the windows aimed from the mappings before it have
-/// held its port? Counted twice, once reading every earlier mapping and once only those toward
-/// other observers, which is all a peer can be told about a mapping toward itself. Returns the
-/// mappings judged and how many each reading held.
-fn replay(samples: &[Sample], address: &Ipv4Addr) -> (usize, usize, usize) {
-    let made = made_on(samples, address);
-    let held = |earlier: &mut dyn Iterator<Item = &&Sample>, sample: &Sample| {
-        let allocations: Vec<(u32, u16)> = earlier.map(|earlier| (earlier.sent_ms, earlier.mapped.port())).collect();
-        let aim = Model { address: *address, allocator: Allocator::of(&allocations) }.aim(sample.sent_ms);
-        matches!(aim, Some(Aim::Windows(windows)) if windows.iter().any(|window| window.holds(sample.mapped.port())))
-    };
-    let (mut judged, mut all, mut others) = (0, 0, 0);
-    for (index, sample) in made.iter().enumerate().skip(REPLAY_AFTER) {
-        // Mappings sent in the same millisecond are one burst, and none of them is known to the rest.
-        let earlier = || made[..index].iter().filter(|earlier| earlier.sent_ms < sample.sent_ms);
-        judged += 1;
-        all += usize::from(held(&mut earlier(), sample));
-        others += usize::from(held(&mut earlier().filter(|earlier| earlier.observer != sample.observer), sample));
-    }
-    (judged, all, others)
+/// The new mappings on one public address, each with the group it was sent in.
+fn grouped(survey: &Survey, address: &Ipv4Addr) -> Vec<(u32, Sample)> {
+    let made = made_on(&survey.samples, address);
+    survey.samples.iter().zip(&survey.groups).filter(|(sample, _)| made.iter().any(|made| std::ptr::eq(*made, *sample))).map(|(sample, group)| (*group, *sample)).collect()
 }
 
 /// The address this machine would send from toward `target`; no packet is sent to learn it.
@@ -258,7 +258,7 @@ fn main() {
     }
     let full = !arguments.is_empty();
     println!("piik-nat-lab {}: asking public STUN servers which address they see.", env!("CARGO_PKG_VERSION"));
-    let mut survey = Survey { started: Instant::now(), samples: Vec::new(), local_ports: Vec::new() };
+    let mut survey = Survey { started: Instant::now(), samples: Vec::new(), groups: Vec::new(), unanswered: 0, local_ports: Vec::new() };
     let (Some((first, first_number)), Some((second, second_number))) = (survey.socket(), survey.socket()) else {
         return println!("Could not open a UDP socket.");
     };
@@ -417,9 +417,13 @@ fn report(
     if !burst.is_empty() {
         println!("burst of {}: {burst:?}", burst.len());
     }
-    let (judged, all, others) = replay(&survey.samples, &public);
-    if judged > 0 {
-        println!("replay: of {judged} mappings, the aim read from all earlier ones held {all}, and read from those toward other observers {others}");
+    // The survey judged by itself: each mapping against the aim read from what was known before
+    // it, reading everything, only other destinations, and only other addresses.
+    let made = grouped(survey, &public);
+    println!("mappings made: {} answered on this address, {} requests unanswered", made.len(), survey.unanswered);
+    for (reading, holdout) in [("all earlier mappings", Holdout::Nothing), ("other destinations", Holdout::Destination), ("other addresses", Holdout::Address)] {
+        let replayed = replay(&made, REPLAY_AFTER, holdout);
+        println!("replay reading {reading}: held {}, missed {}, no aim {}, too little before {}", replayed.held, replayed.missed, replayed.no_aim, replayed.too_early);
     }
     if !found.is_empty() {
         let first = found.iter().filter(|located| located.rank == Some(1)).count();
