@@ -601,7 +601,9 @@ panel; the current Site's Browser storage owns this preference and reapplies it
 before enabling control. App keeps only the running binding, with no shortcut
 configuration file. Configuration probes availability;
 registration lasts only while at least one native session enables control,
-never merely because App is running. An occupied key fails that operation
+never merely because App is running. On Windows the selected function key
+also stops control with Shift, the Windows key, or both held. All four Ctrl+Alt
+combinations must be available. A conflict in any combination fails that operation
 without disabling capture or the input backend. Replacing
 the shortcut retains the old binding until registration succeeds; only a
 successful change is saved in the Browser. Each Site has its own preference.

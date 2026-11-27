@@ -389,12 +389,21 @@ func watchStopShortcut(ctx context.Context, key int, stop func()) (func(), error
 			Private uint32
 		}
 		user32.NewProc("PeekMessageW").Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, 0)
-		ok, _, _ := user32.NewProc("RegisterHotKey").Call(0, 1, 0x4003, uintptr(0x6f+key)) // Ctrl+Alt+Fn; no repeat.
-		if ok == 0 {
-			ready <- errors.New("remote-control shortcut is already in use")
-			return
+		// Windows matches exact modifier sets. Reserve every Shift/Win variant
+		// of the chosen function key before reporting that control can start.
+		const ctrlAltNoRepeat = 0x4003
+		const shift, win = 0x4, 0x8
+		register := user32.NewProc("RegisterHotKey")
+		unregister := user32.NewProc("UnregisterHotKey")
+		for i, extra := range [...]uintptr{0, shift, win, shift | win} {
+			id := uintptr(i + 1)
+			ok, _, _ := register.Call(0, id, ctrlAltNoRepeat|extra, uintptr(0x6f+key))
+			if ok == 0 {
+				ready <- errors.New("remote-control shortcut is already in use")
+				return
+			}
+			defer unregister.Call(0, id)
 		}
-		defer user32.NewProc("UnregisterHotKey").Call(0, 1)
 		ready <- nil
 		go func() {
 			select {

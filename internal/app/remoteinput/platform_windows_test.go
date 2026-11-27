@@ -8,9 +8,11 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
@@ -147,6 +149,86 @@ func TestNativeStopShortcutRegistrationLifetime(t *testing.T) {
 		t.Fatalf("cancelled watcher retained its chord: %v", err)
 	}
 	stop()
+}
+
+func TestNativeStopShortcutModifierGroup(t *testing.T) {
+	requireDesktopInputAcceptance(t)
+	m, err := New(t.Context(), false)
+	if err != nil || m == nil {
+		t.Fatalf("create input manager: %v", err)
+	}
+	defer m.Close()
+	var keys []int
+	for key := 1; key <= 11 && len(keys) < 2; key++ {
+		if key != defaultStopKey {
+			if _, err := m.SetStopShortcut(key); err == nil {
+				keys = append(keys, key)
+			}
+		}
+	}
+	if len(keys) != 2 {
+		t.Fatal("need two available non-default function keys on the isolated desktop")
+	}
+	next, current := keys[0], keys[1]
+	s := m.NewSession()
+	defer s.Close()
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+	if err := setTestPolicy(s, "room", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Occupy only the final Ctrl+Alt+Shift+Win variant on another OS thread.
+	func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		const id = 27
+		ok, _, err := user32.NewProc("RegisterHotKey").Call(0, id, 0x400f, uintptr(0x6f+next))
+		if ok == 0 {
+			t.Fatalf("reserve final variant on F%d: %v", next, err)
+		}
+		defer user32.NewProc("UnregisterHotKey").Call(0, id)
+		if _, err := m.SetStopShortcut(next); err == nil {
+			t.Fatal("replacement succeeded despite occupied final variant")
+		}
+	}()
+
+	// The previous binding must still revoke through the real Windows queue.
+	sink := m.sink.(*windowsSink)
+	for i, extra := range [][]string{nil, {"ShiftLeft"}, {"MetaLeft"}, {"ShiftLeft", "MetaLeft"}} {
+		name := strings.Join(append([]string{"Ctrl+Alt"}, extra...), "+")
+		if !t.Run(name, func(t *testing.T) {
+			// The first activation must use the binding left by the failed replacement.
+			if i > 0 {
+				if err := setTestPolicy(s, "room", ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, key := range append(extra, "ControlLeft", "AltLeft", "F"+strconv.Itoa(current)) {
+				scan := scanCodes[key]
+				if err := sink.inject(keyInput(scan, true)); err != nil {
+					t.Fatalf("press %s: %v", key, err)
+				}
+				defer func() {
+					if err := sink.inject(keyInput(scan, false)); err != nil {
+						t.Errorf("release %s: %v", key, err)
+					}
+				}()
+			}
+			deadline := time.After(5 * time.Second)
+			for s.State().Mode != "ask" {
+				select {
+				case <-s.Changes():
+				case <-deadline:
+					t.Fatalf("F%d did not revoke control", current)
+				}
+			}
+		}) {
+			return
+		}
+	}
+	if _, err := m.SetStopShortcut(next); err != nil {
+		t.Fatalf("could not reacquire complete F%d group after rollback: %v", next, err)
+	}
 }
 
 func TestCommittedTextPackets(t *testing.T) {
