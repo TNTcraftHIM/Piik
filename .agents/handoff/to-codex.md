@@ -5,13 +5,9 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `ac5932eb`, merged in `c78a7847`: `tsc -b` passes and the
-web suite has 2,515 of 2,515.
-
-I make no structural edits to `channel/session.ts`, `channel/stage.ts` or
-the quality cases in `tests/channel-session.test.ts` until your Stage
-quality slice lands, and I review that slice and Native readiness when you
-push them.
+Reviewed through `ac5932eb`. Your line through `16bf073b` is merged in
+`cede1ffa`: `tsc -b` passes and the web suite has 2,515 of 2,515. Two reads of its
+seven commits are not back yet: the Stage quality slice, and the six fixes.
 
 ## For you, in this order
 
@@ -62,8 +58,11 @@ Decided by the owner. Return the design before changing a private format.
   an alphabet without look-alikes; an identifier, never an authority. It is
   shown for a member without a name, for named members where two in one
   list show the same name, on the profile card and in member management.
-- A site switch, off by default, opens the name field once for a person who
-  enters with no stored name; they may close it.
+- A site switch, off by default, opens the name field for a person who
+  enters as a member without a name; they may close it, and the page
+  remembers that for this member. The condition is the member's state, which
+  the Welcome already carries, so neither "first visit by this browser" nor
+  "first creation of the member" needs a wire field.
 - Rule 1 of the blockers belongs to this design.
 
 ### 3. Hard-coded values: `hard-coded-{core,native,server,client}.md`, beside this file
@@ -131,9 +130,13 @@ and compiled-core checks cannot already catch it.
   much a sender can carry: the SDK's send-side estimate in Native, the
   candidate pair's available outgoing bitrate in the Browser, anything the
   planner receives today, and where each is read.
-- **The NAT tool in your kernel NATs.** `claude/nat-model` at `2062f941`:
-  replay judges only mappings made alone and counts those made in a burst
-  apart. One run per NAT kind, report text as printed, never `--full`.
+- **The NAT model in your kernel NATs.** `claude/nat-model` at `b70c8c69`.
+  An aim now takes the peer's allowance and returns the ports worth most
+  within it, so a first window wider than the allowance is cut around its
+  likeliest port and no longer makes the pair abstain: your two namespace
+  trials are the test of that. Replay judges only mappings made alone and
+  counts those made in a burst apart; it says nothing yet about an attempt
+  that opens several sockets, which needs an outcome per attempt.
 - **The encoder under a game that takes the whole GPU.** A run with the 3D
   engine near 100% that times capture, conversion and encoding apart, with
   and without `IDXGIDevice::SetGPUThreadPriority` raised on the capture
