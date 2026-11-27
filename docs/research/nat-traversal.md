@@ -221,6 +221,24 @@ public reachability. The static coverage guarantee applies to a contiguous
 256-port pool, not arbitrary pool sizes or moving mappings. Sequential
 preparation retains its existing eight-socket path.
 
+Default observations use three documented services on different destination
+ports: [Cloudflare](https://developers.cloudflare.com/realtime/turn/faq/),
+[Google](https://webrtc.org/getting-started/peer-connections) and
+[Nextcloud](https://github.com/nextcloud/spreed/blob/main/docs/settings.md).
+Different ports reduce the chance that a per-destination counter appears to be
+one shared sequence. On 2026-11-27, two same-socket serial controls using the
+Native STUN decoder received three valid IPv4 XOR mappings in 931 and 870 ms,
+within the existing 1.5-second observation budget. Campus and carrier-network
+reachability still need the paired private-beta control.
+
+A search window bounded by two counter observations remains experimental.
+The bounds imply containment only when the peer mappings use the same counter
+and public exit. Even with containment, interleaved allocation can leave gaps:
+in a 128-position window, eight mappings at even offsets 2 through 16 were all
+missed by 64 bit-reversed probes starting at offset 1, while the current
+sequential strategy's first target hit offset 4. Window selection and probe
+ordering need a matched two-sided comparison before replacing that strategy.
+
 The frozen source archive had SHA-256
 `4371aafbe865676fe30d5cee7d21af781720a3ce664129c3d4c6cc4204ebdda2`
 and pinned str0m at `2d0d6eaaf4d19d7530588f695cd631eedf42acf5`.
