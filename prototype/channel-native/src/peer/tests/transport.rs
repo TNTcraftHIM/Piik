@@ -1392,6 +1392,39 @@ async fn nat64_lookup_waits_for_both_families_and_retires_at_nomination() -> Res
 
 #[cfg(not(target_os = "android"))]
 #[tokio::test]
+async fn refresh_publishes_late_ipv4_on_owned_socket() -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+    use netwatch::interfaces::State;
+    let mut runtime = Runtime::new(None);
+    runtime.test_binds = Some(&["0.0.0.0:0"]);
+    let state = State::fake();
+    let ip = state.interfaces.values().next().unwrap().addrs().next().unwrap().addr();
+    let mut empty = state.clone();
+    empty.interfaces.clear();
+    let states = n0_watcher::Watchable::new(empty);
+    runtime.test_interfaces = Some(states);
+    let (peer, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
+    let socket = peer.call(|e| Ok(e.sockets[0].clone())).await?;
+    runtime.test_interfaces.as_ref().unwrap().set(state).unwrap();
+    let expected = SocketAddr::new(ip, socket.local_addr()?.port());
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while let Some(event) = events.recv().await {
+            if matches!(event, Event::Candidate(_, c, _) if c.addr() == expected) { return Ok(()); }
+        }
+        Err(anyhow!("candidate event stream closed"))
+    }).await??;
+    let receiver = UdpSocket::bind("127.0.0.1:0").await?;
+    socket.socket.send_to(b"refresh", receiver.local_addr()?).await?;
+    let mut bytes = [0; 7];
+    let (count, source) = receiver.recv_from(&mut bytes).await?;
+    assert_eq!(&bytes[..count], b"refresh");
+    assert_eq!(source.port(), expected.port());
+    runtime.close().await;
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tokio::test]
 async fn nominated_ice_path_retires_refresh_before_dtls() -> Result<()> {
     use crate::peer::tests::support::endpoint;
     let runtime = Runtime::new(None);

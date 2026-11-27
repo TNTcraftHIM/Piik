@@ -122,6 +122,8 @@ enum Command {
         Option<(discovery::Config, turn::Setup)>,
         oneshot::Sender<()>,
     ),
+    #[cfg(not(target_os = "android"))]
+    RefreshedHosts(Uuid, Uuid, Vec<Candidate>),
     SharedMapped(Weak<UdpIo>, Option<Candidate>),
     TurnReady(Uuid, Uuid),
     Adopt(Uuid, Uuid, super::preparation::Prepared, oneshot::Sender<Result<bool>>),
@@ -171,6 +173,8 @@ pub(crate) struct Runtime {
     fixed: Option<Arc<ServerUdp>>,
     #[cfg(not(target_os = "android"))]
     interfaces: tokio::sync::OnceCell<netwatch::netmon::Monitor>,
+    #[cfg(all(test, not(target_os = "android")))]
+    pub(super) test_interfaces: Option<n0_watcher::Watchable<netwatch::interfaces::State>>,
     #[cfg(test)]
     test_binds: Option<&'static [&'static str]>,
     #[cfg(test)]
@@ -572,6 +576,25 @@ impl Runtime {
                             }
                             let _=done.send(());
                         }
+                        #[cfg(not(target_os = "android"))]
+                        Some(Command::RefreshedHosts(id, instance, fresh)) => {
+                            if let Some(engine) = engines.get_mut(&id).filter(|e| e.handle.instance == instance) {
+                                let shared = engine.add_refreshed_host_candidates(fresh);
+                                for host in &shared {
+                                    if let Some(mapping) = &gateway {
+                                        mapping.observe(host);
+                                    } else {
+                                        gateway = start_mapping(host, engine.handle.clone());
+                                    }
+                                }
+                                if let Some(candidate) = &mapped {
+                                    if shared.iter().any(|host| host.addr() == candidate.local()) {
+                                        engine.admit_gateway(candidate.clone());
+                                    }
+                                }
+                                engine.drain();
+                            }
+                        }
                         Some(Command::SharedMapped(base,candidate)) => {
                             if let Some(socket) = base.upgrade() {
                                 for engine in engines.values_mut().filter(|e| e.handle.shares(&socket)) {
@@ -689,6 +712,8 @@ impl Runtime {
             fixed,
             #[cfg(not(target_os = "android"))]
             interfaces: tokio::sync::OnceCell::new(),
+            #[cfg(all(test, not(target_os = "android")))]
+            test_interfaces: None,
             #[cfg(test)]
             test_binds: None,
             #[cfg(test)]
@@ -804,15 +829,20 @@ impl Runtime {
             }
         }
     }
+    #[cfg(not(target_os = "android"))]
+    async fn watch_interfaces(&self) -> Result<n0_watcher::Direct<netwatch::interfaces::State>> {
+        #[cfg(test)]
+        if let Some(states) = &self.test_interfaces {
+            return Ok(states.watch());
+        }
+        let monitor = self.interfaces.get_or_try_init(netwatch::netmon::Monitor::new).await?;
+        Ok(monitor.interface_state())
+    }
     async fn interface_state(&self) -> Result<netwatch::interfaces::State> {
         #[cfg(not(target_os = "android"))]
         {
             use n0_watcher::Watcher;
-            let monitor = self
-                .interfaces
-                .get_or_try_init(netwatch::netmon::Monitor::new)
-                .await?;
-            Ok(monitor.interface_state().get())
+            Ok(self.watch_interfaces().await?.get())
         }
         // Android's netwatch backend has no interface-change notifications.
         #[cfg(target_os = "android")]
@@ -926,16 +956,13 @@ impl Runtime {
         );
         #[cfg(not(target_os = "android"))]
         let refresh = if !local_input && self.fixed.is_none() {
-            let wildcard = sockets
+            let wildcard: Vec<_> = sockets
                 .iter()
                 .filter_map(|socket| socket.local_addr().ok())
-                .find(|addr| addr.is_ipv6() && addr.ip().is_unspecified());
-            if let Some(socket) = wildcard {
-                let monitor = self
-                    .interfaces
-                    .get_or_try_init(netwatch::netmon::Monitor::new)
-                    .await?;
-                Some((monitor.interface_state(), socket))
+                .filter(|addr| addr.ip().is_unspecified())
+                .collect();
+            if !wildcard.is_empty() {
+                Some((self.watch_interfaces().await?, wildcard))
             } else {
                 None
             }
@@ -998,7 +1025,7 @@ impl Runtime {
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
         #[cfg(not(target_os = "android"))]
-        let can_refresh_ipv6 = refresh.is_some();
+        let can_refresh_ipv6 = refresh.as_ref().is_some_and(|(_, sockets)| sockets.iter().any(SocketAddr::is_ipv6));
         #[cfg(target_os = "android")]
         let can_refresh_ipv6 = false;
         #[cfg(not(target_os = "android"))]
@@ -1181,7 +1208,7 @@ impl Transport {
     async fn refresh_host_candidates(
         self,
         mut monitor: n0_watcher::Direct<netwatch::interfaces::State>,
-        socket: SocketAddr,
+        sockets: Vec<SocketAddr>,
         mut seen: HashSet<SocketAddr>,
     ) {
         use n0_watcher::Watcher;
@@ -1189,14 +1216,14 @@ impl Transport {
             let Ok(state) = monitor.updated().await else {
                 return;
             };
-            let addresses = state
+            let addresses = || state
                 .interfaces
                 .values()
                 .filter(|iface| iface.is_up())
                 .flat_map(|iface| iface.addrs());
-            let Ok(candidates) = host_candidates(socket, addresses) else {
-                return;
-            };
+            let candidates = sockets.iter().flat_map(|socket| {
+                host_candidates(*socket, addresses()).unwrap_or_default()
+            });
             let remaining = super::MAX_ICE_CANDIDATES - seen.len();
             let fresh: Vec<_> = candidates
                 .into_iter()
@@ -1206,12 +1233,7 @@ impl Transport {
             if fresh.is_empty() {
                 continue;
             }
-            let updated = self
-                .call(move |engine| {
-                    engine.add_refreshed_host_candidates(fresh);
-                    Ok(())
-                })
-                .await;
+            let updated = self.tx.send(Command::RefreshedHosts(self.pair, self.instance, fresh)).await;
             if updated.is_err() {
                 return;
             }
@@ -1890,21 +1912,26 @@ impl Engine {
         }
     }
     #[cfg(not(target_os = "android"))]
-    fn add_refreshed_host_candidates(&mut self, candidates: Vec<Candidate>) {
+    fn add_refreshed_host_candidates(&mut self, candidates: Vec<Candidate>) -> Vec<Candidate> {
+        let mut shared = Vec::new();
         // A queued interface update can arrive after ICE selects its first path.
         if !self.host_refresh.as_ref().is_some_and(|watcher| watcher.stop.is_some()) {
-            return;
+            return shared;
         }
         for candidate in candidates {
             if let Some(candidate) = self.rtc.add_local_candidate(candidate).cloned() {
-                if let Some(bootstrap) = &mut self.nat64 {
-                    // The desktop refresh watches the wildcard IPv6 socket.
+                if candidate.addr().is_ipv4() && self.handle.shares_ipv4() {
+                    self.shared_hosts.push(candidate.addr());
+                    shared.push(candidate.clone());
+                }
+                if let Some(bootstrap) = self.nat64.as_mut().filter(|_| candidate.addr().is_ipv6()) {
                     bootstrap.has_ipv6 = true;
                     bootstrap.start_if_ready(&self.handle);
                 }
                 self.emit(Event::Candidate(self.handle.pair, candidate, None));
             }
         }
+        shared
     }
     fn linear_current(&mut self, ufrag: &str) -> bool {
         self.linear_enabled

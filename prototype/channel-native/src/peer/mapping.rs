@@ -160,6 +160,60 @@ mod tests {
     use tokio::sync::oneshot;
     use uuid::Uuid;
 
+    #[cfg(not(target_os = "android"))]
+    #[tokio::test]
+    async fn available_refresh_admits_one_gateway_mapping_for_two_pairs() -> Result<()> {
+        use netwatch::interfaces::State;
+        use piik_channel_core::wire::{PairInfo, UdpPreparation};
+
+        let (leases, mut starts) = mpsc::unbounded_channel();
+        let mut runtime = Runtime::with_mapping(None, move |host, transport| {
+            let (updates, addresses) = watch::channel(None);
+            let (candidates, observations) = mpsc::channel(4);
+            leases.send((host.addr(), observations, updates)).unwrap();
+            Some(Mapping {
+                client: Arc::new(OnceLock::new()),
+                candidates,
+                watcher: tokio::spawn(forward(host.clone(), addresses, transport)),
+            })
+        });
+        let late = State::fake();
+        let mut initial = late.clone();
+        initial.interfaces.clear();
+        runtime.test_interfaces = Some(n0_watcher::Watchable::new(initial));
+        let (mut driver, mut events, _signals, _stop) = crate::peer::tests::driver();
+        std::mem::replace(&mut driver.transport, runtime).close().await;
+        let mut pairs = std::collections::HashSet::new();
+        for _ in 0..2 {
+            let id = Uuid::new_v4();
+            driver.create_pair(&PairInfo {
+                id, peer_id: Uuid::new_v4(), rooms: vec![], incoming: vec![], outgoing: vec![],
+                udp_preparation: Some(UdpPreparation::Available), can_receive_video_layers: false,
+            }).await?;
+            pairs.insert(id);
+        }
+        assert!(starts.try_recv().is_err());
+        driver.transport.test_interfaces.as_ref().unwrap().set(late).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            let (base, mut observations, updates) = starts.recv().await.unwrap();
+            let observed = observations.recv().await.unwrap();
+            assert_eq!(observed.addr(), base);
+            let mapped = SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, base.port());
+            updates.send(Some(mapped)).unwrap();
+            while !pairs.is_empty() {
+                if let Event::Candidate(pair, c, _) = events.recv().await.unwrap() {
+                    if c.kind() == CandidateKind::ServerReflexive && c.addr() == SocketAddr::V4(mapped) {
+                        assert_eq!(c.local(), base);
+                        assert!(pairs.remove(&pair));
+                    }
+                }
+            }
+            assert!(starts.try_recv().is_err());
+        }).await?;
+        driver.transport.close().await;
+        Ok(())
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn available_ipv4_shares_a_base_and_retires_the_last_gateway_publisher() -> Result<()> {
         use crate::peer::server_udp::ServerUdp;

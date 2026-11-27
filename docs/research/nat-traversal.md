@@ -131,7 +131,11 @@ API. One connection-scoped lookup of `ipv4only.arpa` discovers the prefix under
 [RFC 7050](https://www.rfc-editor.org/rfc/rfc7050.html#section-3); synthesis follows
 the six [RFC 6052 layouts](https://www.rfc-editor.org/rfc/rfc6052.html#section-2.2).
 Initial ICE starts discovery once it has both a non-loopback IPv6 base and an
-IPv4 peer candidate. Desktop interface refresh can supply the first usable IPv6
+IPv4 peer candidate. Desktop interface refresh watches both bound address
+families until ICE nomination. Newly available IPv4 bases also reach the shared
+gateway publisher. A monitor-injection control published a late IPv4 candidate
+and admitted one injected gateway mapping to both connections sharing its socket.
+Interface refresh can supply the first usable IPv6
 base after gathering starts. First ICE nomination or pair retirement releases
 bootstrap work. Failed discovery or exhausted aliases preserve
 ordinary candidates. There is no persistent prefix cache or SDK fork. Well-known
