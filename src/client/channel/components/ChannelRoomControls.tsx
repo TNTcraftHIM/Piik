@@ -395,7 +395,7 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
         {!room.available && (diagnosis ? <div className="c3-settings-offline" role="status">
           {t(diagnosis.message)} <RoomHostingNote channel={channel} room={room} /> <ChannelDiagnosisHelp diagnosis={diagnosis} />
         </div> : <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
-          : t("room.settings.offlineRelay")} <RoomHostingNote channel={channel} room={room} /></p>)}
+          : t(channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty")} <RoomHostingNote channel={channel} room={room} /></p>)}
         {inspectNative && !serverHosted && channel.self?.id === room.creatorId && channel.appConnected &&
           <NativeRoomOpenNotice key={JSON.stringify(["app", site?.id, channel.self?.id, channel.sessionId, channel.appPort])}
             channel={channel} roomId={room.id} operator="app" />}

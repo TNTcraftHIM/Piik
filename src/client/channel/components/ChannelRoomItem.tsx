@@ -29,7 +29,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
     room.access === "private" ? t("room.settings.private") : "",
     voice ? t("channel.joinVoice.voiceJoined") : "",
     activity,
-    participantCount ? [t("channel.people.users"), participantCount].join(" ") : "",
+    participantCount ? t("room.item.presentCount", { count: String(participantCount) }) : "",
   ].filter(Boolean));
   return <div className="c3-room-item" data-compact={compact || undefined} data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined} data-offline={!room.available || undefined}>
     {orderHandle ? <span className="c3-room-lead lr-embedded-actions">{orderHandle}</span> : participantDisclosure && <span className="c3-room-lead lr-embedded-actions">
