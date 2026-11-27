@@ -142,6 +142,8 @@ impl Desktop {
             owner: None,
             releases: BTreeMap::new(),
             tick_wake: Arc::new(Notify::new()),
+            #[cfg(target_os = "windows")]
+            stop_pending: Default::default(),
             gamepad,
         }));
         Self(
@@ -174,7 +176,10 @@ impl Desktop {
                 return Ok(());
             }
             #[cfg(target_os = "windows")]
-            let next = windows::Shortcut::new(key, Arc::downgrade(&self.0))?;
+            let next = {
+                let e = self.0.lock().unwrap();
+                windows::Shortcut::new(key, e.stop_pending.clone(), e.tick_wake.clone())?
+            };
             #[cfg(target_os = "macos")]
             let next = macos::Shortcut::new(key)?;
             *current = Some(next);
@@ -290,6 +295,14 @@ impl Desktop {
         let wake = self.0.lock().unwrap().tick_wake.clone();
         let period = Duration::from_millis(100);
         loop {
+            #[cfg(target_os = "windows")]
+            {
+                let mut e = self.0.lock().unwrap();
+                if e.stop_pending.take() {
+                    e.revoke();
+                    return;
+                }
+            }
             if self.needs_tick() {
                 let tick = timer.get_or_insert_with(|| {
                     tokio::time::interval_at(tokio::time::Instant::now() + period, period)
@@ -824,6 +837,8 @@ struct Executor {
     /// Only failed releases survive their grant; never replay presses or motion.
     releases: BTreeMap<Held, Endpoint>,
     tick_wake: Arc<Notify>,
+    #[cfg(target_os = "windows")]
+    stop_pending: Arc<windows::StopPending>,
     gamepad: Option<gamepad::Backend>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -910,6 +925,12 @@ struct RemoteState {
 }
 
 impl Executor {
+    fn set_owner(&mut self, owner: Option<Uuid>) {
+        self.owner = owner;
+        #[cfg(target_os = "windows")]
+        self.stop_pending.arm(owner.is_some());
+    }
+
     fn set_policy(
         &mut self,
         source: &mut SourceState,
@@ -964,7 +985,7 @@ impl Executor {
         let result = action(self, &mut source);
         self.emit(&mut source, response);
         if self.owner == Some(video) && !source.controllers.values().any(|c| c.grant.is_some()) {
-            self.owner = None;
+            self.set_owner(None);
         }
         self.sources.insert(video, source);
         result
@@ -989,7 +1010,7 @@ impl Executor {
         self.revoke_all(source);
         source.endpoint = Endpoint::default();
         if self.owner == Some(video) {
-            self.owner = None;
+            self.set_owner(None);
         }
     }
 
@@ -1091,7 +1112,7 @@ impl Executor {
         getrandom::fill(&mut token).map_err(|_| anyhow!("input_random_unavailable"))?;
         c.grant = Some(token.iter().map(|byte| format!("{byte:02x}")).collect());
         c.reason = None;
-        self.owner = Some(video);
+        self.set_owner(Some(video));
         match source.endpoint.observe(self.sink.as_mut(), &source.target) {
             TargetState::Ready(_) => c.suspended = false,
             TargetState::Suspended => c.suspended = true,

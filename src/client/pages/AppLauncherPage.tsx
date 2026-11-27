@@ -13,7 +13,7 @@ import { LauncherWorkspace } from "../components/living/LauncherWorkspace";
 import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
 import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
-import { consoleLanguage } from "../locales";
+import { chineseOrEnglish } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { nativeBookmarkWindow } from "../ui/native-window";
@@ -263,7 +263,7 @@ export function AppLauncherPage() {
           mode: external ? "external" : mode,
           ...(external ? { publicOrigin } : {}),
           port: sitePort,
-          language: consoleLanguage(lang),
+          language: chineseOrEnglish(lang),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
         }),
       });
@@ -337,8 +337,9 @@ export function AppLauncherPage() {
   };
 
   const invitationTimedOut = error?.kind === "launch" && error.reason === "tunnel-timeout";
-  const publicAddressGuide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}frp.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/frp${lang === "zh" ? ".zh-CN" : ""}.md`, invitationTimedOut);
+  const chineseGuide = chineseOrEnglish(lang) === "zh";
+  const publicAddressGuide = useProjectLink(`/docs/${chineseGuide ? "zh/" : ""}frp.html`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/frp${chineseGuide ? ".zh-CN" : ""}.md`, invitationTimedOut);
   const errorKey = `client.launch.failure.${error?.reason}`;
   const home = !requestedSite && !bookmarksOnly;
   const homeReady = home && !loading && error?.kind !== "load";

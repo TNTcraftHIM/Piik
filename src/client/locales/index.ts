@@ -40,7 +40,7 @@ export function resolveLang(language?: string): Lang {
   }
 }
 
-// The App console has its own, smaller translation set.
-export function consoleLanguage(lang: Lang): "zh" | "en" {
+// Shared fallback for content available only in Chinese and English.
+export function chineseOrEnglish(lang: Lang): "zh" | "en" {
   return lang === "zh" || lang === "zh-Hant" ? "zh" : "en";
 }

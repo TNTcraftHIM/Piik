@@ -1274,6 +1274,61 @@ fn carrier_release_preserves_replay_counter_and_allows_fresh_consent() {
 
 #[cfg(target_os = "windows")]
 #[tokio::test]
+async fn windows_stop_pending_respects_consent_and_releases_held_input() {
+    use crate::windows_hotkeys::Activation;
+    let (d, recording) = desktop();
+    let (s, mut replies, view) = source(&d);
+    s.set_mode(Mode::Room).unwrap();
+    let pending = d.0.lock().unwrap().stop_pending.clone();
+    pending.signal(Activation::StopChord);
+    assert!(!pending.take());
+    let mut c = Client::new(&s);
+    c.send(&s, json!({"type":"request","intent":Uuid::new_v4()}));
+    let grant = c.state(&mut replies)["grant"].clone();
+    c.send(&s, json!({"type":"key","grant":grant,"code":"ShiftLeft","down":true}));
+    pending.signal(Activation::StopChord);
+    d.tick_when_needed(&mut None).await;
+    assert_eq!(view.borrow().mode, Mode::Ask);
+    assert_eq!(recording.lock().unwrap().events.len(), 2);
+    pending.signal(Activation::Registered(0));
+    pending.signal(Activation::StopChord);
+    assert!(pending.take());
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn windows_stop_ordering_active_chord_survives_release() {
+    use crate::windows_hotkeys::Activation;
+    let (desktop, _) = desktop();
+    let (source, mut replies, view) = source(&desktop);
+    source.set_mode(Mode::Room).unwrap();
+    let mut client = Client::new(&source);
+    client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
+    assert_eq!(client.state(&mut replies)["state"], "active");
+    desktop.0.lock().unwrap().stop_pending.signal(Activation::StopChord);
+    source.release(client.id, client.flow).unwrap();
+    desktop.tick_when_needed(&mut None).await;
+    assert_eq!(view.borrow().mode, Mode::Ask);
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn windows_stop_ordering_idle_chord_preserves_later_grant() {
+    use crate::windows_hotkeys::Activation;
+    let (desktop, _) = desktop();
+    let (source, mut replies, view) = source(&desktop);
+    source.set_mode(Mode::Room).unwrap();
+    desktop.0.lock().unwrap().stop_pending.signal(Activation::StopChord);
+    let mut client = Client::new(&source);
+    client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
+    assert_eq!(client.state(&mut replies)["state"], "active");
+    desktop.tick_when_needed(&mut None).await;
+    assert_eq!(view.borrow().mode, Mode::Room);
+    assert!(desktop.0.lock().unwrap().owner.is_some());
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
 #[ignore = "scoped Windows hotkey registration; posts only to its own queue, never types desktop input"]
 async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
     let (d, _) = desktop();
@@ -1290,6 +1345,12 @@ async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
     d.set_shortcut(key).unwrap();
     d.1.lock().unwrap().as_ref().unwrap().notify_test().unwrap();
     tokio::time::timeout(Duration::from_secs(2), async {
+        let mut timer = None;
+        while d.0.lock().unwrap().owner.is_some() {
+            d.tick_when_needed(&mut timer).await;
+        }
+    }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             if view.borrow().mode == Mode::Ask && view.borrow().requests.is_empty() {
                 break;
@@ -1305,6 +1366,83 @@ async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
     let (other, _) = desktop();
     other.set_shortcut(key).unwrap();
     other.close();
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+#[ignore = "injects actual Windows keys on an explicitly isolated CI desktop"]
+async fn windows_stop_shortcut_on_isolated_desktop() -> Result<()> {
+    ensure!(
+        std::env::var("CI").as_deref() == Ok("true")
+            && std::env::var("PIIK_ISOLATED_WINDOWS_DESKTOP").as_deref() == Ok("1"),
+        "requires an isolated interactive Windows CI desktop"
+    );
+
+    struct Chord(Vec<Held>);
+    impl Chord {
+        fn press(&mut self, code: &str) -> Result<()> {
+            let key = Held::Key(keyboard::scan(code).expect("known fixture key"));
+            windows::System.apply(Bounds::default(), &Action::Held(key, true))?;
+            self.0.push(key);
+            Ok(())
+        }
+
+        fn release(&mut self) -> Result<()> {
+            self.0.reverse();
+            self.0.retain(|key| {
+                windows::System.apply(Bounds::default(), &Action::Held(*key, false)).is_err()
+            });
+            ensure!(self.0.is_empty(), "Windows rejected fixture key release");
+            Ok(())
+        }
+    }
+    impl Drop for Chord {
+        fn drop(&mut self) {
+            let _ = self.release();
+        }
+    }
+
+    let mut selected = None;
+    for (shift, win) in [(false, false), (true, false), (false, true), (true, true)] {
+        let (desktop, recorded) = desktop();
+        let key = match selected {
+            Some(key) => {
+                desktop.set_shortcut(key)?;
+                key
+            }
+            None => (1..=11).rev().find(|key| desktop.set_shortcut(*key).is_ok())
+                .ok_or_else(|| anyhow!("no available Windows fixture shortcut"))?,
+        };
+        selected = Some(key);
+        let (source, mut replies, view) = source(&desktop);
+        source.set_mode(Mode::Room)?;
+        let mut client = Client::new(&source);
+        client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
+        let grant = client.state(&mut replies)["grant"].as_str().unwrap().to_owned();
+        client.send(&source, json!({"type":"key","code":"KeyA","down":true,"grant":grant}));
+
+        let mut chord = Chord(Vec::new());
+        if shift { chord.press("ShiftLeft")?; }
+        if win { chord.press("MetaLeft")?; }
+        chord.press("ControlLeft")?;
+        chord.press("AltLeft")?;
+        chord.press(&format!("F{key}"))?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let mut timer = None;
+            while desktop.0.lock().unwrap().owner.is_some() {
+                desktop.tick_when_needed(&mut timer).await;
+            }
+        }).await.map_err(|_| anyhow!("stop timed out with Shift={shift}, Win={win}"))?;
+        chord.release()?;
+        assert_eq!(view.borrow().mode, Mode::Ask);
+        let held = Held::Key(keyboard::scan("KeyA").unwrap());
+        assert_eq!(recorded.lock().unwrap().events, [Action::Held(held, true), Action::Held(held, false)]);
+        desktop.close();
+    }
+    let (again, _) = desktop();
+    again.set_shortcut(selected.unwrap())?;
+    again.close();
+    Ok(())
 }
 
 #[cfg(all(feature = "capture", target_os = "linux"))]
