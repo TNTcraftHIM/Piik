@@ -122,9 +122,7 @@ async fn publication_audio_settings_belong_to_the_mixer_until_it_stops() -> Resu
         Relay::default(),
         cancelled,
     );
-    let owner = CaptureAudio {
-        control: producer.control.clone(),
-    };
+    let owner = CaptureAudio::new("room".into(), producer.control.clone());
     let muted = SourceAudioSettings {
         bitrate: 96_000,
         gain: 0.0,
