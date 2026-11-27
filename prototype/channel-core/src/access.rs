@@ -5,7 +5,7 @@ use argon2::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[derive(Clone, Copy)]
@@ -227,21 +227,27 @@ impl RoomState {
         user: Uuid,
         password: Option<&str>,
         invite: Option<&str>,
-    ) -> Result<(), &'static str> {
+        now: u64,
+        retry_at: &mut BTreeMap<Uuid, u64>,
+    ) -> Result<bool, &'static str> {
         if self.reads(user) {
-            return Ok(());
+            return Ok(false);
         }
-        let valid = invite.is_some_and(|key| self.accepts_invite(key))
-            || password.is_some_and(|password| {
-                self.password_hash
-                    .as_ref()
-                    .is_some_and(|hash| accepts_password(hash, password))
-            });
-        if !valid {
-            return Err("room_access_required");
+        if !invite.is_some_and(|key| self.accepts_invite(key)) {
+            let (Some(password), Some(hash)) = (password, &self.password_hash) else {
+                return Err("room_access_required");
+            };
+            retry_at.retain(|_, deadline| *deadline > now);
+            if retry_at.contains_key(&user) {
+                return Err("rate_limited");
+            }
+            if !accepts_password(hash, password) {
+                const PASSWORD_RETRY_MS: u64 = 2_000;
+                retry_at.insert(user, now.saturating_add(PASSWORD_RETRY_MS));
+                return Err("room_access_required");
+            }
         }
-        self.grants.insert(user);
-        Ok(())
+        Ok(self.grants.insert(user))
     }
 
     pub fn invite(&mut self) -> Result<String, &'static str> {

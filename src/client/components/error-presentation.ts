@@ -133,6 +133,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (/^(?:room_unavailable|room_not_found|invalid_room_id)$/.test(error))
     return display("channel.error.roomUnavailable");
   if (error === "invalid_room_password") return display("channel.error.invalidRoomPassword");
+  if (error === "rate_limited") return display("remote.reason.retry");
   if (error === "password_failed") return display("channel.error.setRoomPasswordFailed");
   if (/room_access|room_forbidden/i.test(error))
     return display("channel.error.roomAccessDenied");

@@ -768,15 +768,6 @@ impl RoomRuntime {
             Command::RelayCapacity { capacity, .. } => {
                 self.set_relay_capacity(member, session, capacity)?
             }
-            Command::EnterRoom {
-                password,
-                invite_key,
-                ..
-            } => {
-                let authorized = self.policy().reads(member.user_id);
-                self.enter(member, password.as_deref(), invite_key.as_deref())?;
-                op.policy_changed = !authorized;
-            }
             Command::RoomInvite { .. } => {
                 op.result = RoomResult::Invite {
                     key: self.invite(member)?,
@@ -910,6 +901,8 @@ struct RoomAuthority {
 pub struct RoomHost {
     authority: Option<RoomAuthority>,
     room: RoomRuntime,
+    // A failed admission rolls back room changes but still consumes its password attempt.
+    password_retry_at: BTreeMap<Uuid, u64>,
     pending: Option<Pending>,
 }
 
@@ -1538,6 +1531,7 @@ impl RoomHost {
         Self {
             authority: None,
             room: RoomRuntime::new(policy),
+            password_retry_at: BTreeMap::new(),
             pending: None,
         }
     }
@@ -1914,6 +1908,14 @@ impl RoomHost {
                     ready,
                 } => {
                     self.room.room_data_state(context.session_id, *peer, *ready)?;
+                }
+                HostAction::Command { command: Command::EnterRoom { password, invite_key, .. }, .. } => {
+                    if self.room.enter(
+                        member.unwrap(), password.as_deref(), invite_key.as_deref(),
+                        input.now, &mut self.password_retry_at,
+                    )? {
+                        work.policy = Some(self.policy().clone());
+                    }
                 }
                 HostAction::Command { context, command } => {
                     if matches!(
