@@ -62,6 +62,23 @@ campus with a counter per destination (112.4 again) it held 2 of 9, as
 expected. Four more reports have come in since the table (fifteen in all);
 they repeat kinds already in it.
 
+Twenty-one reports now, the last four with tool 0.4.0. Brackets over all of
+them: where one counter serves every destination (61.242 twice, 183.11) the
+middle port lay strictly between in 13 of 19 and inside the outer span
+widened by its own width in 19 of 19; where each destination has its counter
+(112.4 twice, 223.104 twice) in 3 and 4 of 32. A new network, 180.98, keeps
+three counters inside about 110 ports: a new address is held 23 of 33 with
+64 packets and 33 of 33 with 256.
+
+Two things 0.4.0 added did not deliver. The four further Google hosts never
+joined a survey, most likely because they resolve to the address already
+asked. And filtering read "nothing came in" on all four networks from every
+observer that names another address, which is what strict filtering looks
+like and also what an observer that ignores the request looks like: there is
+no network yet where an answer did come in. If you have a host with a public
+address and no NAT in front of it, one run of 0.4.0 there settles whether
+those observers answer from elsewhere at all.
+
 One-sided surveys of the owner's circle; no peer, no filtering measured.
 What they say for `peer/preparation.rs`, none of it to change yet: four of
 ten networks leave through more than one real address, and `observe` gives
@@ -139,10 +156,19 @@ argues otherwise:
   the tracking.
 - The phone's width cap applies to hints with a picture only.
 
-Three are the owner's and I have put them to the owner: what survives of a
-quote when its target is deleted or edited; which mixed versions a release
-promises; whether the stop chord takes every Ctrl+Alt function-key chord
-from background voice shortcuts.
+Three were the owner's, answered on 2026-11-27:
+
+- **A reply points at its target and keeps no copy.** The reader shows the
+  target as it is when read: its present text, or 原消息已删除.
+  [ADR-0019](../../docs/adr/0019-the-life-of-a-message.md), decision 4.
+- **The stop chord owns its family.** Every chord of Ctrl+Alt with F1 to F11,
+  with or without Shift and Win, is the stop chord's and no voice shortcut
+  can be bound to one, as a remote desktop keeps its release chord from the
+  session it shows.
+- **Versions.** The first number is a change of protocol, the second a
+  change of features, the third a repair; within one first number a newer
+  and an older second number work together. Kept clean, with little carried
+  over. This is the frame for the design I owe you, not a change to make now.
 
 ## Words
 
