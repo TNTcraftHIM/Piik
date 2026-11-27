@@ -616,16 +616,12 @@ fn cursors(allocations: &[(u32, u16)]) -> Option<Vec<Cursor>> {
 /// chances add up to no more than one over all ports, and a port joins the run that gives it the
 /// larger one. As a draw, a port is one of those the set still has.
 ///
-/// The ratio is taken port by port against the set assumed, which is fitted to the ports and so
-/// is not fixed while they arrive: the ratio itself may rise in expectation. What holds is this.
-/// Taken against the set the ports were really drawn from, the same product never rises in
-/// expectation and so reaches a value `v` in at most one survey in `v`; and the ratio here is no
-/// larger than that product whenever the set assumed is no larger than the real one, since each
-/// factor grows with the set. The set assumed is the smallest this module knows of that holds the
-/// ports ([`least_set`]): so the bound holds for draws from a run of at least [`SMALLEST_SET`]
-/// ports in a row, from the whole range, or from a port set of a shape listed here, and says
-/// nothing of a sparser set of another shape. Reading cursors when the ratio passes one is the
-/// choice of the likelier of the two, not a test at a level.
+/// The ratio is taken port by port against the smallest set this module knows of that holds the
+/// ports ([`least_set`]). It is never larger than the same product taken against the set the
+/// ports were drawn from, when that set is a run of at least [`SMALLEST_SET`] ports, the whole
+/// range, or a port set of a listed shape; and under draws that product never rises in
+/// expectation. So the ratio reaches a value `v` in at most one survey of such draws in `v`.
+/// Cursors are read when it passes one.
 fn runs(allocations: &[(u32, u16)]) -> (Vec<Vec<(u32, u16)>>, f64) {
     let set = least_set(allocations);
     let every = f64::from(u16::MAX - LOWEST_PORT) + 1.0;
@@ -886,8 +882,8 @@ mod tests {
 
     #[test]
     fn draws_seldom_pass_for_cursors() {
-        // The ratio reaches a hundred in at most one survey of draws in a hundred. The first case
-        // is the one that broke the density this replaced: 64 ports in a row, given again and again.
+        // The ratio reaches a hundred in at most one survey of draws in a hundred, for draws from a
+        // small block given again and again as for draws from the whole range.
         for (set, count, again) in [(64, 18, true), (64, 32, true), (64, 18, false), (1_000, 18, false), (64_000, 18, false), (64_000, 40, false)] {
             let surveys = 4_000;
             let (mut passed, mut read) = (0, 0);
