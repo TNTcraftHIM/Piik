@@ -39,13 +39,14 @@ export function LanguageControl() {
   }
 
   function navigate(event: KeyboardEvent<HTMLSpanElement>) {
+    if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     const menu = event.currentTarget;
     if (event.key === "Tab" || event.key === "Escape") {
       if (event.key === "Escape") event.preventDefault();
       dismiss();
       return;
     }
-    if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const items = Array.from(menu.querySelectorAll<HTMLButtonElement>("button"));
     const current = items.indexOf(document.activeElement as HTMLButtonElement);
     let next: HTMLButtonElement | undefined;
