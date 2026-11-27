@@ -6,8 +6,8 @@ This document owns evidence and its limits. Current 3.0 behavior belongs to the
 [network model](./channel-network-design.md#reachability-and-repair), execution
 methods to the [laboratory](./network-lab.md), and dependency pins to
 [Native provenance](../../prototype/channel-native/README.md#rtc-dependency).
-Current Rust results come first; the later Go/Pion/LiveKit sections are explicitly
-historical 2.x evidence. An isolated candidate is not a delivered product feature.
+The historical section links to the released Go/Pion/LiveKit evidence. An isolated
+candidate is not a delivered product feature.
 
 ## Confirmed Boundaries
 
@@ -317,364 +317,60 @@ These are research boundaries, not accepted framework or protocol upgrades:
 
 ## Historical 2.x Evidence
 
-The remaining sections preserve the measured reasons for published Go/Pion
-repairs and rejected experiments. Their timeouts, policies, environment variables
-and library details are not instructions for the 3.0 runtime. Git and PRs own
-implementation history; [ADR-0009](../adr/0009-optional-nat-prediction.md) owns the
-2.x optional-prediction decision.
+The released v2.8.0 research record owns the Go/Pion/LiveKit measurements,
+including failed trials and experimental limits. ADR-0009 records the 2.x
+optional-prediction decision. [v2.8.0 NAT research](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md), [ADR-0009](../adr/0009-optional-nat-prediction.md)
 
-### Public-Link Discovery Redundancy
+- Discovery and delivery controls cover STUN destination redundancy, Browser
+  candidate deduplication and missing Viewer media behind Server NAT.
+  [Public-link discovery](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#public-link-discovery-redundancy),
+  [Browser preflight](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#browser-prediction-preflight),
+  [SFU behind NAT](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#sfu-behind-server-nat)
+- Native preparation controls cover same-socket STUN, gateway mapping and
+  cancellation, selection attribution, and the limits of coordinated Go punching.
+  Current 3.0 observations apply to one preparation.
+  [Shared-socket preflight](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#native-shared-socket-preflight),
+  [Gateway and survey limits](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#gateway-and-survey-limits),
+  [Observation and attribution](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#independent-observation-and-attribution-preflight),
+  [Rejected participant-wide NAT inference](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#rejected-product-inference),
+  [Coordinated Native punching](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#coordinated-native-punching-assessment)
+- Browser interoperability controls cover mDNS, ordinary ICE restart and
+  asymmetric recovery under experimental renomination.
+  [Stable Pion interoperability](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#stable-pion-interoperability),
+  [Renomination preflight](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#pion-renomination-preflight)
 
-A v1.9.2 report had working chat but failed media and only MiWiFi STUN responding;
-it lacked paired ICE traces and prediction settings. The confirmed 2.x bug was
-narrower: disabling prediction removed two ordinary fallback destinations. The
-repair retained the same three services for ordinary discovery, without adding
-providers, rankings or polling; LAN discovery stayed separate.
-
-October 11, 2026 controls found each service usable independently. `701` events
-could coexist with useful candidates. A healthy destination completed after
-55 ms beside two failing DNS targets, or 4 ms beside a silent UDP target while
-gathering remained unfinished at 15 seconds. Closed ports were not equivalent
-to silent drops. Chromium's [candidate path](https://webrtc.googlesource.com/src/+/refs/heads/main/p2p/base/stun_port.cc)
-and the [candidate-error specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)
-explain why neither error events nor gathering completion alone diagnose failure.
-
-Extra-destination regressions also required keeping destination identity until
-filtering against the attempt's survey set: an ordinary duplicate or fourth
-response must not supply prediction evidence. These repairs do not establish
-the original report's cause, whose configuration had three destinations.
-
-### SFU Behind Server NAT
-
-The October 9, 2026 kernel-NAT control used real 2.x SFU owners, `SFU_ONLY`,
-same-port UDP forwarding and `SFU_PUBLIC_IP`, with private shortcuts blocked.
-Browser VP8/Opus and Windows Native H264/Opus passed startup, 720p→480p changes,
-subscription recovery and retirement. The Native control decoded 300 720p frames;
-the hash-matched v1.9.2 artifacts also passed startup/recovery, but excluded the
-separately repaired reauthentication-after-local-loss case.
-
-Viewer-only UDP blocking preserved Host ingress and downtrack binding but no
-Viewer RTP/decode; failure occurred around 15 seconds. Allowing STUN/DTLS while
-discarding Viewer RTP/RTCP connected both endpoints but reached the existing
-20-second operation deadline without frames. A bound track or connected PC is
-not Viewer readiness. These desktop controls did not establish phone/carrier
-coverage or change product deadlines.
-
-## Browser Prediction Preflight
-
-September 2026 Chrome 151 controls reached self-hosted and Cloudflare STUN
-independently, while all six combined runs exposed one deduplicated srflx
-endpoint. This remained `unknown`, not evidence of EIM. ICE restart changed one
-mapping; acceptance of a documentation-address candidate proved syntax only.
-Neither guaranteed a new socket or an authenticated predicted path.
-
-Browser events report completed observations, not send/allocation order. A
-controlled four-by-four namespace baseline then found bounded prediction useful
-for sequential-to-restricted pairs in 14/15 runs. Sequential-to-sequential pairs
-remained sensitive to ordering and intervening allocations. This supported the
-bounded experiment, not a participant-wide classifier or field percentage.
-
-## Current Decision
-
-**Historical 2.x decision:** ordinary STUN remained discovery. Public-link App
-mode kept three ordinary public services and reused them for prediction; optional
-Site listeners used same-host ports 3479/3480. LAN used its local endpoint.
-Pages requested the P2P-first capability, while the accepted share policy aligned
-Host/Viewer/relay behavior and retained older per-share preferences.
-
-Three eligible arithmetic srflx observations yielded a small two-sided window.
-Ordinary candidates trickled immediately; Browser evidence used STUN URL and
-Native evidence used marked same-media-socket survey results, excluding gateway
-mappings. Prediction changed neither NAT labels nor route/SFU preference.
-Current 3.0 behavior is instead owned by the [network model](./channel-network-design.md#reachability-and-repair).
-
-### Native Shared-Socket Preflight
-
-September 5, 2026 disproved the assumption that ordinary Pion STUN gathering
-already shared the media socket: three destinations used three temporary ports.
-UniversalUDPMux supplied same-socket observations, verified by candidate related
-port and 35 H264 RTP packets delivered to an independent Linux Pion Viewer. The
-TUN network exposed one mapping, so no predicted-path gain was claimed. The
-[later cache repair](#native-mapping-cache-and-retry-lifetimes) separately addressed
-freshness across retries.
-
-The 2.x dual-stack mux retained IPv4 when IPv6 was absent and supplied usable
-IPv6 candidates without proving firewall reachability. Optional gateway mapping
-ran alongside ordinary gathering on that socket; a synthetic forwarding control
-connected ICE/DTLS through its mapped candidate in 1.26 seconds. This established
-composition, not physical NAT rescue.
-
-### Gateway And Survey Limits
-
-The 2.x [scoped go-nat repairs](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md)
-retained gateway-assigned ports, propagated cancellation and attempted
-[NAT-PMP lifetime-zero deletion](https://www.rfc-editor.org/rfc/rfc6886.html#section-3.4).
-PCPv6 work had a two-second sub-bound inside the three-second mapping call so
-silent IPv6 could not discard successful IPv4 work. Retirement canceled and
-joined mapping creation before bounded cleanup; unreachable gateways could
-still leave leases to expire. Failed mapping was not relaunched on the same
-connection. These caller/cleanup/lease lifetimes were independent of ICE.
-
-Listener startup and self-probes did not prove external reachability. Debug
-could report provenance/selection without retaining private endpoint details;
-packet logs stayed disabled. Zero predicted selections alone was not evidence
-of a broken predictor or a success rate.
-
-### Independent Observation And Attribution Preflight
-
-September 1, 2026 Chrome controls found self-hosted, Xiaomi, Bilibili and
-Cloudflare individually reachable; QQ produced no srflx in that run. A loopback
-connection selected a test-marked `sp1` foundation, proving attribution mechanics,
-not reachability benefit. Historical field observations emitted six hypotheses
-in one generation and selected none; later generations lacked an arithmetic
-shape. Ordinary ICE/SFU remained independent. Provider configuration and this
-dated reachability sample are different owners.
-
-### Rejected Product Inference
-
-RFC 5780 observations vary with source port, destination and time; mapping and
-filtering differ. Deduplicated Browser srflx output cannot distinguish equal
-mappings from unanswered probes. Therefore samples cannot skip a P2P candidate,
-change the committed graph or become a persistent `eim | edm` capability.
-The 2.x experiment added no such routing state. Current 3.x typed observations
-likewise describe one preparation, not permanent participants.
-
-### Coordinated Native Punching Assessment
-
-The October 2026 Go/Pion experiment is historical. Public comparison came from
-[frp's strategy table](https://github.com/fatedier/frp/blob/2542d11a6201c0f2bbe3b1d93031fc1e83201056/pkg/nathole/analysis.go)
-and [EasyTier's Native implementation](https://github.com/EasyTier/EasyTier/blob/1649ec00135e12103e05bf543e0ed313d7e190f8/easytier-core/src/connectivity/hole_punch/udp/client.rs).
-Their socket/random-search budgets establish mechanisms, not Piik defaults.
-
-The isolated comparison separated ordinary ICE, eight predicted candidates,
-ordered first-tuple coordination, eight-socket coordination, and ordinary ICE
-over eight preallocated sockets. In sequential endpoint-dependent NAT, three
-intervening mappings defeated the first guess while the coordinated pool could
-connect; favorable ICE scheduling could also make prediction succeed. Six
-intervening allocations or blocked UDP defeated the pool. Merely allocating
-sockets was not the same mechanism.
-
-The isolated prototype used eight sockets, ≤64 requests plus 64 replies and a
-four-second overall deadline. A 100 ms peer skew passed; 350 ms exceeded its
-200 ms overlap. The later 2.x
-integration adopted the winner only on a server-issued retry, before creating
-Pion, and passed SRTP/SRTCP with 250 ms skew inside its 800 ms send/1.1s hard bound.
-The stable/sequential repair retained the exact survey socket; mixed, stable and
-sequential controls passed. Browser peers declined Native preparation. These
-predate the 3.x random-port collision implementation.
-
-Dropped-first-request and 250 ms delayed-response survey controls recovered;
-a silent destination exhausted the existing 1.5s survey budget and fell back.
-The archived [Browser fanout control](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-browser-fanout-gate.ts)
-kept two Viewers near 30 fps through quality/pause/audio/App-exit changes using
-loopback STUN. The [process laboratory](./network-lab.md#running-the-process-layer)
-adds real kernel-NAT/media evidence; neither proves physical-network prevalence.
-
-### Stable Pion Interoperability
-
-The historical WebRTC v4.2.24 / ICE v4.4.8 candidate included
-[retransmission, generation and mux/mDNS fixes](https://github.com/pion/ice/compare/v4.4.0...v4.4.8).
-[PR #1026](https://github.com/pion/ice/pull/1026) corrected Binding PRIORITY to
-peer-reflexive preference, avoiding a possible acceptance wait. DTLS v3.1.13
-included [buffer/handshake repairs](https://github.com/pion/dtls/compare/v3.1.10...v3.1.13).
-These improve setup correctness, not reachable NAT classes.
-
-A Chrome 152 control reproduced the [mDNS query incompatibility](https://github.com/pion/mdns/commit/5b0a717e4ff6e81300d54ce2fef53e635b95fe3c):
-fresh v2.1.0 timed out at four seconds, v2.2.2 resolved the same name in about
-12 ms, and another old resolver timed out. Chrome/Firefox ordinary restart
-controls retained VP8, reverse RTCP and data after path loss. The upgrade did not
-remove Piik's fresh-interface and STUN-cache repairs or enable renomination.
-
-### Pion Renomination Preflight
-
-Automatic renomination remained disabled. The historical two-path control
-recovered Chromium 152 video/feedback without new SDP after about 5.6s. Firefox
-151.0.3 resumed video at about 5.7s but kept the failed outbound path: reverse
-RTCP and echoed data stayed absent for the 20s observation. Explicit ICE restart
-restored both. Both Browsers advertised only `trickle` while Pion sent an older
-nomination attribute; steady Binding requests rose from 3 to 27–75 per five
-seconds. Fresh video alone did not establish interoperable migration. Reopening
-requires negotiated Browser support and bounded costs, not UA exceptions.
+The current 3.0 process controls exercise prepared and ordinary media over
+kernel NAT. [Rust process controls](./network-lab.md#rust-process-controls)
 
 ### Integration Cost And Recovery Controls
 
-**Magicsock integration is not planned.** The removed Go experiment required
-Native transport at both ends and showed no additional direct NAT class worth
-its composition cost. It is not a maintained module or an implementation checklist.
-
-#### October 12 Direct-Transport Control
-
-The [Tailscale v1.104.1](https://github.com/tailscale/tailscale/releases/tag/v1.104.1)
-raw-Bind comparison and Pion v4.2.23/ICE v4.4.7 had the same seven-pair outcome at
-4s and 20s: cone/cone, restricted/restricted and cone/hard in either direction
-connected; restricted/hard and hard/hard did not. Warmed Magicsock carried media
-through two address changes, but cold loss of the first discovery packets
-exhausted nested ICE near 1.7s. Equivalent stock Pion connected near 0.6s;
-extending only the fixture budget allowed nested startup near 5.3s. Raw Bind also
-needed framing for inner STUN and did not itself preserve peer authorization.
-
-#### Reachability And Cost
-
-October 5–10 controls used [Tailcat](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/README.md),
-whose pinned Browser path was relay-only; the [Browser P2P proposal](https://github.com/tailscale/tailscale/issues/21027)
-uses WebRTC. DERP reached otherwise blocked cases, establishing relay coverage
-rather than added P2P classes. Some local-address changes recovered without SDP,
-but rebinding/long interruptions had separate failures. Optional multi-mux reuse
-worked locally with patched dependencies, not as a supported plug-in.
-
-Matched stripped Windows builds grew 44.1→59.8 MiB; a four-Viewer comparison
-peaked at 81.8/93.2 MiB RSS for ordinary/optional transport, excluding codec and
-Browser processes. Final goroutines returned to baseline. These are bounded
-composition measurements, not sustained or per-room budgets.
-
-#### Integration Boundaries
-
-The removed composition needed separate handling for direct-only policy while
-retaining discovery, cold-start timing, late authorization/revocation, listener
-filter lifetime and optional candidate admission. None justified a product owner.
-Its 1232-byte payload ceiling also lost observed 1244-byte encrypted TWCC reports
-and larger compound batches; reducing RTP size did not fix feedback. The
-[upstream feedback-MTU issue](https://github.com/pion/interceptor/issues/416)
-records that boundary. Relay traffic had to be counted separately: selected
-direct addresses and diagnostic Pong responses did not prove direct media.
-
-#### Scope Of The Historical Evidence
-
-Pion/LiveKit overlays carried H264/VP8 and Opus with Browser decoding,
-authorization and retirement when ordinary remote candidates were withheld.
-This proved local composition only, not physical capture, harder-network gain,
-broad mobile support or sustained reliability. The removed overlay is not an
-acceptance entrypoint; independent ordinary-media findings follow.
+The Go Magicsock composition required Native at both ends. The matched
+direct-transport comparison found the same reachability across the seven tested
+pairs. The historical record retains cold-start failure, package and memory
+cost, and feedback datagram limits.
+[v2.8.0 Magicsock controls](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#integration-cost-and-recovery-controls)
 
 ## Ordinary ICE And Media Recovery
 
-These 2.x repairs apply without Magicsock. Current Rust recovery belongs to
-[Rust integration](#rust-integration) and the network owner.
-
-### Interface Refresh And Local Browser Bridge
-
-Pion v4.4.0's [wildcard mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go)
-kept a stale interface snapshot across gatherings. Restart and new connections
-could advertise a removed address; taking a current private snapshot fixed both
-while retaining the socket. Newer Pion still required that adapter.
-
-Loopback was not a portable Browser bridge: Chrome 154 decoded through 127.0.0.1,
-Firefox 155 did not, and Firefox decoded through a non-loopback pair. Mozilla
-[disables ICE loopback by default](https://searchfox.org/firefox-main/source/modules/libpref/init/all.js).
-Complete App controls after LAN-address change showed Firefox Host termination
-and Viewer fallback. Standard ICE restart with the existing disconnect grace,
-complete SDP and request-ID fencing retained the same tracks and fresh pictures;
-replacing only the Native PC instead appeared connected without fresh media.
-This supports shared negotiation ownership, not physical roaming coverage.
-
-### Candidate Generations Across App Control
-
-The October 24, 2026 restart control lost new survey candidates when an old App
-WebSocket gathering completion arrived after the room's new SDP offer. A writer
-check cannot recall a delivered event. The 2.x repair retained the emitter across
-SDP exchanges, used each candidate's actual ufrag and scoped completion, following
-[RFC 8838](https://www.rfc-editor.org/rfc/rfc8838.html#section-13) and
-[WebRTC candidate processing](https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-addicecandidate).
-Pion's own queued events also needed source-generation filtering; only the merged
-collector completed supplemental discovery. Candidate `OperationError` was
-isolated so later candidates and SDP answers could proceed, consistent with
-[addIceCandidate](https://www.w3.org/TR/webrtc/#dom-peerconnection-addicecandidate).
+The 2.x record covers the Browser bridge, generation handling, gateway and
+address-family controls, per-connection sockets and mapping cache lifetime.
+[Ordinary ICE and media recovery](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#ordinary-ice-and-media-recovery),
+[Mapping cache and retries](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#native-mapping-cache-and-retry-lifetimes),
+[Connection sockets](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#native-connection-socket-ownership)
 
 ### Recovery Ownership And Forwarding
 
-Three distinct 2.x failures retained separate owners:
+The 2.x controls distinguish input readiness, the parent recovery budget and
+fresh decoded pictures. The send-queue comparison covers the constrained-link
+and short-loss behavior. [v2.8.0 recovery controls](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#recovery-ownership-and-forwarding),
+[Send-queue assessment](./node-local-media-design.md#send-queue-recovery)
 
-- A late Pion `connecting` callback could disable an already-recovered input
-  bridge. Reading current PC state at consumption restored readiness; prior loss
-  still revoked permission and required a fresh handshake.
-- Backend replacement renewed the Viewer's recovery count. The existing
-  [parent opportunity](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/routing-transport.md#reconciliation) now owns
-  that budget. Trickle controls recovered after 2/9/11-second interruptions;
-  failed full-gathering while offline did not justify longer product deadlines.
-- A throttled encoded queue retained stale pictures after short UDP loss.
-  Forwarder counts preceded actual writes. The
-  [send-queue assessment](./node-local-media-design.md#send-queue-recovery) owns
-  the correction and constrained-bandwidth comparison; six local controls then
-  retained fresh decoding. This does not explain every blur/stall report.
+### Routed Virtual LAN Discovery
 
-The [Viewer control-retirement repair](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/native-client-lifecycle.md#viewer-control-retirement)
-separately fixed a denied Viewer retaining its App slot across invitations.
-
-### Gateway And Address-Family Controls
-
-Kernel controls with actual 2.x Native Engine Host/Viewer media showed ordinary
-discovery survived absent gateway service and either usable IP family could
-carry media when the other was blocked. Sequential NAT used prediction with the
-changing gateway on either endpoint; random-port controls stayed unreachable.
-A real MiniUPnPd gateway made hard/hard reachable through explicit mapping.
-Matched Tailcat controls required its optional portmapper and fair STUN inputs
-but added no direct path. These were encoded-media controls, not physical capture,
-complete room admission, Browser decode or field rates.
-
-## Native Mapping Cache And Retry Lifetimes
-
-The 2.x Pion/shared-mux repair addressed its 25-second completed STUN cache,
-which outlived replacement edges and ICE restart. A retained-Engine control
-re-emitted an old mapping after the fixture changed; replacing the Engine hid
-the defect. In vnet, four quick fresh agents failed before cache expiry, while
-fresh gathering afterward connected; an independent-filtering peer could recover
-through peer-reflexive discovery. The injected one-second NAT lease was a test
-input, not a router-prevalence claim or four product operation timeouts.
-
-The fix retained the socket and used Pion STUN transactions afresh, sharing only
-concurrent requests within the current survey. Delayed valid old responses and
-unmatched responses could no longer satisfy a successor. Gateway refresh likewise
-belonged to an actual gathering rather than half-lease reuse; ordinary SDP
-renegotiation did neither. No periodic probe/retry owner was added.
-
-A Chrome 152 control independently observed fresh Binding requests/current
-mappings across four restarts and four replacement PCs, including retransmission
-after loss. This did not prove Firefox/Safari behavior, connected media or a
-physical NAT change. The general lesson is to retain production-owned resources
-while varying the external condition; recreating everything masks stale caches.
-
-## Native Connection Socket Ownership
-
-In 2.x Native overlap, the replacement connected and then the incumbent stopped
-receiving RTP: both used one local/remote tuple, while Pion's non-STUN mux keyed
-the peer by address/port. New ICE credentials did not separate DTLS/SRTP sessions,
-an [upstream-documented limitation](https://github.com/pion/webrtc/discussions/2598).
-The fix gave each physical send/receive/SFU publication its own socket; STUN,
-gateway and media still shared that socket, and ICE restart retained it.
-
-Real SRTP controls preserved sibling media through commit/rollback against an
-unchanged listener. Failed admission released its socket; gateway work canceled
-and cleanup preceded socket release to avoid deleting a recycled port. This
-changed neither fixed service ports nor route policy, and did not identify an
-unmatched field report's cause.
-
-## Routed Virtual LAN Discovery
-
-A two-Windows-device UU trial on October 20, 2026 had working HTTP/WebSocket but
-stalled on remote Browser `.local` ICE candidates. Substituting the verified
-virtual IP restored pictures; removing it reproduced the stall. A subsequent
-control used ordinary local STUN instead of substitution, advertised the virtual
-srflx address and decoded 1920×1080 near 20 fps, about 32 ms RTT and no sampled loss.
-This matches [mDNS candidate guidance](https://rtcweb-wg.github.io/mdns-ice-candidates/draft-ietf-mmusic-mdns-ice-candidates.html):
-numeric reflexive candidates remain available while [mDNS is local-link](https://www.rfc-editor.org/rfc/rfc6762).
-
-The direct packaged-App invitation initially failed before reaching Piik because
-Windows treated the virtual adapter as Public and lacked an executable-specific
-inbound rule. With owner-approved rules limited to that App/adapter/subnet, page
-and picture worked without proxy, candidate substitution or Browser privacy
-changes. This was one controlled virtual-LAN result, not campus-network coverage
-or permission to change a user's current firewall/network.
-
-### Startup Resource Transfer
-
-Title-only loading occurs before ICE/STUN. In the historical startup control,
-compression reduced a script from about 674 KB to 194 KB and a 64 KiB/s load from
-11.0 to 3.2 seconds. A separate hidden-1280-MTU/no-ICMP TCP control delivered the
-712-byte HTML but no script bytes in 18 seconds; setting only its isolated SYN
-MSS to 1240 delivered the script in about 8 ms. This reproduces
-[path-MTU black holes](https://www.rfc-editor.org/rfc/rfc2923), not the cause of an
-unmatched field loading report. Compression and endpoint MTU below 1500 alone
-do not exclude that failure.
+The virtual-LAN trial covers local STUN and packaged-App firewall behavior. A
+separate control reproduced a path-MTU stall during startup resource transfer.
+[Virtual-LAN discovery](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#routed-virtual-lan-discovery),
+[Startup resource transfer](https://github.com/TNTcraftHIM/Piik/blob/81b4f27eff2a1de1dfe6131c06b525b7ba3508a8/docs/research/nat-traversal.md#startup-resource-transfer)
 
 ## Native ICE Disconnection And Send Consent
 
