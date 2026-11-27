@@ -53,11 +53,13 @@ yet.
    playback and the sender's other flows are no worse through the same window
    than in the seconds before it. A failure a child reports in the window ends
    the trial as it ends any flow, but a flow can get worse without failing, so
-   the absence of a report does not show that. The sender is the proposed
-   judge, since it alone measures all of its flows and only a verdict would
-   leave the device; what it measures is not what each receiver presents, and
-   one recorded overload decides whether its readings follow that. Otherwise
-   the new child alone is withdrawn, by its generation, and that sender is not
+   the absence of a report does not show that. Which reading shows it is not
+   settled. A flow's target rate does not: it fell by three quarters on an
+   admission that harmed no viewer. The proposed reading is each flow's
+   delivered share, what it sends of what the sender had to send in the same
+   seconds, which the sender holds for all of its flows; recorded controls
+   decide whether it follows what receivers present. Otherwise the new child
+   alone is withdrawn, by its generation, and that sender is not
    tried again without fresh evidence. A node healthy with N children has
    proved N for that workload, nothing more, and the room's number is where it
    starts. A person's explicit limit, zero included, is kept, and each kind
@@ -121,6 +123,7 @@ the actuator. A number that a person has to set.
   about 2.4 KiB/s per endpoint.
 - Matched stay and switch runs with different release times, counting the harm
   a trial does to the incumbent and to siblings.
-- One overloaded source-star, the newcomer attached to the source itself:
-  every reading the sender and the pool have, beside what each receiver
-  presents, recorded independently, to see which reading moves and when.
+- Source-stars that start from a stable single viewer, one that the added
+  viewer overloads and one that it does not, the newcomer on the source
+  itself: each flow's delivered share and the other sender and pool readings,
+  beside what each receiver presents, recorded independently.
