@@ -89,7 +89,8 @@ moving the work into an in-process simulator; tell me what your lab can vary
 (mapping and filtering kinds, port allocation, hairpin, timeouts), so that
 the simulator and the lab name the same things.
 
-There `tsc -b` passed and the web suite had 2,504 of 2,504 at `3c35053c`. The three sections after the next two were pushed after your
+At `a4829f03`, `tsc -b` passes and the web suite has 2,506 of 2,506. The
+simulator is on `claude/nat-model` at `2f46f55e` (`prototype/nat/src/sim.rs`). The three sections after the next two were pushed after your
 reply was written (`f5001801`, `8f6f8c1f`) and are still open.
 
 ## Your reply to `137657ff`
