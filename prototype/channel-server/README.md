@@ -335,12 +335,12 @@ hostname pattern. This preference grants no site access or capture permission;
 its launcher checkbox clears it, as does revoking its current origin. Older saved
 temporary URLs have no ownership information: start the site from the launcher
 and select the startup checkbox again on its current entry.
-The shared launcher offers **Local network** and **Public invite**. Local uses a
+The shared launcher offers **Local network** and **Public address**. Local uses a
 temporary certificate on the selected IPv4 address, including a virtual-LAN
 adapter; its fingerprint is printed locally. Follow the existing
 [LAN HTTPS instructions](../../docs/guide/troubleshooting.md#local-https-certificate-warning) before
-accepting that certificate on another device. Public invite uses Cloudflare Quick
-Tunnel by default. **Public invite → Use an existing address** accepts an HTTPS
+accepting that certificate on another device. Public address uses Cloudflare Quick
+Tunnel by default. **Public address → Existing address** accepts an HTTPS
 site origin for an already configured reverse proxy, such as frp. Forward that
 proxy's HTTP and WebSocket traffic to the displayed **Local forwarding target**,
 not the separate App management port. The address must be a site origin without
@@ -458,7 +458,7 @@ query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
 With a supported desktop App connected, choose **Start sharing → OBS / WHIP**.
 Copy Server and Bearer Token into OBS's WHIP stream settings, using H.264 video
 and optional Opus audio. This input is local to the App's computer and works with
-either Local network or Public invite mode. The receiving page, room admission
+either Local network or Public address mode. The receiving page, room admission
 and ordinary viewer routes remain the existing owners.
 
 Configure input picture and sound in OBS. Piik retains automatic delivery
@@ -680,7 +680,7 @@ uses the separate App connection.
 ### ICE server configuration
 
 **Local network** supplies only App's STUN listener on the selected network.
-**Public invite** and standalone Server use public STUN services by default.
+**Public address** and standalone Server use public STUN services by default.
 `PIIK_CHANNEL_ICE_SERVERS` replaces that list with an ICE-server JSON array.
 Use `[]` to disable configured ICE servers for isolated loopback checks.
 The site sends the configured URLs and credentials to Browser and Native
@@ -691,7 +691,7 @@ background Browser service.
 The following example is for source builds with Native TURN over TCP/TLS. If you
 already have a TURN service reachable from the network that blocks outbound UDP,
 set `PIIK_CHANNEL_ICE_SERVERS` to the JSON below. Set it in the desktop App's
-process environment before starting App in **Public invite** mode, or in the
+process environment before starting App in **Public address** mode, or in the
 Server's service environment before restarting Server. Use the hostname, port
 and participant credentials from your TURN service, then have participants
 reconnect and retry from the affected network.

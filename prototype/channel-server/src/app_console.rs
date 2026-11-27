@@ -59,7 +59,7 @@ impl Console {
 
     pub fn starting(&self, public: bool) {
         let label = if public {
-            self.text("Starting public invitation...", "正在连接公网邀请…")
+            self.text("Preparing public site address...", "正在准备站点公网地址…")
         } else {
             self.text("Starting local network...", "正在启动局域网…")
         };
@@ -131,7 +131,7 @@ pub(super) fn site_addresses(
     let (invitation_english, invitation_chinese) = if configured_public {
         ("Configured public address", "已配置的公开地址")
     } else {
-        ("Invitation address", "邀请地址")
+        ("Site address", "站点地址")
     };
     [
         ("Local entry", "本机入口", local),
