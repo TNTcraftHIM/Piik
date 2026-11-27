@@ -451,6 +451,17 @@ fn report(
             println!("  {} {}: {} mappings, {read}", letter(address), shown(*address), allocations.len());
         }
     }
+    if addresses.len() > 1 {
+        println!("note: more than one public address was seen, so a proxy or VPN carries part of this machine's traffic. Turn it off and run again to read the network itself.");
+    }
+    // The cursors that the mappings toward each observer used: a peer is one more destination.
+    for (index, (_, observer)) in observers.iter().enumerate() {
+        let toward: Vec<(u32, u16)> = made_on(&survey.samples, &public).iter().filter(|sample| sample.observer == *observer).map(|sample| (sample.sent_ms, sample.mapped.port())).collect();
+        if let Allocator::Cursors(cursors) = Allocator::of(&toward) {
+            let each: Vec<String> = cursors.iter().take(6).map(|cursor| format!("{}x{}", cursor.last, cursor.landings)).collect();
+            println!("toward observer {index}: {} mappings on {} cursor(s): {}", toward.len(), cursors.len(), each.join(" "));
+        }
+    }
     println!("samples (socket, observer, ms, address, mapped port, local port):");
     for sample in &survey.samples {
         let observer = observers.iter().position(|(_, address)| *address == sample.observer).unwrap_or(99);
