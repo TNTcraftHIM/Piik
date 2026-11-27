@@ -172,6 +172,18 @@ impl StoredRoomHost {
         self.host.finish_peer(prepared.address, result)
     }
 
+    pub fn clear_media(
+        &mut self,
+    ) -> Result<Vec<crate::conversation::ConversationReply>, &'static str> {
+        let request = self.host.media_clear_request();
+        let crate::history::HistoryResult::MediaCleared { through_seq } =
+            self.store.history(&request)?
+        else {
+            return Err("invalid_history_result");
+        };
+        Ok(self.host.media_clear_replies(through_seq))
+    }
+
     pub fn current_readers(&self) -> Vec<uuid::Uuid> {
         self.host.current_readers()
     }
@@ -186,6 +198,11 @@ impl StoredRoomHost {
 
     pub fn delete_data(&mut self) -> StoreResult<()> {
         self.store.delete_room(&self.host.policy().id)
+    }
+
+    /// Compact the local database after the room's media clear has committed.
+    pub fn reclaim_space(&mut self) -> StoreResult<()> {
+        self.store.reclaim_space()
     }
 
     /// Domain-authenticated input follows the same commit boundary as Browser

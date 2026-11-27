@@ -46,6 +46,26 @@ test("a room has one host: a host registered over another closes the one it repl
   expect(second.close).not.toHaveBeenCalled();
 });
 
+test("committed room media cleanup reports cache failure separately and skips remote bindings", async () => {
+  const scope = { historyLineage: "lineage", throughSeq: 7, replies: [] };
+  const host = { roomId: "owned", summary: async () => ({}), bind: vi.fn(async () => {}), clearMedia: vi.fn(async () => scope) };
+  const other = { ...host, roomId: "remote", clearMedia: vi.fn() };
+  const rooms = [host, other].map(({ roomId: id }) => ({ id, delivery: { bindingId: id, hostSessionId: id === "owned" ? "local" : "other" } }));
+  const owner = new BrowserHosting({
+    view: () => ({ sessionId: "local", state: { channel: { rooms } } }) as unknown as ChannelView,
+    socket: () => null, request: async () => {}, write: () => {}, report: () => {}, failures: () => {},
+  });
+  for (const room of [host, other]) {
+    await owner.register(room.roomId, room as never, () => {});
+    owner.bound(room.roomId, room.roomId);
+  }
+  const notify = vi.fn(async () => {}), cache = vi.fn(async () => { throw new Error("cache_failed"); });
+  expect(await owner.clearMedia(notify, cache)).toEqual({ clearedRooms: 1, failedRooms: 0, cacheFailures: 1, compactionFailures: 0 });
+  expect(notify).toHaveBeenCalledWith(host, scope.replies);
+  expect(cache).toHaveBeenCalledWith(host.roomId, scope.historyLineage, scope.throughSeq);
+  expect(other.clearMedia).not.toHaveBeenCalled();
+});
+
 test("a close that fails does not stop hosting from being restored", async () => {
   const room = { id: "first", creatorId: "self" };
   const failing = { roomId: room.id, summary: () => room, close: vi.fn(async () => { throw new Error("close_failed"); }) };

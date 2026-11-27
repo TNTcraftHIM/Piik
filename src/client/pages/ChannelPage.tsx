@@ -39,6 +39,7 @@ import { RoomCreationInterrupted, roomCreationPolicyFor, readSimpleShareRoom, re
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
+import { ChannelHostMediaCleanup } from "../channel/components/ChannelHostMediaCleanup";
 import { ChannelRoomListItem } from "../channel/components/ChannelRoomListItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelSiteEntry } from "../channel/components/ChannelSiteEntry";
@@ -520,7 +521,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       {!chatInBar && chatToggle}
     </>}
   </div></div>
-  <div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls} /></div></div>
+  <div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls}
+    maintenanceControls={(open, restoreFocus) => <ChannelHostMediaCleanup channel={channel} moreOpen={open} restoreFocus={restoreFocus} />} /></div></div>
 </div>;
   const ownShare = mine.find(source => source.roomId === roomId);
   const ownWatch = activeWatches.find(source => source.roomId === roomId && ownsWatch(source.id));

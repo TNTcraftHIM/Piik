@@ -351,6 +351,11 @@ pub struct MessageConfirmation {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryRequest {
+    ClearMedia {
+        room_id: String,
+        history_lineage: Uuid,
+        through_seq: u64,
+    },
     DeleteMessage {
         room_id: String,
         message_seq: u64,
@@ -464,6 +469,9 @@ impl HistoryRequest {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryResult {
+    MediaCleared {
+        through_seq: u64,
+    },
     MessageDeleted {
         message_seq: u64,
     },

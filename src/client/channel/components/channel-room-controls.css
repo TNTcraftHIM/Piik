@@ -46,6 +46,13 @@
 .c3-inline-confirm { display: grid; justify-items: start; min-width: 0; }
 .c3-inline-confirm-panel { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); }
 .c3-inline-confirm-panel > p { color: var(--ink); }
+.c3-host-media > ul { margin: 14px 0 0; padding: 0; list-style: none; }
+.c3-host-media li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding-block: 8px; border-top: 1px solid var(--line); }
+.c3-host-media li > strong { font-size: 13px; overflow-wrap: anywhere; }
+.c3-host-media li > :is(.c3-inline-confirm:has(.c3-inline-confirm-panel), .c3-host-media-result, .c3-settings-error) { grid-column: 1 / -1; }
+.c3-host-media li > :is(.c3-inline-confirm:has(.c3-inline-confirm-panel), .c3-host-media-result:not(:empty), .c3-settings-error) { margin-top: 8px; }
+.c3-host-media-result p[data-result="cleared"] { color: var(--live-ink); }
+.c3-host-media-result p[data-result="failed"] { color: var(--danger-ink); }
 .c3-room-copy-load { display: grid; gap: 8px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 .c3-room-copy-load > p { overflow-wrap: anywhere; }
 .c3-room-copy-load .lr-btn, .c3-backup-controls > .lr-btn { justify-self: start; }

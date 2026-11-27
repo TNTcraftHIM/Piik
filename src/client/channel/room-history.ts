@@ -42,6 +42,7 @@ export class RoomHistory {
   private window?: ChannelMessage[];
   private info?: HistoryPaging;
   private markers?: RoomHistoryChanges;
+  private mediaClearedThrough = 0;
   private readonly pages = new Map<string, PendingPage>();
 
   get messages(): ChannelMessage[] | undefined { return this.window; }
@@ -59,9 +60,27 @@ export class RoomHistory {
   /** Forgets the window and its paging facts; removal markers outlive the reading. */
   resetWindow(): void { this.window = undefined; this.info = undefined; }
 
+  private retainedMedia(message: ChannelMessage): ChannelMessage {
+    if (message.seq > this.mediaClearedThrough || !message.inlineImages) return message;
+    const { inlineImages: _images, ...remaining } = message;
+    return remaining;
+  }
+
+  /** Drop writer-retained renditions from this binding's current and in-flight windows. */
+  clearMedia(throughSeq: number): void {
+    if (throughSeq <= this.mediaClearedThrough) return;
+    this.mediaClearedThrough = throughSeq;
+    const strip = (rows: ChannelMessage[]) => rows.map(message => this.retainedMedia(message));
+    if (this.window) this.window = strip(this.window);
+    for (const page of this.pages.values()) {
+      page.window = strip(page.window);
+      if (page.refresh) page.refresh.window = strip(page.refresh.window);
+    }
+  }
+
   /** The message as this room shows it, or undefined when a removal marker covers it. */
   visible(message: ChannelMessage): ChannelMessage | undefined {
-    return messageRemoved(this.markers, message.seq) ? undefined : redactReply(message, this.markers);
+    return messageRemoved(this.markers, message.seq) ? undefined : this.retainedMedia(redactReply(message, this.markers));
   }
 
   /** Records removals in the markers, window and pages; returns which sequences were removed. */
@@ -141,7 +160,7 @@ export class RoomHistory {
     const arrivals = refresh?.latest ? current.filter(message => message.seq > refresh.through) : [];
     const merged = mergeMessages([...existing, ...projected, ...arrivals].filter(message => !messageRemoved(changes, message.seq)
       && (!refresh || latest || message.seq >= refresh.from)
-      && (result.oldestSeq === null || message.seq >= result.oldestSeq)).map(message => redactReply(message, changes)));
+      && (result.oldestSeq === null || message.seq >= result.oldestSeq)).map(message => this.retainedMedia(redactReply(message, changes))));
     const messages = readingWindow(merged, historyWindow, latest || !!refresh);
     if (refresh) {
       const first = page[0]?.seq;
@@ -168,6 +187,7 @@ export class RoomHistory {
 
   /** Adds a confirmed message to the pages under assembly and, when following the latest, to the window; false when the window is unchanged. */
   receiveMessage(message: ChannelMessage, live: boolean, historyWindow: number): boolean {
+    message = this.retainedMedia(message);
     const history = this.info;
     const messages = this.window ?? [];
     // A replayed confirmation can finish a send for a message preceding this reading window.

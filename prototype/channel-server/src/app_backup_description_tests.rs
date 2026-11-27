@@ -2,7 +2,7 @@
 use super::*;
 use crate::app::{host_task, sites, update, whip, Config, Host, Permission, Registry};
 use axum::{
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
 };
 use piik_channel_native::{input::Desktop, session::HostingDescription};
@@ -89,6 +89,7 @@ impl Fixture {
             .route("/rooms/{domain}/{user}/hosting", get(describe))
             .route("/rooms/{domain}/{user}/{room}/backup", get(export))
             .route("/rooms/{domain}/{user}/backup", put(restore))
+            .route("/rooms/{domain}/{user}/media/clear", post(clear_media))
             .with_state(app.clone());
         let (stop_server, server_stopped) = oneshot::channel();
         let server = tokio::spawn(async move {
@@ -166,7 +167,7 @@ async fn concurrent_descriptions_follow_current_admission_without_recreating_the
     let mut fixture = Fixture::new().await;
     // Backup operations stay fail-fast while current admission is absent; only
     // the read-only description waits for Native recovery.
-    for (method, path) in [("GET", "owned-room/backup"), ("PUT", "backup")] {
+    for (method, path) in [("GET", "owned-room/backup"), ("PUT", "backup"), ("POST", "media/clear")] {
         let denied = response(fixture.request_path(method, path).await).await;
         assert!(denied.starts_with("HTTP/1.1 403"), "{denied}");
         assert!(fixture.inputs.try_recv().is_err());

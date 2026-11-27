@@ -26,7 +26,7 @@ import { userProfile } from "./presentation";
 import { id as channelId, roomInvitationSchema, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, type ChannelActions, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type HostMediaTarget, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { BrowserHosting, browserRoomStorage } from "./browser-hosting";
 import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
@@ -965,9 +965,12 @@ export class ChannelSession {
       this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
       return;
     }
-    if (record.type === "message_deleted" || record.type === "history_cleared") {
+    if (record.type === "message_deleted" || record.type === "history_cleared" || record.type === "room_media_cleared") {
       if (!this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.authorized && room.delivery?.bindingId === reply.bindingId)) return;
-      this.applyHistoryRemoval(reply.roomId, record);
+      if (record.type === "room_media_cleared") {
+        this.roomHistory(reply.roomId).clearMedia(record.throughSeq);
+        this.patch(this.historyView([reply.roomId]));
+      } else this.applyHistoryRemoval(reply.roomId, record);
     }
     if (record.type === "message_reactions") {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
@@ -1867,6 +1870,51 @@ export class ChannelSession {
     if (this.view.state!.channel.ownerId !== this.view.self!.id || !this.credential) throw new Error("forbidden");
     return { current, native: new NativeDomainHosting({ Authorization: `Bearer ${this.credential}` }) };
   }
+
+  private async nativeMediaHosts(signal?: AbortSignal) {
+    const current = this.sessionContext(), { self, state } = this.view, credential = this.credential;
+    const hosted = state!.channel.hostingMode === "hosted";
+    const site = self!.id === state!.channel.ownerId && credential
+      ? new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` }, "/prototype/channel/hosting")
+      : undefined;
+    const app = !hosted && this.app?.connected ? this.app : undefined;
+    const [siteDescription, appDescription] = await Promise.all([
+      !hosted && site ? site.describe(signal).catch(() => undefined) : undefined,
+      app?.describeHosting(signal).catch(() => undefined),
+    ]);
+    current();
+    signal?.throwIfAborted();
+    // A Native host can hold stored rooms even while its directory has no active room bindings.
+    const domain = hosted || siteDescription ? site : undefined;
+    return {
+      domain,
+      app: app === this.app && app?.connected && appDescription
+        && siteDescription?.sessionId !== appDescription.sessionId ? app : undefined,
+    };
+  }
+
+  hostMediaTargets: ChannelActions["hostMediaTargets"] = async signal => {
+    if (this.view.connection !== "connected" || !this.view.state || !this.view.self) return [];
+    const { domain, app } = await this.nativeMediaHosts(signal);
+    const targets: HostMediaTarget[] = [];
+    if (domain) targets.push("domain");
+    if (app) targets.push("app");
+    if (this.hosting.hasBoundRooms()) targets.push("browser");
+    return targets;
+  };
+
+  clearHostMedia: ChannelActions["clearHostMedia"] = target => this.action(`host-media:${target}`, async () => {
+    const current = this.sessionContext();
+    if (target !== "browser") {
+      const hosts = await this.nativeMediaHosts();
+      if (target === "domain" && hosts.domain) return hosts.domain.clearMedia();
+      if (target === "app" && hosts.app) return hosts.app.clearHostMedia();
+      throw new Error("room_host_unavailable");
+    }
+    if (!this.hosting.hasBoundRooms()) throw new Error("room_host_unavailable");
+    return this.hosting.clearMedia((host, replies) => this.conversation.sendHostReplies(host, replies),
+      async (id, lineage, through) => { current(); await this.attachments.clearRetainedFor(id, lineage, through); });
+  }, false);
 
   exportDomainBackup = (surface?: AbortSignal): Promise<Blob> => this.action("domain-backup", async () => {
     const owner = this.domainBackupOwner(), lifetime = this.captureLifetime.signal;

@@ -1,5 +1,5 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useId, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
@@ -105,7 +105,10 @@ function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; di
   </div>;
 }
 
-export function HeaderControls({ diagnosticControl, appControl, personalControls }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode; personalControls?: React.ReactNode } = {}) {
+export function HeaderControls({ diagnosticControl, appControl, personalControls, maintenanceControls }: {
+  diagnosticControl?: ReactNode; appControl?: ReactNode; personalControls?: ReactNode;
+  maintenanceControls?: (open: boolean, restoreFocus: () => void) => ReactNode;
+} = {}) {
   const { t } = useCopy();
   const trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -132,6 +135,7 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
             onClick={() => applyTheme(dark ? "light" : "dark")} />
         </div>
         {personalControls}
+        {maintenanceControls?.(open, () => trigger.current?.querySelector("button")?.focus())}
         <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} />
       </div>
     </div>

@@ -2130,6 +2130,10 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         s.channel.rooms.iter().any(|r| r.id == room.id && r.reading)
     })
     .await;
+    let image = piik_channel_core::AttachmentDescriptor {
+        id: Uuid::new_v4(), name: "sample.gif".into(), media_type: "image/gif".into(),
+        size: 6, sha256: "a".repeat(64),
+    };
     let sent = room_conversation(
         &mut reader,
         session,
@@ -2140,12 +2144,48 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
             nonce: "reader-1".into(),
             mentions: vec![],
             reply: None,
-            attachments: vec![],
-            inline_images: Default::default(),
+            attachments: vec![image.clone()],
+            inline_images: BTreeMap::from([(image.id, piik_channel_core::attachment::ImageRendition {
+                data: "R0lGODlh".into(), media_type: "image/gif".into(), original: false, width: 1, height: 1,
+            })]),
         },
     )
     .await;
     assert!(matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.seq == 1));
+    let client = reqwest::Client::new();
+    let clear = |credential: &str| client.post(format!("http://{address}/prototype/channel/rooms/media/clear")).bearer_auth(credential);
+    assert_eq!(clear(&creator_credential).send().await.unwrap().status(), 403);
+    let db = crate::room_directory(folder.path(), (state.channel.id, state.channel.owner_id.unwrap()))
+        .join(format!("{}.sqlite", room.id));
+    let storage = rusqlite::Connection::open(db).unwrap();
+    storage.execute_batch("CREATE TRIGGER keep_image BEFORE UPDATE OF inline_images ON message BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+    let partial = clear(&operator_credential).send().await.unwrap();
+    assert_eq!(partial.status(), 200);
+    let report: Value = serde_json::from_slice(&partial.bytes().await.unwrap()).unwrap();
+    assert_eq!(report["failedRooms"], 1);
+    assert!(report["clearedRooms"].as_u64().unwrap() >= 1);
+    storage.execute_batch("DROP TRIGGER keep_image").unwrap();
+    drop(storage);
+    let response = clear(&operator_credential).send().await.unwrap();
+    assert_eq!(response.status(), 200);
+    let report: Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+    assert_eq!(report["failedRooms"], 0);
+    assert_eq!(report["compactionFailures"], 0);
+    assert!(report["clearedRooms"].as_u64().unwrap() >= 2);
+    let delivery = state.channel.rooms.iter().find(|r| r.id == room.id).unwrap().delivery.as_ref().unwrap();
+    let key = state.sessions.iter().find(|s| s.id == delivery.host_session_id).unwrap().signing_key;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Event::Conversation { packet } = event(&mut reader).await {
+                let reply = ConversationReply::verify(&packet, key).unwrap();
+                if matches!(reply.record, ConversationRecord::RoomMediaCleared { through_seq: 1 }) {
+                    assert_eq!(reply.address.binding_id, delivery.binding_id);
+                    assert_eq!(reply.address.recipient, session);
+                    break;
+                }
+            }
+        }
+    }).await.unwrap();
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
     let (address, stop, task, _) = start_server(folder.path()).await;
@@ -2171,7 +2211,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         ConversationCommand::History { before: None },
     )
     .await;
-    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryPage {messages, ..} if messages.iter().any(|message| message.message.text == "After manager left"))));
+    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryPage {messages, ..} if messages.iter().any(|message| message.message.text == "After manager left" && message.message.inline_images.is_empty() && message.message.attachments.len() == 1))));
     let (_, _, stranger) = connect(address, "invite", "Stranger").await;
     assert!(!stranger.channel.rooms.iter().any(|r| r.id == room.id));
     let (mut operator, _, state) = connect(address, "owner", "Operator").await;

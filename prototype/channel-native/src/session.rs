@@ -651,6 +651,15 @@ pub struct WatchReaderRegistration {
     pub retired: watch::Receiver<bool>,
 }
 
+#[derive(Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaClearReport {
+    pub cleared_rooms: usize,
+    pub failed_rooms: usize,
+    pub compaction_failures: usize,
+    pub cache_failures: usize,
+}
+
 pub enum HostCommand {
     RelayCapacity {
         request: RelayCapacityRequest,
@@ -666,6 +675,7 @@ pub enum HostCommand {
     },
     /// Exact current or recovery-retained identity, not hosting admission.
     LocalEndpoint(oneshot::Sender<Option<Uuid>>),
+    ClearMedia(oneshot::Sender<Result<MediaClearReport, String>>),
     Describe(oneshot::Sender<Result<HostingDescription, String>>),
     ConnectionMetrics {
         room_id: String,
@@ -711,6 +721,9 @@ impl HostCommand {
                 let _ = result.send(Err("hosting_unavailable".into()));
             }
             Self::RevokeWatchReader { .. } => {}
+            Self::ClearMedia(result) => {
+                let _ = result.send(Err("hosting_unavailable".into()));
+            }
             Self::Describe(result) => {
                 let _ = result.send(Err("hosting_unavailable".into()));
             }
@@ -1204,6 +1217,7 @@ impl Session {
                                         ).await?;
                                     }
                                 },
+                                HostCommand::ClearMedia(result) => self.clear_media(result),
                                 HostCommand::Describe(result) => {
                                     let _ = result.send(self.hosting_description());
                                 },
@@ -2095,7 +2109,8 @@ impl Session {
                     let id = request_id.as_ref().unwrap();
                     eprintln!("Native room registration failed: {id}: {code}");
                     self.live.as_mut().unwrap().room.rooms.remove(id);
-                    self.files.retain(|file| &file.id != id);
+                    // A rejected registration leaves the saved copy with this host.
+                    self.files.retain(|file| &file.id != id || !file.bootstrap);
                     if let Some(opening) = self.opening.remove(id) {
                         opening.fail(&code);
                     }
@@ -2815,6 +2830,141 @@ impl Session {
             });
         }
     }
+    fn clear_media(&mut self, result: oneshot::Sender<Result<MediaClearReport, String>>) {
+        let (Some(live), Some(hosting)) = (&mut self.live, &self.hosting) else {
+            let _ = result.send(Err("hosting_unavailable".into()));
+            return;
+        };
+        let state = live.room.snapshot.borrow();
+        let Some(state) = state.as_ref() else {
+            let _ = result.send(Err("hosting_unavailable".into()));
+            return;
+        };
+        let server = service_hosts_rooms(self.service_admission.is_some(), state);
+        let rooms = &mut live.room.rooms;
+        let user = hosting.identity.1;
+        let mut targets: BTreeMap<String, Option<PathBuf>> = rooms
+            .iter()
+            .filter(|(_, slot)| server || slot.creator_id() == user)
+            .map(|(id, _)| (id.clone(), None))
+            .collect();
+        for file in &self.files {
+            if !file.bootstrap
+                && !rooms.contains_key(&file.id)
+                && !live.room_open_failures.contains_key(&file.id)
+            {
+                targets.insert(file.id.clone(), Some(file.path.clone()));
+            }
+        }
+        let mut report = MediaClearReport {
+            failed_rooms: live
+                .room_open_failures
+                .keys()
+                .filter(|id| !rooms.contains_key(*id))
+                .count(),
+            ..Default::default()
+        };
+        let mut pending = Vec::new();
+        // Enqueue every cutoff before later room work can enter this session.
+        for (id, path) in targets {
+            let dormant = path.is_some();
+            if dormant {
+                rooms.reserve(&id, user);
+            }
+            let (answer, response) = oneshot::channel();
+            let target = id.clone();
+            let local = live.session;
+            let posted = rooms.post(&id, true, dormant, move |host| {
+                let mut saved;
+                let room = if let Some(path) = path {
+                    saved = (|| -> Result<HostedRoom> {
+                        let creator = if server {
+                            stored_room_policy(&path)?
+                                .ok_or_else(|| anyhow!("room_unavailable"))?
+                                .creator_id
+                        } else {
+                            user
+                        };
+                        HostedRoom::open(&path, &target, creator)
+                    })();
+                    saved.as_mut().ok()
+                } else {
+                    host.as_mut()
+                };
+                let cleared = room.and_then(|room| room.clear_media().ok());
+                let (replies, reclaimed) = match cleared {
+                    Some((replies, reclaimed)) => (replies, Some(reclaimed)),
+                    None => (vec![], None),
+                };
+                let _ = answer.send(reclaimed);
+                Ok(Box::new(move |s, delivery| {
+                    if !delivery.connected || replies.is_empty() {
+                        return Ok(vec![]);
+                    }
+                    let live = s.live.as_ref().expect("connected room delivery");
+                    let current = live.room.snapshot.borrow();
+                    let Some(state) = current.as_ref() else {
+                        return Ok(vec![]);
+                    };
+                    let binding = replies[0].address.binding_id;
+                    let owns = live.room.rooms.get(&target).and_then(|slot| slot.binding())
+                        == Some(binding)
+                        && match state
+                            .channel
+                            .rooms
+                            .iter()
+                            .find(|r| r.id == target)
+                            .and_then(|r| r.delivery.as_ref())
+                        {
+                            Some(writer) => {
+                                writer.host_session_id == local && writer.binding_id == binding
+                            }
+                            // The service is the only writer in Hosted mode. A private
+                            // room can omit the service's personal delivery view.
+                            None => server && state.channel.managed_room_ids.contains(&target),
+                        };
+                    if !owns {
+                        return Ok(vec![]);
+                    }
+                    replies
+                        .into_iter()
+                        .filter(|r| r.address.recipient != local)
+                        .map(|r| {
+                            live.room
+                                .signer
+                                .sign(local, &r)
+                                .map(|packet| (Command::Conversation { packet }, None))
+                                .map_err(anyhow::Error::msg)
+                        })
+                        .collect()
+                }))
+            });
+            if dormant {
+                // A later registration queues behind this file's exclusive turn.
+                rooms.remove(&id);
+            }
+            if posted.is_ok() {
+                pending.push(response);
+            } else {
+                report.failed_rooms += 1;
+            }
+        }
+        tokio::spawn(async move {
+            for response in pending {
+                match response.await {
+                    Ok(Some(reclaimed)) => {
+                        report.cleared_rooms += 1;
+                        if !reclaimed {
+                            report.compaction_failures += 1;
+                        }
+                    }
+                    _ => report.failed_rooms += 1,
+                }
+            }
+            let _ = result.send(Ok(report));
+        });
+    }
+
     fn hosting_description(&self) -> Result<HostingDescription, String> {
         let (live, hosting) = self
             .live

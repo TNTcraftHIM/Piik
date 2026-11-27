@@ -834,6 +834,7 @@ impl Domain {
                 get(backup::export).put(backup::restore_existing),
             )
             .route("/prototype/channel/rooms/backup", put(backup::restore))
+            .route("/prototype/channel/rooms/media/clear", post(backup::clear_media))
             .route("/prototype/channel/rooms/copy", post(backup::create_copy))
             .route("/prototype/channel/hosting", get(backup::describe))
             .with_state(self.clone())

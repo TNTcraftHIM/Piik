@@ -179,6 +179,20 @@ impl HostedRoom {
         self.host.delete_data().map_err(storage_error)
     }
 
+    pub(crate) fn clear_media(
+        &mut self,
+    ) -> Result<
+        (
+            Vec<piik_channel_core::conversation::ConversationReply>,
+            bool,
+        ),
+        &'static str,
+    > {
+        let replies = self.host.clear_media()?;
+        let reclaimed = self.host.reclaim_space().is_ok();
+        Ok((replies, reclaimed))
+    }
+
     pub fn current_readers(&self) -> Vec<Uuid> {
         self.host.current_readers()
     }

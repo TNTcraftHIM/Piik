@@ -582,6 +582,111 @@ async fn receive_one_room(native: &mut Session, sink: &mut RecordedSink) -> Resu
 }
 
 #[tokio::test]
+async fn media_cleanup_clears_saved_copy_without_notifying_its_other_writer() -> Result<()> {
+    use piik_channel_core::{
+        attachment::ImageRendition,
+        history::{HistoryRequest, HistoryResult, MessageDraft},
+        storage::Storage,
+        AttachmentDescriptor,
+    };
+    let (core, mut native, directory, _ready, _welcome) = room_review_session()?;
+    let a = core.room_ids[0].clone();
+    let b = core.room_ids[1].clone();
+    let live = native.live.as_mut().unwrap();
+    live.room.rooms.retain(|id, _| id == &a);
+    let mut view = live.room.snapshot.borrow().as_ref().unwrap().clone();
+    let current_writer = Uuid::new_v4();
+    let room = view
+        .channel
+        .rooms
+        .iter_mut()
+        .find(|room| room.id == b)
+        .unwrap();
+    room.delivery = Some(RoomDelivery {
+        host_session_id: current_writer,
+        binding_id: Uuid::new_v4(),
+    });
+    live.room.snapshot.send_replace(Some(view));
+    let local_path = directory.path().join("dormant.sqlite");
+    let policy = RoomState::new(
+        b.clone(),
+        "Dormant".into(),
+        Default::default(),
+        core.user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .map_err(anyhow::Error::msg)?;
+    drop(HostedRoom::create(&local_path, policy)?);
+    let file = AttachmentDescriptor {
+        id: Uuid::new_v4(),
+        name: "sample.gif".into(),
+        media_type: "image/gif".into(),
+        size: 6,
+        sha256: "a".repeat(64),
+    };
+    let draft = MessageDraft::new(
+        core.user,
+        "first".into(),
+        "kept".into(),
+        vec![file.clone()],
+        BTreeMap::from([(
+            file.id,
+            ImageRendition {
+                data: "R0lGODlh".into(),
+                media_type: "image/gif".into(),
+                original: false,
+                width: 1,
+                height: 1,
+            },
+        )]),
+        vec![],
+        None,
+        1,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let mut db = Storage::open_existing(&local_path).map_err(storage_error)?;
+    db.history(&HistoryRequest::Send {
+        room_id: b.clone(),
+        draft,
+    })
+    .map_err(anyhow::Error::msg)?;
+    drop(db);
+    native.files.push(RoomFile {
+        id: b.clone(),
+        path: local_path.clone(),
+        bootstrap: false,
+        name: String::new(),
+    });
+    let (answer, response) = oneshot::channel();
+    native.clear_media(answer);
+    let mut sink = RecordedSink::default();
+    for _ in 0..2 {
+        receive_one_room(&mut native, &mut sink).await?;
+    }
+    let report = response.await?.map_err(anyhow::Error::msg)?;
+    ensure!(report.cleared_rooms == 2 && report.failed_rooms == 0 && report.cache_failures == 0);
+    ensure!(sink
+        .messages
+        .iter()
+        .all(|msg| !msg.to_text().unwrap_or("").contains(&b)));
+    let mut db = Storage::open_existing(&local_path).map_err(storage_error)?;
+    let HistoryResult::Page { messages, .. } = db
+        .history(&HistoryRequest::Read {
+            room_id: b.clone(),
+            before: None,
+        })
+        .map_err(anyhow::Error::msg)?
+    else {
+        bail!("expected history")
+    };
+    ensure!(messages[0].message.inline_images.is_empty() && messages[0].message.text == "kept");
+    ensure!(!native.live.as_ref().unwrap().room.rooms.contains_key(&b));
+    native.release().await
+}
+
+#[tokio::test]
 async fn room_review_retired_ack_replies_only_to_the_original_opener() -> Result<()> {
     let (core, mut native, _dir, _ready, _welcome) = room_review_session()?;
     let id = Uuid::new_v4().to_string();

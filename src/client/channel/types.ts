@@ -138,6 +138,8 @@ export interface ChatAttachmentPreparation {
  */
 export type ReportError = boolean | (() => boolean);
 
+export type HostMediaTarget = "domain" | "app" | "browser";
+
 export interface ChannelActions {
   startWatch(roomId: string, url: string, reportError?: boolean): Promise<void>;
   prepareWatchEmbed(roomId: string, url: string, reportError?: boolean): Promise<void>;
@@ -203,6 +205,8 @@ export interface ChannelActions {
   updateProfile(profile: ProfileUpdate): Promise<void>;
   updateDomain(settings: Partial<DomainSettings>, reportError?: boolean): Promise<void>;
   setRoomCreationPolicy(policy: RoomCreationPolicy, reportError?: boolean): Promise<void>;
+  hostMediaTargets(signal?: AbortSignal): Promise<HostMediaTarget[]>;
+  clearHostMedia(target: HostMediaTarget): Promise<import("./hosting-api").MediaClearResult>;
   exportDomainBackup(signal?: AbortSignal): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;
   createRoom(settings: RoomSettings, reportError?: boolean): Promise<string>;

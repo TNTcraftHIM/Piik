@@ -183,6 +183,43 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   return { session, socket, peer };
 }
 
+test("media cleanup reaches dormant Native rooms, merges host aliases and skips unavailable hosts", async () => {
+  const { session, socket } = await setup();
+  const result = { clearedRooms: 2, failedRooms: 1, compactionFailures: 1, cacheFailures: 0 };
+  const nativeSession = crypto.randomUUID();
+  const description = { sessionId: nativeSession, roomIds: [] };
+  let siteReady = false;
+  const fetcher = vi.fn(async (url: string) => url.endsWith("/hosting") && !siteReady
+    ? new Response(null, { status: 503 }) : Response.json(url.endsWith("/hosting") ? description : result));
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await expect(session.hostMediaTargets()).resolves.toEqual([]);
+    await expect(session.clearHostMedia("browser")).rejects.toThrow("room_host_unavailable");
+    await expect(session.clearHostMedia("app")).rejects.toThrow("room_host_unavailable");
+    await expect(session.clearHostMedia("domain")).rejects.toThrow("room_host_unavailable");
+    expect(fetcher.mock.calls.every(([url]) => url.endsWith("/hosting"))).toBe(true);
+
+    const state = session.getSnapshot().state!;
+    const app = { connected: true, describeHosting: async () => description, clearHostMedia: vi.fn(async () => result), close: vi.fn() };
+    (session as unknown as { app: typeof app }).app = app;
+    await expect(session.hostMediaTargets()).resolves.toEqual(["app"]);
+    await expect(session.clearHostMedia("app")).resolves.toEqual(result);
+    expect(app.clearHostMedia).toHaveBeenCalledOnce();
+    app.connected = false;
+    await expect(session.hostMediaTargets()).resolves.toEqual([]);
+    app.connected = true;
+    siteReady = true;
+    await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
+    await expect(session.clearHostMedia("domain")).resolves.toEqual(result);
+    (session as unknown as { app?: typeof app }).app = undefined;
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, hostingMode: "hosted" } } });
+    await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
+    await expect(session.clearHostMedia("domain")).resolves.toEqual(result);
+    expect(fetcher).toHaveBeenCalledWith("/prototype/channel/rooms/media/clear",
+      { method: "POST", headers: { Authorization: "Bearer credential" } });
+  } finally { session.close(); }
+});
+
 async function ackSourceUpdate(socket: ChannelSocket): Promise<void> {
   await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
   socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
@@ -299,6 +336,30 @@ test("a contradictory writer result rejects the pending deletion", async () => {
     peer.reply(await peer.next(), { type: "history_cleared", throughSeq: 1 });
     await expect(operation).rejects.toThrow("invalid_response");
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1]);
+  } finally { session.close(); }
+});
+
+test("media cleanup follows the writer binding and keeps room history and independent file holders", async () => {
+  const { session, peer } = await setup();
+  const remove = vi.spyOn(session.attachments, "removeMessages");
+  const inlineImages = { pic: { data: "AAAA", mediaType: "image/png" as const, original: false, width: 1, height: 1 } };
+  const photo = { ...message(1), inlineImages };
+  try {
+    await peer.history([photo], true);
+    const loading = session.loadHistory("first");
+    const older = await peer.next();
+    const event = { ...older, requestId: "writer-cleanup" };
+    peer.reply(event, { type: "room_media_cleared", throughSeq: 1 }, "retired-binding");
+    expect(session.getSnapshot().messagesByRoom.first[0].inlineImages).toEqual(inlineImages);
+    peer.reply(event, { type: "room_media_cleared", throughSeq: 1 });
+    expect(session.getSnapshot().messagesByRoom.first[0].inlineImages).toBeUndefined();
+    peer.page(older, []);
+    await loading;
+    peer.live(photo);
+    peer.live({ ...message(2), inlineImages });
+    expect(session.getSnapshot().messagesByRoom.first.map(row => [row.text, row.inlineImages]))
+      .toEqual([[photo.text, undefined], [message(2).text, inlineImages]]);
+    expect(remove).not.toHaveBeenCalled();
   } finally { session.close(); }
 });
 

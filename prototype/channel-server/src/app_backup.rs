@@ -77,6 +77,16 @@ pub(super) async fn export(
     backup::export(owner.commands, room, None, owner.credential).await
 }
 
+pub(super) async fn clear_media(
+    State(app): State<Arc<App>>,
+    Path((domain, user)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let owner = owner(&app, &headers, domain, user).await?;
+    owner.require_ready()?;
+    backup::clear_media(owner.commands).await
+}
+
 pub(super) async fn describe(
     State(app): State<Arc<App>>,
     Path((domain, user)): Path<(Uuid, Uuid)>,

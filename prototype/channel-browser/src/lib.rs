@@ -388,6 +388,12 @@ impl RoomHost {
             projection_update,
         })
     }
+    pub fn media_clear_request(&self) -> Result<String, JsValue> {
+        encode(&self.room.media_clear_request())
+    }
+    pub fn media_clear_replies(&self, through_seq: u64) -> Result<String, JsValue> {
+        encode(&self.room.media_clear_replies(through_seq))
+    }
     pub fn broadcast_recipients(&self, requester: &str) -> Result<String, JsValue> {
         let requester =
             Uuid::parse_str(requester).map_err(|_| error("invalid_conversation_recipient"))?;

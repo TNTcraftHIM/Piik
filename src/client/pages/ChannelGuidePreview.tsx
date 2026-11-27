@@ -176,6 +176,8 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     },
     exportRoomCopy: async () => { received(); throw new Error("preview_only"); },
     clearLocalRoomCache: async () => received(),
+    hostMediaTargets: async () => [],
+    clearHostMedia: async () => { throw new Error("preview_only"); },
     importRoomCopy: async () => { received(); throw new Error("preview_only"); },
     setConversationPopout: () => {},
     feedbackSound, setFeedbackSound: updateFeedback,

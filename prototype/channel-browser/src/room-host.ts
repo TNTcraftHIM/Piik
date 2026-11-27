@@ -37,12 +37,14 @@ export interface PageResult {
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
 type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult | { type: "message_deleted"; messageSeq: number } | { type: "history_cleared"; throughSeq: number }
+  | { type: "media_cleared"; throughSeq: number }
   | { type: "seek"; after: number; seq: number | null };
 interface SendRequest { type: "send"; roomId: string; draft: ChatOptions & { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest
+  | { type: "clear_media"; roomId: string; historyLineage: string; throughSeq: number }
   | { type: "seek"; roomId: string; after: number; excludeAuthor: string }
   | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string; authorId?: string | null }
   | { type: "clear_history"; roomId: string; throughSeq: number };
@@ -418,6 +420,17 @@ export class BrowserRoomHost implements HostedRoom {
     });
   }
 
+  clearMedia(bindingId: string) {
+    return this.enqueue(async () => {
+      if (bindingId !== this.bindingId) throw new Error("stale_room_host");
+      const request: Extract<HistoryRequest, { type: "clear_media" }> = JSON.parse(this.room.media_clear_request());
+      const result = await this.executeHistory(request, null);
+      if (result.type !== "media_cleared") throw new Error("invalid_history_result");
+      const replies: ConversationReply[] = JSON.parse(this.room.media_clear_replies(BigInt(result.throughSeq)));
+      return { historyLineage: request.historyLineage, throughSeq: result.throughSeq, replies };
+    });
+  }
+
   private savePolicy(tx: IDBTransaction, record: RoomRecord, policy: object | null, clearedThrough = record.clearedThrough): void {
     if (policy || clearedThrough !== record.clearedThrough) {
       tx.objectStore("rooms").put({ ...record, policy: policy ? JSON.stringify(policy) : record.policy, clearedThrough });
@@ -427,7 +440,7 @@ export class BrowserRoomHost implements HostedRoom {
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
     let page = request.type === "read" ? new HistoryPage() : undefined;
     let oldest: number | undefined, result: HistoryResult;
-    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort, record) => {
+    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "clear_media" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort, record) => {
       const clearedThrough = record.clearedThrough ?? 0;
       this.savePolicy(tx, record, policy, request.type === "clear_history"
         ? Math.max(clearedThrough, request.throughSeq) : record.clearedThrough);
@@ -451,6 +464,19 @@ export class BrowserRoomHost implements HostedRoom {
             } else prepare({ type: "new", lastSeq });
           }, abort);
         }, abort);
+      } else if (request.type === "clear_media") {
+        if (request.roomId !== record.id || request.historyLineage !== record.historyLineage) throw new Error("stale_room_host");
+        const range = IDBKeyRange.bound([record.id], [record.id, request.throughSeq]);
+        read(messages.openCursor(range), cursor => {
+          if (!cursor) return;
+          const message = live(cursor.value);
+          if (message?.inlineImages) {
+            delete message.inlineImages;
+            cursor.update(message);
+          }
+          cursor.continue();
+        }, abort);
+        result = { type: "media_cleared", throughSeq: request.throughSeq };
       } else if (request.type === "delete_message" || request.type === "clear_history") {
         const single = request.type === "delete_message";
         const through = single ? request.messageSeq : request.throughSeq;

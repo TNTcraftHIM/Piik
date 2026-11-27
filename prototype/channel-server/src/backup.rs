@@ -100,6 +100,19 @@ pub(crate) fn archive(
         .into_response()
 }
 
+pub(crate) async fn clear_media(commands: mpsc::Sender<HostCommand>) -> ApiResult {
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::ClearMedia(result))
+        .await
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable"))?;
+    let report = response
+        .await
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable"))?
+        .map_err(|code| error(StatusCode::SERVICE_UNAVAILABLE, code))?;
+    Ok(Json(report).into_response())
+}
+
 pub(crate) async fn describe(commands: mpsc::Sender<HostCommand>) -> ApiResult {
     let (result, response) = oneshot::channel();
     commands

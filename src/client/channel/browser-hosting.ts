@@ -178,6 +178,33 @@ export class BrowserHosting {
     }
   }
 
+  private boundRooms() {
+    const { state, sessionId } = this.session.view();
+    return state?.channel.rooms.filter(room => sessionId && room.delivery?.hostSessionId === sessionId
+      && this.host(room.id, room.delivery.bindingId)) ?? [];
+  }
+
+  hasBoundRooms(): boolean { return this.boundRooms().length > 0; }
+
+  async clearMedia(
+    notify: (host: HostedRoom, replies: Awaited<ReturnType<HostedRoom["clearMedia"]>>["replies"]) => Promise<void>,
+    clearCache: (id: string, historyLineage: string, throughSeq: number) => Promise<void>,
+  ) {
+    const rooms = this.boundRooms();
+    let cacheFailures = 0;
+    const outcomes = await Promise.allSettled(rooms.map(async room => {
+      const binding = room.delivery!.bindingId, host = this.host(room.id, binding);
+      if (!host) throw new Error("stale_room_host");
+      const { replies, historyLineage, throughSeq } = await host.clearMedia(binding);
+      const [, cache] = await Promise.allSettled([
+        notify(host, replies), clearCache(room.id, historyLineage, throughSeq),
+      ]);
+      if (cache.status === "rejected") cacheFailures++;
+    }));
+    const clearedRooms = outcomes.filter(outcome => outcome.status === "fulfilled").length;
+    return { clearedRooms, failedRooms: rooms.length - clearedRooms, cacheFailures, compactionFailures: 0 };
+  }
+
   /** Releases this session's local writers. The channel retires its bindings on leave or expiry. */
   release(): void {
     const hosts = [...this.rooms.values()];

@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 54;
+export const CHANNEL_PROTOCOL = 55;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -276,6 +276,7 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "live_message"; message: ChannelMessage }
   | { type: "message_deleted"; messageSeq: number }
   | { type: "history_cleared"; throughSeq: number }
+  | { type: "room_media_cleared"; throughSeq: number }
   | { type: "history_seek_result"; after: number; seq: number | null }
   | { type: "history_page"; messages: (ChannelMessage & { reactions: NonNullable<ChannelMessage["reactions"]> })[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
