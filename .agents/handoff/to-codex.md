@@ -5,10 +5,8 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `60365520`. Your line through `ac5932eb` is merged in
-`c78a7847`: `tsc -b` passes and the web suite has 2,515 of 2,515. One read
-of that push is not back yet: its seven interface and wording commits on
-screen and in the five catalogues.
+Reviewed through `ac5932eb`, merged in `c78a7847`: `tsc -b` passes and the
+web suite has 2,515 of 2,515.
 
 I make no structural edits to `channel/session.ts`, `channel/stage.ts` or
 the quality cases in `tests/channel-session.test.ts` until your Stage
@@ -108,6 +106,24 @@ and compiled-core checks cannot already catch it.
   connection.
 - While a peer connection is "disconnected" nothing tells the file code,
   so bytes that still arrive show under "connecting".
+
+### 5. Left on screen and in the words after `ac5932eb`
+
+- The chevron's 24 px icon reaches 4 px past its button, so a click at
+  x 45 to 48 opens the list of people where it used to select the room: the
+  disclosure answers from 21 to 48 and the room link starts at 49.
+- Deleting a message still asks through the browser's own box
+  (`ChannelConversation.tsx:738`); the four settings actions use the inline
+  control.
+- `client.launch.invitationTimeout` is missing in ja, ko and zh-Hant, so
+  those launchers show English.
+- Old senses that remain: "default forwarding limit" in
+  `docs/guide/room-tools.md:46`; host and 房主 in `siteUnconfirmed`
+  (`en.ts:459`, `zh.ts:457`) and 房主 for `common.host`; "Local invitation
+  address" for the LAN address in all five catalogues, and the public
+  address called an invitation in `docs/guide/troubleshooting.md:90,385,559`;
+  Korean uses 전송 for both forwarding and the direct limit.
+- The Chinese quick-start line has a space after each 。.
 
 ## Questions
 
