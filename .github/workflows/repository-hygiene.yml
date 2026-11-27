@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: f3b527a9965ae2726621f9852d6671c3e2be6b6a
+          ref: 9f42ce3e9422e9c714315c2719587446da8bfa64
           persist-credentials: false
       - name: Build and check the standalone universal tool
         working-directory: prototype/nat
@@ -67,6 +67,9 @@ jobs:
         run: |
           rustup toolchain install 1.91.0 --profile minimal
           rustup target add --toolchain 1.91.0 aarch64-apple-darwin x86_64-apple-darwin
+          # The filtering fixtures bind a second loopback address explicitly.
+          sudo ifconfig lo0 alias 127.0.0.2
+          trap 'sudo ifconfig lo0 -alias 127.0.0.2' EXIT
           cargo +1.91.0 test --locked --offline
           for nat_target in aarch64-apple-darwin x86_64-apple-darwin; do
             cargo +1.91.0 build --locked --offline --release --bin piik-nat-lab --target "$nat_target"
@@ -78,6 +81,7 @@ jobs:
           lipo "$RUNNER_TEMP/nat-helper/package/piik-nat-lab" -verify_arch arm64 x86_64
           "$RUNNER_TEMP/nat-helper/package/piik-nat-lab" --help
           cp ../../LICENSE "$RUNNER_TEMP/nat-helper/package/LICENSE"
+          cp README.md "$RUNNER_TEMP/nat-helper/package/README.md"
           {
             git rev-parse HEAD
             rustc +1.91.0 --version
@@ -85,13 +89,14 @@ jobs:
             lipo -info "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
             otool -L "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
           } > "$RUNNER_TEMP/nat-helper/build.txt"
+          cp "$RUNNER_TEMP/nat-helper/build.txt" "$RUNNER_TEMP/nat-helper/package/BUILD.txt"
           cd "$RUNNER_TEMP/nat-helper"
-          tar -czf piik-nat-lab-macos-universal.tar.gz -C package piik-nat-lab LICENSE
+          tar -czf piik-nat-lab-macos-universal.tar.gz -C package piik-nat-lab LICENSE README.md BUILD.txt
           (cd package && shasum -a 256 piik-nat-lab) > SHA256SUMS
           shasum -a 256 piik-nat-lab-macos-universal.tar.gz >> SHA256SUMS
       - uses: actions/upload-artifact@v7
         with:
-          name: piik-nat-lab-macos-universal-f3b527a9
+          name: piik-nat-lab-macos-universal-9f42ce3e
           path: |
             ${{ runner.temp }}/nat-helper/piik-nat-lab-macos-universal.tar.gz
             ${{ runner.temp }}/nat-helper/build.txt

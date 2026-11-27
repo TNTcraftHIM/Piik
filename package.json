@@ -50,7 +50,7 @@
     "vitest": "4.1.12",
     "ws": "8.23.0",
     "zod": "4.6.6",
-    "shaka-player": "5.3.5",
+    "shaka-player": "5.3.6",
     "mpd-parser": "1.4.1",
     "@xmldom/xmldom": "0.8.15"
   }

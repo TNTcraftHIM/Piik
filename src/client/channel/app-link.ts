@@ -9,7 +9,7 @@ import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEv
 import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
 import type { WatchByteResult } from "./watch-resource";
 import { z } from "zod";
-import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
+import { discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type EncodingExecution } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
@@ -284,18 +284,30 @@ export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Pro
   }, options, isIncompatible);
 }
 
+const launcherAddressSchema = z.object({ connectURL: z.string().max(256) });
+const windowNavigationSchema = z.object({ windowNavigation: z.boolean() });
+
+function readLauncherAddress(body: unknown, port: number): URL {
+  identity(body, port);
+  const url = new URL(launcherAddressSchema.parse(body).connectURL);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || Number(url.port) !== port ||
+      url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
+    throw new Error("invalid_app_response");
+  }
+  return url;
+}
+
 export const channelAppDiscovery: AppDiscovery = {
   health: discoverChannelAppHealth,
   navigation: signal => discoverLocalApp("connect-discovery", (body, port) => {
-    identity(body, port);
-    const result = identitySchema.extend({ connectURL: z.string().url().max(256), windowNavigation: z.boolean() }).parse(body);
-    const url = appManagementURL(result.connectURL);
-    if (Number(url.port) !== port) throw new Error("invalid_app_response");
-    return { url: url.href, windowNavigation: result.windowNavigation };
+    const url = readLauncherAddress(body, port);
+    const { windowNavigation } = windowNavigationSchema.parse(body);
+    return { url: url.href, windowNavigation };
   }, { signal }, isIncompatible),
   connect: (options = {}) => discoverLocalApp("connect-discovery", (body, port) => {
-    identity(body, port);
-    return appApprovalURL(identitySchema.extend({ connectURL: z.string().url().max(256) }).parse(body).connectURL);
+    const url = readLauncherAddress(body, port);
+    url.searchParams.set("site", window.location.origin);
+    return url.href;
   }, options, isIncompatible),
   isIncompatible,
 };

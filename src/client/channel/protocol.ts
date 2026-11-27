@@ -187,6 +187,7 @@ export type ReactionTarget = { type: "message"; messageSeq: number; messageId: s
 export interface ReactionEvent { id: string; occurredAt: number; senderUserId: string; target: ReactionTarget; reaction: string }
 export type ReactionSnapshot = ({ type: "message" } & MessageReactionSnapshot) | ({ type: "publication" } & PublicationReactionSnapshot);
 export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: MessageReactions };
+export type StoredMessage = ChannelMessage & { reactions: MessageReactions };
 export interface ChatOptions { mentions?: z.infer<typeof mentionSchema>[]; reply?: { seq: number; messageId: string; notify: boolean } }
 export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
@@ -258,15 +259,14 @@ export type RoomInvitationState = { state: "available"; url: string } | { state:
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
   | { type: "reaction"; nonce: number; event: ReactionEvent | null; snapshot: ReactionSnapshot | null }
-  | { type: "message_reactions"; snapshot: MessageReactionSnapshot }
   | { type: "interaction_ready"; serverTime: number; reactionIds: string[]; publicationReactions: PublicationReactionSnapshot[] }
-  | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
+  | { type: "confirmed"; message: StoredMessage; inserted: boolean }
   | { type: "live_message"; message: ChannelMessage }
   | { type: "message_deleted"; messageSeq: number }
   | { type: "history_cleared"; throughSeq: number }
   | { type: "room_media_cleared"; throughSeq: number }
   | { type: "history_seek_result"; after: number; seq: number | null }
-  | { type: "history_page"; messages: (ChannelMessage & { reactions: NonNullable<ChannelMessage["reactions"]> })[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
+  | { type: "history_page"; messages: StoredMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
 export interface DomainSettings { name: string; icon: string; askUnnamedMemberName: boolean }

@@ -69,9 +69,10 @@ window.runBrowserRoomCheck = async () => {
   const send = async (text: string, nonce: string, attachments: SentResult["message"]["attachments"] = [], signal?: AbortSignal) => {
     const { replies, broadcast } = await host.dispatchPeer(peerPacket({ type: "chat", text, nonce, attachments }), Date.now(), signal);
     const confirmation = replies[0]?.record;
-    check(confirmation?.type === "confirmed", "committed signed peer send result");
-    check(confirmation.inserted ? broadcast?.record.type === "live_message"
-      && JSON.stringify(broadcast.record.message) === JSON.stringify(confirmation.message) : broadcast === null,
+    check(replies.length === 1 && confirmation?.type === "confirmed", "one signed peer send result");
+    const { reactions, ...body } = confirmation.message;
+    check(confirmation.inserted ? reactions.revision === 0 && broadcast?.record.type === "live_message"
+      && JSON.stringify(broadcast.record.message) === JSON.stringify(body) : broadcast === null,
     "the shared broadcast rule emits only newly committed messages");
     return confirmation;
   };
@@ -703,7 +704,7 @@ window.runBrowserRoomCheck = async () => {
     check(frame.kind === "file" && JSON.stringify(frame.body) === JSON.stringify(fileControl), "Rust peer control framing preserves file controls");
     const replies = (await host.dispatchPeer(packet, Date.now())).replies;
     const confirmation = replies[0];
-    check(replies.length === 2 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
+    check(replies.length === 1 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
       "signed peer send confirms persisted room sequence");
     const receiptView = JSON.stringify({ channel: { rooms: [{ id: host.roomId, authorized: true, available: true,
       delivery: { hostSessionId: session, bindingId } }] }, sessions: [{ id: session, signingKey }] });
@@ -712,7 +713,7 @@ window.runBrowserRoomCheck = async () => {
     try { await host.dispatchPeer({ ...packet, payload: packet.payload + " " }, Date.now()); throw new Error("tampered signature accepted"); }
     catch (error) { check(String(error).includes("invalid_conversation_signature"), "tampered request rejected before storage"); }
     const repeated = (await host.dispatchPeer(packet, Date.now())).replies;
-    check(repeated[0].record.type === "confirmed" && !repeated[0].record.inserted && confirmation.record.type === "confirmed"
+    check(repeated.length === 1 && repeated[0].record.type === "confirmed" && !repeated[0].record.inserted && confirmation.record.type === "confirmed"
       && JSON.stringify(repeated[0].record.message) === JSON.stringify(confirmation.record.message), "peer retry reuses original confirmation");
     const page = (await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now())).replies;
     check(page.length === 1 && page[0].record.type === "history_page" && page[0].record.messages.length === 50

@@ -192,7 +192,7 @@ export class RoomHistory {
     const messages = this.window ?? [];
     // A replayed confirmation can finish a send for a message preceding this reading window.
     if (!live && history?.hasMore && messages.length && message.seq < messages[0].seq) return false;
-    let projected: ChannelMessage = { ...message, reactions: { revision: 0, counts: {} } };
+    let projected = message.reactions ? message : { ...message, reactions: { revision: 0, counts: {} } };
     for (const page of this.pages.values()) {
       const snapshot = page.reactions.get(message.seq);
       if (snapshot?.messageId === message.id) projected = mergeMessage(projected,

@@ -167,11 +167,11 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             if let ConversationRecord::Confirmed { message, inserted } = parsed.record {
                 assert_eq!(inserted, !retry);
                 if retry {
-                    assert_eq!(confirmed, Some(message.id));
+                    assert_eq!(confirmed, Some(message.message.id));
                 } else {
-                    confirmed = Some(message.id);
+                    confirmed = Some(message.message.id);
                 }
-                assert_eq!(message.seq, 1);
+                assert_eq!(message.message.seq, 1);
             }
         }
         if let Some(covering) = covering {
@@ -342,7 +342,7 @@ fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
     }).unwrap();
     let forwarded = relay(&mut network, reader, owner, &packet);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
-    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: true } if message.seq == 1));
+    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: true } if message.message.seq == 1));
     let confirmed = signer.sign(owner_session, &replies[0]).unwrap();
 
     let live = ConversationReply {
@@ -365,7 +365,7 @@ fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
     let packet = signer.sign(reader_session, &retry).unwrap();
     let forwarded = relay(&mut network, reader, owner, &packet);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
-    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: false } if message.seq == 1));
+    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: false } if message.message.seq == 1));
     let confirmed = signer.sign(owner_session, &replies[0]).unwrap();
     // This real permission check will fail. Read remains available after the writer answers.
     let change = json!({"type":"revoke_room_access","roomId":room,"userId":owner_user});

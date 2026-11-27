@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
@@ -72,7 +72,7 @@ export type TextParticipantEvents = {
   state: [summary: ReturnType<TextParticipant['summary']>];
   failure: [error: Error];
   disconnected: [];
-  confirmed: [message: ChannelMessage];
+  confirmed: [message: StoredMessage];
   live: [message: ChannelMessage];
 };
 export class TextParticipant extends EventEmitter<TextParticipantEvents> {
@@ -264,12 +264,12 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     return this.request({ type: 'conversation', packet }, expects, { requestId });
   }
 
-  async chat(text: string, options: ChatOptions & { nonce?: string } = {}): Promise<ChannelMessage> {
+  async chat(text: string, options: ChatOptions & { nonce?: string } = {}): Promise<StoredMessage> {
     return await this.conversation({ type: 'chat', roomId: this.selectedRoomId(), text,
       nonce: options.nonce === undefined ? randomUUID() : options.nonce, attachments: [],
       ...(options.mentions && { mentions: options.mentions.map(({ userId, start, end }) => ({ userId, start, end })) }),
       ...(options.reply && { reply: { seq: options.reply.seq, messageId: options.reply.messageId, notify: options.reply.notify } }),
-    }, 'confirmed') as ChannelMessage;
+    }, 'confirmed') as StoredMessage;
   }
 
   async history(before?: number): Promise<TextHistoryPage> {
@@ -376,7 +376,6 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       this.emit('live', record.message);
       return;
     }
-    if (record.type === 'message_reactions') return;
     if (pending && expectsWriterResult(pending.expects) && record.type !== pending.expects) {
       this.complete(reply.requestId, undefined, Error(record.type === 'error' ? record.code : 'invalid_response'));
       return;

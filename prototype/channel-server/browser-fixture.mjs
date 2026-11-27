@@ -71,7 +71,7 @@ function captureProbe(name) {
       const command = conversation?.command ?? event.input?.action?.command;
       const recordType = conversation?.record?.type;
       const type = command?.type ?? (['confirmed', 'live_message'].includes(recordType) ? 'chat'
-        : ['history_message', 'history_end'].includes(recordType) ? 'history'
+        : recordType === 'history_page' ? 'history'
         : (event.output?.reply?.result?.type ?? event.result?.type) === 'history' ? 'history' : event.type);
       const room = conversation?.roomId ?? command?.roomId ?? event.roomId;
       if (room && (type === 'chat' || type === 'history')) {
@@ -114,7 +114,8 @@ function captureProbe(name) {
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
         result:recordType ?? event.result?.type ?? event.output?.reply?.result?.type,
-        historyCount: recordType === 'history_end' ? conversation.record.count : undefined,
+        historyCount: recordType === 'history_page' ? conversation.record.messages.length : undefined,
+        historyReactionCount: recordType === 'history_page' ? conversation.record.messages.filter(message => message.reactions).length : undefined,
         code:event.code ?? event.result?.code ?? event.output?.reply?.result?.code,
         pairs: event.state?.pairs?.map(({ id, rooms, incoming, outgoing }) => ({ id, rooms,
           incoming: incoming.map(flow => flow.publicationId), outgoing: outgoing.map(flow => flow.publicationId) })),
