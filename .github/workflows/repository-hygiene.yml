@@ -13,6 +13,12 @@ on:
         required: false
         default: false
         type: boolean
+      channel_native_platform:
+        description: Platform for the Native checks
+        required: false
+        default: both
+        type: choice
+        options: [both, windows, macos]
       channel_network_lab:
         description: Run one isolated network control (never publishes)
         required: false
@@ -134,7 +140,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2025]
+        os: >-
+          ${{ fromJSON(inputs.channel_native_platform == 'windows' && '["windows-2025"]' ||
+            inputs.channel_native_platform == 'macos' && '["macos-15"]' || '["macos-15","windows-2025"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
@@ -173,6 +181,23 @@ jobs:
           path: ${{ runner.temp }}/channel-native-logs/
           if-no-files-found: warn
           retention-days: 7
+      - name: Set up Node.js for Windows capture dependencies
+        if: runner.os == 'Windows'
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Prepare Windows capture dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dependencyPath = Join-Path $env:RUNNER_TEMP 'channel-native-deps'
+          $dependencyJson = node scripts/windows-capture-deps.mjs $dependencyPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dependencies = $dependencyJson | ConvertFrom-Json
+          $dependencies.PSObject.Properties |
+            ForEach-Object { "$($_.Name)=$($_.Value)" } |
+            Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
       - name: Compile the Windows App library tests
         if: runner.os == 'Windows'
         run: cargo +1.91.0 test --locked --manifest-path prototype/channel-server/Cargo.toml --features capture --lib --no-run

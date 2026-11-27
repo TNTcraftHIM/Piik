@@ -9,6 +9,7 @@ describe("diagnosis using the current operation", () => {
     expect(message("invalid_room_password")).toBe("channel.error.invalidRoomPassword");
     expect(message("password_failed")).toBe("channel.error.setRoomPasswordFailed");
     expect(message("room_access_required")).toBe("channel.error.roomAccessDenied");
+    expect(message("rate_limited")).toBe("remote.reason.retry");
     expect(message("storage_busy")).toBe("channel.error.busy");
     expect(message("room_storage_in_use")).toBe("channel.error.roomHostConflict");
   });

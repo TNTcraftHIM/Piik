@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-26
+Last reviewed: 2026-11-27
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -16,6 +16,19 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
+- [ ] **Windows remote-control stop with extra modifiers.** Keep the local
+  stop chord effective when a controller holds Shift or Win. Reuse the existing
+  shortcut and input executor owners; validate modifier handling, key rebinding
+  and release of held input without changing the voice shortcuts.
+- [ ] **Manual host cleanup.** Clear the selected host's retained files and
+  image renditions while preserving text, rooms, roles and settings. Determine
+  which member references the host can prove before removing unused identities;
+  an offline room on another device does not expose its private grants. Resolve
+  historical author names and reader refresh at the existing storage owners.
+- [ ] **App operation waiting.** Preserve a visible outcome for an unanswered
+  operation without treating a late committed change as failure. Keep user-led
+  source selection and microphone permission waits with their cancellation owner;
+  validate the finite setting path separately before choosing a common deadline.
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
   operation feedback and the remaining capture, embed
@@ -232,8 +245,9 @@ the feedback period; they do not delay that delivery.
   unnamed member across admission, profiles, stored records and copied authors.
   Reuse the profile editor for the optional site prompt and one localized display
   helper for guest labels and member tags. Distinguish copied authors from live
-  members and preserve deliberate names. Resolve the first-visit lifetime and
-  matched-version contract before changing the private formats.
+  members and preserve deliberate names. The optional prompt follows the unnamed
+  member and remembers dismissal for that member; it needs no first-join wire flag.
+  Set the matched-version contract before changing the private formats.
 
 - [ ] **Concurrent App invitation entries.** Let local and public entries reach
   the same running authority. Define their startup, advertised addresses and

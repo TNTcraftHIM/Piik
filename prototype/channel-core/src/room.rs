@@ -743,13 +743,15 @@ impl RoomRuntime {
         Ok(snapshot)
     }
 
-    pub fn enter(
+    pub(crate) fn enter(
         &mut self,
         member: Member,
         password: Option<&str>,
         invite: Option<&str>,
-    ) -> Result<(), &'static str> {
-        self.policy.enter(member.user_id, password, invite)
+        now: u64,
+        retry_at: &mut BTreeMap<Uuid, u64>,
+    ) -> Result<bool, &'static str> {
+        self.policy.enter(member.user_id, password, invite, now, retry_at)
     }
 
     pub fn update(

@@ -1650,7 +1650,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     saved
         .policy()
         .clone()
-        .enter(Uuid::new_v4(), Some("room-secret"), None)
+        .enter(Uuid::new_v4(), Some("room-secret"), None, 0, &mut Default::default())
         .unwrap();
     drop(saved);
     stop.send(()).unwrap();

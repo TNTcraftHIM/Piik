@@ -722,7 +722,7 @@ mod tests {
         .unwrap();
         let previous = policy.invite().unwrap();
         let guest = Uuid::new_v4();
-        policy.enter(guest, None, Some(&previous)).unwrap();
+        policy.enter(guest, None, Some(&previous), 0, &mut Default::default()).unwrap();
         let saved_policy = serde_json::to_value(&policy).unwrap();
         let draft = MessageDraft::new(
             guest,

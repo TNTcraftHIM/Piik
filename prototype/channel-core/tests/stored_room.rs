@@ -156,6 +156,43 @@ fn sent(
 }
 
 #[test]
+fn room_password_retries_follow_the_member_until_the_deadline() {
+    let [owner, guest, other, invited, second_session] = [1, 2, 3, 4, 5].map(Uuid::from_u128);
+    let path = std::env::temp_dir().join(format!("piik-password-{}.sqlite", Uuid::new_v4()));
+    let policy = RoomState::new(
+        "private".into(), "Private".into(), Default::default(), owner,
+        RoomAccess::Private, false, Some("room password".into()),
+    ).unwrap();
+    let mut host = StoredRoomHost::create(&path, policy).unwrap();
+    let key = invitation(&mut host, owner);
+    let mut attempt = |now: u64, user, session, password: &str, invite: Option<&str>| {
+        let command = Request::parse(&json!({
+            "type":"enter_room", "roomId":"private", "password":password, "inviteKey":invite
+        }).to_string()).unwrap().command;
+        let mut turn = input(owner, session, |context| HostAction::Command { context, command });
+        turn.now = now;
+        turn.endpoints.get_mut(&session).unwrap().member.user_id = user;
+        match host.dispatch(turn).unwrap().reply.unwrap().result {
+            RoomResult::Done => None,
+            RoomResult::Error { code } => Some(code),
+            _ => panic!("unexpected admission result"),
+        }
+    };
+    assert_eq!(attempt(0, guest, guest, "typo", None).as_deref(), Some("room_access_required"));
+    assert_eq!(attempt(1, guest, second_session, "room password", None).as_deref(), Some("rate_limited"));
+    assert_eq!(attempt(1, other, other, "room password", None), None);
+    assert_eq!(attempt(2, invited, invited, "typo", None).as_deref(), Some("room_access_required"));
+    assert_eq!(attempt(3, invited, invited, "typo", Some(&key)), None);
+    assert_eq!(attempt(1_999, guest, second_session, "room password", None).as_deref(), Some("rate_limited"));
+    assert_eq!(attempt(2_000, guest, second_session, "room password", None), None);
+    drop(host);
+    let host = StoredRoomHost::open(&path).unwrap();
+    assert!([guest, other, invited].into_iter().all(|user| host.policy().reads(user)));
+    drop(host);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn backup_password_round_trip_and_cost_validation() {
     use piik_channel_core::backup::RoomMetadata;
 
@@ -181,7 +218,7 @@ fn backup_password_round_trip_and_cost_validation() {
     restored.validate().unwrap();
     restored
         .policy
-        .enter(Uuid::new_v4(), Some("room password"), None)
+        .enter(Uuid::new_v4(), Some("room password"), None, 0, &mut Default::default())
         .unwrap();
 
     let generated = saved["policy"]["passwordHash"].as_str().unwrap().to_owned();
