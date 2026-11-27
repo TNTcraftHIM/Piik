@@ -1069,7 +1069,8 @@ export class ChannelSession {
   }
 
   /** The only writer of the view's history maps, which project each listed room's RoomHistory. */
-  private historyView(roomIds: Iterable<string>): Pick<ChannelView, "messagesByRoom" | "historyByRoom" | "historyChangesByRoom"> {
+  private historyView(roomIds: readonly string[]): Partial<Pick<ChannelView, "messagesByRoom" | "historyByRoom" | "historyChangesByRoom">> {
+    if (!roomIds.length) return {};
     const messagesByRoom = { ...this.view.messagesByRoom }, historyByRoom = { ...this.view.historyByRoom }, historyChangesByRoom = { ...this.view.historyChangesByRoom };
     for (const id of roomIds) {
       const history = this.histories.get(id);
