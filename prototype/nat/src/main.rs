@@ -230,8 +230,8 @@ fn main() {
         return println!("Could not open a UDP socket.");
     };
     // Each observer that resolves and answers the first socket takes part. A server of our own
-    // is asked on every port of its run and named by its run and port, so a report does not
-    // carry its host. A run whose first port does not answer is not asked further.
+    // is asked on every port of its run and named by its address's number and its port, so a
+    // report does not carry its host. A run whose first port does not answer is not asked further.
     let resolve = |name: &str| {
         name.to_socket_addrs().ok()?.find_map(|address| match address {
             SocketAddr::V4(address) => Some(address),
@@ -240,7 +240,8 @@ fn main() {
     };
     let mut candidates: Vec<(String, SocketAddrV4, Option<SocketAddrV4>)> =
         OBSERVERS.iter().filter(|_| public).filter_map(|name| Some((name.to_string(), resolve(name)?, None))).collect();
-    for (run_number, run) in own.iter().enumerate() {
+    let mut own_addresses: Vec<Ipv4Addr> = Vec::new();
+    for run in &own {
         let ports = run.rsplit_once(':').and_then(|(host, ports)| {
             let (low, high) = ports.split_once('-')?;
             Some((host, low.parse::<u16>().ok()?, high.parse::<u16>().ok()?))
@@ -251,15 +252,21 @@ fn main() {
         };
         if let Some(address) = resolve(&format!("{host}:{low}")) {
             let gate = SocketAddrV4::new(*address.ip(), low);
-            candidates.extend((low..=high).map(|port| (format!("own{}:{port}", run_number + 1), SocketAddrV4::new(*address.ip(), port), Some(gate))));
+            let group = own_addresses.iter().position(|known| known == address.ip()).unwrap_or_else(|| {
+                own_addresses.push(*address.ip());
+                own_addresses.len() - 1
+            });
+            candidates.extend((low..=high).map(|port| (format!("own{}:{port}", group + 1), SocketAddrV4::new(*address.ip(), port), Some(gate))));
         }
     }
-    let asked = candidates.len();
+    let (mut asked, mut unasked) = (0, 0);
     let mut observers: Vec<(String, SocketAddrV4)> = Vec::new();
     for (name, address, gate) in candidates {
         if gate.is_some_and(|gate| gate != address && observers.iter().all(|(_, known)| *known != gate)) {
+            unasked += 1;
             continue;
         }
+        asked += 1;
         if observers.iter().all(|(_, known)| *known != address) && survey.ask(&first, first_number, address).is_some() {
             observers.push((name, address));
         }
@@ -301,7 +308,7 @@ fn main() {
             elsewhere.push(*observer.ip());
         }
     }
-    report(&survey, &observers, asked, first_number, full);
+    report(&survey, &observers, (asked, unasked), first_number, full);
 }
 
 /// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
@@ -347,7 +354,7 @@ fn read_address(samples: &[Sample], observers: &[(String, SocketAddrV4)]) {
     }
 }
 
-fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, first: u16, full: bool) {
+fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], (asked, unasked): (usize, usize), first: u16, full: bool) {
     // Each public address seen gets a letter, in the order seen.
     let addresses = &survey.addresses;
     let letter = |address: &Ipv4Addr| {
@@ -369,7 +376,9 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, f
     let ipv6 = matches!(local_address("[2606:4700:4700::1111]:53"), Some(IpAddr::V6(address)) if address.segments()[0] & 0xe000 == 0x2000);
     println!("\n==== report (copy from here) ====");
     println!("tool: piik-nat-lab {}", env!("CARGO_PKG_VERSION"));
-    println!("observers answered: {} of {}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
+    // A silent first port shows only that it did not answer: the rest of its run was not asked.
+    let left = if unasked > 0 { format!(", {unasked} more not asked after their run's first port stayed silent") } else { String::new() };
+    println!("observers answered: {} of {} asked{left}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
     println!("local: {network}; global IPv6: {}", if ipv6 { "yes" } else { "no" });
     println!("public addresses: {}", addresses.iter().map(|address| format!("{} {}", letter(address), shown(*address))).collect::<Vec<_>>().join(", "));
     // Whether the mapping follows the destination's port: the same socket, the same address, two ports.
