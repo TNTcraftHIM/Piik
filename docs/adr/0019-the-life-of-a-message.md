@@ -36,9 +36,10 @@ signed, so a change to a row breaks no signature.
    with a change of reactions is set when editing is built; a later change of
    reactions must never hide an earlier change of text.
 5. **Search runs on the reader**, over the pages it reads. A reader holds
-   only the pages it has fetched, so a search walks back through the history
-   with the read that already exists, matches each page as it arrives, shows
-   how far back it has looked and stops when the person stops it. It is a
+   a bounded window of the pages it has fetched, so a search walks back
+   through the history with the read that already exists, matches each page
+   as it arrives and keeps the matches, shows how far back it has looked and
+   stops when the person stops it. It is a
    literal match of the query within the text, with its treatment of case and
    of equivalent characters stated; it does not claim to understand the words
    of any language. The writer gains no operation, the wire and the stores no

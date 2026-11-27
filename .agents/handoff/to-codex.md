@@ -66,15 +66,19 @@ is now three rules and their test, with no record type or envelope:
   structures reject one (`wire.rs:1040`, `history.rs:23-48`), so one unknown
   field inside a reply fails the decoding of the record that carries it.
 - A writer refuses a draft that carries anything it does not know, with an
-  outcome a client can tell from a failed send. Today `MessageDraft` has no
-  such refusal (`history.rs:158`). `RoomCapabilities` stays the one place a
-  room says what it accepts.
+  outcome a client can tell from a failed send. The signed `chat` command
+  already refuses one as `invalid_conversation` (`conversation.rs:301-307`);
+  the internal `MessageDraft` ignores one (`history.rs:158`). Is there a path
+  on which a writer stores or drops an addition without saying so?
+  `RoomCapabilities` stays the one place a room says what it accepts.
 - Each reader is tested with records and a capability list that carry unknown
   additions, each writer with a draft that does.
 
 Before any change: trace the three against the real decoders on both sides
 (Rust and the TypeScript validators), the page's signature, both stores and
 the archive, and tell me what a tolerant reader breaks. Archives stay strict.
+The third rule already holds: `channel-browser/node/text-participant.ts`
+joins, reads and writes as an ordinary member with no browser.
 
 [ADR-0019](../../docs/adr/0019-the-life-of-a-message.md): search, if it is
 built, runs on the reader over the pages it reads. Nothing for you now.

@@ -63,7 +63,8 @@ holds what survived both.
    - *A program is a participant* (decision 5). It joins and acts through
      the wire a person's client uses, so no second interface has to keep
      step with the first, and joining never comes to depend on something only
-     a browser has.
+     a browser has. The tree's own text participant already reads and writes
+     this way from Node.
 
    An extension point that is not exercised stops working. Each reader is
    tested with records and capability lists that carry unknown additions,
