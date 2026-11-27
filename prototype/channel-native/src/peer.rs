@@ -2521,7 +2521,7 @@ impl Driver {
                             }
                         }
                         Lane::Input => {
-                            if !ready.open() || message.len() > 8192 {
+                            if !ready.open() || message.len() > piik_channel_core::input::INPUT_FRAME_BYTES {
                                 continue;
                             }
                             if let Ok(frame) = serde_json::from_slice(message.as_slice()) {

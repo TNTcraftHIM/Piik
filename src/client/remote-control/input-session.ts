@@ -1,7 +1,9 @@
 import type { InputTransport } from "./input-route";
 import { debugError, debugEvent } from "../lib/debug";
-import { remoteInputStateSchema, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
+import { remoteInputStateSchema, remoteTextFits, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
 export type { RemoteInputState } from "./protocol";
+const MAX_QUEUED_PLAINTEXT_BYTES = 8192;
+
 // Each virtual contact has its own source. Physical keys use the default source.
 type KeyInput = { type: "key"; code: string; down: boolean; source?: symbol; repeat?: boolean };
 
@@ -110,7 +112,7 @@ export class RemoteInputSession {
     if (this.disposed || this.channel.readyState !== "open") return false;
     try {
       // A stalled input queue must not replay seconds of old actions later.
-      if (this.channel.bufferedAmount > 8192) throw new Error("input queue stalled");
+      if (this.channel.bufferedAmount > MAX_QUEUED_PLAINTEXT_BYTES) throw new Error("input queue stalled");
       this.channel.send(JSON.stringify(event));
       return true;
     } catch (error) {
@@ -183,6 +185,7 @@ export class RemoteInputSession {
     const state = this.state;
     if (!this.intent || !state?.grant || state.intent !== this.intent ||
         (state.state !== "active" && !((event.type === "reset" || event.type === "gamepad-reset" || event.type === "gamepad-stop") && state.state === "suspended"))) return;
+    if (event.type === "text" && !remoteTextFits(event.text, state.grant)) return;
     if (event.type === "key") {
       const { type, code, down } = event;
       if (this.keyTransition(event)) this.send({ type, code, down, grant: state.grant });

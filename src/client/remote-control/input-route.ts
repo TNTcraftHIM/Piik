@@ -2,6 +2,8 @@ export type InputIdentity = { endpointId: string; secret: string };
 export type InputPacket = { id?: string; epoch?: string; data?: string; closed?: boolean; ready?: boolean };
 export type InputTransport = Pick<RTCDataChannel, "readyState" | "bufferedAmount" | "send" | "close" | "addEventListener" | "removeEventListener">;
 
+const MAX_QUEUED_BASE64_CHARS = 8192;
+
 // Keys arrive over authenticated room signaling. An intermediate Viewer/SFU
 // transports ciphertext and cannot impersonate the approved controller.
 export class EncryptedInput extends EventTarget implements InputTransport {
@@ -12,7 +14,7 @@ export class EncryptedInput extends EventTarget implements InputTransport {
   private readonly key: Promise<CryptoKey>;
   private outbound = Promise.resolve();
   private inbound = Promise.resolve();
-  private incomingBytes = 0;
+  private incomingBase64Chars = 0;
   constructor(private readonly identity: InputIdentity, private readonly counter: { sent: bigint }, private readonly transmit: (packet: InputPacket) => void,
     epoch = crypto.randomUUID().replaceAll("-", "")) {
     super();
@@ -37,8 +39,8 @@ export class EncryptedInput extends EventTarget implements InputTransport {
     }).catch(() => this.close()).finally(() => { this.bufferedAmount -= plain.length; });
   }
   receive(data: string): void {
-    if (this.incomingBytes + data.length > 8192) { this.close(); return; }
-    this.incomingBytes += data.length;
+    if (this.incomingBase64Chars + data.length > MAX_QUEUED_BASE64_CHARS) { this.close(); return; }
+    this.incomingBase64Chars += data.length;
     this.inbound = this.inbound.then(async () => {
       if (this.readyState !== "open") return;
       const bytes = Uint8Array.from(atob(data), c => c.charCodeAt(0));
@@ -51,7 +53,7 @@ export class EncryptedInput extends EventTarget implements InputTransport {
       this.received = sequence;
       this.dispatchEvent(new MessageEvent("message", { data: new TextDecoder().decode(plain) }));
     }).catch(() => { /* Unauthenticated relay data has no input meaning. */ })
-      .finally(() => { this.incomingBytes -= data.length; });
+      .finally(() => { this.incomingBase64Chars -= data.length; });
   }
   close(): void {
     if (this.readyState === "closed") return;

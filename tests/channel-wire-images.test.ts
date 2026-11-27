@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
+import { INPUT_FRAME_BYTES, REMOTE_INPUT_COMMAND_BYTES, REMOTE_TEXT_BYTES } from "../src/client/remote-control/protocol";
 import { CHANNEL_EVENT_BYTES, CHANNEL_PROTOCOL, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, IDENTITY_IMAGE_URL_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder } from "../src/client/channel/protocol";
 
 const picture = "data:image/png;base64,YWJj";
@@ -31,6 +32,7 @@ it("matches the compiled Core wire contract for schemas built before WASM initia
   await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
   expect(JSON.parse(core.channel_wire_limits())).toEqual({
     protocol: CHANNEL_PROTOCOL, sessions: CHANNEL_SESSION_LIMIT, rooms: CHANNEL_ROOM_LIMIT,
+    inputFrameBytes: INPUT_FRAME_BYTES, inputCommandBytes: REMOTE_INPUT_COMMAND_BYTES, inputTextBytes: REMOTE_TEXT_BYTES,
     profilePage: PROFILE_PAGE_SIZE, eventBytes: CHANNEL_EVENT_BYTES, identityImageBytes: IDENTITY_IMAGE_URL_BYTES,
   });
 });

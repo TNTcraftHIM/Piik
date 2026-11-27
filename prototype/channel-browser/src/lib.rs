@@ -445,6 +445,9 @@ pub fn channel_wire_limits() -> Result<String, JsValue> {
         "rooms": MAX_ROOMS,
         "profilePage": PROFILE_PAGE_SIZE,
         "eventBytes": wire::CHANNEL_MESSAGE_BYTES,
+        "inputFrameBytes": piik_channel_core::input::INPUT_FRAME_BYTES,
+        "inputCommandBytes": piik_channel_core::input::INPUT_COMMAND_BYTES,
+        "inputTextBytes": piik_channel_core::input::INPUT_TEXT_BYTES,
         "identityImageBytes": wire::IDENTITY_IMAGE_URL_BYTES,
     }))
 }

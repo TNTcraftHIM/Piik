@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
 import { picturePoint, rotatePicturePoint, rotatePictureDelta, type VideoRotation } from "../src/client/media/video-geometry";
-import { matchesRemoteShortcut, remoteInputStateSchema } from "../src/client/remote-control/protocol";
+import { INPUT_FRAME_BYTES, inputFrameFits, matchesRemoteShortcut, remoteInputStateSchema, remoteTextFits } from "../src/client/remote-control/protocol";
 import { RemoteGamepad } from "../src/client/remote-control/gamepad";
 
 it("recognizes only the selected local release chord outside IME composition", () => {
@@ -13,6 +13,20 @@ it("recognizes only the selected local release chord outside IME composition", (
     { isComposing: true }, { keyCode: 229 }, { getModifierState: () => true }]) {
     expect(matchesRemoteShortcut({ ...chord, ...changed }, 9)).toBe(false);
   }
+});
+
+it("measures the complete input frame in UTF-8 bytes", () => {
+  const frame = JSON.stringify({ data: "😀" });
+  const atLimit = frame + " ".repeat(INPUT_FRAME_BYTES - new TextEncoder().encode(frame).byteLength);
+  expect(inputFrameFits(atLimit)).toBe(true);
+  expect(inputFrameFits(atLimit + " ")).toBe(false);
+});
+
+it("admits text by both UTF-8 content and escaped command size", () => {
+  expect(remoteTextFits("😀".repeat(512))).toBe(true);
+  expect(remoteTextFits("😀".repeat(512) + "a")).toBe(false);
+  expect(remoteTextFits('"'.repeat(1998))).toBe(true);
+  expect(remoteTextFits('"'.repeat(1998) + "a")).toBe(false);
 });
 
 class Channel extends EventTarget {

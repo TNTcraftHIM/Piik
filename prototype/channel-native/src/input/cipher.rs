@@ -5,6 +5,7 @@ use aes_gcm::{
 };
 use anyhow::{anyhow, ensure, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use piik_channel_core::input::INPUT_COMMAND_BYTES;
 use uuid::Uuid;
 
 pub(super) struct Cipher {
@@ -25,7 +26,7 @@ impl Cipher {
     pub fn open(&mut self, data: &str, flow: Uuid) -> Result<Vec<u8>> {
         ensure!(data.len() <= 6144, "input_packet_too_large");
         let bytes = STANDARD.decode(data)?;
-        ensure!((36..=4132).contains(&bytes.len()), "invalid_input_packet");
+        ensure!((36..=36 + INPUT_COMMAND_BYTES).contains(&bytes.len()), "invalid_input_packet");
         let sequence = u64::from_be_bytes(bytes[..8].try_into()?);
         ensure!(sequence > self.received, "stale_input_packet");
         let plain = self
