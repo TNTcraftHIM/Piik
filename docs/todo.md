@@ -80,11 +80,6 @@ the feedback period; they do not delay that delivery.
   Browser and SDK readers. Keep API/Bot capabilities within existing actions
   and authority. [Adopted architecture](./adr/0016-shared-rust-core.md) ·
   [Design review](./research/clean-room-design-review.md)
-- [ ] **Peer control outcomes.** Give File and Watch controls explicit request,
-  reply and notice roles. Answer unknown requests without reading a source,
-  settle unknown replies only for the matching supplier, key and request, and
-  preserve other file ranges and Watch relay error codes. Verify the complete
-  Browser/WASM and Native paths under the same interface extension rule.
 - [ ] **Remaining ownership reductions.** Preserve platform queue retirement
   semantics and the destination writer's validation when sharing their owners.
   Review SQLite single-row storage and a

@@ -14,13 +14,24 @@ test("a Browser relay reports a partial bulk response once and forwards the next
   const plan = { roomId: key.roomId, activityId, source };
   const providerCore = new rust.WatchDelivery(provider);
   providerCore.update(JSON.stringify([{ ...plan, upstream: null, downstream: [relayId], receiving: false }]), JSON.stringify([[relayId, ["room"]]]));
-  let chunks = 0, errors = 0, available = 8;
+  const decode = (wire: string) => JSON.parse(rust.decode_control(new TextEncoder().encode(wire))).body;
+  let chunks = 0, errors = 0, available = 8, futureReply = false;
   const receiver = new WatchBytes(async (_peer, _kind, raw) => {
-    relay.data(viewer, "control", JSON.stringify(JSON.parse(raw as string).body));
+    relay.data(viewer, "control", JSON.stringify(decode(raw as string)));
   });
   const relay = new WatchBytes(async (peer, kind, data) => {
     if (peer === provider) {
-      const [read] = providerCore.control(relayId, JSON.stringify(JSON.parse(data as string).body));
+      const body = decode(data as string);
+      if (futureReply) {
+        if (body.type === "pull") {
+          for (const role of ["notice", "reply"]) {
+            const frame = JSON.stringify({ kind: "watch", body: { type: "future", role, key, requestId: body.requestId } });
+            relay.data(provider, "control", JSON.stringify(decode(frame)));
+          }
+        }
+        return;
+      }
+      const [read] = providerCore.control(relayId, JSON.stringify(body));
       for (const chunk of providerCore.read_result(read.requestId, JSON.stringify({
         mimeType: "video/mp4", totalSize: read.length, bytes: Array(read.length).fill(7), eof: true,
       }))) relay.data(provider, "chunk", Uint8Array.from(chunk.frame));
@@ -28,7 +39,7 @@ test("a Browser relay reports a partial bulk response once and forwards the next
       if (++chunks > available) throw new Error("file_transfer_busy");
       receiver.data(relayId, kind, data);
     } else {
-      const control = JSON.parse(data as string).body;
+      const control = decode(data as string);
       expect(control.type).toBe("error");
       errors++;
       receiver.data(relayId, kind, JSON.stringify(control));
@@ -49,6 +60,8 @@ test("a Browser relay reports a partial bulk response once and forwards the next
     expect(errors).toBe(2);
     chunks = 0;
     expect((await read(2)).bytes).toEqual(Uint8Array.of(7, 7));
+    futureReply = true;
+    await expect(read(2)).rejects.toThrow("unknown_outcome");
   } finally { receiver.reset(); relay.reset(); providerCore.free(); }
 });
 

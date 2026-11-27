@@ -9794,7 +9794,7 @@ test.each([true, false])("Watch bulk failure only writes Error with its room gra
     }
     control.bufferedAmount = 0; control.dispatchEvent(new Event("bufferedamountlow"));
     await media.sendData("z", "control", "other room");
-    expect(control.send.mock.calls.map(([frame]) => frame)).toEqual(revoked ? ["other room"] : [JSON.stringify({ kind: "watch", body: sentError }), "other room"]);
+    expect(control.send.mock.calls.map(([frame]) => frame)).toEqual(revoked ? ["other room"] : [terminal[0][2], "other room"]);
     expect(pc.close).not.toHaveBeenCalled();
   } finally { watch.reset(); upstream.free(); media.reset(); session.close(); }
 });

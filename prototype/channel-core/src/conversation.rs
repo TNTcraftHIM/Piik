@@ -99,6 +99,42 @@ pub fn verify<T: DeserializeOwned>(
         .map_err(|_| "invalid_conversation_signature")?;
     serde_json::from_str(&packet.payload).map_err(|_| "invalid_conversation")
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ControlRole {
+    Request,
+    Reply,
+    Notice,
+}
+
+fn known_role(operation: &str) -> Option<ControlRole> {
+    match operation {
+        "pull" => Some(ControlRole::Request),
+        "error" => Some(ControlRole::Reply),
+        "cancel" => Some(ControlRole::Notice),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnknownControl<K> {
+    #[serde(rename = "type", deserialize_with = "unknown_operation")]
+    operation: String,
+    pub role: ControlRole,
+    pub key: K,
+    pub request_id: Uuid,
+}
+
+// The untagged fallback must never accept a malformed known operation.
+fn unknown_operation<'de, D: serde::Deserializer<'de>>(input: D) -> Result<String, D::Error> {
+    let name = String::deserialize(input)?;
+    if known_role(&name).is_some() {
+        return Err(serde::de::Error::custom("malformed known control"));
+    }
+    Ok(name)
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "body", rename_all = "snake_case")]
 pub enum ControlFrame {
@@ -106,7 +142,12 @@ pub enum ControlFrame {
     Watch(crate::watch_delivery::WatchControl),
 }
 pub fn encode_control(frame: &ControlFrame) -> Result<Vec<u8>, &'static str> {
-    let bytes = serde_json::to_vec(frame).map_err(|_| "invalid_control_frame")?;
+    let mut frame = serde_json::to_value(frame).map_err(|_| "invalid_control_frame")?;
+    let body = &mut frame["body"];
+    if let Some(role) = body["type"].as_str().and_then(known_role) {
+        body["role"] = serde_json::json!(role);
+    }
+    let bytes = serde_json::to_vec(&frame).map_err(|_| "invalid_control_frame")?;
     if bytes.len() > CONTROL_FRAME_BYTES {
         return Err("control_frame_too_large");
     }
@@ -115,6 +156,20 @@ pub fn encode_control(frame: &ControlFrame) -> Result<Vec<u8>, &'static str> {
 pub fn decode_control(bytes: &[u8]) -> Result<ControlFrame, &'static str> {
     if bytes.len() > CONTROL_FRAME_BYTES {
         return Err("control_frame_too_large");
+    }
+    #[derive(Deserialize)]
+    struct Envelope {
+        body: Header,
+    }
+    #[derive(Deserialize)]
+    struct Header {
+        #[serde(rename = "type")]
+        operation: String,
+        role: ControlRole,
+    }
+    let Envelope { body } = serde_json::from_slice(bytes).map_err(|_| "invalid_control_frame")?;
+    if known_role(&body.operation).is_some_and(|expected| expected != body.role) {
+        return Err("invalid_control_frame");
     }
     serde_json::from_slice(bytes).map_err(|_| "invalid_control_frame")
 }

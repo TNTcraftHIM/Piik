@@ -1,4 +1,5 @@
 //! Transient media reads on the room's existing base tree. No attachment or cache semantics.
+use crate::conversation::{ControlRole, UnknownControl};
 use crate::wire::WatchByteSource;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -57,11 +58,14 @@ pub enum WatchControl {
         request_id: Uuid,
         code: String,
     },
+    #[serde(untagged)]
+    Unknown(UnknownControl<WatchKey>),
 }
 impl WatchControl {
     pub fn key(&self) -> &WatchKey {
         match self {
             Self::Pull { key, .. } | Self::Cancel { key, .. } | Self::Error { key, .. } => key,
+            Self::Unknown(control) => &control.key,
         }
     }
     pub fn request_id(&self) -> Uuid {
@@ -69,6 +73,7 @@ impl WatchControl {
             Self::Pull { request_id, .. }
             | Self::Cancel { request_id, .. }
             | Self::Error { request_id, .. } => *request_id,
+            Self::Unknown(control) => control.request_id,
         }
     }
 }
@@ -427,6 +432,25 @@ impl WatchDelivery {
         {
             return self.pull(Some(peer), key, request_id, offset, length);
         }
+        if let WatchControl::Unknown(control) = &control {
+            if !self.grants(peer, &control.key.room_id) {
+                return vec![];
+            }
+            match control.role {
+                ControlRole::Request => {
+                    return vec![WatchEffect::SendControl {
+                        peer,
+                        control: WatchControl::Error {
+                            key: control.key.clone(),
+                            request_id: control.request_id,
+                            code: "unsupported".into(),
+                        },
+                    }]
+                }
+                ControlRole::Notice => return vec![],
+                ControlRole::Reply => {}
+            }
+        }
         let id = control.request_id();
         if matches!(&control, WatchControl::Cancel { key, .. } if self.deferred.get(&id).is_some_and(|p| p.peer == peer && &p.key == key))
         {
@@ -443,10 +467,15 @@ impl WatchDelivery {
             WatchControl::Cancel { .. } if pending.consumer == Some(peer) => {
                 self.stop(id, "watch_read_cancelled", false)
             }
+            WatchControl::Unknown(_) if pending.supplier == Some(peer) => {
+                self.stop(id, "unknown_outcome", true)
+            }
             WatchControl::Error { code, .. } if pending.supplier == Some(peer) => {
                 let code = match code.as_str() {
-                    "watch_path_unavailable" => "watch_path_unavailable",
-                    "watch_read_busy" => "watch_read_busy",
+                    "watch_path_unavailable"
+                    | "watch_read_busy"
+                    | "unknown_outcome"
+                    | "unsupported" => code.as_str(),
                     _ => "watch_source_failed",
                 };
                 self.stop(id, code, true)
@@ -744,7 +773,7 @@ mod tests {
         let request = id(20);
         let mut packet = serde_json::json!({
             "kind": "watch", "extra": true, "body": {
-                "type": "pull", "key": key(), "requestId": request,
+                "type": "pull", "role": "request", "key": key(), "requestId": request,
                 "offset": 0, "length": 1, "extra": 2
             }
         });
@@ -754,6 +783,11 @@ mod tests {
         assert!(
             matches!(decode(&packet), Ok(ControlFrame::Watch(WatchControl::Pull { request_id, .. })) if request_id == request)
         );
+        packet["body"]["role"] = "reply".into();
+        assert!(decode(&packet).is_err());
+        packet["body"].as_object_mut().unwrap().remove("role");
+        assert!(decode(&packet).is_err());
+        packet["body"]["role"] = "request".into();
         packet["body"]["length"] = "one".into();
         assert!(decode(&packet).is_err());
 
@@ -830,6 +864,8 @@ mod tests {
         for (failure, expected) in [
             ("watch_path_unavailable", "watch_path_unavailable"),
             ("watch_read_busy", "watch_read_busy"),
+            ("unsupported", "unsupported"),
+            ("future_reply", "unknown_outcome"),
             (
                 "https://source.invalid/private?grant=secret",
                 "watch_source_failed",
@@ -842,10 +878,38 @@ mod tests {
             let request = id(20);
             let pull = control(viewer.read(key(), request, 7, 10));
             relay.control(id(3), pull);
-            let response = WatchControl::Error {
-                key: key(),
-                request_id: request,
-                code: failure.into(),
+            let response = if failure == "future_reply" {
+                use crate::conversation::decode_control;
+                let future = |role, key: WatchKey| {
+                    let packet = serde_json::json!({"kind": "watch", "body": {
+                        "role": role, "type": "future", "key": key, "requestId": request
+                    }});
+                    let frame = decode_control(&serde_json::to_vec(&packet).unwrap()).unwrap();
+                    let body = serde_json::to_value(frame).unwrap()["body"].clone();
+                    serde_json::from_value::<WatchControl>(body).unwrap()
+                };
+                assert!(relay.control(id(1), future("notice", key())).is_empty());
+                assert!(relay.control(id(3), future("reply", key())).is_empty());
+                let mut other = key();
+                other.activity_id = id(99);
+                assert!(relay
+                    .control(id(1), future("reply", other.clone()))
+                    .is_empty());
+                assert!(relay
+                    .control(id(9), future("request", other.clone()))
+                    .is_empty());
+                assert!(
+                    matches!(relay.control(id(3), future("request", other.clone())).as_slice(),
+                    [WatchEffect::SendControl { peer, control: WatchControl::Error { key, request_id, code } }]
+                    if *peer == id(3) && *request_id == request && key == &other && code == "unsupported")
+                );
+                future("reply", key())
+            } else {
+                WatchControl::Error {
+                    key: key(),
+                    request_id: request,
+                    code: failure.into(),
+                }
             };
             let response = relay
                 .control(id(1), response)

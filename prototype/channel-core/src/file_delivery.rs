@@ -1,5 +1,6 @@
 //! Bounded range delivery on plans installed by the room owner. Adapters own
 //! DataChannels and files; this owner shares requests and verifies received bytes.
+use crate::conversation::{ControlRole, UnknownControl};
 use crate::file_room::{FileKey, FilePlan};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -33,6 +34,25 @@ pub enum FileControl {
         request_id: Uuid,
         code: String,
     },
+    #[serde(untagged)]
+    Unknown(UnknownControl<FileKey>),
+}
+
+impl FileControl {
+    pub fn address(&self) -> (&FileKey, Uuid) {
+        match self {
+            Self::Pull {
+                key, request_id, ..
+            }
+            | Self::Cancel {
+                key, request_id, ..
+            }
+            | Self::Error {
+                key, request_id, ..
+            } => (key, *request_id),
+            Self::Unknown(control) => (&control.key, control.request_id),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -294,11 +314,7 @@ impl FileDelivery {
     }
 
     pub fn control(&mut self, peer: Uuid, control: FileControl, now: u64) -> Vec<FileEffect> {
-        let key = match &control {
-            FileControl::Pull { key, .. }
-            | FileControl::Cancel { key, .. }
-            | FileControl::Error { key, .. } => key,
-        };
+        let (key, _) = control.address();
         let Some(rooms) = self.room_peers.get(&peer) else {
             return vec![];
         };
@@ -378,21 +394,50 @@ impl FileDelivery {
                 key,
                 request_id,
                 code,
-            } => {
-                if granted
-                    && self.files.get(&key).is_some_and(|file| {
-                        file.plan.upstream == Some(peer)
-                            && file
-                                .ranges
-                                .values()
-                                .any(|range| range.supplier == Supplier::Peer(peer, request_id))
-                    })
-                {
-                    self.request_failed(&key, request_id, &code)
-                } else {
-                    Vec::new()
+            } if granted => self.reply_failed(peer, &key, request_id, &code),
+            FileControl::Unknown(control) if granted => match control.role {
+                ControlRole::Request => vec![FileEffect::SendControl {
+                    peer,
+                    control: FileControl::Error {
+                        key: control.key,
+                        request_id: control.request_id,
+                        code: "unsupported".into(),
+                    },
+                }],
+                ControlRole::Reply => {
+                    self.reply_failed(peer, &control.key, control.request_id, "unknown_outcome")
                 }
-            }
+                ControlRole::Notice => vec![],
+            },
+            FileControl::Error { .. } | FileControl::Unknown(_) => vec![],
+        }
+    }
+
+    fn reply_failed(
+        &mut self,
+        peer: Uuid,
+        key: &FileKey,
+        request_id: Uuid,
+        code: &str,
+    ) -> Vec<FileEffect> {
+        let Some(file) = self
+            .files
+            .get(key)
+            .filter(|file| file.plan.upstream == Some(peer))
+        else {
+            return vec![];
+        };
+        let Some(offset) = file.ranges.iter().find_map(|(offset, range)| {
+            (range.supplier == Supplier::Peer(peer, request_id)).then_some(*offset)
+        }) else {
+            return vec![];
+        };
+        match code {
+            "attachment_unavailable"
+            | "file_source_unavailable"
+            | "file_unavailable"
+            | "invalid_file_range" => self.fail(key, code),
+            _ => self.fail_range(key, offset, code),
         }
     }
 
@@ -549,7 +594,17 @@ impl FileDelivery {
         if code != "file_transfer_busy" {
             return self.fail(key, code);
         }
-        let range = file.ranges.remove(&offset).unwrap();
+        self.fail_range(key, offset, code)
+    }
+
+    fn fail_range(&mut self, key: &FileKey, offset: u64, code: &str) -> Vec<FileEffect> {
+        let range = self
+            .files
+            .get_mut(key)
+            .unwrap()
+            .ranges
+            .remove(&offset)
+            .unwrap();
         let mut effects = Vec::new();
         for (peer, request) in range.consumers {
             if let Some((peer, request_id)) = peer.zip(request) {

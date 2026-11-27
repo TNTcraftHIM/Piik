@@ -170,6 +170,9 @@ an active share just because an unrelated product/build label changed.
 
 Domain results use `reply`; the signed room carriers `command`, `record` and
 `notice` mean request, requester reply and observer notification respectively.
+File and Watch controls declare the same roles on their existing business
+address. Unknown replies finish only the matching upstream read, preserving
+other file ranges; relay errors return to the waiting caller.
 The [Core wire types](../../prototype/channel-core/src/wire.rs),
 [Browser decoder](../../src/client/channel/protocol.ts) and
 [App discovery](../../src/client/channel/app-link.ts) own exact fields.

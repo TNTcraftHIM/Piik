@@ -240,12 +240,8 @@ impl Files {
                 while let Some(effect) = effects.pop_front() {
                     match effect {
                         FileEffect::SendControl { peer, control } => {
-                            let file = key(&control).clone();
-                            let request_id = match &control {
-                                FileControl::Pull { request_id, .. }
-                                | FileControl::Cancel { request_id, .. }
-                                | FileControl::Error { request_id, .. } => *request_id,
-                            };
+                            let (file, request_id) = control.address();
+                            let file = file.clone();
                             let error = matches!(control, FileControl::Error { .. });
                             let cancel = matches!(control, FileControl::Cancel { .. });
                             let bytes = match piik_channel_core::conversation::encode_control(
@@ -402,13 +398,6 @@ impl Files {
     pub async fn close(self) {
         let _ = self.cancel.send(true);
         let _ = self.task.await;
-    }
-}
-fn key(control: &FileControl) -> &FileKey {
-    match control {
-        FileControl::Pull { key, .. }
-        | FileControl::Cancel { key, .. }
-        | FileControl::Error { key, .. } => key,
     }
 }
 fn fail_peer(
