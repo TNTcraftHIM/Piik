@@ -13903,7 +13903,7 @@ test('MPD whole-track selection stays private until explicit confirmation and us
   commit.mockRestore();
   const inspect = vi.spyOn(page, 'inspectMpd').mockResolvedValue(catalog);
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'dash' as const };
-  const prepare = vi.spyOn(page, 'prepareMpdMedia').mockResolvedValue(source);
+  const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(source);
   try {
     await session.selectWatchPage('first', candidateId);
     expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate }]);
@@ -14062,7 +14062,7 @@ test('MPD manifests are inspected explicitly and replacing the current catalog r
   const first = mpdSelectionFixture(), second = mpdSelectionFixture();
   const { session, page, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [first.candidate, second.candidate], byteSource: null }));
   const inspect = vi.spyOn(page, 'inspectMpd').mockImplementation(async id => id === first.candidate.id ? first.catalog : second.catalog);
-  const prepare = vi.spyOn(page, 'prepareMpdMedia');
+  const prepare = vi.spyOn(page, 'prepareMedia');
   try {
     await session.selectWatchPage('first', candidateId);
     expect(inspect).not.toHaveBeenCalled();
@@ -14202,7 +14202,7 @@ test('late clear tracks update the current selection and settings without rechec
   const { session, page, socket, candidateId, commit } = await websiteSourceSelection(discover);
   commit.mockRestore();
   const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockImplementation(async () => {
+  const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation(async () => {
     page.receive({ type: 'page_media_changed', pageId: page.id });
     return byteSource;
   });
@@ -14367,7 +14367,7 @@ test('replaced audio metadata cancels only its obsolete inspection and prepares 
     return candidate.id === video.candidate.id ? video : candidate.id === oldAudio.candidate.id ? oldAudio : nextAudio;
   });
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(source);
+  const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(source);
   const publications: string[][] = [];
   const unlisten = session.subscribe(() => publications.push(session.watchPage('first')?.watchSources?.indexed.map(choice => choice.candidate.id) ?? []));
   try {
@@ -14412,7 +14412,7 @@ test.each([false, true])('indexed sharing explicitly prepares video with optiona
   }));
   commit.mockRestore();
   const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(byteSource);
+  const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(byteSource);
   const hide = vi.spyOn(page, 'hide').mockImplementation(async () => { if (audioSelected) throw new Error('hide_refused'); });
   try {
     await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
@@ -14452,7 +14452,7 @@ test('rejected indexed start retires its prepared page without a separate attach
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
   commit.mockRestore();
   const hide = vi.spyOn(page, 'hide');
-  vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
+  vi.spyOn(page, 'prepareMedia').mockResolvedValue({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
   try {
     await session.selectWatchPage('first', candidateId);
     const confirming = session.selectWatchIndexedSource('first', video.candidate.id);
@@ -14476,7 +14476,7 @@ test('local provider preparation failure releases only its reader and candidate,
   vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
   const {session,page,socket,candidateId,commit,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[video.candidate],byteSource:null}));
   const local=localProviderVideo();
-  vi.spyOn(page,'prepareIndexedMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
+  vi.spyOn(page,'prepareMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
   const stop=vi.spyOn(page,'stopMedia').mockResolvedValue();
   vi.spyOn(HTMLVideoMedia.prototype,'ready').mockRejectedValueOnce(new Error('watch_media_unavailable'));
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
@@ -14650,7 +14650,7 @@ test('cancelling indexed preparation closes its page and prevents late preparati
   const { session, page, socket, candidateId, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
   const hide = vi.spyOn(page, 'hide');
   let answer!: (value: { sessionId: string; resourceId: string; format: 'hls' }) => void;
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+  const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
   try {
     await session.selectWatchPage('first', candidateId);
     const confirming = session.selectWatchIndexedSource('first', video.candidate.id);
@@ -17934,8 +17934,7 @@ test.each(['indexed', 'mpd'] as const)('opaque webpage forwarding does not requi
   }));
   commit.mockRestore();
   const grant = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: kind === 'indexed' ? 'hls' as const : 'dash' as const };
-  vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(grant as typeof grant & { format: 'hls' });
-  vi.spyOn(page, 'prepareMpdMedia').mockResolvedValue(grant as typeof grant & { format: 'dash' });
+  vi.spyOn(page, 'prepareMedia').mockResolvedValue(grant);
   vi.spyOn(page, 'inspectMpd').mockResolvedValue(mpd.catalog);
   try {
     // The Native group catalog is root A; the opaque player is in an about:blank child B.

@@ -4,7 +4,6 @@ import { canMoveWatchEmbed, watchEmbed } from "../watch-embed-source";
 import { directWatchFormat } from "../../../shared/watch-format";
 import { WatchIndexedTrackPicker, WatchMpdSourcePicker } from "./WatchIndexedTrackPicker";
 import { indexedMediaSelection } from "../watch-indexed-source";
-import type { NativePageIndexedSelection, NativePageMpdSelection } from "../../native/wire";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CaptureSourcePicker, RenderEndpointSelect, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
 import { Btn, SwitchItem } from "../../components/living/primitives";
@@ -16,7 +15,7 @@ import { AudioBitrateControl, QualityPresets, PicturePreferenceControl, PictureS
 import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophoneSettings";
 import { QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
-import type { NativeCaptureSources } from "../app-link";
+import type { AppPageMediaSelection, NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
 import { directForwardMediaURL, type WatchMediaSources } from "../watch-page-media";
 import { screenTitle } from "../presentation";
@@ -414,7 +413,7 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
   const busy = channel.pending.has(`watch-source:${activityId}`);
   const retained = channel.watchPlayers.get(activityId)?.media.retainedByteSource;
   const failure = error ?? sources?.error;
-  const forward = (choice: string | NativePageIndexedSelection | NativePageMpdSelection) => {
+  const forward = (choice: AppPageMediaSelection) => {
     discovery.current?.abort();
     const controller = discovery.current = new AbortController();
     void run(() => channel.setWatchByteSource(activityId, choice, controller.signal));
