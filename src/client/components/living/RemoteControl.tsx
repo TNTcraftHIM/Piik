@@ -57,7 +57,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const cursor = useRef<HTMLDivElement | null>(null);
   const touchpad = useRef<RemoteTouchpad | null>(null);
   const mouseButtons = useRef(new Set<number>());
-  const physicalKeys = useRef(new Set<string>());
   const viewport = useRef<RemoteViewport | null>(null);
   const canControl = available && presentation === "playing";
   const active = state?.state === "active" && canControl && channel?.readyState === "open";
@@ -67,7 +66,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const reset = useCallback(() => {
     gamepad.current?.clearVirtualSticks();
     stickMouse.current?.stop();
-    physicalKeys.current.clear();
     mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" });
   }, []);
   useEffect(() => {
@@ -206,7 +204,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     document.addEventListener("pointerlockchange", lockChanged);
     return () => {
       mouseButtons.current.clear();
-      physicalKeys.current.clear();
       element?.removeEventListener("wheel", wheel);
       window.removeEventListener("mouseup", mouseUp, true);
       window.removeEventListener("blur", reset);
@@ -388,15 +385,9 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onBlur={reset}
         onKeyDown={event => {
           event.preventDefault(); event.stopPropagation();
-          // Focus can return to the picture while a local key is still held.
-          if (event.nativeEvent.isComposing || (event.repeat && !physicalKeys.current.has(event.code))) return;
-          physicalKeys.current.add(event.code);
-          input({ type: "key", code: event.code, down: true });
+          if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true, repeat: event.repeat });
         }}
-        onKeyUp={event => {
-          event.preventDefault(); event.stopPropagation();
-          if (physicalKeys.current.delete(event.code)) input({ type: "key", code: event.code, down: false });
-        }}>
+        onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}
           readStickPositions={readStickPositions} onStickPositionChange={onStickPositionChange}
           pointAt={point} touchMode={touchMode} virtualSticksEnabled={virtualSticksEnabled}

@@ -1,24 +1,23 @@
 import type { RemoteInputEvent } from "./input-session";
 
 // Virtual keys share the physical-key path. Each contact owns its chord until
-// release; another finger must not release a modifier that is still in use.
+// release; the session combines keys held by different contacts and devices.
 export class RemoteKeyboardPresses {
-  private held = new Map<number, { codes: readonly string[]; timer?: ReturnType<typeof setTimeout> }>();
+  private held = new Map<number, { codes: readonly string[]; source: symbol; timer?: ReturnType<typeof setTimeout> }>();
 
   constructor(private readonly input: (event: RemoteInputEvent) => void) {}
 
   down(id: number, codes: readonly string[], repeating = true): void {
     this.up(id);
-    for (const code of codes) {
-      if (!this.pressed(code)) this.input({ type: "key", code, down: true });
-    }
+    const source = Symbol();
     const repeat = () => {
       const press = this.held.get(id);
       if (!press) return;
-      this.input({ type: "key", code: codes[codes.length - 1], down: true });
+      this.input({ type: "key", code: codes[codes.length - 1], down: true, source, repeat: true });
       press.timer = setTimeout(repeat, 50);
     };
-    this.held.set(id, { codes, timer: repeating ? setTimeout(repeat, 400) : undefined });
+    this.held.set(id, { codes, source, timer: repeating ? setTimeout(repeat, 400) : undefined });
+    for (const code of codes) this.input({ type: "key", code, down: true, source });
   }
 
   up(id: number): void {
@@ -27,7 +26,7 @@ export class RemoteKeyboardPresses {
     clearTimeout(press.timer);
     this.held.delete(id);
     for (const code of [...press.codes].reverse()) {
-      if (!this.pressed(code)) this.input({ type: "key", code, down: false });
+      this.input({ type: "key", code, down: false, source: press.source });
     }
   }
 
@@ -37,9 +36,5 @@ export class RemoteKeyboardPresses {
 
   reset(): void {
     for (const id of this.held.keys()) this.up(id);
-  }
-
-  private pressed(code: string): boolean {
-    return [...this.held.values()].some(press => press.codes.includes(code));
   }
 }

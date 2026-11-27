@@ -2,10 +2,13 @@ import type { InputTransport } from "./input-route";
 import { debugError, debugEvent } from "../lib/debug";
 import { remoteInputStateSchema, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
 export type { RemoteInputState } from "./protocol";
+// Each virtual contact has its own source. Physical keys use the default source.
+type KeyInput = { type: "key"; code: string; down: boolean; source?: symbol; repeat?: boolean };
+
 export type RemoteInputEvent =
   | { type: "move"; x: number; y: number }
   | { type: "relative"; dx: number; dy: number }
-  | { type: "key"; code: string; down: boolean }
+  | KeyInput
   | { type: "text"; text: string }
   | { type: "button"; button: number; down: boolean }
   | { type: "wheel"; delta: number }
@@ -27,6 +30,7 @@ export class RemoteInputSession {
   private pointerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextPointerAt = 0;
   private wheelFraction = 0;
+  private readonly heldKeys = new Map<string, Set<KeyInput["source"]>>();
 
   constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void,
     private readonly interrupted?: (interruption: RemoteInputInterruption) => void) {
@@ -42,6 +46,7 @@ export class RemoteInputSession {
       this.clearPointer();
       this.nextPointerAt = 0;
       this.wheelFraction = 0;
+      this.heldKeys.clear();
     }
     this.state = state;
     this.changed(state);
@@ -156,8 +161,11 @@ export class RemoteInputSession {
       }
       return;
     }
-    if (event.type === "reset") { this.clearPointer(); this.wheelFraction = 0; }
-    else this.flushPointer();
+    if (event.type === "reset") {
+      this.clearPointer();
+      this.wheelFraction = 0;
+      this.heldKeys.clear();
+    } else this.flushPointer();
     this.sendInput(event);
   }
 
@@ -175,7 +183,26 @@ export class RemoteInputSession {
     const state = this.state;
     if (!this.intent || !state?.grant || state.intent !== this.intent ||
         (state.state !== "active" && !((event.type === "reset" || event.type === "gamepad-reset" || event.type === "gamepad-stop") && state.state === "suspended"))) return;
-    this.send({ ...event, grant: state.grant });
+    if (event.type === "key") {
+      const { type, code, down } = event;
+      if (this.keyTransition(event)) this.send({ type, code, down, grant: state.grant });
+    } else this.send({ ...event, grant: state.grant });
+  }
+
+  private keyTransition({ code, down, source, repeat }: KeyInput): boolean {
+    const holders = this.heldKeys.get(code);
+    if (repeat) return down && holders?.has(source) === true;
+    if (down) {
+      if (holders) {
+        holders.add(source);
+        return false;
+      }
+      this.heldKeys.set(code, new Set([source]));
+      return true;
+    }
+    if (!holders?.delete(source) || holders.size) return false;
+    this.heldKeys.delete(code);
+    return true;
   }
 
   dispose(): void {

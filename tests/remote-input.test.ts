@@ -79,6 +79,7 @@ it("keeps keyboard control when optional gamepad support fails for the grant", (
   channel.receive({ ...active, capabilities: ["coPlay", "gamepad", "text"] });
   session.input({ type: "gamepad", gamepad });
   expect(channel.sent.at(-1)).toEqual({ type: "gamepad", gamepad, grant });
+  session.input({ type: "key", code: "KeyW", down: true });
   channel.receive({ ...active, capabilities: ["coPlay", "text"], reason: "gamepad" });
   const before = channel.sent.length;
   session.input({ type: "gamepad", gamepad }); session.input({ type: "gamepad-reset" }); session.input({ type: "gamepad-stop" });

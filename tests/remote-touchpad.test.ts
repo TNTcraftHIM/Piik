@@ -368,8 +368,8 @@ it("holds diagonal WASD alongside a mouse tap and releases only changed directio
   pad.direction(-1, 0);
   pad.reset();
   expect(events.filter(event => event.type === "key")).toEqual([
-    { type: "key", code: "KeyW", down: true }, { type: "key", code: "KeyD", down: true },
-    { type: "key", code: "KeyW", down: false }, { type: "key", code: "KeyD", down: false },
-    { type: "key", code: "KeyA", down: true }, { type: "key", code: "KeyA", down: false },
+    { type: "key", code: "KeyW", down: true, source: expect.any(Symbol) }, { type: "key", code: "KeyD", down: true, source: expect.any(Symbol) },
+    { type: "key", code: "KeyW", down: false, source: expect.any(Symbol) }, { type: "key", code: "KeyD", down: false, source: expect.any(Symbol) },
+    { type: "key", code: "KeyA", down: true, source: expect.any(Symbol) }, { type: "key", code: "KeyA", down: false, source: expect.any(Symbol) },
   ]);
 });
