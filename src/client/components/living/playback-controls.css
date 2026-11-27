@@ -82,9 +82,11 @@
 .lr-playback-menu:is(:popover-open, .\:popover-open) { display: grid; gap: 6px; animation: lr-language-open var(--motion-surface) var(--spring); }
 .lr-playback-settings { --playback-menu-padding: 16px; width: min(560px, calc(100vw - 16px)); container: playback-settings / inline-size; }
 .lr-playback-settings:has(> .lr-viewer-settings.is-single) { width: min(360px, calc(100vw - 16px)); }
-.lr-viewer-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }
-.lr-viewer-settings.is-single { grid-template-columns: minmax(0, 1fr); }
-.lr-viewer-settings section { min-width: 0; }
+/* Sections differ in height, so they fill two columns in reading order. */
+.lr-viewer-settings { --viewer-settings-gap: 24px; columns: 2; column-gap: var(--viewer-settings-gap); width: 100%; }
+.lr-viewer-settings.is-single { columns: auto; }
+.lr-viewer-settings section { min-width: 0; break-inside: avoid; }
+.lr-viewer-settings section:not(:last-child) { margin-bottom: var(--viewer-settings-gap); }
 .lr-viewer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--control-dense-size); margin-bottom: 12px; }
 .lr-viewer-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 650; }
 .lr-viewer-settings-heading .lr-btn { width: auto; }
@@ -138,5 +140,5 @@
 }
 
 @container playback-settings (max-width: 480px) {
-  .lr-viewer-settings { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .lr-viewer-settings { --viewer-settings-gap: 16px; columns: auto; }
 }

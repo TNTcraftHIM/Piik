@@ -25,7 +25,6 @@
 .c3-watch-audio .lr-select { width: 100%; min-width: 0; }
 .c3-watch-volume { display: none; padding-block-end: 6px; border-block-end: 1px solid var(--control-edge); }
 .c3-watch-player[data-thumbnail] .c3-watch-volume { display: grid; }
-.c3-watch-volume > input { margin: 0; }
 .c3-watch-inline-volume { display: flex; width: clamp(var(--control-compact-size), 13cqi, calc(2 * var(--control-dense-size))); }
 .c3-watch-inline-volume input { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: var(--action); cursor: pointer; }
 .c3-watch-wide-windows { display: none; }

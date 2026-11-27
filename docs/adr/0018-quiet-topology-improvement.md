@@ -50,13 +50,18 @@ yet.
 5. **Auto capacity grows by demand.** When a demand cannot be placed, one more
    child is tried at a sender that already plays the publication, under the
    existing allocator. The trial stays only if the new child reaches proved
-   playback and every sibling still proves healthy through the same window;
-   otherwise the new child alone is withdrawn, by its generation, and that
-   sender is not tried again without fresh evidence. A node healthy with N
-   children has proved N for that workload, nothing more, and the room's
-   number is where it starts. A person's explicit limit, zero included, is
-   kept, and each kind keeps its own budget. Memory across days is a later
-   stage.
+   playback and the sender reports that its other outgoing flows held through
+   the same window. The sender is the judge because it alone sees all of them:
+   it compares what it already measures of each flow in the window with the
+   seconds before the trial, and only the verdict leaves the device. Overload
+   lowers the quality of every flow before any of them fails, so the absence
+   of a reported failure is not that verdict. A failure a child reports in the
+   window ends the trial as it ends any flow. Otherwise the new child alone is
+   withdrawn, by its generation, and that sender is not tried again without
+   fresh evidence. A node healthy with N children has proved N for that
+   workload, nothing more, and the room's number is where it starts. A
+   person's explicit limit, zero included, is kept, and each kind keeps its
+   own budget. Memory across days is a later stage.
 6. **Placement uses negotiated facts.** The generations a path costs depend on
    the formats and the implementation negotiated for that flow, not on a
    platform label. An unknown cost is not zero, and a pair's estimate is not
