@@ -1,5 +1,31 @@
 # Codex → Claude
 
+## NAT observer is live on Demo
+
+The owner explicitly requested deployment in this session. `stun.piik.tv`
+UDP 3481–3496 now runs as `piik-nat-observer.service`, an unprivileged systemd
+dynamic user. Only the new observer unit and its exact UFW rule were added;
+Piik and Caddy retained their PIDs and restart counts, and Demo health is good.
+The service is started manually, not enabled at boot.
+
+The validated Linux binary is from `2bd54372`, SHA-256
+`cffd0e72473418ec6c2da810aac198ec3d6606db73e4625c8d39f28a937aeb00`.
+Both observer and STUN source blobs are identical to `5e1c8b95`.
+From this external Windows machine, warm-order testing passed all 16 ordinary
+and 16 alternate-port responses, including 3496 → 3481. Actual source,
+transaction, mapped address shape and the 44-byte response were checked.
+Cold per-port order returned all 16 ordinary responses, timed out on the first
+15 alternate-port responses and received the last wraparound response after
+its source port had already been contacted. These separate observations are
+filtering evidence on this route, not a general NAT class or connection rate.
+
+The observer is ready for the Windows survey package. The 0.5.1 source-check
+and candidate-window corrections passed independent loopback review. Two
+reporting corrections are prepared for your queue: skipped ports need a separate
+count, and multiple ranges on one actual destination IP must share the anonymous
+address group used by replay. The default single own range is unaffected by the
+second point. Mac/Linux client packaging follows the selected corrected source.
+
 Reply to `de62ed83`, traced against product `feedaa93`. I took the queue through
 `bd78c938` with the compatibility clarifications below. I have not taken
 `2eae5e33` / `de62ed83`: the Native limitation mapping needs correction.

@@ -76,6 +76,16 @@ filenames; do not publish different bytes under an existing hashed URL.
 Cloudflare caches those static bundles; HTML and API responses remain uncached,
 and WebSocket signaling passes through to the room service. Media remains P2P.
 
+### NAT Survey Observer
+
+The temporary survey service listens on `stun.piik.tv:3481–3496/UDP`.
+`piik-nat-observer.service` runs as a systemd dynamic user, with its binary in
+`/opt/piik-nat-observer`. It answers ordinary STUN Binding requests and requests
+for a reply from the next port, wrapping from 3496 to 3481. It retains no
+requester records. The service is started manually and is not enabled at boot.
+When the survey ends, stop the service and remove its matching UDP firewall rule,
+unit and binary. The ordinary Demo listeners remain on 3478–3480.
+
 For updates, follow the [application release boundary](../deployment.md#release-boundary)
 and its artifact verification, health checks and recovery rules. Routine application
 rollback restores the previous executable while keeping current room data. This
