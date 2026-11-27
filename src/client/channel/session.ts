@@ -3213,8 +3213,7 @@ export class ChannelSession {
       try {
         const source = this.view.state?.watchActivities.find(value => value.id === id);
         if (!source) throw new Error("watch_unavailable");
-        const replacement = media.retryCandidate(source.playback.timeline);
-        next = this.makeWatchPlayer(id, player.roomId, true, replacement);
+        next = this.makeWatchPlayer(id, player.roomId, true, new PageSuppliedMedia(media.page, media.retainedByteSource, source.playback.timeline));
         await next.ready(player.signal);
         const activity = this.view.state?.watchActivities.find(value => value.id === id);
         if (!activity) throw new Error("watch_unavailable");
@@ -3223,7 +3222,6 @@ export class ChannelSession {
         await next.restorePlayback(activity.playback);
         player.signal.throwIfAborted();
         if (this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
-        media.transferPageTo(replacement);
         next.mode = player.mode;
         this.stage(next.roomId).useWatch(id, next);
         this.activateWatchOwner(id, next);

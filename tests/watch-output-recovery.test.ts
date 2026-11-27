@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 import { AppPage } from "../src/client/channel/app-link";
 import { ChannelWatchVideo } from "../src/client/channel/components/ChannelMedia";
-import { HTMLVideoMedia } from "../src/client/channel/watch-media";
+import * as watchResource from "../src/client/channel/watch-resource";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { playbackOutput } from "../src/client/media/playback-output";
@@ -34,9 +34,10 @@ it.each([false, true])("offers output recovery for a page-supplied player with a
   Object.assign(video, { ownerDocument: document });
   vi.stubGlobal("HTMLMediaElement", class { setSinkId = video.setSinkId; });
   await playbackOutput.choose("missing");
+  const open = vi.spyOn(watchResource, "openWatchResource").mockImplementation(() => new Promise(() => {}));
   const page = new AppPage(crypto.randomUUID(), "https://source.test/player", vi.fn(), vi.fn(), vi.fn());
-  const media = new PageSuppliedMedia(page, new HTMLVideoMedia(() => new Promise(() => {})),
-    { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" }, () => page.close());
+  const media = new PageSuppliedMedia(page, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" });
+  page.close();
   const player = new WatchPlayer("fixture", false, media, vi.fn());
   const render = () => renderToStaticMarkup(createElement(ChannelWatchVideo, {
     player, owned: false, paused: true, label: "Page", presentation: "full", disabled: false,
@@ -57,6 +58,7 @@ it.each([false, true])("offers output recovery for a page-supplied player with a
     expect(render().includes(t("en", "watch.waiting"))).toBe(!presented);
   } finally {
     player.close();
+    open.mockRestore();
     await playbackOutput.choose("");
     vi.unstubAllGlobals();
   }

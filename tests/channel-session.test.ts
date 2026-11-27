@@ -22,6 +22,8 @@ import { HTMLVideoMedia, AppPageMedia } from "../src/client/channel/watch-media"
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import type { Stage } from "../src/client/channel/stage";
 import * as watchMedia from "../src/client/channel/watch-media";
+import * as watchResource from "../src/client/channel/watch-resource";
+import { WatchDashMedia } from "../src/client/channel/watch-dash-media";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import * as nativeActivation from "../src/client/native/activation";
 import * as cameraPreviews from "../src/client/media/camera-previews";
@@ -14191,7 +14193,13 @@ function indexedInspection(kind: "video" | "audio"): indexedSource.IndexedTrackI
 function localProviderVideo() {
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
-  vi.spyOn(watchMedia, 'createResourceWatchMedia').mockImplementation(() => new HTMLVideoMedia('https://fixture.test/local.mp4', 'file'));
+  const url = 'https://fixture.test/local.mp4';
+  vi.spyOn(watchResource, 'openWatchResource').mockResolvedValue({ url, close: vi.fn() });
+  vi.spyOn(WatchDashMedia.prototype, 'open').mockResolvedValue();
+  const fetch = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => input === url
+    ? new Response("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n#EXT-X-ENDLIST\n")
+    : fetch(input, options)));
   return video;
 }
 
@@ -14538,7 +14546,7 @@ test('local provider preparation failure releases only its reader and candidate,
   const local=localProviderVideo();
   vi.spyOn(page,'prepareMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
   const stop=vi.spyOn(page,'stopMedia').mockResolvedValue();
-  vi.spyOn(HTMLVideoMedia.prototype,'ready').mockRejectedValueOnce(new Error('watch_media_unavailable'));
+  vi.spyOn(watchResource, 'openWatchResource').mockRejectedValueOnce(new Error('watch_media_unavailable'));
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
   const incumbent=new WatchPlayer('first',true,new HTMLVideoMedia('https://fixture.test/old.mp4','file'),()=>{});
   vi.stubGlobal('document', { createElement: () => local });
@@ -14552,6 +14560,7 @@ test('local provider preparation failure releases only its reader and candidate,
     expect(socket.sent.some(command=>command.type==='start_watch'||command.type==='join_watch')).toBe(false);
     expect(local.src).toBe('');
   }finally{session.close();}
+  expect(dispose).toHaveBeenCalledOnce();
 });
 
 test('closing forwarding settings during direct preparation releases the reader and keeps the original page', async () => {
@@ -14652,38 +14661,53 @@ test("foreground recovery cannot withdraw a replacement watch byte source", asyn
 
 test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback: the current player owns %s failure without a Session banner", async fault => {
   const { session } = await setup(1000, false);
-  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const incumbentVideo = localProviderVideo();
+  vi.stubGlobal("document", { createElement: vi.fn().mockReturnValueOnce(incumbentVideo).mockImplementation(() => new WatchTestVideo()) });
   const dispose = vi.fn();
   const page = new appLink.AppPage(crypto.randomUUID(), "https://video.test/film", vi.fn(async () => ({})), dispose, () => {});
   const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
-  const media = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/local.mp4", "file"), bytes, () => page.close());
+  const media = new PageSuppliedMedia(page, bytes);
+  page.close();
+  await media.ready(new AbortController().signal);
+  await media.patch({ paused: false });
   const player = new WatchPlayer("first", true, media, () => {});
   player.error = "watch_media_failed";
   installWatchPlayer(session, "owned", player);
   const state = session.getSnapshot().state!;
   state.watchActivities = fault === "source" ? [] : [{ id: "owned", roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
-    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } }];
+    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 12, paused: true, rate: 1, anchorTime: 1000 } }];
   const failure = fault === "cancel" ? new DOMException("Cancelled", "AbortError")
     : new Error(fault === "source" ? "watch_unavailable" : fault === "candidate" ? "watch_source_unavailable" : "watch_media_access_denied");
-  const candidate = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/retry.mp4", "file"), bytes, null);
-  const closeCandidate = vi.spyOn(candidate, "close");
-  vi.spyOn(candidate, "ready").mockRejectedValue(failure);
-  vi.spyOn(media, "retryCandidate").mockImplementation(() => { if (fault === "candidate") throw failure; return candidate; });
+  if (fault === "candidate") vi.spyOn(page, "hold").mockImplementationOnce(() => { throw failure; });
+  if (fault === "ready" || fault === "cancel") vi.spyOn(watchResource, "openWatchResource").mockRejectedValueOnce(failure);
   try {
     await expect(session.resumeWatch("owned")).rejects.toThrow(failure.message);
     expect(player.error).toBe(fault === "cancel" ? "watch_media_failed" : failure.message);
     expect(session.getSnapshot().watchPlayers.get("owned")).toBe(player);
     expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().pending.has("watch-video:owned")).toBe(false);
-    expect(closeCandidate).toHaveBeenCalledTimes(fault === "ready" || fault === "cancel" ? 1 : 0);
+    expect(incumbentVideo.paused).toBe(false);
+    expect(incumbentVideo.src).toBe("https://fixture.test/local.mp4");
     expect(dispose).not.toHaveBeenCalled();
-  } finally { candidate.close(); session.close(); }
+    if (fault === "ready") {
+      player.calibrate(1000, performance.now());
+      await session.resumeWatch("owned");
+      expect(player.signal.aborted).toBe(true);
+      expect(incumbentVideo.src).toBe("");
+      const successor = session.getSnapshot().watchPlayers.get("owned");
+      expect(successor?.media.page).toBe(page);
+      expect(successor?.video).toMatchObject({ currentTime: 12, paused: true });
+      expect(dispose).not.toHaveBeenCalled();
+    }
+  } finally { session.close(); }
+  expect(dispose).toHaveBeenCalledOnce();
 });
 
 test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {
   const {session,page,socket,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[],byteSource:null}));
   localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
-  const media=new PageSuppliedMedia(page,new HTMLVideoMedia('https://fixture.test/local.mp4','file'),source, () => page.close());
+  const media = new PageSuppliedMedia(page, source);
+  page.close();
   const player=new WatchPlayer('first',true,media,()=>{}),stop=vi.spyOn(page,'stopMedia');
   installWatchPlayer(session, 'owned',player);
   try{

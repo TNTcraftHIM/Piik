@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelWatchVideo } from "../src/client/channel/components/ChannelMedia";
 import { WatchDashMedia } from "../src/client/channel/watch-dash-media";
-import { HTMLVideoMedia, type WatchMedia } from "../src/client/channel/watch-media";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import { AppPage } from "../src/client/channel/app-link";
 import type { WatchPlayer } from "../src/client/channel/watch-playback";
@@ -38,7 +37,7 @@ test("only a known silent source hides local volume for either role; unknown pag
   }
 });
 
-test("DASH audio uses the active public variant and PageSuppliedMedia delegates without treating unknown as absent", () => {
+test("DASH audio uses the active public variant and page playback preserves unknown audio", () => {
   const dash = new WatchDashMedia({} as HTMLVideoElement, { resourceId: "root", read: vi.fn() }, new AbortController().signal, vi.fn());
   const variants = vi.fn(() => [] as { active: boolean; audioId: number | null; audioCodec: string | null }[]);
   (dash as unknown as { player: { getVariantTracks: typeof variants } }).player = { getVariantTracks: variants };
@@ -50,12 +49,12 @@ test("DASH audio uses the active public variant and PageSuppliedMedia delegates 
   variants.mockReturnValue([{ active: true, audioId: null, audioCodec: "mp4a.40.2" }]); expect(dash.audioAvailable()).toBe(true);
   const video = Object.assign(new EventTarget(), { pause() {}, load() {}, remove() {}, removeAttribute() {} });
   vi.stubGlobal("document", { createElement: () => video });
-  const main = new HTMLVideoMedia("https://fixture.test/file.mp4", "file");
   const page = new AppPage(crypto.randomUUID(), "https://fixture.test/page", vi.fn(), vi.fn(), vi.fn());
-  const supplied = new PageSuppliedMedia(page, main, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" }, () => page.close());
+  const supplied = new PageSuppliedMedia(page, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" });
+  page.close();
   try {
-    expect((main as WatchMedia).audioAvailable?.()).toBeUndefined(); expect(supplied.audioAvailable()).toBeUndefined();
-    (main as unknown as { dash: WatchDashMedia }).dash = dash;
+    expect(supplied.audioAvailable()).toBeUndefined();
+    (supplied as unknown as { dash: WatchDashMedia }).dash = dash;
     variants.mockReturnValue([{ active: true, audioId: null, audioCodec: null }]); expect(supplied.audioAvailable()).toBe(false);
-  } finally { (main as unknown as { dash?: WatchDashMedia }).dash = undefined; supplied.close(); }
+  } finally { (supplied as unknown as { dash?: WatchDashMedia }).dash = undefined; supplied.close(); }
 });

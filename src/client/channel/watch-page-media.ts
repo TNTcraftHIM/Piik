@@ -2,7 +2,7 @@ import type { AppPage } from "./app-link";
 import type { NativePageMediaChoice, NativePageIndexedCandidate, NativePageMpdCandidate, NativePageMpdCatalog } from "../native/wire";
 import { inspectIndexedTrack, type IndexedTrackInspection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
-import { HTMLVideoMedia, createResourceWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
+import { HTMLVideoMedia } from "./watch-media";
 import { watchSourceSchema, type WatchByteSource, type WatchFormat, type WatchTimeline } from "./protocol";
 
 export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
@@ -108,55 +108,37 @@ export async function preparePortableWatchMedia(page: AppPage, url: string, sign
   } catch (error) { media.close(); throw error; }
 }
 
-function pagePlayback(page: AppPage, byteSource: WatchByteSource, timeline?: WatchTimeline): HTMLVideoMedia {
-  return createResourceWatchMedia(byteSource, (resourceId, offset, length, signal) =>
-    page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal), { hlsDeadlineOwner: "loader", timeline });
-}
-
 export async function preparePageSuppliedWatchMedia(page: AppPage, byteSource: WatchByteSource,
   signal: AbortSignal, candidateId?: string): Promise<PageSuppliedMedia> {
   signal.throwIfAborted();
-  const media = pagePlayback(page, byteSource);
+  let media: PageSuppliedMedia | undefined;
   try {
+    media = new PageSuppliedMedia(page, byteSource);
     await prepareMainPlayback(page, media, signal, candidateId);
-    return new PageSuppliedMedia(page, media, byteSource, page.hold());
+    return media;
   } catch (error) {
-    media.close();
+    media?.close();
     await page.stopMedia(candidateId).catch(() => {});
     throw error;
   }
 }
 
-/** One main playback owner; the selected page retains only resource access and retirement. */
-export class PageSuppliedMedia implements WatchMedia {
-  readonly presentation;
-  private closed = false;
-  private readonly unlisten: () => void;
-  constructor(readonly page: AppPage, private readonly media: HTMLVideoMedia, readonly retainedByteSource: WatchByteSource,
-    private releasePage: (() => void) | null) {
-    this.presentation = media.presentation;
+/** Each main player retains access to its page until its owner closes the player. */
+export class PageSuppliedMedia extends HTMLVideoMedia {
+  private readonly unlistenPage: () => void;
+  private readonly releasePage: () => void;
+  constructor(readonly page: AppPage, readonly retainedByteSource: WatchByteSource, timeline?: WatchTimeline) {
+    const { resourceId, format } = retainedByteSource;
+    super({ resourceId, hlsDeadlineOwner: "loader",
+      read: (id, offset, length, signal) => page.readMediaResource(resourceId, id, offset, length, signal) }, format, timeline);
+    try { this.releasePage = page.hold(); }
+    catch (error) { super.close(); throw error; }
     // Original play/pause/seek events are deliberately not room playback events.
-    this.unlisten = page.listen(event => { if (event === "closed") this.close(); });
+    this.unlistenPage = page.listen(event => { if (event === "closed") this.close(); });
   }
-  audioAvailable(): boolean | undefined { return this.media.audioAvailable(); }
-  retryCandidate(timeline: WatchTimeline): PageSuppliedMedia {
-    return new PageSuppliedMedia(this.page, pagePlayback(this.page, this.retainedByteSource, timeline), this.retainedByteSource, null);
-  }
-  transferPageTo(next: PageSuppliedMedia): void {
-    next.releasePage = this.releasePage;
-    this.releasePage = null;
-  }
-  read(): Promise<WatchMediaState> { return this.media.read(); }
-  patch(value: WatchMediaPatch): Promise<void> { return this.media.patch(value); }
-  ready(signal: AbortSignal): Promise<void> { return this.media.ready(signal); }
-  audioTracks() { return this.media.audioTracks(); }
-  selectAudioTrack(id: number): void { this.media.selectAudioTrack(id); }
-  listen(changed: (event: WatchMediaEvent) => void): () => void { return this.media.listen(changed); }
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.unlisten();
-    this.media.close();
-    this.releasePage?.();
+  override close(): void {
+    this.unlistenPage();
+    super.close();
+    this.releasePage();
   }
 }
