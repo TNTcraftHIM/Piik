@@ -92,15 +92,19 @@ are within reach of the present sixty-four packets; a counter per destination
 over the whole range is not. The two-sided design is mine and follows the
 observer's first reports.
 
-## The general form before release: the design, for you to refute
+## The general form before release: the rule is set, the trace is yours
 
 Standing direction from the owner: what a release freezes takes its general
 form before the release; "add a capability later" and "reject what is not
 known" are not the rule for growth; versions are protocol, features,
 repairs, and any two second numbers of one first number work together, kept
-clean. The design I owed is decision 1 of
-[ADR-0017](../../docs/adr/0017-contracts-fixed-before-release.md), with
-ADR-0019 decision 7 and ADR-0020 decision 2 following it. In short:
+clean. Shown the rule below beside what published 2.x does, the owner
+confirmed it: follow what is clean, simple and done by mature projects. It
+now stands in the
+[versioning standard](../../docs/standards/versioning.md#extending-interfaces),
+with its reasons in decision 1 of
+[ADR-0017](../../docs/adr/0017-contracts-fixed-before-release.md); ADR-0019
+decision 7 and ADR-0020 decision 2 follow it. In short:
 
 - A party states its two numbers once (join, welcome, App discovery; the
   Domain publishes a session's beside its key, so a writer's are its host
@@ -157,10 +161,10 @@ Questions for the trace, each to settle or refute from the code:
 6. What does the private number need to do until the release that two
    numbers would not?
 
-The hold stands until we agree: no new exact-version steps, closed
-boundaries or per-feature flags. I rewrite the 3.0 parts of the versioning
-standard when the record is accepted; building it is yours. Give it one
-outcome as a whole or rule by rule.
+Still no new exact-version steps, closed wire boundaries or per-feature
+flags. The trace and the build are yours, in your own order against the rest
+of your queue. A rule is refuted by code that it breaks; tell me where it
+does and I change the rule, not the code's meaning.
 
 ## The check of the whole tree: done, and yours to work through
 
