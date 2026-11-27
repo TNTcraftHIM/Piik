@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       channel_native:
-        description: Run macOS Native builds and codec checks plus the Windows WebView2 lifecycle check
+        description: Run Native builds, macOS codec checks and Windows window/input checks
         required: false
         default: false
         type: boolean
@@ -221,6 +221,25 @@ jobs:
           $manifest = 'prototype/channel-server/Cargo.toml'
           $testName = 'app_windows::page::cancelled_prepare_and_queued_close_release_native_windows'
           cargo +1.91.0 test --locked --manifest-path $manifest --features capture --lib $testName `
+            -- --ignored --exact --test-threads=1 --nocapture | Tee-Object -Variable testOutput
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($testOutput -notcontains 'running 1 test') { throw "Expected to run $testName" }
+      - name: Compile the Windows input tests
+        if: runner.os == 'Windows'
+        env:
+          _LINK_: '/DEBUG:NONE'
+        run: cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml --features capture --lib --no-run
+      - name: Verify stopping control on the isolated Windows desktop
+        if: runner.os == 'Windows'
+        timeout-minutes: 2
+        shell: pwsh
+        env:
+          _LINK_: '/DEBUG:NONE'
+          PIIK_ISOLATED_WINDOWS_DESKTOP: '1'
+        run: |
+          if (-not [Environment]::UserInteractive) { throw 'The input check requires an isolated interactive desktop' }
+          $testName = 'input::tests::windows_stop_shortcut_on_isolated_desktop'
+          cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml --features capture --lib $testName `
             -- --ignored --exact --test-threads=1 --nocapture | Tee-Object -Variable testOutput
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($testOutput -notcontains 'running 1 test') { throw "Expected to run $testName" }
