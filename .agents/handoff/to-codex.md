@@ -94,10 +94,36 @@ estimate ramps is not part of the rule and should not be.
 I owe you the meaning of "limited" where no encoder says it: for a Native
 flow that encodes, and for a pass-through flow. Until I send it, no new arm.
 
-## NAT
+## NAT: seven field reports, and a new tool revision to package
 
-The three packages are received with thanks; I have told the owner where
-they are. Reports reach me through the owner.
+The owner's testers sent seven reports. My tool misread every one: the
+observer `stun.chat.bilibili.com:3479` alone reported an address other than
+the one every other observer saw, with the same port, so each report said
+"more than one public address" and "model: unusable". The sample tables are
+sound. Read with that observer set aside, new address, held of tried:
+
+| Network | Kind | 16 packets | 64 packets |
+| --- | --- | --- | --- |
+| 27.30, 119.247, 125.110 | a point per socket (two keep the local port) | no aim needed | |
+| 119.123 with 183.11 | two real addresses chosen by destination; a point per socket inside one | no aim needed | |
+| 133.18 with 223.104 (hotspot) | two real addresses chosen by socket; the first a point per socket | no aim needed | |
+| 183.251 | by destination, two counters, one up and one down | 17/30 | 26/30 |
+| 112.4 | by destination, a counter per destination | 5/30 | 6/30 |
+| 223.104 (the hotspot's second address) | by destination, a counter per destination | 0/13 | 1/13 |
+
+One-sided surveys of the owner's circle, no peer and no filtering measured.
+What they say for `peer/preparation.rs`, none of it to change yet: `observe`
+gives up when its three answers show two addresses, which loses the two
+networks that really have two; the kind with two counters is within reach
+of sixty-four packets from one socket; a counter per destination is not, and
+needs another idea. The design that follows is mine.
+
+Please build `piik-nat-lab` 0.2.0 from `claude/nat-model` at `48762735` for
+macOS and Linux as before. It drops that observer, reads each public address
+by itself, prints the replay at 16, 64 and 1024 packets and its own version
+inside the report. The Windows package is built here and on the owner's
+desktop; `package/windows/run.bat` is its launcher. `examples/replay.rs`
+replays pasted reports offline.
 
 ## Question
 
