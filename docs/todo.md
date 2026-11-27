@@ -70,13 +70,12 @@ the feedback period; they do not delay that delivery.
   resource. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Freeze the first public 3.0 contract.** Decide
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
-  writers and release storage fixtures. Its compatibility rule is proposed
-  as two numbers a party states and four rules (unknown kinds, unknown
-  fields, forms asked for); trace it through each connection, store and
-  archive, then settle explicit reply outcomes and history and storage
-  boundaries before publication. While it is under review, do not add
-  exact-version steps, closed wire/storage boundaries or individual feature
-  flags to extend the current scheme.
+  writers and release storage fixtures. The
+  [rule for extending interfaces](./standards/versioning.md#extending-interfaces)
+  is set: trace it through each connection, bring the private code to it and
+  exercise it in tests, then settle explicit reply outcomes and history and
+  storage boundaries before publication. Do not add exact-version steps,
+  closed wire boundaries or individual feature flags meanwhile.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,

@@ -173,9 +173,9 @@ their meaning, and a new form reaches only a party that asked for it.
   that newer clients could use them through an older host, was weighed and
   left out: no feature in sight needs it, and it can be added later as one
   more addition under these rules.
-- [Versioning](../standards/versioning.md) is rewritten to these rules for
-  3.0 when this record is accepted. Until then it describes the code as it
-  is.
+- [Versioning](../standards/versioning.md#extending-interfaces) states the
+  rule for 3.0, whose direction the owner confirmed. The distance of the
+  private code from it is release work.
 
 ## References
 

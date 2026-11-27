@@ -147,8 +147,8 @@ Check both acceptance and the effect of rejection. For media, distinguish
 encode, decode and forwarding support. Optional presentation additions need a
 bounded unsupported-value policy separate from authority violations, following
 [versioning](./versioning.md#extending-interfaces).
-Use the existing owner and concrete capability negotiation; these checks do not
-justify a generic plugin framework or accepting unknown commands.
+Use the existing owner; these checks do not justify a generic plugin
+framework, a flag per feature or executing unknown commands.
 
 ## Runtime Lifecycles
 
