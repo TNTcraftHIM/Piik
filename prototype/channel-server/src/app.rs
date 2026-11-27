@@ -51,7 +51,7 @@ use piik_channel_native::{
     },
     session::{
         self, CaptureEdit, CommitCapture, EditCapture, HostCommand, Hosting, OpenRoom,
-        PauseCapture, PrepareCapture, PublishCaptureSettings, TransferSource,
+        PrepareCapture, PublishCaptureSettings, TransferSource,
     },
 };
 use serde::Deserialize;
@@ -2692,31 +2692,19 @@ async fn connection(
                             Err(error) => Err(error),
                         }
                     }
-                    Operation::CapturePaused {
-                        publication_id,
-                        capture_id,
-                        paused,
-                    } => {
-                        let lease = captures
-                            .get(&publication_id)
-                            .and_then(Capture::source)
-                            .filter(|lease| lease.id() == capture_id);
-                        if let Some(lease) = lease {
-                            let commands = host.clone();
-                            let scope = lease.scope().clone();
-                            let capture_id = lease.producer_id();
-                            operations.push(async move {
-                                let result = pause_capture(&commands, scope, capture_id, paused).await;
-                                control_reply(request.id, result.map(|()| Value::Null))
-                            }.boxed());
-                            continue;
-                        } else {
-                            Err(anyhow!("capture_unavailable"))
-                        }
-                    }
-                    operation @ (Operation::CaptureTitle { .. }
+                    operation @ (Operation::CapturePaused { .. }
+                    | Operation::CaptureTitle { .. }
                     | Operation::CaptureDirectLimit { .. }) => {
                         let (publication_id, expected_capture, edit) = match operation {
+                            Operation::CapturePaused {
+                                publication_id,
+                                capture_id,
+                                paused,
+                            } => (
+                                publication_id,
+                                Some(capture_id),
+                                CaptureEdit::Paused(paused),
+                            ),
                             Operation::CaptureTitle {
                                 publication_id,
                                 capture_id,
@@ -3021,28 +3009,6 @@ async fn transfer_source(
             scope,
             capture_id,
             to_session_id,
-            result,
-        }))
-        .await
-        .map_err(|_| anyhow!("hosting_unavailable"))?;
-    response
-        .await
-        .map_err(|_| anyhow!("hosting_unavailable"))?
-        .map_err(anyhow::Error::msg)
-}
-
-async fn pause_capture(
-    commands: &mpsc::Sender<HostCommand>,
-    scope: piik_channel_native::peer::CaptureScope,
-    capture_id: Uuid,
-    paused: bool,
-) -> Result<()> {
-    let (result, response) = oneshot::channel();
-    commands
-        .send(HostCommand::PauseCapture(PauseCapture {
-            scope,
-            capture_id,
-            paused,
             result,
         }))
         .await

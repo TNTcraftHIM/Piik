@@ -513,14 +513,9 @@ pub struct TransferSource {
     pub to_session_id: Uuid,
     pub result: oneshot::Sender<Result<(), String>>,
 }
-pub struct PauseCapture {
-    pub scope: CaptureScope,
-    pub capture_id: Uuid,
-    pub paused: bool,
-    pub result: oneshot::Sender<Result<(), String>>,
-}
 pub enum CaptureEdit {
     Stop { successor_watch_id: Uuid },
+    Paused(bool),
     Title(Option<String>),
     DirectLimit(Option<u8>),
 }
@@ -697,7 +692,6 @@ pub enum HostCommand {
     },
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
-    PauseCapture(PauseCapture),
     EditCapture(EditCapture),
     PublishCaptureSettings(PublishCaptureSettings),
 }
@@ -754,9 +748,6 @@ impl HostCommand {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::EditCapture(request) => {
-                let _ = request.result.send(Err("hosting_unavailable".into()));
-            }
-            Self::PauseCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::PublishCaptureSettings(request) => {
@@ -1234,7 +1225,6 @@ impl Session {
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
                                 HostCommand::EditCapture(request) => self.edit_capture(request, socket).await?,
-                                HostCommand::PauseCapture(request) => self.pause_capture(request, socket).await?,
                                 HostCommand::PublishCaptureSettings(request) => self.publish_capture_settings(request, socket).await?,
                             } }
                             self.admit(None);
@@ -2380,47 +2370,6 @@ impl Session {
             .await
     }
 
-    async fn pause_capture(
-        &mut self,
-        request: PauseCapture,
-        socket: &mut Writer<'_>,
-    ) -> Result<()> {
-        if request.result.is_closed() {
-            return Ok(());
-        }
-        let Some(live) = self.live.as_mut() else {
-            let _ = request.result.send(Err("hosting_unavailable".into()));
-            return Ok(());
-        };
-        let current = await_peer(
-            live.peers.capture_current(request.capture_id, true),
-            &mut live.commands,
-            &live.pairs,
-            &mut live.room,
-            &live.peers,
-            socket,
-        )
-        .await?;
-        if !current
-            || live
-                .room
-                .snapshot
-                .borrow()
-                .as_ref()
-                .and_then(|state| capture_binding(state, &request.scope.room_id))
-                != Some(request.scope.binding_id)
-        {
-            let _ = request.result.send(Err("capture_unavailable".into()));
-            return Ok(());
-        }
-        let command = Command::SetPaused {
-            publication_id: request.scope.publication_id,
-            paused: request.paused,
-        };
-        self.send_capture_command(request.scope, request.result, command, socket)
-            .await
-    }
-
     async fn edit_capture(&mut self, request: EditCapture, socket: &mut Writer<'_>) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -2451,15 +2400,22 @@ impl Session {
             return Ok(());
         }
         let publication_id = request.scope.publication_id;
-        let command = match &request.edit {
-            CaptureEdit::Stop { successor_watch_id } => Command::Unpublish { publication_id, successor_watch_id: Some(*successor_watch_id) },
+        let command = match request.edit {
+            CaptureEdit::Stop { successor_watch_id } => Command::Unpublish {
+                publication_id,
+                successor_watch_id: Some(successor_watch_id),
+            },
+            CaptureEdit::Paused(paused) => Command::SetPaused {
+                publication_id,
+                paused,
+            },
             CaptureEdit::Title(title) => Command::SetTitle {
                 publication_id,
-                title: title.clone(),
+                title,
             },
             CaptureEdit::DirectLimit(limit) => Command::SetScreenDirectLimit {
                 publication_id,
-                limit: *limit,
+                limit,
             },
         };
         self.send_capture_command(request.scope, request.result, command, socket)
