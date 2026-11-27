@@ -7,6 +7,7 @@ use crate::{
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::value::RawValue;
 use uuid::Uuid;
 
 /// One pair's bounded application queue accommodates either admitted response burst.
@@ -212,11 +213,85 @@ pub fn verify_delivery(
     .map(|(address, _)| address)
 }
 
+/// The caller has already verified the packet signature and address.
+pub struct SignedBody<'a> {
+    pub role: ConversationRole,
+    pub raw: &'a RawValue,
+    pub kind: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ConversationRole {
+    Command,
+    Record,
+    Notice,
+}
+
+impl<'a> SignedBody<'a> {
+    pub fn read(
+        packet: &'a SignedPacket,
+        address: &ConversationAddress,
+        writer: Uuid,
+    ) -> Result<Self, &'static str> {
+        #[derive(Deserialize)]
+        struct Fields<'a> {
+            #[serde(default, borrow, deserialize_with = "present")]
+            command: Option<&'a RawValue>,
+            #[serde(default, borrow, deserialize_with = "present")]
+            record: Option<&'a RawValue>,
+            #[serde(default, borrow, deserialize_with = "present")]
+            notice: Option<&'a RawValue>,
+        }
+        fn present<'de, D: serde::Deserializer<'de>>(
+            d: D,
+        ) -> Result<Option<&'de RawValue>, D::Error> {
+            Deserialize::deserialize(d).map(Some)
+        }
+        let fields: Fields =
+            serde_json::from_str(&packet.payload).map_err(|_| "invalid_conversation")?;
+        let (role, raw) = match (fields.command, fields.record, fields.notice) {
+            (Some(raw), None, None) => (ConversationRole::Command, raw),
+            (None, Some(raw), None) => (ConversationRole::Record, raw),
+            (None, None, Some(raw)) => (ConversationRole::Notice, raw),
+            _ => return Err("invalid_conversation"),
+        };
+        let expected_writer = if role == ConversationRole::Command {
+            address.recipient
+        } else {
+            address.sender
+        };
+        if expected_writer != writer {
+            return Err("invalid_conversation_sender");
+        }
+        if !raw.get().trim_start().starts_with('{') {
+            return Err("invalid_conversation");
+        }
+        #[derive(Deserialize)]
+        struct Kind {
+            #[serde(rename = "type")]
+            kind: String,
+        }
+        let Kind { kind } = serde_json::from_str(raw.get()).map_err(|_| "invalid_conversation")?;
+        Ok(Self { role, raw, kind })
+    }
+}
+
 #[derive(Serialize)]
-#[serde(untagged)]
+#[serde(tag = "role", rename_all = "snake_case")]
 pub enum ReceivedConversation {
     Command(ConversationAddress),
-    Reply(ConversationReply),
+    Record {
+        #[serde(flatten)]
+        address: ConversationAddress,
+        record: ConversationRecord,
+    },
+    Notice {
+        #[serde(flatten)]
+        address: ConversationAddress,
+        notice: ConversationRecord,
+    },
+    UnknownRecord(ConversationAddress),
+    Ignored,
 }
 
 impl ConversationView {
@@ -240,30 +315,26 @@ impl ConversationView {
                     .map(|room| room.scope)
             },
         )?;
-        #[derive(Deserialize)]
-        struct Body<'a> {
-            #[serde(default, borrow, deserialize_with = "present_record")]
-            record: Option<&'a serde_json::value::RawValue>,
+        let body = SignedBody::read(packet, &address, host)?;
+        match body.role {
+            ConversationRole::Command => Ok(ReceivedConversation::Command(address)),
+            ConversationRole::Record | ConversationRole::Notice => {
+                let record =
+                    serde_json::from_str(body.raw.get()).map_err(|_| "invalid_conversation")?;
+                Ok(match (body.role, record) {
+                    (ConversationRole::Record, ConversationRecord::Unknown) => {
+                        ReceivedConversation::UnknownRecord(address)
+                    }
+                    (ConversationRole::Notice, ConversationRecord::Unknown) => {
+                        ReceivedConversation::Ignored
+                    }
+                    (ConversationRole::Record, record) => {
+                        ReceivedConversation::Record { address, record }
+                    }
+                    (_, notice) => ReceivedConversation::Notice { address, notice },
+                })
+            }
         }
-        // Preserve a present null as a record so the typed decoder rejects it.
-        fn present_record<'de, D: serde::Deserializer<'de>>(
-            deserializer: D,
-        ) -> Result<Option<&'de serde_json::value::RawValue>, D::Error> {
-            Deserialize::deserialize(deserializer).map(Some)
-        }
-        let body: Body =
-            serde_json::from_str(&packet.payload).map_err(|_| "invalid_conversation")?;
-        let Some(record) = body.record else {
-            return Ok(ReceivedConversation::Command(address));
-        };
-        if address.sender != host {
-            return Err("invalid_conversation_sender");
-        }
-        let record = serde_json::from_str(record.get()).map_err(|_| "invalid_conversation")?;
-        Ok(ReceivedConversation::Reply(ConversationReply {
-            address,
-            record,
-        }))
     }
 }
 
@@ -335,6 +406,8 @@ pub enum ConversationCommand {
     HistorySeek {
         after: u64,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -428,6 +501,8 @@ pub enum ConversationRecord {
     Error {
         code: String,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
 }
 
 impl ConversationRecord {
@@ -467,9 +542,22 @@ fn history_messages<'de, D: serde::Deserializer<'de>>(
 pub struct ConversationReply {
     #[serde(flatten)]
     pub address: ConversationAddress,
-    pub record: ConversationRecord,
+    #[serde(flatten)]
+    pub body: WriterBody,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WriterBody {
+    Record(ConversationRecord),
+    Notice(ConversationRecord),
 }
 impl ConversationReply {
+    pub fn content(&self) -> &ConversationRecord {
+        match &self.body {
+            WriterBody::Record(record) | WriterBody::Notice(record) => record,
+        }
+    }
+
     pub fn verify(packet: &SignedPacket, key: [u8; 32]) -> Result<Self, &'static str> {
         let reply: Self = verify(packet, key)?;
         if reply.address.sender != packet.sender {
@@ -511,9 +599,9 @@ impl ConversationOutcome {
     ) -> Result<(Vec<ConversationReply>, Option<ConversationReply>), &'static str> {
         let replies = self.replies()?;
         let broadcast = replies.iter().find_map(|reply| {
-            reply.record.broadcast().map(|record| ConversationReply {
+            reply.content().broadcast().map(|record| ConversationReply {
                 address: reply.address.clone(),
-                record,
+                body: WriterBody::Notice(record),
             })
         });
         Ok((replies, broadcast))
@@ -530,7 +618,7 @@ impl ConversationOutcome {
                             recipient,
                             ..confirmation.address.clone()
                         },
-                        record: confirmation.record.clone(),
+                        body: WriterBody::Notice(confirmation.content().clone()),
                     },
                 ),
             );
@@ -602,7 +690,7 @@ impl ConversationAddress {
             .into_iter()
             .map(|record| ConversationReply {
                 address: self.reply(),
-                record,
+                body: WriterBody::Record(record),
             })
             .collect())
     }
@@ -746,8 +834,10 @@ mod tests {
         let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet: packet.clone() }).unwrap();
         assert!(bytes.len() <= CONVERSATION_FRAME_BYTES);
         let verified: ConversationReply = verify(&packet, signer.signing_key()).unwrap();
-        assert!(matches!(verified.record, ConversationRecord::Confirmed { message: stored, inserted: false }
-            if stored.reactions == message.reactions));
+        assert!(
+            matches!(verified.content(), ConversationRecord::Confirmed { message: stored, inserted: false }
+            if stored.reactions == message.reactions)
+        );
 
         // Read through the byte-bounded page owner, including an oversized
         // first row. It keeps the accepted large message reachable on its own page.
@@ -757,8 +847,10 @@ mod tests {
             page.finish(Some(1), Some(101)),
         ))).unwrap();
         assert_eq!(replies.len(), 1);
-        assert!(matches!(&replies[0].record, ConversationRecord::HistoryPage { messages, .. }
-            if messages.len() == 1));
+        assert!(
+            matches!(replies[0].content(), ConversationRecord::HistoryPage { messages, .. }
+            if messages.len() == 1)
+        );
         let invalid = serde_json::json!({"type":"history_page","messages":vec![message.clone(); 51],"hasMore":false,"oldestSeq":null,"before":null});
         assert!(serde_json::from_value::<ConversationRecord>(invalid).is_err());
         let duplicate = serde_json::json!({"type":"history_page","messages":[message.clone(), message],"hasMore":false,"oldestSeq":null,"before":null});
@@ -876,10 +968,10 @@ mod room_tests {
         assert_eq!(replies.len(), 1);
         assert_eq!(replies[0].address, address.reply());
         assert!(matches!(
-            &replies[0].record,
+            replies[0].content(),
             ConversationRecord::Error { code } if code == "invalid_conversation"
         ));
-        assert!(replies[0].record.broadcast().is_none());
+        assert!(replies[0].content().broadcast().is_none());
         let mut forged = malformed_packet;
         forged.signature[0] ^= 1;
         assert!(matches!(
@@ -913,7 +1005,7 @@ mod room_tests {
         assert_eq!(confirmation.message.message.user_id, actor.user_id);
         assert_eq!(confirmation.message.message.time, 10);
         let reply = first.replies().unwrap().remove(0);
-        let Some(ConversationRecord::LiveMessage { message }) = reply.record.broadcast() else {
+        let Some(ConversationRecord::LiveMessage { message }) = reply.content().broadcast() else {
             panic!("new confirmed chat must broadcast");
         };
         assert_eq!(message.text, "Original");
@@ -950,7 +1042,7 @@ mod room_tests {
             .replies()
             .unwrap()
             .iter()
-            .all(|reply| reply.record.broadcast().is_none()));
+            .all(|reply| reply.content().broadcast().is_none()));
         for (nonce, now, changed) in [
             (1, 1000, true),
             (1, 1001, false),
@@ -970,13 +1062,13 @@ mod room_tests {
             };
             let packet = sender_key.sign(sender, &request).unwrap();
             let replies = host.dispatch_peer(&packet, now).unwrap().replies().unwrap();
-            assert!(matches!(&replies[0].record,
+            assert!(matches!(replies[0].content(),
                 ConversationRecord::Reaction { event, .. } if event.is_some() == changed));
-            assert_eq!(replies[0].record.broadcast().is_some(), changed);
+            assert_eq!(replies[0].content().broadcast().is_some(), changed);
             if let Some(ConversationRecord::Reaction {
                 snapshot: Some(ReactionSnapshot::Message(snapshot)),
                 ..
-            }) = replies[0].record.broadcast()
+            }) = replies[0].content().broadcast()
             {
                 assert_eq!(snapshot.message_seq, 1);
                 assert_eq!(snapshot.reactions.counts["heart"], nonce);
@@ -1004,11 +1096,11 @@ mod room_tests {
                 .replies()
                 .unwrap();
             for reply in replies {
-                let broadcast = reply.record.broadcast();
-                if matches!(reply.record, ConversationRecord::Reaction { .. }) {
+                let broadcast = reply.content().broadcast();
+                if matches!(reply.content(), ConversationRecord::Reaction { .. }) {
                     assert_eq!(
                         serde_json::to_value(broadcast.unwrap()).unwrap(),
-                        serde_json::to_value(reply.record).unwrap()
+                        serde_json::to_value(reply.content()).unwrap()
                     );
                 } else {
                     assert!(broadcast.is_none());
@@ -1033,9 +1125,9 @@ mod room_tests {
         assert_eq!(replies.len(), 1);
         let reply = &replies[0];
         assert_eq!(reply.address, address.reply());
-        assert!(reply.record.broadcast().is_none());
+        assert!(reply.content().broadcast().is_none());
         assert_eq!(
-            serde_json::to_value(&reply.record).unwrap(),
+            serde_json::to_value(reply.content()).unwrap(),
             serde_json::json!({"type":"history_seek_result","after":0,"seq":null}),
             "seek excludes the authenticated reader's own message"
         );
@@ -1066,10 +1158,10 @@ mod room_tests {
         );
         let denied_reply = denied.replies().unwrap().remove(0);
         assert!(matches!(
-            denied_reply.record,
+            denied_reply.content(),
             ConversationRecord::Error { .. }
         ));
-        assert!(denied_reply.record.broadcast().is_none());
+        assert!(denied_reply.content().broadcast().is_none());
         host.dispatch(input(HostAction::Sync, Uuid::new_v4()))
             .unwrap();
         assert!(matches!(

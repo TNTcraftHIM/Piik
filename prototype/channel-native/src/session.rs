@@ -162,7 +162,9 @@ impl RoomTurns {
             .ok_or_else(|| anyhow!("session_expired"))?;
         let address =
             conversation::verify_address(packet, sender.signing_key).map_err(anyhow::Error::msg)?;
-        if address.recipient != self.local {
+        let body = conversation::SignedBody::read(packet, &address, self.local)
+            .map_err(anyhow::Error::msg)?;
+        if address.recipient != self.local || body.role != conversation::ConversationRole::Command {
             bail!("invalid_conversation_scope");
         }
         Ok(address)
@@ -201,7 +203,7 @@ impl RoomTurns {
                             recipient,
                             ..broadcast.address.clone()
                         },
-                        record: broadcast.record.clone(),
+                        body: broadcast.body.clone(),
                     }),
             );
         }

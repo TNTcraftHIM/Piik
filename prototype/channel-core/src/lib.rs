@@ -319,7 +319,8 @@ impl Authority {
         }
         if let Command::Conversation { packet } = request.command {
             match self.channel.relay_conversation(session_id, packet) {
-                Ok((recipient, event, delivery)) => {
+                Ok(None) => {}
+                Ok(Some((recipient, event, delivery))) => {
                     self.deliver(recipient, event, &mut effects);
                     match delivery {
                         channel::ConversationDelivery::ToWriter => effects.conversation_to_writer = true,

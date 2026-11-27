@@ -535,6 +535,7 @@ export const ja = {
   "channel.error.captureCodecUnsupported": "App がこの映像コーデックに対応していません。共有前に「自動」を選ぶか、別のソースを選んでください。",
   "channel.error.videoCodecUnsupported": "ブラウザーがこの映像コーデックに対応していません。共有前に「自動」または別のコーデックを選んでください。",
   "channel.error.ownerMismatch": "App のルームデータは別のサイトまたはアカウントのものです。現在のサイトとログイン中のアカウントを確認してください。",
+  "channel.error.unknownOutcome": "操作結果を確認できませんでした。現在の状態を確認してから、もう一度お試しください。",
   "channel.error.roomHostConflict": "このルームはすでに別の場所で開かれています。ホストしているページまたは App に戻ってください。",
   "channel.error.roomHostOffline": "このルームは利用できません。ホストの再開をお待ちください。",
   "channel.error.roomUnavailable": "ルームが存在しないか、利用できなくなりました。",

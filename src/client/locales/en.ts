@@ -638,6 +638,7 @@ export const en: Record<CopyKey, string> = {
   "channel.error.captureCodecUnsupported": "The App does not support this video codec. Choose Auto before sharing, or select another source.",
   "channel.error.videoCodecUnsupported": "The browser does not support this video codec. Choose Auto or another codec before sharing.",
   "channel.error.ownerMismatch": "The App room data belongs to another site or account. Check the current site and signed-in account.",
+  "channel.error.unknownOutcome": "The outcome could not be confirmed. Check the current state before trying again.",
   "channel.error.roomHostConflict": "This room is already open elsewhere. Return to the page or App hosting it.",
   "channel.error.roomHostOffline": "This room is unavailable. Wait for hosting to resume.",
   "channel.error.roomUnavailable": "The room does not exist or is no longer available.",

@@ -8,7 +8,7 @@ export function initializeRuntime(): Promise<void> {
   });
 }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
-import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
+import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationNotice, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
 import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostDispatchOptions, type HostedRoom, type PeerDelivery } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
@@ -426,7 +426,7 @@ export class BrowserRoomHost implements HostedRoom {
       const request: Extract<HistoryRequest, { type: "clear_media" }> = JSON.parse(this.room.media_clear_request());
       const result = await this.executeHistory(request, null);
       if (result.type !== "media_cleared") throw new Error("invalid_history_result");
-      const replies: ConversationReply[] = JSON.parse(this.room.media_clear_replies(BigInt(result.throughSeq)));
+      const replies: ConversationNotice[] = JSON.parse(this.room.media_clear_replies(BigInt(result.throughSeq)));
       return { historyLineage: request.historyLineage, throughSeq: result.throughSeq, replies };
     });
   }

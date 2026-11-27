@@ -669,7 +669,7 @@ fn stored_turn(
 #[tokio::test]
 async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
     use piik_channel_core::{
-        conversation::{ConversationAddress, ConversationRecord, ConversationReply, SessionSigner},
+        conversation::{ConversationAddress, ConversationRecord, ConversationReply, SessionSigner, WriterBody},
         history::StoredMessage,
         wire::{ChatMessage, RoomAccess},
         StoredRoomHost,
@@ -728,7 +728,7 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
                 recipient: reader.session,
                 request_id: "chat".into(),
             },
-            record: ConversationRecord::Confirmed {
+            body: WriterBody::Record(ConversationRecord::Confirmed {
                 inserted: true,
                 message: StoredMessage {
                     message: ChatMessage {
@@ -745,7 +745,7 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
                     },
                     reactions: Default::default(),
                 },
-            },
+            }),
         };
         let packet = SessionSigner::from_seed([1; 32])
             .sign(host.session, &confirmation)
@@ -1544,7 +1544,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                     Event::Conversation { packet } => {
                         let reply = ConversationReply::verify(&packet, host_key).unwrap();
                         if reply.address.request_id == request_id
-                            && matches!(reply.record, ConversationRecord::Confirmed { .. })
+                            && matches!(reply.content(), ConversationRecord::Confirmed { .. })
                         {
                             break;
                         }
@@ -1569,7 +1569,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
             assert_eq!(live.address.recipient, observer_session);
             assert_eq!(live.address.binding_id, delivery.binding_id);
             assert_eq!(live.address.request_id, request_id);
-            assert!(matches!(live.record, ConversationRecord::LiveMessage { message } if message.seq == 1));
+            assert!(matches!(live.content(), ConversationRecord::LiveMessage { message } if message.seq == 1));
             observer.close(None).await.unwrap();
         }
     }
@@ -1599,7 +1599,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                         continue;
                     }
                     frames += 1;
-                    match reply.record {
+                    match reply.content() {
                         ConversationRecord::HistoryPage { messages: rows, .. } => {
                             messages = rows.len();
                             assert_eq!(messages, 50);
@@ -1939,13 +1939,13 @@ async fn room_conversation(
                     if reply.address.request_id != request_id {
                         continue;
                     }
-                    assert!(!matches!(reply.record, ConversationRecord::Error { .. }));
+                    assert!(!matches!(reply.content(), ConversationRecord::Error { .. }));
                     let finished = matches!(
-                        reply.record,
+                        reply.content(),
                         ConversationRecord::Confirmed { .. }
                             | ConversationRecord::HistoryPage { .. }
                     );
-                    records.push(reply.record);
+                    records.push(reply.content().clone());
                     if finished {
                         return records;
                     }
@@ -2206,7 +2206,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         loop {
             if let Event::Conversation { packet } = event(&mut reader).await {
                 let reply = ConversationReply::verify(&packet, key).unwrap();
-                if matches!(reply.record, ConversationRecord::RoomMediaCleared { through_seq: 1 }) {
+                if matches!(reply.content(), ConversationRecord::RoomMediaCleared { through_seq: 1 }) {
                     assert_eq!(reply.address.binding_id, delivery.binding_id);
                     assert_eq!(reply.address.recipient, session);
                     break;

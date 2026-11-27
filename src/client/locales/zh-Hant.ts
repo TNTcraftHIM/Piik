@@ -535,6 +535,7 @@ export const zhHant = {
   "channel.error.captureCodecUnsupported": "App 不支援所選的視訊編碼。請在分享前選擇「自動」，或改用其他來源。",
   "channel.error.videoCodecUnsupported": "瀏覽器不支援所選的視訊編碼。請在分享前選擇「自動」或其他編碼。",
   "channel.error.ownerMismatch": "App 中的房間資料屬於另一個站點或帳號。請確認目前站點和登入帳號。",
+  "channel.error.unknownOutcome": "未能確認操作結果。請檢查目前狀態後再試。",
   "channel.error.roomHostConflict": "這間房間已在另一處開啟。請回到正在托管它的頁面或 App。",
   "channel.error.roomHostOffline": "房間暫不可用，請等待恢復托管。",
   "channel.error.roomUnavailable": "房間不存在或已不可用。",

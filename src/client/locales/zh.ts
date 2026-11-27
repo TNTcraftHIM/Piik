@@ -636,6 +636,7 @@ export const zh = {
   "channel.error.captureCodecUnsupported": "App 不支持所选视频编码。请在分享前选择自动，或更换选源。",
   "channel.error.videoCodecUnsupported": "浏览器不支持所选视频编码。请在分享前选择自动或另一种编码。",
   "channel.error.ownerMismatch": "App 中的房间数据属于另一个站点或账号。请确认当前站点和登录账号。",
+  "channel.error.unknownOutcome": "未能确认操作结果。请检查当前状态后再试。",
   "channel.error.roomHostConflict": "这间房间已在另一处打开。请回到正在托管它的页面或 App。",
   "channel.error.roomHostOffline": "房间暂不可用，请等待恢复托管。",
   "channel.error.roomUnavailable": "房间不存在或已不可用。",

@@ -34,7 +34,7 @@ import { QUALITY_PROFILES, screenVideoSettings, type VideoSettings } from "../sr
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { WatchBytes } from "../src/client/channel/watch-bytes";
 import { FileStore } from "../src/client/channel/file-store";
-import { CHANNEL_PROTOCOL, identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
+import { CHANNEL_PROTOCOL, identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ReceivedRecord, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
@@ -137,17 +137,17 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
     const request = { ...command, requestId };
     sent.push(request); pending.push(request);
   });
-  const deliver = (reply: ConversationReply) => (session as unknown as { receiveConversation(value: ConversationReply): void }).receiveConversation(reply);
+  const deliver = (reply: ReceivedRecord) => (session as unknown as { receiveConversation(value: ReceivedRecord): void }).receiveConversation(reply);
   const peer = {
-    sent, interactions,
+    sent, interactions, deliver,
     async next() { await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0)); return pending.shift()!; },
     reply(request: PeerRequest | InteractionRequest, record: Exclude<ConversationReply["record"], { type: "confirmed" }>
       | { type: "confirmed"; message: ChannelMessage; inserted: boolean }, bindingId = "binding") {
       const reply = { roomId: request.roomId, bindingId, sender: "host", recipient: "endpoint", requestId: request.requestId };
       if (record.type === "confirmed") {
         const message = { ...messageSchema.parse(record.message), reactions: record.message.reactions ?? { revision: 0, counts: {} } };
-        deliver({ ...reply, record: { ...record, message } });
-      } else deliver({ ...reply, record: "message" in record ? { ...record, message: messageSchema.parse(record.message) } : record });
+        deliver({ ...reply, role: "record", record: { ...record, message } });
+      } else deliver({ ...reply, role: "record", record: "message" in record ? { ...record, message: messageSchema.parse(record.message) } : record });
     },
     reaction(request: PeerRequest, requestId: string, snapshot: ReturnType<typeof reactionSnapshot>) {
       peer.reply({ ...request, requestId }, { type: "reaction", nonce: 1, event: null, snapshot: { type: "message", ...snapshot } });
@@ -157,7 +157,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null }, bindingId);
     },
     live(message: ChannelMessage, roomId = "first", bindingId = "binding") {
-      deliver({ roomId, bindingId, sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message: messageSchema.parse(message) } });
+      deliver({ roomId, bindingId, sender: "host", recipient: "endpoint", requestId: "live", role: "notice", notice: { type: "live_message", message: messageSchema.parse(message) } });
     },
     async history(messages: ChannelMessage[], hasMore = false, older = false) {
       const loading = older ? session.loadHistory("first") : session.loadLatestHistory("first");
@@ -1235,9 +1235,12 @@ test("message reaction clicks count independently while nonce retries settle wit
     expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 0, counts: {} });
     const event = { id: "click-1", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", target: { type: "message" as const, messageSeq: 1, messageId: message(1).id } };
     const snapshot = { type: "message" as const, ...reactionSnapshot(1, 1, { heart: 1 }) };
+    peer.deliver({ role: "notice", sender: "host", recipient: "endpoint", bindingId: "binding",
+      roomId: first.roomId, requestId: first.requestId, notice: { type: "reaction", nonce: 1, event: { ...event, id: "observer" }, snapshot } });
+    expect(interaction.getSnapshot().pending?.requestId).toBe(first.requestId);
     peer.reply(first, { type: "reaction", nonce: 1, event, snapshot });
     peer.reply(first, { type: "reaction", nonce: 1, event, snapshot });
-    expect(interaction.getSnapshot().reactions).toHaveLength(1);
+    expect(interaction.getSnapshot().reactions).toHaveLength(2);
     expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 1, counts: { heart: 1 } });
     vi.advanceTimersByTime(800);
     expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
@@ -1245,11 +1248,14 @@ test("message reaction clicks count independently while nonce retries settle wit
     expect(second).toMatchObject({ nonce: 2, target: { type: "message", messageSeq: 1, messageId: message(1).id } });
     peer.reply(second, { type: "reaction", nonce: 2, event: { ...event, id: "click-2" },
       snapshot: { ...snapshot, revision: 2, counts: { heart: 2 } } });
-    expect(interaction.getSnapshot().reactions).toHaveLength(2);
+    expect(interaction.getSnapshot().reactions).toHaveLength(3);
     expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 2, counts: { heart: 2 } });
     vi.advanceTimersByTime(800);
     expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
     const unconfirmed = peer.interactions.at(-1)!;
+    peer.deliver({ role: "unknown_record", sender: "host", recipient: "endpoint", bindingId: "binding",
+      roomId: unconfirmed.roomId, requestId: unconfirmed.requestId });
+    expect(interaction.getSnapshot().pending).toBeNull();
     vi.advanceTimersByTime(5000);
     expect(interaction.getSnapshot().error).toBe("unconfirmed");
     expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
@@ -1286,6 +1292,25 @@ test("unread lookup skips seek when the room has no history lineage", async () =
     socket.receive({ type: "state", state });
     await expect(session.findUnreadMessage("first", 0, new AbortController().signal)).rejects.toThrow("room_unavailable");
     expect(peer.sent).toEqual([]);
+  } finally { session.close(); }
+});
+
+test("an unknown signed outcome retires only the addressed room request", async () => {
+  const fixture = await setup();
+  const { session, peer } = fixture;
+  try {
+    enableUnreadLookup(fixture);
+    const seeking = session.findUnreadMessage("first", 0, new AbortController().signal);
+    const seek = await peer.next();
+    const loading = session.loadLatestHistory("first"), page = await peer.next();
+    const terminal = { role: "unknown_record" as const, sender: "host", recipient: "endpoint",
+      bindingId: "binding", roomId: "first", requestId: seek.requestId };
+    peer.deliver({ ...terminal, requestId: page.requestId, bindingId: "retired" });
+    peer.deliver(terminal);
+    await expect(seeking).rejects.toThrow("unknown_outcome");
+    peer.page(page, [message(2)]);
+    await loading;
+    expect(session.getSnapshot().messagesByRoom.first[0].seq).toBe(2);
   } finally { session.close(); }
 });
 

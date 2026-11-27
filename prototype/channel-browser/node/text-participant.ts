@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ReceivedConversation, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
@@ -365,17 +365,22 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     }
     if (event.type !== 'conversation' || !this.state || !this.sessionId)
       return;
-    const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ConversationAddress | ConversationReply;
-    if (reply.roomId !== this.roomId || !('record' in reply))
+    const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ReceivedConversation;
+    if (reply.role === 'ignored') return;
+    if (reply.roomId !== this.roomId || reply.role === 'command')
       throw new Error('invalid_conversation_sender');
-    const record = reply.record;
-    const pending = this.pending.get(reply.requestId);
-    // A closing socket can still deliver the writer's receipt for an in-flight request.
-    if (this.socket?.readyState !== WebSocket.OPEN && (!pending || record.type === 'live_message')) return;
-    if (record.type === 'live_message') {
-      this.emit('live', record.message);
+    if (reply.role === 'notice') {
+      if (this.socket?.readyState === WebSocket.OPEN && reply.notice.type === 'live_message') this.emit('live', reply.notice.message);
       return;
     }
+    const pending = this.pending.get(reply.requestId);
+    if (reply.role === 'unknown_record') {
+      if (pending?.roomId === reply.roomId && expectsWriterResult(pending.expects)) this.complete(reply.requestId, undefined, Error('unknown_outcome'));
+      return;
+    }
+    const record = reply.record;
+    // A closing socket can still deliver the writer's receipt for an in-flight request.
+    if (this.socket?.readyState !== WebSocket.OPEN && !pending) return;
     if (pending && expectsWriterResult(pending.expects) && record.type !== pending.expects) {
       this.complete(reply.requestId, undefined, Error(record.type === 'error' ? record.code : 'invalid_response'));
       return;

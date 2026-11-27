@@ -1188,7 +1188,8 @@ mod tests {
                 .replies()
                 .unwrap()
                 .remove(0)
-                .record
+                .content()
+                .clone()
         };
         let target = ReactionTarget::Publication { publication_id: a };
         assert!(matches!(
@@ -1565,7 +1566,7 @@ impl RoomHost {
     ) -> Result<crate::conversation::PreparedConversation, &'static str> {
         use crate::conversation::{
             verify, ConversationAddress, ConversationCommand, ConversationRecord,
-            ConversationRequest, ConversationWork, PreparedConversation, ReactionSnapshot,
+            SignedBody, ConversationWork, PreparedConversation, ReactionSnapshot,
             ReactionTarget, INTERACTION_REACTIONS,
         };
         if self.pending.is_some() {
@@ -1585,18 +1586,26 @@ impl RoomHost {
         {
             return Err("invalid_conversation_scope");
         }
-        let request: ConversationRequest = match serde_json::from_str(&packet.payload) {
-            Ok(request) => request,
+        let body = SignedBody::read(packet, &address, authority.host_session_id)?;
+        if body.role != crate::conversation::ConversationRole::Command {
+            return Err("invalid_conversation_scope");
+        }
+        let command = match serde_json::from_str(body.raw.get()) {
+            Ok(command) => command,
             Err(_) => {
                 return Ok(PreparedConversation {
                     address,
                     work: Err("invalid_conversation"),
-                });
+                })
             }
         };
         let actor = endpoint.member.user_id;
         let moderator = self.room.policy().manages(actor) || actor == authority.channel_owner_id;
-        let work = match request.command {
+        let work = match command {
+            ConversationCommand::Unknown => self
+                .room
+                .authorize(endpoint.member, crate::RoomPermission::Read)
+                .and(Err("unsupported")),
             ConversationCommand::DeleteMessage {
                 message_seq,
                 message_id,
@@ -1726,7 +1735,7 @@ impl RoomHost {
                 .map(ConversationWork::History),
         };
         Ok(PreparedConversation {
-            address: request.address,
+            address,
             work,
         })
     }
@@ -1831,7 +1840,9 @@ impl RoomHost {
                     recipient,
                     request_id: request_id.clone(),
                 },
-                record: ConversationRecord::RoomMediaCleared { through_seq },
+                body: crate::conversation::WriterBody::Notice(
+                    ConversationRecord::RoomMediaCleared { through_seq },
+                ),
             })
             .collect()
     }

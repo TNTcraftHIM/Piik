@@ -23,7 +23,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { id as channelId, roomInvitationSchema, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { id as channelId, roomInvitationSchema, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type ReceivedRecord, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type HostMediaTarget, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
@@ -957,12 +957,21 @@ export class ChannelSession {
     });
   }
 
-  private receiveConversation(reply: ConversationReply): void {
-    const record = reply.record;
-    const request = this.requests.get(reply.requestId);
+  private receiveConversation(reply: ReceivedRecord): void {
+    const request = reply.role === "notice" ? undefined : this.requests.get(reply.requestId);
     const addressed = request?.signedResult && request.roomId === reply.roomId && request.bindingId === reply.bindingId;
-    if (addressed && record.type !== request.signedResult && record.type !== "error"
-      && record.type !== "live_message") {
+    const reader = this.readings.get(reply.roomId)?.reader;
+    if (reply.role === "unknown_record") {
+      if (addressed) {
+        this.retireRequest(reply.requestId);
+        request.reject(new Error("unknown_outcome"));
+      } else if (reader?.bindingId === reply.bindingId && reader.hasPendingInteraction(reply.requestId)) {
+        reader.undelivered(reply.requestId);
+      }
+      return;
+    }
+    const record = reply.role === "notice" ? reply.notice : reply.record;
+    if (addressed && record.type !== request.signedResult && record.type !== "error") {
       this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
       return;
     }
@@ -977,10 +986,9 @@ export class ChannelSession {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
     }
     if (record.type === "interaction_ready" || record.type === "reaction" || (record.type === "error" && !request)) {
-      const reader = this.readings.get(reply.roomId)?.reader;
-      if (reader?.bindingId === reply.bindingId && reader.receiveInteraction(reply.requestId, record)) return;
+      if (reader?.bindingId === reply.bindingId && reader.receiveInteraction(reply.role === "record" ? reply.requestId : undefined, record)) return;
     }
-    if (record.type === "live_message") {
+    if (reply.role === "notice" && record.type === "live_message") {
       if (this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.delivery?.bindingId === reply.bindingId)) {
         this.applyMessage(reply.roomId, record.message, true);
       }

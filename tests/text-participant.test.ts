@@ -20,7 +20,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     origin: 'http://127.0.0.1', roomId: 'room', name: 'Text fixture' });
   const commands: string[] = [], live: ChannelMessage[] = [], errors: unknown[] = [];
   const storedMessage = { ...message, reactions: { revision: 0, counts: {} } };
-  let contradictDelete = false;
+  let contradictDelete = false, futureDelete = false;
   const firstLive = new Promise<ChannelMessage>(resolve => client.once('ready', () => client.once('live', resolve)));
   client.on('live', value => live.push(value));
   server.on('connection', (socket, request) => socket.on('message', raw => {
@@ -52,30 +52,33 @@ test('Node text conversation ignores unrelated media descriptions and retains si
           try {
             const event = JSON.parse(raw.toString());
             if (event.type !== 'conversation') return;
-            const address = JSON.parse(rust.verify_conversation(JSON.stringify(event.packet), host, JSON.stringify(textState)));
+            const { role, ...address } = JSON.parse(rust.verify_conversation(JSON.stringify(event.packet), host, JSON.stringify(textState)));
+            expect(role).toBe("command");
             const request = JSON.parse(event.packet.payload);
-            const reply = (record: object) => socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host,
-              JSON.stringify({ ...address, sender: host, recipient: local, record }))) }));
+            const reply = (record: object, field = "record") => socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host,
+              JSON.stringify({ ...address, sender: host, recipient: local, [field]: record }))) }));
             if (request.command.type === 'history') {
               reply({ type: 'history_page', messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
             } else if (request.command.type === 'delete_message') {
               expect(request.command).toEqual({ type: 'delete_message', messageSeq: message.seq, messageId: message.id });
               socket.send(JSON.stringify({ type: 'ack', requestId: address.requestId }));
               socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: address.requestId, result: { type: 'done' } }));
-              reply({ type: 'live_message', message });
-              if (contradictDelete) reply({ type: 'confirmed', message: storedMessage, inserted: false });
+              reply({ type: 'live_message', message }, 'notice');
+              reply({ type: 'future_activity' }, 'notice');
+              if (futureDelete) reply({ type: 'future_result' });
+              else if (contradictDelete) reply({ type: 'confirmed', message: storedMessage, inserted: false });
               reply({ type: 'message_deleted', messageSeq: message.seq });
             } else {
               expect(request.command).toMatchObject({ type: 'chat', text: 'notice', attachments: [] });
               reply({ type: 'confirmed', message: { ...storedMessage, text: 'notice' }, inserted: true });
-              reply({ type: 'live_message', message: { ...message, text: 'live' } });
+              reply({ type: 'live_message', message: { ...message, text: 'live' } }, 'notice');
             }
           } catch (error) { errors.push(error); socket.terminate(); }
         });
       } else if (command.type === 'browse') {
         // One network read can contain both the Browse receipt and the first reader broadcast.
         const packet = JSON.parse(signer.sign(host, JSON.stringify({ roomId: 'room', bindingId: binding,
-          sender: host, recipient: local, requestId: randomUUID(), record: { type: 'live_message', message } })));
+          sender: host, recipient: local, requestId: randomUUID(), notice: { type: 'live_message', message } })));
         request.socket.cork();
         socket.send(JSON.stringify({ type: 'room_reply', roomId: 'room', requestId: command.requestId, result: { type: 'done' } }));
         socket.send(JSON.stringify({ type: 'conversation', packet }));
@@ -101,6 +104,8 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     client.on('confirmed', value => receipts.push(value));
     await expect(client.deleteOwnMessage(confirmed)).rejects.toThrow('invalid_response');
     expect(receipts).toEqual([]);
+    futureDelete = true;
+    await expect(client.deleteOwnMessage(confirmed)).rejects.toThrow('unknown_outcome');
     // A signed receipt can arrive during the old socket's closing handshake.
     const send = client.chat('notice');
     const reconnect = client.reconnect();
@@ -110,7 +115,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     expect(receipts).toHaveLength(1);
     expect(live.filter(entry => entry.text === 'live')).toHaveLength(1);
     await client.stop();
-    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'conversation', 'conversation', 'join', 'browse', 'leave']);
+    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'conversation', 'conversation', 'conversation', 'join', 'browse', 'leave']);
     expect(errors).toEqual([]);
   } finally {
     await client.stop();
@@ -182,7 +187,7 @@ test('narrow conversation verification keeps authority required and signed recor
   const packet = (change = {}) => signer.sign(host, JSON.stringify({ ...address, ...change, record }));
   const verify = (value: string, view: unknown = state) => rust.verify_conversation(value, local, JSON.stringify(view));
   try {
-    expect(JSON.parse(verify(packet()))).toEqual({ ...address, record });
+    expect(JSON.parse(verify(packet()))).toEqual({ role: "record", ...address, record });
     const altered = { ...JSON.parse(packet()), payload: JSON.stringify({ ...address, requestId: 'changed', record }) };
     expect(() => verify(JSON.stringify(altered))).toThrow();
     const hostedHere = { ...state, channel: { rooms: [{ ...state.channel.rooms[0], delivery: { hostSessionId: local, bindingId: binding } }] } };
@@ -197,7 +202,10 @@ test('narrow conversation verification keeps authority required and signed recor
     }
     expect(() => verify(packet(), { ...state, sessions: [{ id: host }] })).toThrow();
     const futureRecord = signer.sign(host, JSON.stringify({ ...address, record: { type: 'future-conversation-record' } }));
-    expect(() => verify(futureRecord)).toThrow();
+    expect(JSON.parse(verify(futureRecord))).toEqual({ role: "unknown_record", ...address });
+    const futureNotice = signer.sign(host, JSON.stringify({ ...address, notice: { type: "future_notice" } }));
+    expect(JSON.parse(verify(futureNotice))).toEqual({ role: "ignored" });
+    expect(() => verify(packet({ notice: { type: "future_notice" } }))).toThrow();
   } finally { signer.free(); other.free(); }
 });
 
@@ -349,7 +357,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
           result = { Ok: { type: 'history', value: confirmation } };
         }
         const { replies, broadcast } = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
-        if (broadcast?.record.type === 'live_message') broadcasts.push(broadcast.record.message);
+        if (broadcast?.notice.type === 'live_message') broadcasts.push(broadcast.notice.message);
         directReplies.push(replies.length);
         for (const reply of replies) if (reply.record.type === 'confirmed') original ??= reply.record.message;
         if (loseConfirmation) { loseConfirmation = false; socket.terminate(); }

@@ -269,6 +269,12 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "history_page"; messages: StoredMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
+export type ConversationNotice = ConversationAddress & { notice: ConversationReply["record"] };
+export type ReceivedRecord =
+  | (ConversationReply & { role: "record" })
+  | (ConversationNotice & { role: "notice" })
+  | (ConversationAddress & { role: "unknown_record" });
+export type ReceivedConversation = ReceivedRecord | (ConversationAddress & { role: "command" }) | { role: "ignored" };
 export interface DomainSettings { name: string; icon: string; askUnnamedMemberName: boolean }
 export interface RoomSettings extends Pick<DomainSettings, "name" | "icon"> {
   picture?: string | null;

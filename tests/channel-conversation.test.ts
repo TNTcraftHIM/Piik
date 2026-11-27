@@ -29,13 +29,13 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
     dispatchPeer: vi.fn(async (packet: SignedConversationPacket) => {
       const { command: _command, ...request } = JSON.parse(packet.payload);
       const reply = { ...request, sender: "host", recipient: "source", record };
-      return { replies: [reply], broadcast: broadcast && { ...reply, record: broadcast } };
+      return { replies: [reply], broadcast: broadcast && { ...request, sender: "host", recipient: "source", notice: broadcast } };
     }),
   } as unknown as HostedRoom;
   const sign = vi.fn((sender: string, payload: string) => JSON.stringify({ sender, payload, signature: [1] }));
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign, free: vi.fn() }),
-    verify_conversation: (json: string) => JSON.stringify(JSON.parse(JSON.parse(json).payload)),
+    verify_conversation: (json: string) => JSON.stringify({ ...JSON.parse(JSON.parse(json).payload), role: "command" }),
     encode_control: (json: string) => new TextEncoder().encode(json), decode_control: (bytes: Uint8Array) => new TextDecoder().decode(bytes),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }), host: () => host,
@@ -58,7 +58,7 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
     await receive(click);
     const replies = sent.map(packet => JSON.parse(packet.payload) as ConversationReply);
     expect(replies.map(reply => reply.recipient).sort()).toEqual(["second", "source", "third"]);
-    for (const reply of replies) expect(reply).toMatchObject({ requestId: "original-id", sender: "host", record });
+    for (const reply of replies) expect(reply).toMatchObject({ requestId: "original-id", sender: "host", [reply.recipient === "source" ? "record" : "notice"]: record });
     expect(sent.every(packet => packet.sender === "host")).toBe(true);
     expect(sign).toHaveBeenCalledTimes(4);
     sent.length = 0;
@@ -172,7 +172,7 @@ test("retiring a room during a conversation commit does not read or broadcast fr
   const send = vi.fn();
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign: vi.fn(), free: vi.fn() }),
-    verify_conversation: (json: string) => JSON.stringify(JSON.parse(JSON.parse(json).payload)),
+    verify_conversation: (json: string) => JSON.stringify({ ...JSON.parse(JSON.parse(json).payload), role: "command" }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }),
     host: () => hosted, send, file: vi.fn(), reply: vi.fn() });
@@ -184,7 +184,7 @@ test("retiring a room during a conversation commit does not read or broadcast fr
     await committing;
     hosted = undefined;
     const reply = { ...address, sender: "host", recipient: "source", record };
-    finish({ replies: [reply], broadcast: reply });
+    finish({ replies: [reply], broadcast: { ...address, sender: "host", recipient: "source", notice: record } });
     await expect(received).resolves.toBeUndefined();
     expect(broadcastRecipients).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();

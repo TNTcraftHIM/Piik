@@ -536,6 +536,7 @@ export const ko = {
   "channel.error.captureCodecUnsupported": "App이 이 영상 코덱을 지원하지 않아요. 공유 전에 자동을 선택하거나 다른 소스를 선택하세요.",
   "channel.error.videoCodecUnsupported": "브라우저가 이 영상 코덱을 지원하지 않아요. 공유 전에 자동이나 다른 코덱을 선택하세요.",
   "channel.error.ownerMismatch": "App의 방 데이터는 다른 사이트나 계정의 데이터예요. 현재 사이트와 로그인한 계정을 확인하세요.",
+  "channel.error.unknownOutcome": "작업 결과를 확인할 수 없어요. 현재 상태를 확인한 후 다시 시도하세요.",
   "channel.error.roomHostConflict": "이 방은 다른 곳에서 이미 열려 있어요. 호스팅 중인 페이지나 App으로 돌아가세요.",
   "channel.error.roomHostOffline": "방을 사용할 수 없어요. 호스팅이 재개될 때까지 기다려 주세요.",
   "channel.error.roomUnavailable": "방이 존재하지 않거나 더 이상 사용할 수 없어요.",

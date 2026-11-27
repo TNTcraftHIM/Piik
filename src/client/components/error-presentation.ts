@@ -15,6 +15,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (!error) return { message: null, connectionHelp: true };
   const diagnosis = diagnoseChannelFact({ area: "error", code: error });
   if (diagnosis) return display(diagnosis.message);
+  if (error === "unknown_outcome") return display("channel.error.unknownOutcome");
   if (error === "room_busy" || error === "capture_pending" || error === "storage_busy") return display("channel.error.busy");
   if (error === "room_creation_restricted") return display("channel.error.roomCreationRestricted");
   if (error === "room_limit") return display("channel.error.roomLimit");

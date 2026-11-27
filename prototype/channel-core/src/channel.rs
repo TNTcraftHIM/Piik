@@ -1103,7 +1103,7 @@ impl Channel {
         &mut self,
         session: Uuid,
         packet: crate::conversation::SignedPacket,
-    ) -> Result<(Uuid, Event, ConversationDelivery), &'static str> {
+    ) -> Result<Option<(Uuid, Event, ConversationDelivery)>, &'static str> {
         if packet.sender != session {
             return Err("invalid_conversation_sender");
         }
@@ -1124,7 +1124,6 @@ impl Channel {
         if address.binding_id != binding.id || !valid_id(&address.request_id) {
             return Err("invalid_conversation_scope");
         }
-        let to_writer = address.recipient == binding.session;
         let participant = if address.sender == binding.session {
             address.recipient
         } else if address.recipient == binding.session {
@@ -1146,11 +1145,8 @@ impl Channel {
             .get(&participant)
             .ok_or("session_expired")?;
         let member = self.identity.member(endpoint.user_id)?;
-        let reply = if address.sender == binding.session {
-            serde_json::from_str::<crate::conversation::ConversationReply>(&packet.payload).ok()
-        } else {
-            None
-        };
+        use crate::conversation::{ConversationRecord, ConversationRole, SignedBody};
+        let body = SignedBody::read(&packet, &address, binding.session)?;
         let authorized = room.online_read_access(member, participant).ok_or("room_access_required")?;
         let denial = if !authorized {
             Some("room_access_required")
@@ -1160,41 +1156,54 @@ impl Channel {
             None
         };
         if let Some(code) = denial {
-            if reply.is_some() {
+            if body.role == ConversationRole::Record {
                 let error = Event::RoomReply {
                     room_id: address.room_id,
                     request_id: Some(address.request_id),
                     result: RoomResult::Error { code: code.into() },
                 };
-                return Ok((address.recipient, error, ConversationDelivery::ToReader));
+                return Ok(Some((
+                    address.recipient,
+                    error,
+                    ConversationDelivery::ToReader,
+                )));
+            }
+            if body.role == ConversationRole::Notice {
+                return Ok(None);
             }
             return Err(code);
         }
         let mut changed = false;
-        if let Some(crate::conversation::ConversationRecord::Confirmed { message, .. }) =
-            reply.map(|reply| reply.record)
-        {
-            let seq = message.message.seq;
-            if seq == 0 || seq > i64::MAX as u64 {
-                return Err("invalid_message");
-            }
-            if let Some(projection) = self
-                .remote
-                .get_mut(&address.room_id)
-                .and_then(|room| room.projection.as_mut())
+        if body.role == ConversationRole::Record && body.kind == "confirmed" {
+            if let Ok(ConversationRecord::Confirmed { message, .. }) =
+                serde_json::from_str(body.raw.get())
             {
-                changed = seq > projection.last_message_seq;
-                projection.last_message_seq = projection.last_message_seq.max(seq);
+                let seq = message.message.seq;
+                if seq == 0 || seq > i64::MAX as u64 {
+                    return Err("invalid_message");
+                }
+                if let Some(projection) = self
+                    .remote
+                    .get_mut(&address.room_id)
+                    .and_then(|room| room.projection.as_mut())
+                {
+                    changed = seq > projection.last_message_seq;
+                    projection.last_message_seq = projection.last_message_seq.max(seq);
+                }
             }
         }
         let delivery = if changed {
             ConversationDelivery::AdvancedHistory
-        } else if to_writer {
+        } else if body.role == ConversationRole::Command {
             ConversationDelivery::ToWriter
         } else {
             ConversationDelivery::ToReader
         };
-        Ok((address.recipient, Event::Conversation { packet }, delivery))
+        Ok(Some((
+            address.recipient,
+            Event::Conversation { packet },
+            delivery,
+        )))
     }
 
     pub(crate) fn remove_room(&mut self, id: &str, actor: Uuid) -> Vec<RetiredRoomReply> {
