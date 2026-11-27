@@ -99,6 +99,18 @@ networks in all):
    are then one path, and a prediction is a window. A true single counter
    must not lose against the present eight sockets.
 
+For item 2 there is a cheaper step than any change of path. Replayed over
+every report (`product_read.mjs` beside the reports here): on the campus the
+three defaults read irregular in two runs and sequential, step 1, in the
+two latest. Three servers on three different ports (Cloudflare on 3478,
+Douyu on 18000, Xiaomi on 3479 all answered there) read irregular in every
+run of that campus and of the hotspot of the same kind, stable where a
+network keeps one port, and still sequential where one counter serves all.
+So the default list in `channel-server/src/lib.rs` should not share a port,
+and an operator can try that today through `PIIK_CHANNEL_ICE_SERVERS`
+without a build. It lowers the misreading; it does not remove the reason
+for item 3.
+
 One fact more for item 3, read from reports 026 and 034: on the campus with
 three addresses and on the hotspot with three, the three default servers
 each answered through a different address, so `observe` ends the enhancement
