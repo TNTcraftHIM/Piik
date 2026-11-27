@@ -30,7 +30,6 @@ base64ct = { version = "=1.8.3", features = ["alloc"] }
 futures-util = "0.3"
 log = "0.4"
 axum = { version = "0.8", features = ["ws"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 tower-http = { version = "0.6.6", features = ["fs", "set-header"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time", "process", "io-util"] }
@@ -75,7 +74,6 @@ find-msvc-tools = "=0.1.15"
 semver = "=1.0.28"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "d13e83360e917a63dfad6ed6254757542f7a45f9" }
 tokio-tungstenite = "0.29"
