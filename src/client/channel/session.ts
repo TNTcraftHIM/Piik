@@ -3461,6 +3461,7 @@ export class ChannelSession {
       this.patch({});
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      const replacesCapture = app.captureId(share.id) !== undefined;
       await app.commitCapture(share.id, prepared.captureId);
       ownsPreparation = false;
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
@@ -3468,7 +3469,9 @@ export class ChannelSession {
       share.paused = undefined;
       share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
       this.retireCapture(share.id);
-      this.patch({});
+      const remoteControls = new Map(this.view.remoteControls);
+      if (replacesCapture) remoteControls.delete(share.id);
+      this.patch({ remoteControls });
       await this.previewCommittedCapture(roomId, share.id, () => current() && this.app === app, signal);
     } catch (error) {
       if (ownsPreparation) await app?.cancelCapture(share.id).catch(() => {});

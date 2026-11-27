@@ -4146,7 +4146,8 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     const oldShortcut = session.inputShortcut(publication.id, 10);
     const oldShortcutCommand = app.sent.at(-1)!;
     const retiredShortcut = expect(oldShortcut).rejects.toMatchObject({ name: "AbortError" });
-    const nativeAgain = session.startNativeScreen("first", { target, audio: inheritsMute, showCaptureBorder: false });
+    const replacementTarget = { ...target, sourceId: "2", title: "Second display" };
+    const nativeAgain = session.startNativeScreen("first", { target: replacementTarget, audio: inheritsMute, showCaptureBorder: false });
     expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
     expect(session.sourceAudio(publication.id)?.canMute).toBe(true);
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
@@ -4164,9 +4165,16 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     }
     app.receive({ id: replacementCommit.id, result: null }); await nativeAgain;
     if (outcome === "live") {
+      expect(session.getSnapshot().remoteControls.has(publication.id)).toBe(false);
+      await expect(session.inputSimultaneous(publication.id, true)).rejects.toThrow("input_unavailable");
+      app.receive({ type: "input_state", publicationId: publication.id, state: { ...remoteControl, mode: "off" } });
+      expect(session.getSnapshot().remoteControls.get(publication.id)?.mode).toBe("off");
+      const enabling = session.inputPolicy(publication.id, "room");
+      appReply(); await enabling;
+      app.receive({ type: "input_state", publicationId: publication.id, state: { ...remoteControl, mode: "room" } });
       const simultaneous = session.inputSimultaneous(publication.id, true);
       expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId: publication.id,
-        captureId: secondCaptureId, mode: "ask", simultaneous: true });
+        captureId: secondCaptureId, mode: "room", simultaneous: true });
       appReply(); await simultaneous;
     }
     app.receive({ id: oldShortcutCommand.id, result: { key: 10, available: true } });
@@ -4903,6 +4911,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: audio, microphone: disabledMicrophone } });
       await changing;
+      app.receive({ type: "input_state", publicationId, state: heldInput });
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio, excludeAudio: exclusion, renderEndpointId, showCaptureBorder: true, current: true });
       expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(heldInput);
       expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: audio, available: audio });
