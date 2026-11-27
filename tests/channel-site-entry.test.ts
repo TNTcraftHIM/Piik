@@ -46,6 +46,21 @@ it.each([
   expect(html.match(/<button\b/g)).toHaveLength(1);
 });
 
+it.each([
+  ["page_update_required", "channel.error.pageUpdateRequired", "common.refresh"],
+  ["domain_update_required", "channel.error.domainUpdateRequired", "channel.siteEntry.reconnect"],
+] as const)("shows the required recovery action for %s", (error, message, action) => {
+  setCopy({ lang: "en" });
+  vi.stubGlobal("location", new URL("https://site.invalid"));
+  const html = renderToStaticMarkup(createElement(ChannelSiteEntry, {
+    channel: { connection: "closed", error, reconnect: vi.fn(), joinAsNewIdentity: vi.fn() },
+    failure: channelErrorPresentation(error, (key, vars) => t("en", key, vars)),
+  }));
+  expect(html).toContain('role="alert">' + t("en", message) + "</p>");
+  expect(html).toContain('aria-label="' + t("en", action) + '"');
+  expect(html.match(/<button\b/g)).toHaveLength(1);
+});
+
 it("checks only the current origin and recognizes the Domain response", async () => {
   vi.stubGlobal("location", new URL("https://site.invalid/invitation?room=private#owner=private"));
   const request = vi.fn()
