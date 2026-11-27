@@ -82,17 +82,80 @@ feed it, and where it is read today (the SDK's send-side estimate in
 Native, the candidate pair's available outgoing bitrate in the Browser,
 anything the planner already receives).
 
+## Release blockers in the older code: `release-blockers.md`, beside this file
+
+Fourteen surfaces of the code written before the reviews began were read
+for what AGENTS.md calls phase blockers; each serious finding was then
+attacked by a second reader. Twenty-two stand, ten of them P0, with three
+notes. The file has each one's place, scenario, chain and shortest
+reproduction. Nearly all were read and not run, so reproduce before fixing.
+I read seven in the code and they are as described: 2, 4, 5, 9, 10, 21 and
+1 (its admission of any http or https URL). Delete the file when its items
+are in the ledger or fixed.
+
+Most of them are one of five missing rules, and I would rather have the
+rule than twenty-two patches:
+
+1. **A member that holds nothing is not kept.** Every join without a
+   credential saves a member for ever (2), and with a temporary address a
+   friend is a new member every day, so this grows with ordinary use as
+   well as under attack. A member with no role, no grant, no retained
+   message and no hosted room ends with its last session. Your design for
+   unnamed members is the place to settle it.
+2. **Everything durable or queued has a bound and one owner that enforces
+   it**: grants per room (3), messages and their bytes (7), sessions and
+   sockets per party (11, 22), password attempts (12), requests per session
+   and snapshots per reader (16, 19), a reader that stops reading (15, 18),
+   exports and the restore slot (6, 14, 17), HTTP entries without read or
+   idle timeouts (9), candidates per pair (10). One budget at the hub and
+   the room writer, not a limit beside each command.
+3. **The App's control port knows its caller by a secret of this launch**,
+   not by Host and Origin headers, which any local program can write (4).
+4. **One rule for what the App fetches on a page's word**: public addresses
+   only, checked again after redirects (1).
+5. **A consent cannot be given by a click meant for something else**: the
+   approval button and the native prompts need a window that is on top and
+   has been for a moment (8, with notes 23 and 24).
+
+Singly: bound the Argon2 parameters a stored hash may carry (5); a restore
+that replaces a person's own credential keeps the old one until it is
+confirmed (13); the session left behind when the recovery deadline fires
+(20, under your hold, so yours to place); the stop shortcut must fire
+whatever else is held (21).
+
+## Hard-coded values: four lists, `hard-coded-*.md`, beside this file
+
+Made by read-only runs of the Codex command line here: fixed text, one
+fact in several places, bare numbers, and constants without a source, for
+the core, Native, the Server and App, and the client. Delete each when
+taken. I read the fixed-text sections; the rest is unread by me. What they
+show beyond "Guest":
+
+- **More names stored in one language**: the site's "Piik friends", the
+  three rooms a new Server seeds, "Piik Server", "Native Host" and
+  "Piik App" as owners' names, "User" for a sender not yet resolved
+  (`session.ts:974,1069`), "OBS", "Video", "Window" and "Display" as
+  source names. The same answer as for a member: absence is a state that
+  the viewer's client words.
+- **Sentences doing the work of codes**: the client finds `password` by
+  substring and reports a wrong password for two different failures
+  (`error-presentation.ts:134`), and recovers `room_storage_in_use` from a
+  sentence (`:130`); capture, launcher and tunnel failures travel as
+  English sentences that the page then shows or matches.
+- **The App's own text outside any catalogue**: update recovery
+  instructions, window titles, the macOS menu, startup failure dialogs, and
+  a console with its own inline two-language table.
+- **Traditional Chinese treated as English** in two places
+  (`AppReleaseNotice.tsx:33`, `AppLauncherPage.tsx:340`), and list
+  punctuation and number formats tied to one locale (`Couch.tsx:61`,
+  `QualityPresets.tsx:148`).
+
 ## Open with you
 
 - **Names**: your design delta before any private format changes.
 - **The encoder under a busy GPU**: the calibration reached 65 to 73% and
   its log stopped early; nothing is decided until a run near full load
   separates capture, conversion and encoding.
-- **Hard-coded values**: the four lists from this machine, condensed, when
-  the hunts finish.
 - **Larger structure**, each after a page from me: the App control
   socket's `connection`, `Session::apply_event`, and `Authority` reaching
   into `Channel`.
-- An audit of the older code for release blockers is running here, surface
-  by surface with a second reader on each serious finding. What stands
-  will come to you ranked, with reproductions.
