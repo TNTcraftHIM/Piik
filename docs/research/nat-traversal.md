@@ -210,16 +210,31 @@ adding sockets. A survey that has already consumed three seconds can leave room
 for only about 745 checks, so the target budget is a ceiling, not a promise to
 send all of them. Parallel survey remains a separate comparison.
 
-The search now uses a random start and bit-reversed port order. A 2026-11-27
-Windows control paired both orders against four fixed continuous 256-port pools
-with the same 1,024-target budget and five-second lifetime. All eight runs
-completed mutual authentication, adopted the winning sockets into the original
-RTC and exchanged DataChannel messages in both directions. The new order first
-hit at targets 178–249, versus 192–978 for the original draws. This control
-simulates mappings and destination filtering on loopback; it does not measure
-public reachability. The static coverage guarantee applies to a contiguous
-256-port pool, not arbitrary pool sizes or moving mappings. Sequential
-preparation retains its existing eight-socket path.
+The search divides ports 1,024–65,535 into 1,024 strata of 63 ports. It visits
+strata in bit-reversed order with a random rotation and draws an independent,
+uniform port within each stratum. Rejection sampling avoids modulo bias. This
+combines early range coverage with independent offsets, following
+[stratified sampling](https://artowen.su.domains/mc/Ch-var-basic.pdf). A single
+rotation of bit-reversed ports instead leaves the first 1,024 targets in one
+residue class modulo 32: fixed pools at strides 2, 4 and 8 are then missed for
+half, three quarters and seven eighths of rotations. Contiguous-pool tests alone
+do not reveal that blind spot.
+
+The first 512 stratified targets leave at most 187 consecutive ports untested,
+so they reach any fixed contiguous 256-port pool. For any fixed pool of 256
+ports, the full-budget miss probability is at most `(62/63)^256`, about 1.664%,
+under independent uniform draws. Uniform distinct targets miss about 1.650%.
+These are static pool bounds, not unconditional dominance or field success rates.
+
+A 2026-11-27 Windows loopback control used four fixed 256-port pools at strides
+1, 2, 4 and 8. First hits occurred at targets 215, 384, 38 and 35. All four
+completed mutual authentication, adopted the winner into the original RTC and
+exchanged SCTP messages in both directions; losing sockets and preparation
+permits were released. The fixture counted all attempted targets at the existing
+2 ms cadence, dropping unmapped attempts before sending. Actual packets stayed
+on owned loopback sockets. The 1,024-target, 256-socket and five-second limits
+and the separate eight-socket sequential path remain unchanged. Physical NAT
+allocation, filtering and competing traffic require independent-network trials.
 
 Default observations use three documented services on different destination
 ports: [Cloudflare](https://developers.cloudflare.com/realtime/turn/faq/),
