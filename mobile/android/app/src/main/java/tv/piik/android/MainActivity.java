@@ -22,6 +22,7 @@ public final class MainActivity extends Activity {
   static final int NOTIFICATIONS = 13;
   static final int PROJECTION = 14, SOURCE_AUDIO = 15;
   private static final class PendingCapture {
+    final AppRuntimeService service = AppRuntimeService.instance;
     CaptureRequest capture;
     boolean projectionRequest, audioRequest;
   }
@@ -92,10 +93,9 @@ public final class MainActivity extends Activity {
     super.onStart();
     current = this;
     visible = true;
-    // A keyed handoff can only claim a request from an already running Service.
-    if (mediaEntry() && getIntent().getData().getLastPathSegment() != null) {
-      if (AppRuntimeService.instance == null) finish();
-      else captureAvailable();
+    // Both media pickers belong to the Service that received the Browser request.
+    if (mediaEntry()) {
+      captureAvailable();
       return;
     }
     // Service foreground readiness precedes reopening even an existing runtime.
@@ -110,6 +110,7 @@ public final class MainActivity extends Activity {
 
   void runtimeAvailable(AppRuntimeService service) {
     if (current != this || !visible || isFinishing() || notificationRequest) return;
+    if (mediaEntry() && (pending == null || pending.service != service)) { finish(); return; }
     if (service.failure != null) {
       showRuntimeFailure();
       return;
@@ -155,7 +156,7 @@ public final class MainActivity extends Activity {
   void captureAvailable() {
     if (!visible || !mediaEntry() || isFinishing() || pending == null) return;
     AppRuntimeService service = AppRuntimeService.instance;
-    if (service == null) return;
+    if (service == null || service != pending.service) { finish(); return; }
     if (pending.capture == null) {
       String captureId = getIntent().getData().getLastPathSegment();
       for (CaptureRequest candidate : service.captureRequests) {
@@ -196,11 +197,7 @@ public final class MainActivity extends Activity {
     pending.projectionRequest = false;
     CapturePlatform owner = (CapturePlatform) pending.capture;
     pending.capture = null;
-    if (owner != null) {
-      AppRuntimeService service = AppRuntimeService.instance;
-      if (service != null) service.captureRequests.remove(owner);
-      owner.grant(result, data);
-    }
+    if (owner != null) owner.grant(result, data);
     finish();
   }
 

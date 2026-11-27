@@ -77,7 +77,7 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
   为朋友搭建 3.0 内测站点。
 - [部署正式版 2.x](https://piik.tv/docs/zh/self-hosting.html)<br>
   在本机试用，或部署到局域网和公网。
-- [用 frp 给 Piik 设置固定公网邀请](./frp.zh-CN.md)<br>
+- [用 frp 给 Piik 设置固定公网地址](./frp.zh-CN.md)<br>
   通过已有的 frp 节点转发站点。
 
 </section>

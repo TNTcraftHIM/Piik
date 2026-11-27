@@ -62,8 +62,8 @@ site, not the entry for this test version.
 
 - **Local network:** for friends on the same LAN or virtual LAN. If several
   invitation addresses are offered, choose the interface they can reach.
-- **Public invite:** for friends elsewhere. **Automatic** creates a temporary
-  Cloudflare address while App is running; send a new link if it changes.
+- **Public address:** for friends elsewhere. **Automatic** creates a temporary
+  Cloudflare address for your site while App is running. Copy a room link from the room to invite friends.
   **Existing address** uses [your own HTTPS proxy](#use-an-existing-public-address).
 
 Local invitations use HTTPS. After starting **Local network**, return to the
@@ -76,7 +76,7 @@ certificate before accepting its first warning; see the
 
 If you already operate frp or another HTTPS reverse proxy:
 
-1. Before starting the site, select **Public invite → Existing address**. Enter
+1. Before starting the site, select **Public address → Existing address**. Enter
    your HTTPS site address without a path, query or invitation fragment.
 2. Forward its HTTP and WebSocket traffic to the displayed **Local forwarding
    target**, initially `http://127.0.0.1:8787`. Run frpc on the same computer as

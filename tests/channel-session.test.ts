@@ -1536,6 +1536,57 @@ test("a reconnect keeps the interaction and retires the previous socket's ready 
   } finally { session.close(); }
 });
 
+test("a subscription waiting for its signer stays off replacement sockets for the same binding", async () => {
+  const fixture = await setup(1000, false);
+  const state = structuredClone(fixture.session.getSnapshot().state!);
+  fixture.session.close();
+  vi.mocked(ChannelConversation.prototype.initialize).mockRestore();
+  vi.spyOn(ChannelConversation.prototype, "forwardingBudget").mockReturnValue(undefined);
+  const sessionId = crypto.randomUUID();
+  state.sessions[0].id = sessionId;
+  state.channel.rooms[0].participantSessionIds = [sessionId];
+  const welcome = { type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state };
+  const session = new ChannelSession();
+  let release!: () => void;
+  const signerWait = new Promise<void>(resolve => { release = resolve; });
+  const admit = (socket: ChannelSocket) => {
+    socket.receive(welcome);
+    const browse = socket.sent.find(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+  };
+  const reconnect = async () => {
+    session.reconnect();
+    const socket = ChannelSocket.current;
+    await socket.onopen?.();
+    admit(socket);
+    return socket;
+  };
+  const signedCommands = (socket: ChannelSocket) => socket.sent.filter(frame => frame.type === "conversation")
+    .map(frame => JSON.parse((frame.packet as { payload: string }).payload).command.type);
+  try {
+    session.start();
+    const original = ChannelSocket.current;
+    await original.onopen?.();
+    // Hold the first subscription at the signer's await while later joins and sends use the real signer.
+    const signer = ChannelConversation.prototype["ready"];
+    const lookup = vi.spyOn(ChannelConversation.prototype as unknown as { ready: typeof signer }, "ready");
+    lookup.mockImplementationOnce(async function (this: ChannelConversation) {
+      const identity = await signer.call(this);
+      await signerWait;
+      return identity;
+    });
+    admit(original);
+    await vi.waitFor(() => expect(signedCommands(original)).toEqual(["history"]));
+    const middle = await reconnect();
+    await vi.waitFor(() => expect(signedCommands(middle)).toEqual(["interaction_ready", "history"]));
+    const last = await reconnect();
+    await vi.waitFor(() => expect(signedCommands(last)).toEqual(["interaction_ready", "history"]));
+    release();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(signedCommands(last)).toEqual(["interaction_ready", "history"]);
+  } finally { release(); session.close(); }
+});
+
 test("content reaction targets and delayed events stay with the current room binding", async () => {
   const { session, socket, peer } = await setup();
   try {
@@ -10218,17 +10269,30 @@ test("a remote data channel cannot report connectivity and a retired socket cann
   } finally { session.close(); }
 });
 
-test("file progress waits for both channels on the selected peer's room lease", async () => {
+test.each(["control", "file"] as const)("closing the %s channel during a file write retires the live progress", async closing => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket } = await setup();
+  let resolveWrite!: () => void;
+  const pendingWrite = new Promise<void>(resolve => { resolveWrite = resolve; });
+  const write = vi.fn(() => pendingWrite);
+  const peerClosed = vi.fn((key: string) => [{ type: "failed", key: JSON.parse(key), code: "data_channel_unavailable" }]);
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     ...await hosting.loadRoomHosting(),
-    FileDelivery: class { start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {} },
+    FileDelivery: class {
+      start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {}
+      chunk() { return [{ type: "write", key: keys[0], offset: 0, bytes: Uint8Array.of(1) }]; }
+      written() { return []; }
+      peer_unavailable() { return []; }
+      peer_closed = peerClosed;
+    },
   } as never);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   stubTransferStorage({
-    getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    getFileHandle: async () => ({ createWritable: async () => ({
+      write,
+      abort: async () => {},
+    }) }),
     removeEntry: async () => {},
   });
   const state = structuredClone(session.getSnapshot().state!);
@@ -10257,7 +10321,21 @@ test("file progress waits for both channels on the selected peer's room lease", 
     state.pairs[0].rooms.push("second");
     socket.receive({ type: "state", state });
     expect(progress()).toEqual(["waiting", "waiting"]);
-  } finally { abort.abort(); await Promise.all(reads); session.close(); }
+
+    bulk.onmessage?.({ data: Uint8Array.of(0, 1, 1).buffer });
+    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+    (closing === "control" ? control : bulk).close();
+    expect(progress()).toEqual(["connecting", "connecting"]);
+    resolveWrite();
+    if (closing === "control") {
+      await vi.waitFor(() => expect(session.attachments.progress(keys[0])).toMatchObject({ state: "connecting", received: 1 }));
+      socket.receive({ type: "state", state });
+      expect(session.attachments.progress(keys[0])).toMatchObject({ state: "connecting", received: 1 });
+    } else {
+      expect(await reads[0]).toMatchObject({ message: "data_channel_unavailable" });
+      expect(peerClosed).toHaveBeenCalledTimes(2);
+    }
+  } finally { resolveWrite(); abort.abort(); await Promise.all(reads); session.close(); }
 });
 
 test("physical data channels can precede room leases without admitting retired work", async () => {
@@ -17389,6 +17467,70 @@ test("transport ack leaves invitation pending until its correlated result", asyn
     socket.receive({ type: "room_reply", roomId: "first", requestId, result: { type: "invite_state", invitation: { state: "missing" } } });
     await reading;
     expect(finished).toHaveBeenCalledExactlyOnceWith({ state: "missing" });
+  } finally { session.close(); }
+});
+
+test.each(["profiles", "room_created"] as const)("a %s reply cannot confirm a profile edit", async type => {
+  const { session, socket } = await setup();
+  try {
+    const saving = session.updateProfile({ name: "Updated" });
+    const requestId = socket.sent.at(-1)!.requestId;
+    const profile = { ...session.getSnapshot().self!, name: "Unrelated" };
+    socket.receive(type === "profiles" ? { type, requestId, profiles: [profile], total: 1, nextCursor: null }
+      : { type, requestId, room: session.getSnapshot().state!.channel.rooms[0] });
+    await expect(saving).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().self?.name).toBe("Me");
+    expect(session.getSnapshot().connection).toBe("connected");
+  } finally { session.close(); }
+});
+
+test("a bare acknowledgement cannot confirm a Watch join without its room clock", async () => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  try {
+    const watch = { id: "film", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+      source: { kind: "media", url: "https://media.test/film.mp4" },
+      playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [watch] } });
+    const joining = session.joinWatch(watch.id);
+    const command = socket.sent.findLast(c => c.type === "join_watch")!;
+    socket.receive({ type: "ack", requestId: command.requestId });
+    await expect(joining).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().watchPlayers.has(watch.id)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("a bare acknowledgement rejects an outstanding profile query and room creation", async () => {
+  const { session, socket } = await setup();
+  try {
+    socket.autoProfiles = false;
+    const profile = session.queryProfiles({ query: "Alice" });
+    const creating = session.createRoom({ name: "New", icon: "couch", access: "public", hidden: false });
+    const query = socket.sent.findLast(command => command.type === "profiles")!;
+    const create = socket.sent.findLast(command => command.type === "create_room")!;
+    socket.receive({ type: "ack", requestId: query.requestId });
+    socket.receive({ type: "ack", requestId: create.requestId });
+    await expect(profile).rejects.toThrow("invalid_response");
+    await expect(creating).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().connection).toBe("connected");
+  } finally { session.close(); }
+});
+
+test("a room completion cannot answer a profile query or preempt a different room's edit", async () => {
+  const { session, socket } = await setup();
+  try {
+    socket.autoProfiles = false;
+    const reading = session.queryProfiles({ query: "Alice" });
+    const query = socket.sent.at(-1)!;
+    const saving = session.updateRoom("second", { name: "Renamed" }, false);
+    const update = socket.sent.at(-1)!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: query.requestId, result: { type: "done" } });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
+    socket.receive({ type: "profiles", requestId: query.requestId, profiles: [], total: 0, nextCursor: null });
+    await expect(reading).resolves.toMatchObject({ profiles: [], total: 0 });
+    expect(session.getSnapshot().pending.has("room:second")).toBe(true);
+    socket.receive({ type: "room_reply", roomId: "second", requestId: update.requestId, result: { type: "done" } });
+    await saving;
   } finally { session.close(); }
 });
 

@@ -69,7 +69,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
             fallbackPreview={<span className="c3-profile-preview"><PawnSvg color={color} /></span>} />
         </div>}
         <label htmlFor={`${id}-name`}>{t("channel.profileEditor.nickname")}</label>
-        <span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
+        <span className="lr-input"><input ref={input} id={`${id}-name`} name="nickname" maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
           value={draft} onChange={event => setDraft(event.target.value)} disabled={!editable} /></span>
         {!disabled && !profileReady && <p className="c3-profile-status" role="status">{t("channel.profileEditor.waitingForProfile")}</p>}
         {message && <p className="c3-settings-error" role="alert">{message}</p>}

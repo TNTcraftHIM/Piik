@@ -31,8 +31,8 @@ firewall rules. A working web page does not establish that peer traffic is allow
   it as a fallback. If you manage the room, check **Use site forwarding** under
   **Room settings → Network**. If you turn it on, select **Save**.
 
-Piik selects routes automatically. The App's automatic **Public invite** uses
-Cloudflare Tunnel for the invitation page and signaling. Picture, voice and file
+Piik selects routes automatically. The App's automatic **Public address** uses
+Cloudflare Tunnel for the site and signaling. Picture, voice and file
 content still need a working WebRTC route.
 [Cloudflare Tunnel routing](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/)
 
@@ -69,7 +69,7 @@ Only change equipment and settings you manage.
 <summary>STUN discovery</summary>
 
 STUN discovers addresses that peer connections can try. In **Local network** mode,
-App supplies only its STUN address on the selected network. **Public invite** and
+App supplies only its STUN address on the selected network. **Public address** and
 standalone Server supply public STUN addresses by default.
 Changing STUN only changes address discovery. If the site operator already has a
 TURN service, they can check compatible builds and configuration in the
@@ -127,4 +127,4 @@ Do not send `localhost`, which points to each recipient's own device.
 
 Join only with trusted friends. If the issue persists, [collect reports](./troubleshooting.md#reporting-a-problem) from the same attempt.
 
-To give an App or Server a fixed public invitation address, use a managed or self-hosted tunnel. [frp and SakuraFrp guide](./frp.md)
+To give an App or Server a fixed public site address, use a managed or self-hosted tunnel. [frp and SakuraFrp guide](./frp.md)

@@ -286,7 +286,7 @@ mod tests {
         let view = render(&state, Some("System WebView unavailable"), None, 32);
         assert!(view.contains("Site ready"));
         assert!(view.contains("Local entry / 本机入口\n  http://127.0.0.1:8787/"));
-        assert!(view.contains("Invitation address / 邀请地址\n  https://192.0.2.1:8787/"));
+        assert!(view.contains("Site address / 站点地址\n  https://192.0.2.1:8787/"));
         assert_eq!(view.matches("http://127.0.0.1:8787/").count(), 1);
         assert!(view.contains("[aaaaaaaa]"));
         assert!(view.contains("S + Enter"));
@@ -319,7 +319,7 @@ mod tests {
         let view = render(&state, None, None, 32);
         assert!(view
             .contains("Configured public address / 已配置的公开地址\n  https://fixture.invalid/"));
-        assert!(!view.contains("Invitation address"));
+        assert!(!view.contains("Site address"));
         assert!(!view.contains("secret"));
     }
 

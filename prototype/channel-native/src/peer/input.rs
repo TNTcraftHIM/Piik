@@ -515,7 +515,7 @@ pub(super) mod tests {
         let mut f = Fixture::new(vp8()).await?;
         let result = async {
             let pair = f.sink;
-            f.until(|f| f.driver.pairs.values().all(|p| p.connected() && p.dc_open)).await?;
+            f.until(|f| f.driver.pairs.values().all(|p| p.connected() && p.data.control_open())).await?;
             let plan = f.driver.pairs[&pair].plan.clone();
             let instance = f.driver.pairs[&pair].pc.connection_metrics().await?.connection_id;
             let outputs = f.driver.pairs[&pair].output_ids();
@@ -531,7 +531,7 @@ pub(super) mod tests {
             assert_eq!(retained.pc.connection_metrics().await?.connection_id, instance);
             assert_eq!(retained.output_ids(), outputs);
             assert!(retained.room_data_failed);
-            assert!(f.driver.pairs.iter().filter(|(id, _)| **id != pair).all(|(_, p)| p.connected() && p.dc_open));
+            assert!(f.driver.pairs.iter().filter(|(id, _)| **id != pair).all(|(_, p)| p.connected() && p.data.control_open()));
             f.driver.deadlines().await;
             verify_release(true);
             Ok(())

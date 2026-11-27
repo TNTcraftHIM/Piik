@@ -32,7 +32,7 @@ If you can enter the room and chat but media or files cannot connect, use the [n
 ## Opening App and joining a room
 
 [Startup](#app-startup-fails-or-no-page-opens) · [Android installation](#android-apk-will-not-install) · [macOS](#macos-blocks-first-launch) ·
-[Public invite / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
+[Public address / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
 [Local certificate](#local-https-certificate-warning) · [Invitation or password](#an-invitation-or-password-is-rejected) · [Site connection](#the-page-opens-but-the-site-will-not-connect) · [App version](#app-and-page-versions-are-incompatible)
 
 ### App startup fails, or no page opens
@@ -89,15 +89,15 @@ checks enabled.
 
 ### Public invitation fails or shows 1033
 
-App **Public invite** uses Cloudflare Tunnel for its temporary web address.
+When you select **Public address → Automatic**, the App uses Cloudflare Tunnel for the site's temporary address.
 [Error 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
-means the tunnel is disconnected. For `public invitation service exited before
+means the tunnel is disconnected. For `public tunnel exited before
 connecting` or `exit status 1`, read the following error details to choose a check.
 
-1. **Viewers: confirm the link.** Ask the host to check that the App is running
+1. **Viewers: confirm the link.** Ask the person running the site to check that the App is running
    and the computer is awake, then send the current invitation. Use a new link
    after the App restarts; the old address may no longer work.
-2. **Hosts: read the failure details.** Check that the complete App package was
+2. **On the computer running the site, read the failure details.** Check that the complete App package was
    extracted. Save the full error from the launch page or terminal, including
    any detail after the exit code, then enable **Help → Debug** on the launcher and try again.
 3. **Compare networks.** Try a phone hotspot. Check whether DNS, a proxy or a

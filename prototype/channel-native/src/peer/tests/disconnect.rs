@@ -42,7 +42,7 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
         let flow = f.plans.last().unwrap().outgoing[0].id;
         f.until(|f| {
             let p = &f.driver.pairs[&pair];
-            p.connected() && p.dc_open && p.pending_offer.is_none()
+            p.connected() && p.data.control_open() && p.pending_offer.is_none()
                 && p.plan.outgoing.iter().all(|flow|
                     [MediaKind::Video, MediaKind::Audio].iter().all(|kind| p.outputs.contains_key(&(flow.id, *kind))))
         }).await?;
@@ -137,7 +137,7 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
             "pair failed before the SDK's consent-expiry boundary");
         f.driver.finish_pair_retirement().await?;
         ensure!(left.call(|_| Ok(())).await.is_err(), "retired transport still accepted work");
-        ensure!(f.driver.pairs.values().all(|p| p.connected() && p.dc_open));
+        ensure!(f.driver.pairs.values().all(|p| p.connected() && p.data.control_open()));
         ensure!(source_ids.iter().all(|source| f.driver.sources.contains_key(source)));
         eprintln!("RECOVERY expired_pair_retired_ms={}", expired_cut.elapsed().as_millis());
         Ok::<_, anyhow::Error>(())
@@ -275,7 +275,7 @@ async fn consent_expiry_retires_established_transport_while_ice_checks_an_altern
     let mut f = Fixture::new(vp8()).await?;
     let result = tokio::time::timeout(Duration::from_secs(45), async {
         let pair = f.sink;
-        f.until(|f| f.driver.pairs.values().all(|p| p.connected() && p.dc_open)).await?;
+        f.until(|f| f.driver.pairs.values().all(|p| p.connected() && p.data.control_open())).await?;
         let transport = f.driver.pairs[&pair].pc.clone();
         let states = Arc::new(Mutex::new(Vec::new()));
         let observed = states.clone();
@@ -308,7 +308,7 @@ async fn consent_expiry_retires_established_transport_while_ice_checks_an_altern
         ensure!(!f.driver.pairs.contains_key(&pair), "expired transport remained established in Checking");
         verify_holds(true);
         f.driver.finish_pair_retirement().await?;
-        ensure!(f.driver.pairs.values().all(|p| p.connected() && p.dc_open));
+        ensure!(f.driver.pairs.values().all(|p| p.connected() && p.data.control_open()));
         Ok::<_, anyhow::Error>(())
     }).await.unwrap_or_else(|error| Err(error.into()));
     f.close().await;

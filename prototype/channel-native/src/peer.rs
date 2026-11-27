@@ -702,7 +702,6 @@ struct Pair {
     input: Option<(Uuid, Arc<Channel>, JoinHandle<()>)>,
     data: DataLink,
     state: Arc<AtomicU8>,
-    dc_open: bool,
     room_data_failed: bool,
     reported: HashSet<String>,
     deadline: Option<Deadline>,
@@ -2102,7 +2101,6 @@ impl Driver {
                 input: None,
                 data,
                 state,
-                dc_open: false,
                 room_data_failed: false,
                 reported: HashSet::new(),
                 deadline: Some(Deadline::Connecting(
@@ -2161,7 +2159,6 @@ impl Driver {
             }
             p.data.unbind(Lane::Control);
             p.data.unbind(Lane::Bulk);
-            p.dc_open = false;
         } else if !p.plan.rooms.is_empty() && !p.polite && !p.room_data_failed && p.dc.is_none() {
             let dc = p.pc.create_channel("piik-room").await?;
             self.install_dc(id, dc).await?;
@@ -2269,7 +2266,7 @@ impl Driver {
             if let Some(state) = state {
                 self.send(Command::LinkState { pair_id: id, state }).await;
             }
-            if pair.room_data_failed || (pair.connected() && pair.dc_open) {
+            if pair.room_data_failed || (pair.connected() && pair.data.control_open()) {
                 for room_id in &pair.plan.rooms {
                     self.send(Command::RoomDataState {
                         room_id: room_id.clone(),
@@ -2565,7 +2562,7 @@ impl Driver {
         if !p.established() {
             return;
         }
-        if p.dc_open && !p.room_data_failed {
+        if p.data.control_open() && !p.room_data_failed {
             p.deadline = None;
             if !p.connected() {
                 return;
@@ -2600,7 +2597,6 @@ impl Driver {
             return;
         }
         p.room_data_failed = true;
-        p.dc_open = false;
         p.reported.clear();
         let rooms = p.plan.rooms.clone();
         self.files.unavailable(p.plan.peer_id).await;
@@ -2955,7 +2951,6 @@ impl Driver {
             Event::Dc(id, token, open) => {
                 if let Some(p) = self.pairs.get_mut(&id) {
                     if p.dc.as_ref().is_some_and(|(t, _, _)| *t == token) {
-                        p.dc_open = open;
                         if open {
                             self.report_room_data_ready(id).await;
                         } else {

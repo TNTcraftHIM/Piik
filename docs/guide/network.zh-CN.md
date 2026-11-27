@@ -26,7 +26,7 @@
 - 受管理的网络可请网络管理员检查 UDP 限制，或换用其他网络。
 - 如果加入的是 Piik Server 站点，请问站点管理员是否为连不上的画面、语音或文件提供转发。有这项服务时，Piik 可以用它兜底。如果你管理房间，请在 **房间设置 → 网络** 中检查 **使用站点转发**，开启后点 **保存**。
 
-线路由 Piik 自动选择。App 的自动 **公网邀请** 通过 Cloudflare Tunnel 提供邀请网页和信令，画面、语音和文件内容仍需可用的 WebRTC 线路。
+线路由 Piik 自动选择。App 的自动 **公网地址** 通过 Cloudflare Tunnel 提供站点网页和信令，画面、语音和文件内容仍需可用的 WebRTC 线路。
 [Cloudflare Tunnel 路由说明](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/)（英文）
 
 ## 浏览器限制了 WebRTC
@@ -57,7 +57,7 @@ Vivaldi 在 **设置 → 隐私和安全 → WebRTC IP 处理** 中提供 **广�
 <summary>STUN 地址发现</summary>
 
 STUN 用于发现点对点连接可以尝试的地址。App 的 **局域网使用** 模式只下发所选网络上的本地 STUN 地址。
-**公网邀请** 和独立 Server 默认下发公共 STUN 地址。
+**公网地址** 和独立 Server 默认下发公共 STUN 地址。
 更换 STUN 只影响地址发现。站点管理员已有 TURN 服务时，可查看适用构建与配置。[App 和 Server 的 ICE 配置参考](../../prototype/channel-server/README.md#ice-server-configuration)
 
 STUN 服务会收到参与者的公网 IP，请选择信任的服务。
@@ -106,4 +106,4 @@ STUN 服务会收到参与者的公网 IP，请选择信任的服务。
 
 仅与信任的朋友组网。仍然失败时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)收集同一次尝试的报告。
 
-如果需要 App 或 Server 的固定公网邀请地址，可用现有 frp 服务或自建隧道。[frp 与樱花映射教程](./frp.zh-CN.md)
+如果需要 App 或 Server 的固定公网地址，可用现有 frp 服务或自建隧道。[frp 与樱花映射教程](./frp.zh-CN.md)

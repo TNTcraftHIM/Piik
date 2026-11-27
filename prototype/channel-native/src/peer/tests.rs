@@ -522,6 +522,45 @@ pub(super) fn driver() -> (
 }
 
 #[tokio::test]
+async fn room_control_open_before_driver_notification_survives_deadline_and_resync() -> Result<()> {
+    let mut f = support::Fixture::new(support::vp8()).await?;
+    let pair = f.sink;
+    let result = tokio::time::timeout(Duration::from_secs(12), async {
+        f.withheld.insert(pair);
+        f.until(|f| f.driver.pairs[&pair].pending_offer.is_some()).await?;
+        f.release_offer(pair).await?;
+        // Hold the real channel-open notification while the Driver takes its deadline turn.
+        let opened = loop {
+            let event = f.events.recv().await.context("Driver event queue closed")?;
+            if matches!(event, Event::Dc(id, _, true) if id == pair) {
+                break event;
+            }
+        };
+        let p = &f.driver.pairs[&pair];
+        let token = p.dc.as_ref().context("missing control binding")?.0;
+        ensure!(p.connected() && p.data.senders().current(Lane::Control, token, true));
+        f.driver.pairs.get_mut(&pair).unwrap().deadline = Some(Deadline::Control(Instant::now()));
+        f.driver.deadlines().await;
+        let p = &f.driver.pairs[&pair];
+        ensure!(!p.room_data_failed, "deadline retired an open room control binding");
+        ensure!(p.deadline.is_none() && p.dc.as_ref().is_some_and(|dc| dc.0 == token));
+        f.driver.resync().await;
+        f.driver.event(opened).await?;
+        let mut reports = Vec::new();
+        while let Ok(command) = f.commands.try_recv() {
+            if let NativeEvent::Command(Command::RoomDataState { pair_id, room_id, ready }) = command {
+                if pair_id == pair { reports.push((room_id, ready)); }
+            }
+        }
+        ensure!(reports == [("room".into(), true), ("room".into(), true)],
+            "expected first readiness and authenticated resync, got {reports:?}");
+        Ok::<_, anyhow::Error>(())
+    }).await;
+    f.close().await;
+    result?
+}
+
+#[tokio::test]
 async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_lease() -> Result<()> {
     let (mut d, _events, mut commands, _stop) = driver();
     // Owned loopback destinations keep this lifecycle check off the real gateway.

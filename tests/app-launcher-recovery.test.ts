@@ -746,7 +746,7 @@ it.each(["local", "link"] as const)("names the owned startup site and saved %s m
     async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
   }));
   expect(html).toMatch(/my site|我的站点/);
-  expect(html).toMatch(mode === "local" ? /Local network|局域网使用/ : /Public invite|公网邀请/);
+  expect(html).toMatch(mode === "local" ? /Local network|局域网使用/ : /Public address|公网地址/);
   expect(html).toMatch(/type="checkbox"[^>]*checked/);
 });
 

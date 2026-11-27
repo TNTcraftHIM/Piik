@@ -34,7 +34,7 @@ import { PlaybackDeviceSelect } from "../channel/components/PlaybackDeviceSelect
 import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSounds";
 import { ChannelForwardingSettings } from "../channel/components/ChannelForwardingSettings";
 import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
-import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
+import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog, RoomAccessNote, RoomHostingNote } from "../channel/components/ChannelRoomControls";
 import { RoomCreationInterrupted, roomCreationPolicyFor, readSimpleShareRoom, rememberSimpleShareRoom, roomDraft, roomSettings, simpleShareRoom, simpleShareRoomKey } from "../channel/room-creation";
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
@@ -238,15 +238,18 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   };
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const simpleShareKey = simpleShareRoomKey(state?.channel.id, self?.id);
+  const rememberedShareRoom = minimal && canCreateRoom && self
+    ? simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey)) : undefined;
+  const rememberedRoomOffline = rememberedShareRoom?.available === false;
+  const quickStartLabel = rememberedRoomOffline ? "channel.previewPage.openRoom" : "channel.previewPage.startSharing";
   // The quick-start button shows its own failure; another site retires it.
   const quickStart = useSettingsAction(true, simpleShareKey ?? state?.channel.id);
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
     quickStart.clearError();
-    const existing = self && simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey));
-    if (existing) {
-      selectRoom(existing.id);
-      if (existing.available && !sharesIn(existing.id)) setPickerRoom(existing.id);
+    if (rememberedShareRoom) {
+      selectRoom(rememberedShareRoom.id);
+      if (rememberedShareRoom.available && !sharesIn(rememberedShareRoom.id)) setPickerRoom(rememberedShareRoom.id);
       return;
     }
     const operation = preparingShare.current = {};
@@ -636,9 +639,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" hint="hint-reconnect" size="compact" onClick={channel.reconnect} />}
         </div>}
         {room && !room.available && roomOpenFailure ? <div className="c3-notice is-error" role="status"><Glyph name="couch" size={20} />
-          <span className="c3-notice-message">{t(roomOpenFailure.message)}</span><ChannelDiagnosisHelp diagnosis={roomOpenFailure} /></div>
+          <span className="c3-notice-message">{t(roomOpenFailure.message)} {room.authorized && <RoomHostingNote channel={channel} room={room} />}</span><ChannelDiagnosisHelp diagnosis={roomOpenFailure} /></div>
           : room?.authorized && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
-          <span className="c3-notice-message">{t(channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty")}</span></div>}
+          <span className="c3-notice-message">{t(channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty")} <RoomHostingNote channel={channel} room={room} /></span></div>}
         {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={t("channel.previewPage.ongoingScreens")}>
           {otherScreens.map(source => {
             const watch = "playback" in source;
@@ -663,9 +666,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           {!state ? <ChannelSiteEntry channel={channel} failure={failure} /> : unlistedRoom
             ? <ChannelUnlistedRoomEntry key={selected} channel={channel} roomId={selected} onBack={() => selectRoom("")} />
             : overview && <section className="c3-site-overview">
-            {minimal && canCreateRoom ? <StageTv hasEntry label={t("channel.previewPage.startSharing")}><div className="c3-quick-start">
-              <p>{t(creationPolicy === "invite_only" ? "channel.previewPage.quickInviteOnlyHint" : "channel.previewPage.quickStartHint")}</p>
-              <div className="c3-quick-start-action"><Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
+            {minimal && canCreateRoom ? <StageTv hasEntry label={t(quickStartLabel)}><div className="c3-quick-start">
+              {rememberedShareRoom
+                ? <p>{t(rememberedShareRoom.available ? "channel.previewPage.quickReuseHint" : "channel.previewPage.quickOfflineHint", { name: rememberedShareRoom.name })}</p>
+                : <p>{t("channel.previewPage.quickCreateHint")} <RoomHostingNote channel={channel} />{" "}
+                  <RoomAccessNote access={creationPolicy === "invite_only" ? creationPolicy : roomDraft().access} /></p>}
+              <div className="c3-quick-start-action"><Btn id="c3-first-action" icon={rememberedRoomOffline ? "couch" : "cast"} tone="primary" title={quickStartLabel} cap={quickStartLabel}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
                 <ChannelSettingsError error={quickStart.error} /></div>
             </div></StageTv> : rooms.length ? <div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}

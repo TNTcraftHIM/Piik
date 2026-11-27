@@ -5,6 +5,7 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import { roomCreationPolicySchema, type RoomCreationPolicy } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelInlineConfirm } from "./ChannelInlineConfirm";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs } from "./ChannelSettingsDialog";
 import { useSettingsAction } from "../../ui/use-settings-action";
 import { ChannelIdentityFields, ChannelIdentityMark } from "./ChannelIdentity";
@@ -25,17 +26,28 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const [task, setTask] = useState<"site" | "rooms" | "backup">("site");
   const [submittedForm, setSubmittedForm] = useState<"site" | "rooms">();
   const [policyDraft, setPolicyDraft] = useState<RoomCreationPolicy | null>(null);
-  const { error, run } = useSettingsAction(open);
+  const { error: siteError, run: runSiteSave } = useSettingsAction(open);
+  const { error: roomsError, run: runRoomsSave } = useSettingsAction(open);
   const busy = channel.pending.has("domain"), backupBusy = channel.pending.has("domain-backup");
   const unavailable = !owner || channel.connection !== "connected";
   const disabled = unavailable || busy || backupBusy;
-  const resetDraft = () => {
+  const resetSiteDraft = () => {
     setName(undefined);
     setIcon(undefined);
+  };
+  const resetDraft = () => {
+    resetSiteDraft();
     setPolicyDraft(null);
   };
   const title = t("channel.siteSettings.siteSettings");
   const policy = policyDraft ?? current?.roomCreationPolicy ?? "ordinary";
+  const policyChanged = policy !== current?.roomCreationPolicy;
+  const trimmedName = nameDraft?.trim();
+  const changedName = trimmedName === current?.name ? undefined : trimmedName;
+  const changedIcon = iconDraft === current?.icon ? undefined : iconDraft;
+  const canSaveSite = !disabled && !imageBusy && !!name.trim() &&
+    (changedName !== undefined || changedIcon !== undefined);
+  const canSaveRooms = !disabled && policyChanged;
   const close = () => { setOpen(false); setPolicyDraft(null); };
   const tasks = [
     { value: "site", label: t("channel.siteSettings.site"), icon: "globe", hint: "hint-advanced" },
@@ -49,7 +61,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
         iconOverlay={<ChannelIdentityMark icon={current?.icon ?? "couch"} size={22} />}
         onClick={() => { resetDraft(); setTask("site"); setOpen(true); }} />
     </Tooltip>
-    {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={error} onClose={close}>
+    {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={task === "site" ? siteError : task === "rooms" ? roomsError : null} onClose={close}>
       <div className="c3-settings-body">
         <ChannelSettingsTabs<typeof task> id={id} label={title} tasks={tasks} selected={task} onSelect={setTask} />
         <div className="c3-settings-panels">
@@ -58,25 +70,24 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
             }} onSubmit={event => {
               event.preventDefault();
-              if (disabled || imageBusy || !name.trim()) return;
-              if (nameDraft === undefined && iconDraft === undefined) { close(); return; }
+              if (!canSaveSite) return;
               setSubmittedForm("site");
-              void run(() => channel.updateDomain({ name: nameDraft?.trim(), icon: iconDraft }, false), close);
+              void runSiteSave(() => channel.updateDomain({ name: changedName, icon: changedIcon }, false), resetSiteDraft);
             }}>
               <ChannelIdentityFields name={name} icon={icon} label={t("channel.siteSettings.siteName")} disabled={disabled}
                 onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
               <div className="c3-form-actions">
                 <ChannelAction icon="x" quiet label={t("channel.siteSettings.cancel")} onClick={close} />
-                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy && submittedForm === "site"} disabled={disabled || imageBusy || !name.trim()} />
+                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy && submittedForm === "site"} disabled={!canSaveSite} />
               </div>
             </form>
           </section>
           <section id={`${id}-rooms`} role="tabpanel" aria-labelledby={`${id}-rooms-tab`} hidden={task !== "rooms"}>
             <form className="c3-room-form" onSubmit={event => {
               event.preventDefault();
-              if (disabled || policy === current?.roomCreationPolicy) return;
+              if (!canSaveRooms) return;
               setSubmittedForm("rooms");
-              void run(() => channel.setRoomCreationPolicy(policy, false), close);
+              void runRoomsSave(() => channel.setRoomCreationPolicy(policy, false), () => setPolicyDraft(null));
             }}>
               <fieldset className="c3-site-creation-options" disabled={disabled}>
                 <legend>{t("channel.siteSettings.guestCreation")}</legend>
@@ -89,7 +100,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               <div className="c3-form-actions">
                 <ChannelAction icon="x" quiet label={t("channel.siteSettings.cancel")} onClick={close} />
                 <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy && submittedForm === "rooms"}
-                  disabled={disabled || policy === current?.roomCreationPolicy} />
+                  disabled={!canSaveRooms} />
               </div>
             </form>
             {task === "rooms" && <ChannelRoomDirectory channel={channel} disabled={disabled} />}
@@ -141,14 +152,15 @@ function DirectoryRoom({ id, label, channel, deleteData, disabled }: {
   const removing = channel.pending.has(`delete:${id}`);
   return <li>
     <span>{label}</span>
-    <Btn icon="x" quiet tone="danger" size="compact" busy={removing} disabled={disabled || removing}
-      title={{ text: t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label }) }}
-      cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }} onClick={() => {
-        if (window.confirm(t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })))
-          void run(async signal => {
-            const result = await channel.deleteRoom(id, deleteData, signal);
-            if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
-          });
+    <ChannelInlineConfirm key={String(deleteData)} label={t(deleteData ? "room.action.delete" : "room.action.remove")}
+      accessibleLabel={t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label })}
+      question={t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })}
+      busy={removing} disabled={disabled}
+      onConfirm={() => {
+        void run(async signal => {
+          const result = await channel.deleteRoom(id, deleteData, signal);
+          if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
+        });
       }} />
     <ChannelSettingsError error={error ?? (channel.errorRoomId === id ? channel.error : null)} />
   </li>;

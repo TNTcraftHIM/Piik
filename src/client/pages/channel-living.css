@@ -1,6 +1,6 @@
 /* The workspace owns placement; shared controls, palette, cast and motion keep their owners. */
 .c3-app { --c3-content-width: calc(100% - 40px); --c3-heading-height: 66px; --c3-stage-picture-min: 160px; height: 100dvh; min-height: 0; padding-top: 20px; }
-.c3-shell { --room-list-padding-end: 12px; flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-rows: auto minmax(var(--c3-heading-height), auto) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
+.c3-shell { --room-list-padding-end: 12px; --room-list-gap: 8px; flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-rows: auto minmax(var(--c3-heading-height), auto) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
 .c3-shell:not([data-companion="people"]) > .c3-people-panel { display: none; }
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
@@ -44,7 +44,7 @@
 .c3-section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 650; min-height: 32px; padding-inline: 10px; }
 .c3-room-navigation > .c3-section-label { min-height: var(--c3-heading-height); padding-inline: 4px; }
 .c3-room-list-actions { display: flex; align-items: center; gap: 2px; }
-.c3-rooms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 8px; }
+.c3-rooms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; margin-block-start: var(--room-list-gap); }
 .c3-room-group-heading { justify-content: flex-start; align-items: baseline; min-height: 0; margin: 0; font-size: 11px; }
 .c3-room-group-heading:not(:first-child) { margin-top: 12px; }
 .c3-room-group-heading > span { font-weight: 400; }
@@ -371,11 +371,14 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"]:is([data-sidebars="list"], [data-sidebars="rail"][data-room-list-open]):not([data-minimal]) .c3-living-actions .lr-btn-split { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
 [data-layout="living"]:is([data-sidebars="list"], [data-sidebars="rail"][data-room-list-open]):not([data-minimal]) .c3-living-actions .c3-share-actions { width: 100%; }
 .c3-living-actions .c3-voice-entry { padding: 0; }
-/* Keep the entire room heading available above the stacked rail controls. Both areas can scroll. */
+/* Keep the heading and one available room visible above the stacked rail controls. */
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-personal {
-  max-height: calc(100cqh - var(--heading-line) - var(--room-list-heading) - var(--room-list-padding-end));
+  max-height: calc(100cqh - var(--heading-line) - var(--room-list-heading) - var(--rail-room-space, 0px) - var(--room-list-padding-end));
   padding-inline: 4px;
   scrollbar-width: none;
+}
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]):has(.c3-sidebar .c3-room-list-item) {
+  --rail-room-space: calc(var(--room-list-gap) + var(--rail-room-max-height));
 }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-sidebar-browse { scrollbar-width: none; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) :is(.c3-living-actions, .c3-identity) { align-items: center; }
@@ -590,7 +593,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-minimal] .c3-site-overview:has(> .lr-tv) { flex: 1; display: grid; place-items: center; padding: var(--room-inset); }
 [data-minimal] .c3-site-overview > .lr-tv { width: min(100%, 880px); max-height: 100%; }
 [data-minimal] .c3-quick-start { align-content: center; gap: 16px; }
-[data-minimal] .c3-quick-start p { margin: 0; max-width: 28em; text-align: center; text-wrap: balance; }
+[data-minimal] .c3-quick-start p { margin: 0; max-width: 28em; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
 [data-minimal] .c3-quick-start .lr-btn { border-radius: var(--c3-inset-radius); }
 [data-sidebars="phone"] .c3-voice-room-row[data-direct] .c3-voice-room-actions .lr-cap { display: none; }
 [data-minimal]:not([data-sidebars="phone"]) .c3-voice-room-actions .lr-btn:has(> .lr-cap) > :is(.lr-glyph, .lr-voice-mic-level) {

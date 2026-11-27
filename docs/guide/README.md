@@ -78,7 +78,7 @@ If the problem persists, [report it](./troubleshooting.md#reporting-a-problem).
   Set up a site for your test group.
 - [Deploy published 2.x](https://piik.tv/docs/self-hosting.html?lang=en)<br>
   Try it locally or deploy to a LAN or the internet.
-- [Use frp for a fixed Piik invitation address](./frp.md)<br>
+- [Use frp for a fixed public Piik site address](./frp.md)<br>
   Forward your site through an existing frp server.
 
 </section>

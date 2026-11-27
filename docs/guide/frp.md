@@ -1,4 +1,4 @@
-# Use frp for a fixed Piik invitation address
+# Use frp for a fixed public Piik site address
 
 English · [简体中文](./frp.zh-CN.md) · [Documentation](./README.md)
 
@@ -17,11 +17,11 @@ This example uses **SakuraFrp (樱花映射)**. If you run frps or use another p
 2. In **隧道列表** (Tunnels), create a **TCP** tunnel on a node that permits websites. Use `127.0.0.1` and Piik's local web port. Leave the remote port empty for SakuraFrp to assign it and set **自动 HTTPS** (Automatic HTTPS) to **自动** (Auto). Friends connect over HTTPS and Piik receives HTTP locally. [Web tunnel settings](https://doc.natfrp.com/app/http.html) · [Automatic HTTPS](https://doc.natfrp.com/frpc/auto-https.html)
 3. Under **子域绑定** (Subdomain binding), request a `nyat.app` subdomain. Select **新建绑定** (New binding) and choose your tunnel. Start or restart the tunnel. Once the log confirms it loaded the certificate for your subdomain, copy the **hostname and public port** from the log and prepend `https://`. [Subdomain and certificate walkthrough](https://doc.natfrp.com/bestpractice/domain-bind.html)
 
-## Set the invitation address in Piik
+## Set the site address in Piik
 
 ### Desktop App
 
-- **3.0 beta.** In the launcher choose **Public invite → Existing address** and enter your public HTTPS address. Match the tunnel's local target to the **Local forwarding target** shown in Piik, then enter Piik from the launcher. The host uses the page the App opens.
+- **3.0 beta.** In the launcher choose **Public address → Existing address** and enter your public HTTPS address. Match the tunnel's local target to the **Local forwarding target** shown in Piik, then enter Piik from the launcher.
 - **2.8 and later 2.x releases.** Open PowerShell in the extracted App directory and run the command below. Replace the example HTTPS address with the public address from the tunnel log and replace the example port with the local port in the TCP tunnel settings. With v2.7.0, use the Server option below for a fixed address.
 
 ```powershell
@@ -32,7 +32,7 @@ This example uses **SakuraFrp (樱花映射)**. If you run frps or use another p
 
 Apply the settings for your Server version to its existing configuration and restart the service. For a container deployment, point frp at the Piik web port published on the host.
 
-| Version | Local web port | Public invitation address |
+| Version | Local web port | Public site address |
 | --- | --- | --- |
 | 2.x Server | `PORT=8787` | `PUBLIC_BASE_URL=https://piik.example.nyat.app:21080` |
 | 3.0 Server | `PIIK_CHANNEL_PORT=8787` | `PIIK_CHANNEL_INVITATION_ORIGIN=https://piik.example.nyat.app:21080` |

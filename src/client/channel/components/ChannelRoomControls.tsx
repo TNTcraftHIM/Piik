@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Btn, SwitchItem } from "../../components/living/primitives";
+import { SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { AudioBitrateControl } from "../../components/living/QualityPresets";
 import { Glyph } from "../../ui/icons";
@@ -12,6 +12,7 @@ import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings
 import { diagnoseChannelFact } from "../../ui/diagnosis";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelInlineConfirm } from "./ChannelInlineConfirm";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs } from "./ChannelSettingsDialog";
 import { useSettingsAction } from "../../ui/use-settings-action";
 import { ChannelIdentityFields } from "./ChannelIdentity";
@@ -89,6 +90,26 @@ function RoomForm({ value, disabled, busy, imageBusy, onSave, onCancel, createLa
   </form>;
 }
 
+export function RoomHostingNote({ channel, room }: { channel: ChannelController; room?: ChannelRoom }) {
+  const { t } = useCopy();
+  const serverHosted = channel.state?.channel.hostingMode === "hosted";
+  if (room) {
+    if (serverHosted) return t("room.hosting.server");
+    if (room.available && room.delivery?.hostSessionId === channel.sessionId && channel.sessionId) {
+      return t("room.create.browserHostedNote");
+    }
+    return t("room.hosting.creatorDevice");
+  }
+  if (serverHosted) return t("room.create.serverHostedNote");
+  return t(channel.appConnected ? "room.create.appHostedNote" : "room.create.browserHostedNote");
+}
+
+export function RoomAccessNote({ access }: { access: "public" | "private" | "invite_only" }) {
+  const { t } = useCopy();
+  if (access === "invite_only") return t("room.settings.inviteOnlyNote");
+  return t(access === "public" ? "room.settings.publicNote" : "room.settings.privateNote");
+}
+
 function RoomIdentityAndAccess({ room, value, onChange: change, inviteOnly, disabled, imageBusy, onImageBusyChange }: {
   room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; inviteOnly: boolean;
   disabled: boolean; imageBusy: boolean; onImageBusyChange(value: boolean): void;
@@ -99,7 +120,7 @@ function RoomIdentityAndAccess({ room, value, onChange: change, inviteOnly, disa
     <ChannelIdentityFields name={name} icon={icon} label={t("room.settings.name")}
       roomPicture={{ value: value.picture === undefined ? room?.picture ?? null : value.picture, onChange: picture => change({ picture }) }}
       disabled={disabled} onName={name => change({ name })} onIcon={icon => change({ icon })} imageBusy={imageBusy} onImageBusyChange={onImageBusyChange} />
-    {inviteOnly ? <p>{t("room.settings.inviteOnlyNote")}</p> : <>
+    {inviteOnly ? <p><RoomAccessNote access="invite_only" /></p> : <>
       <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
         <legend className="visually-hidden">{t("room.settings.admission")}</legend>
         {(["public", "private"] as const).map(value => <label key={value}>
@@ -109,8 +130,7 @@ function RoomIdentityAndAccess({ room, value, onChange: change, inviteOnly, disa
             {value === "public" ? t("room.settings.public") : t("room.settings.private")}</span>
         </label>)}
       </fieldset>
-      <p>{access === "public" ? t("room.settings.publicNote")
-        : t("room.settings.privateNote")}</p>
+      <p><RoomAccessNote access={access} /></p>
       {access === "private" && <div className="c3-private-options">
         <label><span>{t("room.settings.optionalPassword")}</span><input className="c3-input" type="password"
           maxLength={128} autoComplete="new-password" value={password} disabled={disabled || removePassword}
@@ -141,7 +161,6 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
   const connected = channel.connection === "connected";
   const inviteOnly = creationPolicy === "invite_only";
   const serverHosted = channel.state?.channel.hostingMode === "hosted";
-  const roomHost = serverHosted ? "server" : channel.appConnected ? "app" : "browser";
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
   const canLoadCopy = connected && !busy && !backupBusy && !inspecting && !imageBusy;
@@ -196,8 +215,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
               return null;
             }
           }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } }).finally(() => setCreating(false)); }}>
-          <p>{roomHost === "server" ? t("room.create.serverHostedNote")
-            : roomHost === "app" ? t("room.create.appHostedNote") : t("room.create.browserHostedNote")}</p>
+          <p><RoomHostingNote channel={channel} /></p>
           <RoomIdentityAndAccess value={draft} onChange={change} inviteOnly={inviteOnly} disabled={disabled}
             imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
           <details className="c3-settings-details"><summary>{t("room.relay.default")}</summary>
@@ -327,6 +345,8 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
   const serverHosted = site?.hostingMode === "hosted";
   const browserHostsRoom = room.canManage && !!channel.sessionId && room.delivery?.hostSessionId === channel.sessionId;
   const deleteData = serverHosted || room.available;
+  const deleteQuestion = serverHosted ? "room.settings.confirmHostedDelete" :
+    deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove";
   const canPurge = room.authorized && (room.canManage || (!!channel.self && channel.self.id === site?.ownerId));
   const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
   const openFailure = channel.roomOpenFailures.get(room.id);
@@ -370,9 +390,9 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
       <ChannelSettingsTabs<RoomSettingsTask> id={id} label={t("room.settings.title")} tasks={tasks} selected={selected ?? "room"} onSelect={setTask} />
       <div className="c3-settings-panels">
         {!room.available && (diagnosis ? <div className="c3-settings-offline" role="status">
-          {t(diagnosis.message)} <ChannelDiagnosisHelp diagnosis={diagnosis} />
+          {t(diagnosis.message)} <RoomHostingNote channel={channel} room={room} /> <ChannelDiagnosisHelp diagnosis={diagnosis} />
         </div> : <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
-          : t("room.settings.offlineRelay")}</p>)}
+          : t("room.settings.offlineRelay")} <RoomHostingNote channel={channel} room={room} /></p>)}
         {inspectNative && !serverHosted && channel.self?.id === room.creatorId && channel.appConnected &&
           <NativeRoomOpenNotice key={JSON.stringify(["app", site?.id, channel.self?.id, channel.sessionId, channel.appPort])}
             channel={channel} roomId={room.id} operator="app" />}
@@ -381,6 +401,7 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
             channel={channel} roomId={room.id} operator="domain" serverHosted={serverHosted} />}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm {...form}>
+            {room.available && <p><RoomHostingNote channel={channel} room={room} /></p>}
             <RoomIdentityAndAccess room={room} value={value} onChange={change} inviteOnly={inviteOnly} disabled={disabled}
               imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
           </RoomForm>
@@ -391,14 +412,11 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
             {membersError && <p role="status">{t("room.settings.profilesFailed")}</p>}
           </details>}
           <section className="c3-room-removal">
-            <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working || deleting}
-              title={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
-              cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
-              onClick={() => {
-                const question = t(serverHosted ? "room.settings.confirmHostedDelete" :
-                  deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove", { name: room.name });
-                if (window.confirm(question)) void onDelete(deleteData);
-              }} />
+            {selected === "room" && <ChannelInlineConfirm key={deleteQuestion} size="dense"
+              label={t(deleteData ? "room.action.delete" : "room.action.remove")}
+              question={t(deleteQuestion, { name: room.name })}
+              busy={removing} disabled={!connected || working || deleting}
+              onConfirm={() => { void onDelete(deleteData); }} />}
             <ChannelSettingsError error={deleteError ?? null} />
           </section>
         </section>}
@@ -416,19 +434,17 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
           {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={[...(channel.state?.users ?? []), ...channel.profiles.values()]} />}
           {room.authorized && <section className="c3-backup-controls">
             <p>{t("room.settings.localCacheScope")}</p>
-            <ChannelAction icon="x" quiet label={t("room.settings.clearLocalCache")} busy={clearingCache} disabled={working || purging || clearingCache}
-              onClick={() => {
-                if (window.confirm(t("room.settings.confirmClearLocalCache", { name: room.name })))
-                  void cacheAction.run(() => channel.clearLocalRoomCache(room.id));
-              }} />
+            {selected === "data" && <ChannelInlineConfirm label={t("room.settings.clearLocalCache")} danger={false}
+              question={t("room.settings.confirmClearLocalCache", { name: room.name })}
+              busy={clearingCache} disabled={working || purging}
+              onConfirm={() => { void cacheAction.run(() => channel.clearLocalRoomCache(room.id)); }} />}
             <ChannelSettingsError error={cacheAction.error} />
           </section>}
           {canPurge && <div>
-            <ChannelAction icon="x" quiet danger label={t("room.chat.purgeHistory")} busy={purging} disabled={!available || working}
-              onClick={() => {
-                if (window.confirm(t("room.chat.confirmPurgeHistory", { name: room.name })))
-                  void historyAction.run(() => channel.purgeRoomHistory(room.id));
-              }} />
+            {selected === "data" && <ChannelInlineConfirm label={t("room.chat.purgeHistory")}
+              question={t("room.chat.confirmPurgeHistory", { name: room.name })}
+              busy={purging} disabled={!available || working}
+              onConfirm={() => { void historyAction.run(() => channel.purgeRoomHistory(room.id)); }} />}
             <ChannelSettingsError error={historyAction.error} />
           </div>}
           {room.canManage && backupAvailable && <section className="c3-backup-controls">
