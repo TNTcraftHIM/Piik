@@ -20,17 +20,22 @@ code. Delete the file when its items are fixed or in the ledger.
 
 Five rules cover most of them:
 
-1. **A member that holds nothing is not kept.** A join without a credential
-   saves a member for ever (2), and behind a temporary address a friend is
-   a new member every day. A member with no role, no grant, no retained
-   message and no hosted room ends with its last session.
-2. **Everything durable or queued has a bound, and one owner enforces it**:
-   grants per room (3), messages and their bytes (7), sessions and sockets
-   per party (11, 22), password attempts (12), requests per session and
-   snapshots per reader (16, 19), a reader that stops reading (15, 18),
-   exports and the restore slot (6, 14, 17), HTTP entries without read or
-   idle timeouts (9), candidates per pair (10). One budget at the hub and
-   the room writer.
+1. **What grows with ordinary use is cleared by hand** (the owner's
+   decision: keep the software simple, no retention rules). One action at
+   the host removes files, inline images and thumbnails, and the members
+   that hold nothing (no role, no grant, no hosted room), and keeps text,
+   rooms, roles and settings. This answers the growth in 2 and 7 that comes
+   from use: a friend behind a temporary address is a new member each day,
+   and a message may carry 512 KiB of image.
+2. **Against deliberate flooding, a few fixed limits and nothing more.**
+   Clearing does not help while someone with the link holds every session
+   or fills the disk faster than it is cleared. Read and idle timeouts and
+   a connection cap on the HTTP entries (9); one rate limit per connection
+   at the hub (7, 12, 16, 19); a cap on sessions and sockets per address
+   (11, 22); fixed caps on members (2), grants per room (3) and candidates
+   per pair (10); a reader that stops reading is dropped (15, 18); exports
+   and the restore slot time out (6, 14, 17). Each is a constant with a
+   clear refusal, in the one place the thing enters.
 3. **The App's control port knows its caller by a secret of this launch.**
    Host and Origin headers can be written by any local program (4).
 4. **One rule for what the App fetches on a page's word**: public addresses
@@ -62,7 +67,6 @@ Decided by the owner. Return the design before changing a private format.
   remembers that for this member. The condition is the member's state, which
   the Welcome already carries, so neither "first visit by this browser" nor
   "first creation of the member" needs a wire field.
-- Rule 1 of the blockers belongs to this design.
 
 ### 3. Hard-coded values: `hard-coded-{core,native,server,client}.md`, beside this file
 
