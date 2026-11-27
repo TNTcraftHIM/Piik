@@ -378,6 +378,28 @@ keep the selected representation, source supply, encoding, transport and
 presentation measurements distinct. Packet loss cannot be subtracted directly
 from a frame count.
 
+## Room Writer Turn Cost
+
+A local control at `8e2ae86b` compared 8 and 8,192 retained messages with
+0, 1 and 20 participants. Each cell ran 240 ordinary `Sync` or assigned-flow
+`Forwardable` turns. The Native writer executed no SQLite statements during
+the measured turns. The Browser writer used one read-only primary-key lookup
+of its room record per turn to validate the current writer binding, with no
+message-store access or database writes.
+
+With 20 participants and one voice flow, Native writer-turn medians were
+19.8–28.2 µs. Chrome 156 Browser turns, including WASM and IndexedDB, had
+0.4–0.5 ms medians and 0.5–0.7 ms P95. Serialized input and output totaled
+about 13.2–13.7 kB per turn. Increasing history length changed only the digits
+of the high-water sequence in these outputs. The test used the retained
+protocol-55 WASM package; its artifact hash was recorded separately from the
+reviewed TypeScript source.
+
+These local warm-turn costs do not justify moving routing authority out of
+the room writer. They exclude remote-writer round-trip time, cold planning,
+concurrent tab claims and writer loss. Physical-pair reuse and the lifetime of
+room grants remain separate responsibilities.
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to
