@@ -179,7 +179,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 
 | Change | Start at |
 | --- | --- |
-| Room UI, share/watch workflow and page lifecycle | [ChannelPage](../../src/client/pages/ChannelPage.tsx), [Browser session](../../src/client/channel/session.ts) |
+| Room UI, share/watch workflow and page lifecycle | [ChannelPage](../../src/client/pages/ChannelPage.tsx), [Browser session](../../src/client/channel/session.ts), [room Stage](../../src/client/channel/stage.ts) for source selection and screen-quality edits |
 | Browser peer/media, playback proof and quality | [Channel media](../../src/client/channel/media.ts), [transport](../../src/client/channel/transport.ts), [decoded-frame proof](../../src/client/media/decoded-frame-proof.ts), [shared capture profiles](../../src/client/media/quality.ts) |
 | Domain admission, room authority and route plans | [Core](../../prototype/channel-core/src), [Domain I/O](../../prototype/channel-server/src/domain.rs) |
 | Confirmed conversation, history and storage | [Core host](../../prototype/channel-core/src/host.rs), [Browser room adapter](../../prototype/channel-browser/src/room-host.ts), [Native hosted room](../../prototype/channel-native/src/hosted_room.rs), [Browser room history](../../src/client/channel/room-history.ts) and its [window rules](../../src/client/channel/message-history.ts) |

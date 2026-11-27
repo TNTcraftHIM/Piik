@@ -4146,7 +4146,8 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     const oldShortcut = session.inputShortcut(publication.id, 10);
     const oldShortcutCommand = app.sent.at(-1)!;
     const retiredShortcut = expect(oldShortcut).rejects.toMatchObject({ name: "AbortError" });
-    const nativeAgain = session.startNativeScreen("first", { target, audio: inheritsMute, showCaptureBorder: false });
+    const replacementTarget = { ...target, sourceId: "2", title: "Second display" };
+    const nativeAgain = session.startNativeScreen("first", { target: replacementTarget, audio: inheritsMute, showCaptureBorder: false });
     expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
     expect(session.sourceAudio(publication.id)?.canMute).toBe(true);
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
@@ -4164,9 +4165,16 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     }
     app.receive({ id: replacementCommit.id, result: null }); await nativeAgain;
     if (outcome === "live") {
+      expect(session.getSnapshot().remoteControls.has(publication.id)).toBe(false);
+      await expect(session.inputSimultaneous(publication.id, true)).rejects.toThrow("input_unavailable");
+      app.receive({ type: "input_state", publicationId: publication.id, state: { ...remoteControl, mode: "off" } });
+      expect(session.getSnapshot().remoteControls.get(publication.id)?.mode).toBe("off");
+      const enabling = session.inputPolicy(publication.id, "room");
+      appReply(); await enabling;
+      app.receive({ type: "input_state", publicationId: publication.id, state: { ...remoteControl, mode: "room" } });
       const simultaneous = session.inputSimultaneous(publication.id, true);
       expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId: publication.id,
-        captureId: secondCaptureId, mode: "ask", simultaneous: true });
+        captureId: secondCaptureId, mode: "room", simultaneous: true });
       appReply(); await simultaneous;
     }
     app.receive({ id: oldShortcutCommand.id, result: { key: 10, available: true } });
@@ -4316,6 +4324,11 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     }
     await replace();
     expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toEqual([]);
+    await session.setSourceAudio(publication.id, { bitrate: 96_000 });
+    expect(session.sourceAudio(publication.id)).toMatchObject({ bitrate: 96_000, level: 0 });
+    expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toEqual([]);
+    await expect(session.setSourceAudio(publication.id, { level: 1 })).rejects.toThrow("source_audio_unavailable");
+    expect(session.sourceAudio(publication.id)).toMatchObject({ bitrate: 96_000, level: 0 });
     const recovered = microphoneMixer([]);
     await replace();
     expect(rawSound.stop).toHaveBeenCalledOnce();
@@ -4365,7 +4378,15 @@ test("Browser source output gain and bitrate survive replacement and close with 
     const constraints = vi.fn(async (_value: MediaTrackConstraints) => {});
     constraints.mockImplementationOnce(() => new Promise<void>(resolve => { applied = resolve; }));
     first.getVideoTracks()[0].applyConstraints = constraints;
+    let subscriberEdit: Promise<void> | undefined;
+    const unsubscribe = session.subscribe(() => {
+      if (!session.getSnapshot().pending.has(`quality:${publication.id}`)) return;
+      unsubscribe();
+      subscriberEdit = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+      void subscriberEdit.catch(() => {});
+    });
     const changingQuality = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+    expect(subscriberEdit).toBe(changingQuality);
     expect(session.getSnapshot().pending.has(`quality:${publication.id}`)).toBe(true);
     expect(session.screenQuality(publication.id)?.applied).toEqual(originalProfile);
     expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["1080p30"])).toBe(changingQuality);
@@ -4895,6 +4916,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: audio, microphone: disabledMicrophone } });
       await changing;
+      app.receive({ type: "input_state", publicationId, state: heldInput });
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio, excludeAudio: exclusion, renderEndpointId, showCaptureBorder: true, current: true });
       expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(heldInput);
       expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: audio, available: audio });
@@ -5600,9 +5622,17 @@ test("arming OBS preserves the current capture controls until the external sourc
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, available: false }));
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    const replacement = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
+    const replacementCommand = app.sent.at(-1)!;
     app.receive({ id: edit.id, error: "capture_unavailable" });
     await cancelled;
-    expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(1);
+    expect(replacement).not.toBe(editing);
+    expect(replacementCommand).toMatchObject({ type: "capture_video_settings", captureId: external });
+    expect(session.getSnapshot().pending.has(`quality:${publicationId}`)).toBe(true);
+    app.receive({ id: replacementCommand.id, result: null });
+    await replacement;
+    expect(session.screenQuality(publicationId)?.applied.resolution).toEqual(QUALITY_PROFILES["720p30"].resolution);
     expect(session.getSnapshot().error).toBeNull();
     expect(session.sourceAudio(publicationId)).toBeUndefined();
   } finally { session.close(); }
@@ -11613,7 +11643,11 @@ test("a copy without room information round-trips real ZIP content and remaps hi
   hash.update(new Uint8Array(await file.arrayBuffer()));
   const attachment = { id: crypto.randomUUID(), name: file.name, size: file.size,
     mediaType: "application/octet-stream" as const, sha256: hash.finish() };
-  Object.assign(row, { id: messageId, userId: author, nonce: "owned-copy-nonce", archivedAuthorName: "Archived author",
+  const quotedAuthor = crypto.randomUUID();
+  vi.spyOn(session, "loadProfiles").mockImplementation(async ids => ids.includes(quotedAuthor)
+    ? [{ id: quotedAuthor, name: "Guest", avatar: null, version: "0".repeat(64) }] : []);
+  Object.assign(row, { seq: 2, id: messageId, userId: author, nonce: "owned-copy-nonce", archivedAuthorName: "Archived author",
+    reply: { seq: 1, userId: quotedAuthor, text: "Original message", notify: true },
     attachments: [attachment], reactions: { revision: 1, counts: { wave: 1 } } });
   vi.spyOn(session.attachments, "retained").mockResolvedValue([
     { key: { roomId: "first", messageSeq: row.seq, attachmentId: attachment.id }, attachment, file },
@@ -11625,7 +11659,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const metadata = await backupArchive.readBackup(archive, {
       metadata: () => {}, row: value => { history.push(value); }, content: (digest, value) => { content.set(digest, value); },
     });
-    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: {}, retainedFiles: [{ messageSeq: row.seq, attachment }] });
+    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: { [quotedAuthor]: "Guest" }, retainedFiles: [{ messageSeq: row.seq, attachment }] });
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
@@ -11648,8 +11682,9 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const copied = JSON.parse(importer.accept(JSON.stringify(history[0]))) as BackupHistoryRow;
     importer.finish();
     expect(copied).toMatchObject({ seq: row.seq, text: row.text, attachments: [attachment],
-      archivedAuthorName: "Archived author", reactions: row.reactions });
+      archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "Guest" } });
     if (!("id" in copied)) throw new Error("expected live archive message");
+    expect(copied.reply!.userId).not.toBe(quotedAuthor);
     expect(copied.id).not.toBe(messageId); expect(copied.userId).not.toBe(author); expect(copied.nonce).not.toBe(row.nonce);
     const policy = JSON.parse(core.create_room_policy(JSON.stringify({ id: crypto.randomUUID(), creatorId: creator,
       name: "New copy", icon: "couch", access: "private", hidden: false })));
@@ -12181,7 +12216,7 @@ test("an approved App exports only rooms positively matched to its Native sessio
 });
 
 test.each(["registered", "registration-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
-  const { session, socket, stage, metadata, nextHost, read } = await setupRoomBackup();
+  const { session, socket, peer, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedRoomIds").mockResolvedValue([]);
@@ -12190,6 +12225,8 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
+  await peer.history([message(1)]);
+  const offline = { ...state.channel.rooms[0], available: false, delivery: undefined, reading: false, participantSessionIds: [] };
   const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
   state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", version: profileVersion }];
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
@@ -12204,7 +12241,8 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     for (const field of ["ownerKey", "roomId", "sessionId"]) expect(join).not.toHaveProperty(field);
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint",
-      state: { ...state, channel: { ...state.channel, rooms: [] } } });
+      state: { ...state, channel: { ...state.channel, rooms: [offline] } } });
+    expect.soft(session.getSnapshot().messagesByRoom.first).toBeUndefined();
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "admit_room")).toBe(true));
     const admissionRequest = admission.sent.find(command => command.type === "admit_room")!;
     expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });

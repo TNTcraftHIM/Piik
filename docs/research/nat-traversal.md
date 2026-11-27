@@ -112,6 +112,19 @@ the observed minimum and maximum cannot define the allocator's support.
 Mapping and filtering remain separate observations under
 [RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html#section-4.1).
 
+The isolated allocator at `1533caba` was also exercised through local STUN
+under preservation, sequential and four-counter tuple-hashed kernel routers.
+It identified the three configured allocation patterns. Prediction histories
+were frozen before the first peer-directed send. In two later single trials,
+the predicted windows included the actual sequential and hashed peer mappings,
+but their first complete window required 107 targets. Its scheduler selected
+no window under a 64-datagram total budget, so neither trial attempted a
+predicted-port scan. Sending only to the STUN-advertised port failed in both.
+Window inclusion and an abstained scan do not establish prediction-assisted
+delivery. The laboratory used synthetic peers and left production policy
+unchanged; bounded scheduling, authenticated preparation and ICE transfer remain
+the integration boundary.
+
 ### Native NAT64 Assessment
 
 Native adds IPv6 aliases for numeric IPv4 UDP candidates through the SDK's public

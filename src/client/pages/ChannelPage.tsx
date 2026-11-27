@@ -143,6 +143,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [companionChoice, setCompanionChoice] = useState<Companion>();
   const [toolTriggerHome, setToolTriggerHome] = useState<HTMLDivElement | null>(null);
   const [stageLayoutHome, setStageLayoutHome] = useState<HTMLDivElement | null>(null);
+  const siteHome = useRef<HTMLButtonElement>(null);
   const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
   const [newRoom, setNewRoom] = useState<string | RoomCreationInterrupted | null>(null);
   const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
@@ -227,8 +228,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (!room && previous?.siteId === state.channel.id && previous.roomId === selected) selectRoom("");
   }, [state?.channel.id, room?.id, selected, selectRoom]);
   const managedRoom = rooms.find(value => value.id === managedRoomId && (value.authorized || value.canManage));
-  useEffect(() => {
-    if (state && managedRoomId && !managedRoom) setManagedRoomId(null);
+  useLayoutEffect(() => {
+    if (!state || !managedRoomId || managedRoom) return;
+    setManagedRoomId(null);
+    const home = siteHome.current;
+    // Native dialog focus restoration cannot reach a room control that has disappeared.
+    if (home && home.ownerDocument.activeElement === home.ownerDocument.body) home.focus();
   }, [state?.channel.id, managedRoomId, managedRoom?.id]);
   const connected = connection === "connected";
   const chooseInitialLayout = (value: RoomLayout) => {
@@ -587,7 +592,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       data-minimal={minimal || undefined} data-main-chat={mainChatOpen && room?.authorized || undefined} data-room-list-open={roomListOpen || undefined} data-overview={overview || undefined}
       data-companion={visibleCompanion}>
       <header className="c3-site-bar">{paneNavigation}<div className="c3-site-identity">
-        <button className="lr-btn is-compact is-quiet c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
+        <button ref={siteHome} className="lr-btn is-compact is-quiet c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
         <div className="c3-site-name">{self && self.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
           : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><span className="c3-site-name-readonly"><ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={22} /><strong>{state?.channel.name ?? "Piik"}</strong></span></Tooltip>}</div>
         {!connected && <LedStrip state={connection === "closed" ? "bad" : "busy"}

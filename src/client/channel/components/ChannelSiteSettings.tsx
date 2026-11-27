@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Btn } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useCopy } from "../../ui/copy";
@@ -119,22 +119,23 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
 
 function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelController; disabled: boolean }) {
   const { t, lang } = useCopy();
-  const heading = useId();
+  const headingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
   const directory = channel.state?.channel;
   const deleteData = directory?.hostingMode === "hosted";
   const titledRooms = new Map(directory?.rooms.map(room => [room.id, room.name]));
   const rooms = (directory?.managedRoomIds ?? []).map(id => ({ id, name: titledRooms.get(id) }));
   rooms.sort((a, b) => Number(!a.name) - Number(!b.name) ||
     (a.name ?? a.id).localeCompare(b.name ?? b.id, lang) || a.id.localeCompare(b.id));
-  return <section className="c3-site-room-directory" aria-labelledby={heading}>
-    <h3 id={heading}>{t("channel.siteSettings.roomDirectory")}</h3>
+  return <section className="c3-site-room-directory" aria-labelledby={headingId}>
+    <h3 ref={heading} id={headingId} tabIndex={-1}>{t("channel.siteSettings.roomDirectory")}</h3>
     {rooms.length === 0 ? <p>{t("channel.siteSettings.roomDirectoryEmpty")}</p> :
       <ul>
         {rooms.map(({ id, name }) => {
           const idLabel = t("channel.siteSettings.roomId", { id });
           const duplicateName = name && rooms.some(room => room.id !== id && room.name === name);
           const label = duplicateName ? `${name} · ${idLabel}` : name ?? idLabel;
-          return <DirectoryRoom key={id} id={id} label={label} channel={channel} deleteData={deleteData} disabled={disabled} />;
+          return <DirectoryRoom key={id} id={id} label={label} channel={channel} directoryHeading={heading} deleteData={deleteData} disabled={disabled} />;
         })}
       </ul>}
     {channel.errorRoomId && !rooms.some(room => room.id === channel.errorRoomId) && <div>
@@ -144,13 +145,21 @@ function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelControlle
   </section>;
 }
 
-function DirectoryRoom({ id, label, channel, deleteData, disabled }: {
-  id: string; label: string; channel: ChannelController; deleteData: boolean; disabled: boolean;
+function DirectoryRoom({ id, label, channel, directoryHeading, deleteData, disabled }: {
+  id: string; label: string; channel: ChannelController; directoryHeading: RefObject<HTMLHeadingElement | null>;
+  deleteData: boolean; disabled: boolean;
 }) {
   const { t } = useCopy();
   const { error, run } = useSettingsAction();
   const removing = channel.pending.has(`delete:${id}`);
-  return <li>
+  const row = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    const element = row.current;
+    return () => {
+      if (element?.contains(element.ownerDocument.activeElement)) directoryHeading.current?.focus();
+    };
+  }, [directoryHeading]);
+  return <li ref={row}>
     <span>{label}</span>
     <ChannelInlineConfirm key={String(deleteData)} label={t(deleteData ? "room.action.delete" : "room.action.remove")}
       accessibleLabel={t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label })}

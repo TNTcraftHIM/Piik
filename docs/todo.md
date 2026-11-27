@@ -228,6 +228,13 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Unnamed members and first-visit naming.** Set one representation for an
+  unnamed member across admission, profiles, stored records and copied authors.
+  Reuse the profile editor for the optional site prompt and one localized display
+  helper for guest labels and member tags. Distinguish copied authors from live
+  members and preserve deliberate names. Resolve the first-visit lifetime and
+  matched-version contract before changing the private formats.
+
 - [ ] **Concurrent App invitation entries.** Let local and public entries reach
   the same running authority. Define their startup, advertised addresses and
   stop behavior through the existing launcher and listener owners before
