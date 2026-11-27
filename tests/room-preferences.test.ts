@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { readRoomPreferences, saveRoomPreferences } from "../src/client/lib/room-preferences";
 import { RoomInteractionSession } from "../src/client/lib/room-interactions";
 import { FEEDBACK_CLIP_MAX_BYTES } from "../src/client/channel/feedback-clip";
+import { voiceShortcutsWithDefaults } from "../src/client/channel/voice-shortcut-binding";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -183,6 +184,20 @@ it("keeps voice shortcuts stored before the talk binding existed, and stores it 
   expect(readRoomPreferences().voiceShortcuts.talk).toEqual({ ...microphone, key: "T" });
   expect(saveRoomPreferences({ voiceShortcuts: { microphone, listening: null, talk: null } })).toBe(true);
   expect(readRoomPreferences().voiceShortcuts.talk).toBeNull();
+});
+
+it("clears a stored stop chord without losing other voice choices", () => {
+  const values = storage();
+  const key = "piik:room-preferences:v1";
+  const reserved = { key: "F10", ctrl: true, alt: true, shift: true, meta: true };
+  const listening = { key: "F9", ctrl: true, alt: false, shift: true, meta: false };
+  values.set(key, JSON.stringify({ voiceShortcuts: { microphone: reserved, listening, talk: null } }));
+  expect(readRoomPreferences("voiceShortcuts")).toEqual({ microphone: null, listening, talk: null });
+
+  values.set(key, JSON.stringify({ voiceShortcuts: { microphone: reserved, listening } }));
+  expect(voiceShortcutsWithDefaults(false, readRoomPreferences("voiceShortcuts"))).toEqual({
+    microphone: null, listening, talk: { ...listening, key: "V" },
+  });
 });
 
 it("persists the total screen buffer target independently, including zero and automatic", () => {

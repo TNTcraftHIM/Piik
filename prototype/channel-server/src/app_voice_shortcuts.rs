@@ -33,6 +33,10 @@ impl Binding {
             b"F11" => 0x7a,
             _ => anyhow::bail!("invalid_voice_shortcut"),
         };
+        ensure!(
+            !(self.ctrl && self.alt && (0x70..=0x7a).contains(&key)),
+            "invalid_voice_shortcut"
+        );
         Ok(key)
     }
 }
@@ -121,6 +125,37 @@ impl Connection<'_> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configure_rejects_reserved_stop_chords() {
+        let owner = Owner::default();
+        let mut connection = owner.connect();
+        for (key, shift, meta) in [
+            ("F1", false, false),
+            ("F9", true, false),
+            ("F10", false, true),
+            ("F11", true, true),
+        ] {
+            let binding = Binding {
+                key: key.into(),
+                ctrl: true,
+                alt: true,
+                shift,
+                meta,
+            };
+            let result = connection.configure(Settings {
+                enabled: true,
+                microphone: Some(binding),
+                listening: None,
+            });
+            assert_eq!(result.err().unwrap().to_string(), "invalid_voice_shortcut");
+        }
+    }
+}
+
 #[cfg(all(windows, feature = "capture"))]
 mod windows {
     use super::{Binding, Owner, Report, Status};
@@ -206,10 +241,7 @@ mod windows {
                         modifiers |= flag;
                     }
                 }
-                // Reserve the existing remote-control stop combinations for their owner.
-                if !(modifiers == (MOD_CONTROL | MOD_ALT) && (0x70..=0x7a).contains(&key)) {
-                    hotkeys[index] = Some(HotkeyBinding { modifiers, key });
-                }
+                hotkeys[index] = Some(HotkeyBinding { modifiers, key });
             }
             self.stop();
             let mut status = requested.map(|set| {

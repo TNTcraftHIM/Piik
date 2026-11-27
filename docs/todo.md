@@ -93,10 +93,6 @@ the feedback period; they do not delay that delivery.
   the destination writer's validation. Review SQLite single-row storage and a
   full byte-tree wire change only with their concrete ownership benefit and
   regression cost; neither is a demonstrated runtime defect.
-- [ ] **Reserved stop shortcuts.** Exclude Ctrl+Alt+F1–F11, with optional Shift
-  and Win, from voice bindings at the shared Browser and App validators. Keep
-  other saved bindings when one slot is invalid. Register only the selected
-  stop key's existing platform variants.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,

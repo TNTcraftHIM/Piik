@@ -801,7 +801,7 @@ export const zh = {
   "voice.shortcuts.edit": "更改{action}快捷键（{shortcut}）",
   "voice.shortcuts.clear": "清除{action}快捷键",
   "voice.shortcuts.record": "按下快捷键，Esc 取消。",
-  "voice.shortcuts.unsupported": "请选择字母、数字或 F1–F11，并搭配 Ctrl、Alt 或 Command。",
+  "voice.shortcuts.unsupported": "请选择字母、数字或 F1–F11，并搭配 Ctrl、Alt 或 Command。Ctrl+Alt 与 F1–F11 的组合保留给结束远程控制。",
   "voice.shortcuts.duplicate": "此快捷键已用于{action}。",
   "voice.mode.push": "按键说话",
   "voice.mode": "麦克风模式",

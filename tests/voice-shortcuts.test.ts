@@ -7,7 +7,7 @@ import type { ChannelController } from "../src/client/channel/types";
 import { useVoiceShortcuts } from "../src/client/channel/use-voice-shortcuts";
 import { setCopy, t } from "../src/client/ui/copy";
 import {
-  releasesVoiceShortcut, voiceShortcutDefaults, voiceShortcutsWithDefaults, type VoiceShortcutBinding,
+  releasesVoiceShortcut, voiceShortcutDefaults, voiceShortcutFromEvent, voiceShortcutsWithDefaults, type VoiceShortcutBinding,
 } from "../src/client/channel/voice-shortcut-binding";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -15,6 +15,18 @@ afterEach(() => vi.unstubAllGlobals());
 const chord = (key: string): VoiceShortcutBinding => ({ key, ctrl: true, alt: false, shift: true, meta: false });
 
 describe("voice shortcut bindings", () => {
+  it("keeps the remote stop family out of voice shortcut capture", () => {
+    const record = (value: string, modifiers: Partial<KeyboardEvent> = {}) =>
+      voiceShortcutFromEvent(Object.assign(key("keydown", value), modifiers) as KeyboardEvent);
+
+    expect(record("F1", { altKey: true, shiftKey: false })).toBeNull();
+    expect(record("F9", { altKey: true })).toBeNull();
+    expect(record("F10", { altKey: true, shiftKey: false, metaKey: true })).toBeNull();
+    expect(record("F11", { altKey: true, metaKey: true })).toBeNull();
+    expect(record("F9")).toEqual(chord("F9"));
+    expect(record("f", { altKey: true })).toEqual({ ...chord("F"), alt: true });
+  });
+
   it("adds the talk default to stored bindings unless another action already holds its chord", () => {
     expect(voiceShortcutsWithDefaults(false, {})).toEqual(voiceShortcutDefaults(false));
     expect(voiceShortcutsWithDefaults(false, { microphone: chord("Q"), listening: null })).toEqual({
