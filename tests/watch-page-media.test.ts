@@ -3,6 +3,7 @@ import { AppPage } from "../src/client/channel/app-link";
 import { observeWatchSources, PageSuppliedMedia, preparePortableWatchMedia } from "../src/client/channel/watch-page-media";
 import { readFileSync } from "node:fs";
 import { HTMLVideoMedia } from "../src/client/channel/watch-media";
+import * as watchResource from "../src/client/channel/watch-resource";
 class Video extends EventTarget {
   currentTime = 12; duration = 30; paused = true; playbackRate = 1; readyState = 4; ended = false; error = null; src = "";
   buffered = { length: 1, start: () => 0, end: () => 30 };
@@ -12,10 +13,12 @@ class Video extends EventTarget {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 test('main media owns state and events while its page owns only resource lifetime', async () => {
   const video = new Video();vi.stubGlobal('document', { createElement: () => video });
+  vi.spyOn(watchResource, 'openWatchResource').mockResolvedValue({ url: 'https://source.test/file.mp4', close: vi.fn() });
   const dispose = vi.fn(), page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), dispose, vi.fn());
   const candidateId = page.selectedCandidateId = crypto.randomUUID(), pageEvent = vi.fn();
   page.listen(pageEvent);
-  const media = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), {sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'}, () => page.close());
+  const media = new PageSuppliedMedia(page, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' });
+  page.close();
   const changed = vi.fn();media.listen(changed);
   page.receive({type:'page_sample',pageId:page.id,candidateId,event:'seeked'});
   expect(pageEvent).toHaveBeenCalledWith('seeked');
@@ -27,19 +30,21 @@ test('main media owns state and events while its page owns only resource lifetim
   media.close();expect(dispose).toHaveBeenCalledOnce();
 });
 
-test('a failed local retry keeps the provider open and only its committed successor closes it', () => {
+test('players on the same page release independent references', async () => {
   vi.stubGlobal('document', { createElement: () => new Video() });
+  vi.spyOn(watchResource, 'openWatchResource').mockResolvedValue({ url: 'https://source.test/file.mp4', close: vi.fn() });
   const closePage = vi.fn();
   const page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), closePage, vi.fn());
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
-  const first = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), source, () => page.close());
-  first.retryCandidate('media').close();
-  expect(closePage).not.toHaveBeenCalled();
-  const replacement = first.retryCandidate('media');
-  first.transferPageTo(replacement);
+  const first = new PageSuppliedMedia(page, source);
+  const replacement = new PageSuppliedMedia(page, source, 'media');
+  page.close();
+  await replacement.ready(new AbortController().signal);
+  first.close();
   first.close();
   expect(closePage).not.toHaveBeenCalled();
   expect(replacement.retainedByteSource).toBe(source);
+  replacement.close();
   replacement.close();
   expect(closePage).toHaveBeenCalledOnce();
 });

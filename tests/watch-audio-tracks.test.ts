@@ -1,8 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { HTMLVideoMedia, type WatchMedia, type WatchMediaEvent } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia } from "../src/client/channel/watch-media";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { AppPage } from "../src/client/channel/app-link";
+import * as watchResource from "../src/client/channel/watch-resource";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -23,18 +24,24 @@ test("audio choices disclose display metadata only and a stale invalid choice do
 });
 
 test("local audio changes refresh the owner UI without publishing shared playback or changing its page authority", async () => {
-  let notify!: (event: WatchMediaEvent) => void;
-  const select = vi.fn((_: number) => notify("audiotracks")), tracks = [{ id: 1, name: "中文", language: "zh", selected: true }];
-  const main = { audioTracks: () => tracks, selectAudioTrack: select, read: async () => ({ position: 12, paused: true, rate: 1, readyState: 4, duration: 24, ended: false, buffered: [] }),
-    ready: async () => {}, patch: vi.fn(), listen: (callback: (event: WatchMediaEvent) => void) => { notify = callback; return () => {}; }, close: vi.fn() } satisfies WatchMedia;
+  const video = Object.assign(new EventTarget(), { pause() {}, load() {}, removeAttribute() {}, remove() {} });
+  vi.stubGlobal("document", { createElement: () => video });
+  vi.spyOn(watchResource, "openWatchResource").mockResolvedValue({ url: "https://fixture.test/video", close: vi.fn() });
+  const select = vi.fn(() => video.dispatchEvent(new Event("audiotracks")));
+  const hls = { audioTracks: [{ name: "中文", lang: "zh" }], audioTrack: 0, setAudioOption: select, destroy: vi.fn() };
   const dispose = vi.fn(), page = new AppPage(crypto.randomUUID(), "https://fixture.test/page", vi.fn(), dispose, vi.fn());
-  const provider = new PageSuppliedMedia(page, main as unknown as HTMLVideoMedia, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" }, () => page.close());
+  const provider = new PageSuppliedMedia(page, { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" });
+  page.close();
+  (provider as unknown as { hls: typeof hls }).hls = hls;
+  const patch = vi.spyOn(provider, "patch");
   const changed = vi.fn(), publish = vi.fn(async () => {}), player = new WatchPlayer("room", true, provider, changed);
   player.activate(publish);
   try {
-    expect(provider.audioTracks()).toBe(tracks); provider.selectAudioTrack(1);
+    expect(provider.audioTracks()).toEqual([{ id: 0, name: "中文", language: "zh", selected: true }]);
+    provider.selectAudioTrack(0);
     await player.serialize(async () => {});
-    expect(select).toHaveBeenCalledWith(1); expect(changed).toHaveBeenCalledOnce();
-    expect(publish).not.toHaveBeenCalled(); expect(main.patch).not.toHaveBeenCalled(); expect(dispose).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ name: "中文", lang: "zh" }));
+    expect(changed).toHaveBeenCalledOnce();
+    expect(publish).not.toHaveBeenCalled(); expect(patch).not.toHaveBeenCalled(); expect(dispose).not.toHaveBeenCalled();
   } finally { player.close(); }
 });

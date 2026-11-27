@@ -1862,6 +1862,7 @@ export class ChannelSession {
       if (generation === this.identityGeneration) {
         this.close();
         if (skipRoom) this.start();
+        else if (identity.ownerKey !== undefined) this.patch({ error: "domain_restored_connection_failed" });
       }
       throw error;
     } finally {
@@ -1936,25 +1937,27 @@ export class ChannelSession {
     this.close();
     const generation = this.identityGeneration;
     const canResume = () => generation === this.identityGeneration && this.closed && !this.socket;
-    let committed = false;
     try {
-      const domainId = await owner.native.restore(archive); committed = true;
-      if (!canResume()) throw new Error("disconnected");
-      if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
-      await this.connectBackupIdentity(domainId, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
-      const { name, icon, askUnnamedMemberName } = this.view.state!.channel;
-      return { name, icon, askUnnamedMemberName };
+      const domainId = await owner.native.restore(archive);
+      if (domainId !== metadata.state.id) throw new Error("domain_restore_unconfirmed");
     } catch (error) {
-      const restored = error instanceof Error && error.message === "domain_restored_connection_failed";
-      if (committed || restored) {
-        if (!committed && canResume()) {
-          await this.connectBackupIdentity(metadata.state.id, metadata.state.ownerId, { ownerKey: metadata.ownerKey }).catch(() => {});
+      const code = error instanceof Error ? error.message : undefined;
+      if (code !== "domain_restored_connection_failed") {
+        if (canResume()) {
+          if (code === "domain_restore_unconfirmed") this.patch({ error: code });
+          else this.start();
         }
-        throw new Error("domain_restored_connection_failed");
+        throw error;
       }
-      if (canResume()) this.start();
-      throw error;
     }
+    if (!canResume()) throw new Error("disconnected");
+    try {
+      await this.connectBackupIdentity(metadata.state.id, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
+    } catch {
+      throw new Error("domain_restored_connection_failed");
+    }
+    const { name, icon, askUnnamedMemberName } = this.view.state!.channel;
+    return { name, icon, askUnnamedMemberName };
   }, false);
 
   inspectRoomCopy = async (archive: Blob) => {
@@ -3213,8 +3216,7 @@ export class ChannelSession {
       try {
         const source = this.view.state?.watchActivities.find(value => value.id === id);
         if (!source) throw new Error("watch_unavailable");
-        const replacement = media.retryCandidate(source.playback.timeline);
-        next = this.makeWatchPlayer(id, player.roomId, true, replacement);
+        next = this.makeWatchPlayer(id, player.roomId, true, new PageSuppliedMedia(media.page, media.retainedByteSource, source.playback.timeline));
         await next.ready(player.signal);
         const activity = this.view.state?.watchActivities.find(value => value.id === id);
         if (!activity) throw new Error("watch_unavailable");
@@ -3223,7 +3225,6 @@ export class ChannelSession {
         await next.restorePlayback(activity.playback);
         player.signal.throwIfAborted();
         if (this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
-        media.transferPageTo(replacement);
         next.mode = player.mode;
         this.stage(next.roomId).useWatch(id, next);
         this.activateWatchOwner(id, next);

@@ -668,7 +668,12 @@ fn stored_turn(
 
 #[tokio::test]
 async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
-    use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, StoredRoomHost};
+    use piik_channel_core::{
+        conversation::{ConversationAddress, ConversationRecord, ConversationReply, SessionSigner},
+        history::StoredMessage,
+        wire::{ChatMessage, RoomAccess},
+        StoredRoomHost,
+    };
 
     let folder = tempfile::tempdir().unwrap();
     let domain = Domain::open(
@@ -715,13 +720,36 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
             "recipient":reader.session,"requestId":"history",
             "record":{"type":"history_page","messages":[],"hasMore":false,"oldestSeq":null,"before":null}
         })).unwrap();
-        let packet = SessionSigner::from_seed([1;32]).sign(host.session, &json!({
-            "roomId":"living","bindingId":binding,"sender":host.session,
-            "recipient":reader.session,"requestId":"chat",
-            "record":{"type":"confirmed","inserted":true,"message":{
-                "id":Uuid::new_v4(),"seq":1,"userId":reader.user,"text":"Hello","time":1,"attachments":[]
-            }}
-        })).unwrap();
+        let confirmation = ConversationReply {
+            address: ConversationAddress {
+                room_id: "living".into(),
+                binding_id: binding,
+                sender: host.session,
+                recipient: reader.session,
+                request_id: "chat".into(),
+            },
+            record: ConversationRecord::Confirmed {
+                inserted: true,
+                message: StoredMessage {
+                    message: ChatMessage {
+                        id: Uuid::new_v4(),
+                        seq: 1,
+                        user_id: reader.user,
+                        text: "Hello".into(),
+                        time: 1,
+                        attachments: vec![],
+                        mentions: vec![],
+                        reply: None,
+                        inline_images: Default::default(),
+                        archived_author_name: None,
+                    },
+                    reactions: Default::default(),
+                },
+            },
+        };
+        let packet = SessionSigner::from_seed([1; 32])
+            .sign(host.session, &confirmation)
+            .unwrap();
         reader.drain();
         observer.drain();
         let client = hub.clients.get_mut(&reader.id).unwrap();

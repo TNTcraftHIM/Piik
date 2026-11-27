@@ -606,6 +606,7 @@ export const en: Record<CopyKey, string> = {
   "channel.error.roomLimit": "This site has reached its room limit. The site owner can remove unused rooms from the room directory.",
   "channel.error.directoryStorageFailed": "The room operation succeeded, but the room directory could not be saved.",
   "channel.error.expectedRoomCopy": "Choose a room copy file. For a full backup, use Restore room.",
+  "channel.error.domainRestoreUnconfirmed": "Piik could not confirm whether the site was restored. Reconnect and check the site before deciding whether to try again.",
   "channel.error.domainRestoredConnectionFailed": "The site was restored, but reconnection failed. Reconnect or open the restored site's address. You do not need to restore the backup again.",
   "channel.error.roomRestoreUnconfirmed": "Piik could not confirm whether the room was restored. Reconnect and check the room list before deciding whether to try again.",
   "channel.error.roomRestoredConnectionFailed": "Room data was restored, but reconnection failed. Reconnect without restoring the backup again.",

@@ -22,6 +22,8 @@ import { HTMLVideoMedia, AppPageMedia } from "../src/client/channel/watch-media"
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import type { Stage } from "../src/client/channel/stage";
 import * as watchMedia from "../src/client/channel/watch-media";
+import * as watchResource from "../src/client/channel/watch-resource";
+import { WatchDashMedia } from "../src/client/channel/watch-dash-media";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import * as nativeActivation from "../src/client/native/activation";
 import * as cameraPreviews from "../src/client/media/camera-previews";
@@ -11662,7 +11664,7 @@ test("domain backup uses its actual service owner and validates kind before reti
   } finally { session.close(); }
 });
 
-test.each(["success", "rejected", "partial"] as const)("page teardown fences late domain restore %s", async outcome => {
+test.each(["success", "rejected", "partial", "unconfirmed"] as const)("page teardown fences late domain restore %s", async outcome => {
   const { session, socket } = await setup(3, false, "");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
   const metadata = { kind: "domain" as const, version: 3 as const, state: { id: domainId, ownerId, name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "archived-key" };
@@ -11675,16 +11677,18 @@ test.each(["success", "rejected", "partial"] as const)("page teardown fences lat
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(socket.readyState).toBe(3);
     session.close();
-    answer(outcome === "success" ? new Response(JSON.stringify({ domainId })) :
-      new Response(JSON.stringify({ error: outcome === "partial" ? "domain_restored_connection_failed" : "restore_rejected" }), { status: 409 }));
+    answer(outcome === "success" ? Response.json({ domainId }) :
+      outcome === "unconfirmed" ? Response.json({ error: "domain_restore_unavailable" }, { status: 503 }) :
+      Response.json({ error: outcome === "partial" ? "domain_restored_connection_failed" : "restore_rejected" }, { status: 409 }));
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(session.getSnapshot().connection).toBe("closed");
+    expect(session.getSnapshot().error).toBeNull();
     expect(ChannelSocket.current).toBe(socket);
     expect(await completion).toBeInstanceOf(Error);
   } finally { session.close(); }
 });
 
-test("domain restore closes the old connection, admits archived keys only after HTTP commit and verifies Welcome before saving identity", async () => {
+test.each(["success", "committed with hosting failure"] as const)("domain restore waits for HTTP %s and verifies Welcome before saving identity", async outcome => {
   const { document, contexts } = stubFeedbackAudio();
   const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
@@ -11710,7 +11714,8 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(fetch.mock.calls[0][1].method).toBe("PUT"); expect(saved).not.toHaveBeenCalled();
     expect(inspect).toHaveBeenCalledWith(archive);
     expect(fetch.mock.calls[0][1].body).toBe(archive);
-    answer(new Response(JSON.stringify({ domainId })));
+    answer(outcome === "success" ? Response.json({ domainId }) :
+      Response.json({ error: "domain_restored_connection_failed" }, { status: 409 }));
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current; await admission.onopen?.();
     const join = admission.sent.find(command => command.type === "join")!;
@@ -11777,8 +11782,36 @@ test("domain admission does not save a Welcome whose current owner differs from 
     const admission = ChannelSocket.current; await admission.onopen?.();
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "not-verified", sessionId: "endpoint", state });
     await rejected; expect(saved).not.toHaveBeenCalled();
+    expect(session.getSnapshot().error).toBe("domain_restored_connection_failed");
     expect(session.getSnapshot().state).toBeNull(); expect(admission.readyState).toBe(3);
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each(["lost", "wrong site"] as const)("a %s site restore reply leaves the old identity available for explicit reconnect", async outcome => {
+  const { session, socket } = await setup();
+  const metadata = { kind: "domain" as const, version: 3 as const,
+    state: { id: crypto.randomUUID(), ownerId: crypto.randomUUID(), name: "Restored", icon: "couch", hostedRooms: {} },
+    ownerKey: "archived-owner" };
+  vi.spyOn(backupArchive, "readBackup").mockResolvedValue(metadata);
+  const fetch = vi.fn();
+  if (outcome === "lost") fetch.mockRejectedValue(new TypeError("network"));
+  else fetch.mockResolvedValue(Response.json({ domainId: crypto.randomUUID() }));
+  vi.stubGlobal("fetch", fetch);
+  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  try {
+    await expect(session.restoreDomainBackup(new Blob())).rejects.toThrow("domain_restore_unconfirmed");
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", error: "domain_restore_unconfirmed" });
+    expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
+    expect(ChannelSocket.current).toBe(socket);
+    expect(saved).not.toHaveBeenCalled();
+
+    session.reconnect();
+    await ChannelSocket.current.onopen?.();
+    const join = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(join).toMatchObject({ credential: "credential" });
+    expect(join).not.toHaveProperty("ownerKey");
     expect(fetch).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
@@ -14191,7 +14224,13 @@ function indexedInspection(kind: "video" | "audio"): indexedSource.IndexedTrackI
 function localProviderVideo() {
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
-  vi.spyOn(watchMedia, 'createResourceWatchMedia').mockImplementation(() => new HTMLVideoMedia('https://fixture.test/local.mp4', 'file'));
+  const url = 'https://fixture.test/local.mp4';
+  vi.spyOn(watchResource, 'openWatchResource').mockResolvedValue({ url, close: vi.fn() });
+  vi.spyOn(WatchDashMedia.prototype, 'open').mockResolvedValue();
+  const fetch = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => input === url
+    ? new Response("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n#EXT-X-ENDLIST\n")
+    : fetch(input, options)));
   return video;
 }
 
@@ -14538,7 +14577,7 @@ test('local provider preparation failure releases only its reader and candidate,
   const local=localProviderVideo();
   vi.spyOn(page,'prepareMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
   const stop=vi.spyOn(page,'stopMedia').mockResolvedValue();
-  vi.spyOn(HTMLVideoMedia.prototype,'ready').mockRejectedValueOnce(new Error('watch_media_unavailable'));
+  vi.spyOn(watchResource, 'openWatchResource').mockRejectedValueOnce(new Error('watch_media_unavailable'));
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
   const incumbent=new WatchPlayer('first',true,new HTMLVideoMedia('https://fixture.test/old.mp4','file'),()=>{});
   vi.stubGlobal('document', { createElement: () => local });
@@ -14552,6 +14591,7 @@ test('local provider preparation failure releases only its reader and candidate,
     expect(socket.sent.some(command=>command.type==='start_watch'||command.type==='join_watch')).toBe(false);
     expect(local.src).toBe('');
   }finally{session.close();}
+  expect(dispose).toHaveBeenCalledOnce();
 });
 
 test('closing forwarding settings during direct preparation releases the reader and keeps the original page', async () => {
@@ -14652,38 +14692,53 @@ test("foreground recovery cannot withdraw a replacement watch byte source", asyn
 
 test.each(["source", "candidate", "ready", "cancel"] as const)("resume feedback: the current player owns %s failure without a Session banner", async fault => {
   const { session } = await setup(1000, false);
-  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const incumbentVideo = localProviderVideo();
+  vi.stubGlobal("document", { createElement: vi.fn().mockReturnValueOnce(incumbentVideo).mockImplementation(() => new WatchTestVideo()) });
   const dispose = vi.fn();
   const page = new appLink.AppPage(crypto.randomUUID(), "https://video.test/film", vi.fn(async () => ({})), dispose, () => {});
   const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
-  const media = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/local.mp4", "file"), bytes, () => page.close());
+  const media = new PageSuppliedMedia(page, bytes);
+  page.close();
+  await media.ready(new AbortController().signal);
+  await media.patch({ paused: false });
   const player = new WatchPlayer("first", true, media, () => {});
   player.error = "watch_media_failed";
   installWatchPlayer(session, "owned", player);
   const state = session.getSnapshot().state!;
   state.watchActivities = fault === "source" ? [] : [{ id: "owned", roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
-    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } }];
+    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 12, paused: true, rate: 1, anchorTime: 1000 } }];
   const failure = fault === "cancel" ? new DOMException("Cancelled", "AbortError")
     : new Error(fault === "source" ? "watch_unavailable" : fault === "candidate" ? "watch_source_unavailable" : "watch_media_access_denied");
-  const candidate = new PageSuppliedMedia(page, new HTMLVideoMedia("https://fixture.test/retry.mp4", "file"), bytes, null);
-  const closeCandidate = vi.spyOn(candidate, "close");
-  vi.spyOn(candidate, "ready").mockRejectedValue(failure);
-  vi.spyOn(media, "retryCandidate").mockImplementation(() => { if (fault === "candidate") throw failure; return candidate; });
+  if (fault === "candidate") vi.spyOn(page, "hold").mockImplementationOnce(() => { throw failure; });
+  if (fault === "ready" || fault === "cancel") vi.spyOn(watchResource, "openWatchResource").mockRejectedValueOnce(failure);
   try {
     await expect(session.resumeWatch("owned")).rejects.toThrow(failure.message);
     expect(player.error).toBe(fault === "cancel" ? "watch_media_failed" : failure.message);
     expect(session.getSnapshot().watchPlayers.get("owned")).toBe(player);
     expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().pending.has("watch-video:owned")).toBe(false);
-    expect(closeCandidate).toHaveBeenCalledTimes(fault === "ready" || fault === "cancel" ? 1 : 0);
+    expect(incumbentVideo.paused).toBe(false);
+    expect(incumbentVideo.src).toBe("https://fixture.test/local.mp4");
     expect(dispose).not.toHaveBeenCalled();
-  } finally { candidate.close(); session.close(); }
+    if (fault === "ready") {
+      player.calibrate(1000, performance.now());
+      await session.resumeWatch("owned");
+      expect(player.signal.aborted).toBe(true);
+      expect(incumbentVideo.src).toBe("");
+      const successor = session.getSnapshot().watchPlayers.get("owned");
+      expect(successor?.media.page).toBe(page);
+      expect(successor?.video).toMatchObject({ currentTime: 12, paused: true });
+      expect(dispose).not.toHaveBeenCalled();
+    }
+  } finally { session.close(); }
+  expect(dispose).toHaveBeenCalledOnce();
 });
 
 test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {
   const {session,page,socket,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[],byteSource:null}));
   localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
-  const media=new PageSuppliedMedia(page,new HTMLVideoMedia('https://fixture.test/local.mp4','file'),source, () => page.close());
+  const media = new PageSuppliedMedia(page, source);
+  page.close();
   const player=new WatchPlayer('first',true,media,()=>{}),stop=vi.spyOn(page,'stopMedia');
   installWatchPlayer(session, 'owned',player);
   try{
