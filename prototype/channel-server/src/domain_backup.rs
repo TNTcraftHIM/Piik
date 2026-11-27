@@ -150,21 +150,30 @@ pub(super) async fn create_copy(
         .get("x-piik-session")
         .and_then(|value| value.to_str().ok()?.parse().ok())
         .ok_or_else(|| creation_error("forbidden"))?;
-    let connection = {
+    let (connection, mut closing) = {
         let (creator, hub) = authorized(&domain, &headers, |auth, _| {
             auth.hosting_mode() == HostingMode::Hosted
         })?;
-        hub.authority
+        let connection = hub
+            .authority
             .creation_connection(session, creator.user_id)
-            .map_err(creation_error)?
+            .map_err(creation_error)?;
+        let client = hub
+            .clients
+            .get(&connection)
+            .ok_or_else(|| creation_error("disconnected"))?;
+        (connection, client.close.subscribe())
     };
     let scratch = domain
         .room_restore
         .clone()
         .try_acquire_owned()
         .map_err(|_| creation_error("room_busy"))?;
-    let (archive, directory, scratch) =
-        backup::receive_copy_upload(&headers, body, scratch).await?;
+    let (archive, directory, scratch) = tokio::select! {
+        biased;
+        _ = closing.wait_for(|closed| *closed) => return Err(creation_error("disconnected")),
+        upload = backup::receive_copy_upload(&headers, body, scratch) => upload?,
+    };
     let authority = domain.hub.clone();
     let (creation, snapshot, scratch) = tokio::task::spawn_blocking(move || {
         let (command, submission) =

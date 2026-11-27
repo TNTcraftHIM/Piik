@@ -163,7 +163,7 @@ pub(crate) async fn receive_copy_upload(
     scratch: OwnedSemaphorePermit,
 ) -> Result<(File, tempfile::TempDir, OwnedSemaphorePermit), ApiError> {
     require_zip(headers)?;
-    let mut reader = upload_reader(body);
+    let (mut reader, _request) = upload_reader(body);
     tokio::task::spawn_blocking(move || {
         // Keep the permit until copying and any temporary file cleanup finish.
         let scratch = scratch;
@@ -200,7 +200,7 @@ async fn stage_upload(
     scratch: Option<OwnedSemaphorePermit>,
 ) -> std::result::Result<Upload, ApiError> {
     require_zip(headers)?;
-    let mut reader = upload_reader(body);
+    let (mut reader, _request) = upload_reader(body);
     tokio::task::spawn_blocking(move || -> Result<Upload> {
         let (archive, directory) = receive_zip(&mut reader, scratch.is_some())?;
         let staged = if existing {
@@ -226,9 +226,22 @@ fn require_zip(headers: &HeaderMap) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn upload_reader(body: Body) -> impl Read + Send {
-    let reader = StreamReader::new(body.into_data_stream().map_err(io::Error::other));
-    SyncIoBridge::new(reader)
+// Dropping the request wakes a blocked body read. The worker retains the
+// scratch permit while it closes and removes the partial archive.
+fn upload_reader(body: Body) -> (impl Read + Send, oneshot::Sender<()>) {
+    let (request, dropped) = oneshot::channel();
+    let bytes = stream::try_unfold(
+        (body.into_data_stream().map_err(io::Error::other), dropped),
+        |(mut body, mut dropped)| async move {
+            let chunk = tokio::select! {
+                biased;
+                _ = &mut dropped => return Err(io::Error::other("upload_cancelled")),
+                chunk = body.next() => chunk.transpose()?,
+            };
+            Ok(chunk.map(|bytes| (bytes, (body, dropped))))
+        },
+    );
+    (SyncIoBridge::new(StreamReader::new(Box::pin(bytes))), request)
 }
 
 fn receive_zip(input: &mut impl Read, bounded: bool) -> io::Result<(File, tempfile::TempDir)> {
@@ -338,14 +351,14 @@ mod upload_tests {
     use super::*;
 
     #[tokio::test]
-    async fn disconnected_request_keeps_its_slot_until_staging_exits() {
+    async fn disconnected_request_releases_its_slot_with_the_body_still_open() {
         let slot = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
         let (commands, _receive) = mpsc::channel(1);
         let (started, reading) = oneshot::channel();
-        let (finish, finished) = oneshot::channel();
+        let (finish, finished) = oneshot::channel::<()>();
         let body = Body::from_stream(stream::once(async move {
             started.send(()).unwrap();
-            finished.await.unwrap();
+            let _ = finished.await;
             Ok::<_, io::Error>(axum::body::Bytes::new())
         }));
         let mut headers = HeaderMap::new();
@@ -361,9 +374,11 @@ mod upload_tests {
         reading.await.unwrap();
         request.abort();
         assert!(request.await.unwrap_err().is_cancelled());
-        assert!(slot.clone().try_acquire_owned().is_err());
-        finish.send(()).unwrap();
-        let _released = slot.acquire().await.unwrap();
+        let _released = tokio::time::timeout(std::time::Duration::from_secs(5), slot.acquire())
+            .await
+            .expect("request drop interrupts the body read")
+            .unwrap();
+        drop(finish);
     }
 
     #[test]

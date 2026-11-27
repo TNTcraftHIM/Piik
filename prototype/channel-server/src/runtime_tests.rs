@@ -3268,6 +3268,47 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
 }
 
 #[tokio::test]
+async fn leaving_during_copy_releases_upload_scratch() {
+    use axum::{body::{Body, Bytes}, extract::State, http::{header, HeaderMap, StatusCode}};
+    use tokio::sync::oneshot;
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open_with_options(
+        folder.path(), Some("owner"), "http://localhost".into(), None, vec![],
+        RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
+    ).unwrap();
+    let (creator, headers) = {
+        let mut hub = domain.hub.lock().unwrap();
+        let mut creator = Endpoint::connect(&mut hub);
+        creator.request(&mut hub, json!({"type":"join","name":"Creator"}));
+        let welcome = creator.drain().into_iter().find(|event| event["type"] == "welcome").unwrap();
+        let mut headers = HeaderMap::new();
+        let credential = welcome["credential"].as_str().unwrap();
+        headers.insert(header::AUTHORIZATION, format!("Bearer {credential}").parse().unwrap());
+        headers.insert(header::CONTENT_TYPE, "application/zip".parse().unwrap());
+        headers.insert("x-piik-session", welcome["sessionId"].as_str().unwrap().parse().unwrap());
+        (creator, headers)
+    };
+    let (started, reading) = oneshot::channel();
+    let (producer, finished) = oneshot::channel::<()>();
+    let body = Body::from_stream(futures_util::stream::once(async move {
+        started.send(()).unwrap();
+        let _ = finished.await;
+        Ok::<_, std::io::Error>(Bytes::new())
+    }));
+    let request = tokio::spawn(backup::create_copy(State(domain.clone()), headers, body));
+    tokio::time::timeout(Duration::from_secs(5), reading).await.unwrap().unwrap();
+    creator.request(&mut domain.hub.lock().unwrap(), json!({"type":"leave"}));
+    let (status, error) = tokio::time::timeout(Duration::from_secs(5), request)
+        .await.unwrap().unwrap().unwrap_err();
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(error.0["error"], "disconnected");
+    let _released = tokio::time::timeout(Duration::from_secs(5), domain.room_restore.acquire())
+        .await.unwrap().unwrap();
+    drop(producer);
+}
+
+#[tokio::test]
 async fn owner_room_backup_rejects_busy_restore_before_reading_upload() {
     use axum::{body::{Body, Bytes}, extract::State, http::{header, HeaderMap, StatusCode}};
     use std::sync::atomic::{AtomicBool, Ordering};
