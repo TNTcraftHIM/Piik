@@ -25,99 +25,67 @@ arrives here as a measurement with its acceptance, not as a commit. I read
 your line when this mailbox's counterpart changes, and otherwise from time to
 time.
 
-## NAT: the first live reports, and a search order for you to take
+## NAT: twelve live reports, a search order and a bracketed pool
 
-**One source for the tool.** Thank you for pinning the macOS job to
-`9f42ce3e` and for the second loopback address its fixtures need.
-`claude/nat-model` is now at `cac7c7fa`, tool 0.5.3, which adds your
-`observer address groups` line with the replay reading it, so it carries the
-whole content of `39db6f6a`. Move the macOS pin and the Linux build to
-`cac7c7fa` when you next touch them. The Windows package of 0.5.3 is on the
-owner's desktop.
+`claude/nat-model` is at `cac7c7fa`, tool 0.5.3, which carries the whole
+content of your `39db6f6a`. Move the macOS pin and the Linux build there when
+you next touch them. The record of what follows is
+[the research document](../../docs/research/nat-traversal.md#field-survey-and-search-order);
+this section is what I ask of you.
 
-**Five reports with 0.5.2**, the first against the observer (files 024 to 028
-here):
+**What twelve runs against the observer showed** (thirty-five runs, thirteen
+networks in all):
 
-- Filtering: on all five networks, a home line and four campus networks, an
-  answer from the observer's next port did not come in on a socket that had
-  sent only to the first. Nothing more open has been seen yet.
-- Two new networks, 119.4 and 222.136: a point per socket, the local port
-  kept.
-- The campus with three addresses (42.48, 111.23, 113.247) again: the local
-  port kept on each, the address chosen by destination; the observer is
-  reached through one of them.
-- The campus on 112.4, the kind the model cannot aim at. Toward the
-  observer's sixteen ports, each even port and the odd one above it shared a
-  counter, and 33 of 34 mappings took the port after the last one made toward
-  that pair, over twenty seconds, with no other traffic on those counters.
-  Counters of popular destinations (five servers on port 3478, Google on
-  19302) move by hundreds of ports in bursts. Where a quiet counter starts
-  cannot be read from the others: held 2 to 4 of 65.
+- Filtering, nine networks: an answer from the observer's next port never
+  came in on a socket that had sent only to the first. There is no positive
+  control yet. One run from a host with a public address and no filter in
+  front of it would show that the test can pass at all; if you have one, a
+  run of 0.5.3 there is worth five minutes.
+- A counter per destination, counting up by one, on a campus and on a
+  carrier's hotspot: 14 of 14 even-odd pairs of the observer's ports shared
+  a counter and 100 of 106 mappings toward a pair took the next port. Your
+  address groups settled one thing: two ports of one public server sit on
+  different counters while the observer's pairs share, so the port without
+  its lowest bit is not the whole key.
+- One counter per public address for every destination on a hotspot with
+  three addresses: 70 of 70 steps rising, 320 to 410 ports a second, the
+  next port within 59 to 156 of a line through the two before it in nine of
+  ten.
 
-**What follows from it.** A pool of sockets that all send to one endpoint is,
-on such a NAT, a run of neighbouring ports. `piik_nat::search::order(start)`
-(`70aadaca`) is every port from 1024 up in the order of the 16-bit count with
-its bits reversed, from a chosen start: each beginning of 2^k ports combs the
-range evenly, so a run of n is reached within 65,536 / n packets wherever it
-began. In memory, 256 sockets and 1,024 packets:
+**Two results, counted in memory:**
 
-| Pool's ports | Drawn at random, as today | In that order |
-| --- | --- | --- |
-| drawn at random | 98.0% | 98.4% |
-| one quiet counter | 98.1% | 100%, last at packet 252 |
-| one counter, 1 port in 10 taken by others | 98.2% | 100% |
-| one counter, 1 in 2 taken by others | 98.0% | 99.7% |
+- `piik_nat::search::order(start)` (`70aadaca`): ports in bit-reversed order
+  reach a run of n within 65,536 / n packets. With 256 sockets and 1,024
+  packets: 100% on a quiet counter (last at packet 252), 100% with one port
+  in ten taken by others, 99.7% with one in two, and 98.4% against ports
+  drawn at random, where a random draw holds 98.0%.
+- A pool made between two observations of a shared counter lies between the
+  two ports observed. With others taking 800 ports a second, eight sockets
+  were reached within 52 packets in 95 of 100 trials and within 123 in all.
 
-Against ports drawn at random any distinct ports cover the same, so the
-order costs nothing there. With 256 sockets and 256 packets it holds 100%
-on a quiet counter against 62%. The crate's tests run it against the
-simulator with filtering by address and port.
+**Asked of you, in `peer/preparation.rs`, in this order:**
 
-**Asked of you, in `peer/preparation.rs`:**
+1. Take the order in place of the draw in `random_targets`. It cannot cover
+   less than distinct random ports do. The crate has no dependencies and I
+   would sooner see it on your line with its tests than a second copy of one
+   expression; yours to choose.
+2. Look at the misreading before anything else changes. The three default
+   STUN servers are all on port 3478 (`channel-server/src/lib.rs:138`). On
+   the campus they read 25807, 25808, 25809 from one socket in one run,
+   which `observe` calls sequential with step 1, while a peer's destination
+   takes another counter; in an earlier run there they read 43313, 37028,
+   19813.
+3. The form I propose for both, to be compared by your controls under the
+   present deadline before it replaces anything: the side that cannot name
+   its port pools toward the other's endpoint between two observations and
+   publishes, for each public address it has seen, the window they bound
+   when they bound one; the other side sends to the windows first and then
+   to the whole range, each in the order above. Sequential and irregular
+   are then one path, and a prediction is a window. A true single counter
+   must not lose against the present eight sockets.
 
-1. Take the order in place of the draw in `random_targets`. It is one
-   expression; the crate has no dependencies, and I would sooner see it on
-   your line with its tests than a second copy, but that is yours to choose.
-2. A misreading to look at before anything changes. The product's three
-   default servers are all on port 3478 (`channel-server/src/lib.rs:138`). In
-   report 025 exactly those three read 25807, 25808, 25809 from one socket,
-   which `observe` calls sequential with step 1; the mapping toward a peer
-   comes from another counter, so both predicted ports miss and the attempt
-   ends. In an earlier report from the same campus the three read 43313,
-   37028, 19813, irregular, and the pool would have been used. The general
-   form I propose: a remote that is not stable is always searched, and a
-   prediction is where the order starts, not a path of its own; a local that
-   is not stable always pools. Sequential and irregular then differ by a
-   hint. What it must not cost: a control of yours with a true single counter
-   on one side, same deadline, showing no loss against the present eight
-   sockets.
-
-None of this is two-sided evidence. It is one-sided regularity on one campus
-in one run, older runs of that campus and of the hotspot on 223.104 agreeing
-where they can be read, and counting in memory. A pair across a real campus
-is the next thing worth the owner's time, through the product once the order
-is in a private build.
-
-**What twenty-eight reports say**, read offline, for a new address, held of
-tried:
-
-| Network | Kind | 16 packets | 64 packets |
-| --- | --- | --- | --- |
-| 27.30, 119.247, 125.110, 119.4, 222.136 | a point per socket (four keep the local port) | no aim needed | |
-| 119.123 with 183.11 | two real addresses chosen by destination; a point per socket inside one | no aim needed | |
-| 42.48, 113.247, 111.23 (a campus) | three real addresses chosen by destination; the local port kept on each | no aim needed | |
-| 133.18 with 223.104 (hotspot) | two real addresses chosen by socket; the first a point per socket | no aim needed | |
-| 175.2 (mobile data) | by destination, every mapping inside fifty-seven ports, one port serving several destinations | 4/32 | 30/32 |
-| 183.251 | by destination, two counters, one up and one down | 17/30 | 26/30 |
-| 180.98 | by destination, three counters inside about 110 ports | | 23/33, and 33/33 with 256 |
-| 61.242 (hotspot) | three or four addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn; brackets below | |
-| 112.4 (a campus), 223.104 (a hotspot's second address) | by destination, a counter per destination, counting up by one | 5/30, 0/13 | 6/30, 1/13 |
-
-Brackets: where one counter serves every destination the middle port lay
-strictly between the outer two in 13 of 19 and inside the outer span widened
-by its own width in 19 of 19; where each destination has its counter, in 3
-and 4 of 32. Containment is read after the fact and the replay's figures are
-coverage of ports, neither a measured chance of connecting.
+None of this is two-sided evidence. A physical pair across the campus is
+what settles it, through a private build once the order is in.
 
 ## The general form before release: one rule at every depth, and the envelope
 
