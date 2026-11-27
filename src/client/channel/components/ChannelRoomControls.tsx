@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Btn, SwitchItem } from "../../components/living/primitives";
+import { SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { AudioBitrateControl } from "../../components/living/QualityPresets";
 import { Glyph } from "../../ui/icons";
@@ -12,6 +12,7 @@ import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings
 import { diagnoseChannelFact } from "../../ui/diagnosis";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelInlineConfirm } from "./ChannelInlineConfirm";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs } from "./ChannelSettingsDialog";
 import { useSettingsAction } from "../../ui/use-settings-action";
 import { ChannelIdentityFields } from "./ChannelIdentity";
@@ -344,6 +345,8 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
   const serverHosted = site?.hostingMode === "hosted";
   const browserHostsRoom = room.canManage && !!channel.sessionId && room.delivery?.hostSessionId === channel.sessionId;
   const deleteData = serverHosted || room.available;
+  const deleteQuestion = serverHosted ? "room.settings.confirmHostedDelete" :
+    deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove";
   const canPurge = room.authorized && (room.canManage || (!!channel.self && channel.self.id === site?.ownerId));
   const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
   const openFailure = channel.roomOpenFailures.get(room.id);
@@ -409,14 +412,11 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
             {membersError && <p role="status">{t("room.settings.profilesFailed")}</p>}
           </details>}
           <section className="c3-room-removal">
-            <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working || deleting}
-              title={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
-              cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
-              onClick={() => {
-                const question = t(serverHosted ? "room.settings.confirmHostedDelete" :
-                  deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove", { name: room.name });
-                if (window.confirm(question)) void onDelete(deleteData);
-              }} />
+            {selected === "room" && <ChannelInlineConfirm key={deleteQuestion} size="dense"
+              label={t(deleteData ? "room.action.delete" : "room.action.remove")}
+              question={t(deleteQuestion, { name: room.name })}
+              busy={removing} disabled={!connected || working || deleting}
+              onConfirm={() => { void onDelete(deleteData); }} />}
             <ChannelSettingsError error={deleteError ?? null} />
           </section>
         </section>}
@@ -434,19 +434,17 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
           {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={[...(channel.state?.users ?? []), ...channel.profiles.values()]} />}
           {room.authorized && <section className="c3-backup-controls">
             <p>{t("room.settings.localCacheScope")}</p>
-            <ChannelAction icon="x" quiet label={t("room.settings.clearLocalCache")} busy={clearingCache} disabled={working || purging || clearingCache}
-              onClick={() => {
-                if (window.confirm(t("room.settings.confirmClearLocalCache", { name: room.name })))
-                  void cacheAction.run(() => channel.clearLocalRoomCache(room.id));
-              }} />
+            {selected === "data" && <ChannelInlineConfirm label={t("room.settings.clearLocalCache")} danger={false}
+              question={t("room.settings.confirmClearLocalCache", { name: room.name })}
+              busy={clearingCache} disabled={working || purging}
+              onConfirm={() => { void cacheAction.run(() => channel.clearLocalRoomCache(room.id)); }} />}
             <ChannelSettingsError error={cacheAction.error} />
           </section>}
           {canPurge && <div>
-            <ChannelAction icon="x" quiet danger label={t("room.chat.purgeHistory")} busy={purging} disabled={!available || working}
-              onClick={() => {
-                if (window.confirm(t("room.chat.confirmPurgeHistory", { name: room.name })))
-                  void historyAction.run(() => channel.purgeRoomHistory(room.id));
-              }} />
+            {selected === "data" && <ChannelInlineConfirm label={t("room.chat.purgeHistory")}
+              question={t("room.chat.confirmPurgeHistory", { name: room.name })}
+              busy={purging} disabled={!available || working}
+              onConfirm={() => { void historyAction.run(() => channel.purgeRoomHistory(room.id)); }} />}
             <ChannelSettingsError error={historyAction.error} />
           </div>}
           {room.canManage && backupAvailable && <section className="c3-backup-controls">

@@ -5,6 +5,7 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import { roomCreationPolicySchema, type RoomCreationPolicy } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelInlineConfirm } from "./ChannelInlineConfirm";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs } from "./ChannelSettingsDialog";
 import { useSettingsAction } from "../../ui/use-settings-action";
 import { ChannelIdentityFields, ChannelIdentityMark } from "./ChannelIdentity";
@@ -151,14 +152,15 @@ function DirectoryRoom({ id, label, channel, deleteData, disabled }: {
   const removing = channel.pending.has(`delete:${id}`);
   return <li>
     <span>{label}</span>
-    <Btn icon="x" quiet tone="danger" size="compact" busy={removing} disabled={disabled || removing}
-      title={{ text: t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label }) }}
-      cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }} onClick={() => {
-        if (window.confirm(t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })))
-          void run(async signal => {
-            const result = await channel.deleteRoom(id, deleteData, signal);
-            if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
-          });
+    <ChannelInlineConfirm key={String(deleteData)} label={t(deleteData ? "room.action.delete" : "room.action.remove")}
+      accessibleLabel={t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label })}
+      question={t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })}
+      busy={removing} disabled={disabled}
+      onConfirm={() => {
+        void run(async signal => {
+          const result = await channel.deleteRoom(id, deleteData, signal);
+          if (deleteData && !result.dataRemoved) throw new Error("room_data_removal_unconfirmed");
+        });
       }} />
     <ChannelSettingsError error={error ?? (channel.errorRoomId === id ? channel.error : null)} />
   </li>;

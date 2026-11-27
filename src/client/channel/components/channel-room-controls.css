@@ -19,10 +19,11 @@
 .c3-site-room-directory li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding-block: 8px; font-size: 13px; }
 .c3-site-room-directory li + li { border-top: 1px solid var(--line); }
 .c3-site-room-directory li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.c3-site-room-directory li > .c3-settings-error { grid-column: 1 / -1; }
+.c3-site-room-directory li > :is(.c3-inline-confirm:has(.c3-inline-confirm-panel), .c3-settings-error) { grid-column: 1 / -1; }
 .c3-check { display: flex; align-items: center; gap: 8px; cursor: pointer; line-height: 1.5; }
 .c3-check input { flex: none; accent-color: var(--action); cursor: pointer; }
-.c3-room-removal { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.c3-room-removal { display: grid; gap: 8px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.c3-room-removal > .c3-inline-confirm > .lr-btn { justify-self: end; }
 .c3-room-member-action { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .c3-room-member-action > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .c3-room-members { font-size: 12px; }
@@ -42,6 +43,9 @@
 .c3-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .c3-backup-confirm { display: grid; gap: 10px; min-width: 0; }
 .c3-backup-confirm > p { overflow-wrap: anywhere; }
+.c3-inline-confirm { display: grid; justify-items: start; min-width: 0; }
+.c3-inline-confirm-panel { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); }
+.c3-inline-confirm-panel > p { color: var(--ink); }
 .c3-room-copy-load { display: grid; gap: 8px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 .c3-room-copy-load > p { overflow-wrap: anywhere; }
 .c3-room-copy-load .lr-btn, .c3-backup-controls > .lr-btn { justify-self: start; }
