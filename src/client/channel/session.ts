@@ -1871,13 +1871,13 @@ export class ChannelSession {
     return { current, native: new NativeDomainHosting({ Authorization: `Bearer ${this.credential}` }) };
   }
 
-  private async nativeMediaHosts(signal?: AbortSignal) {
+  private async nativeMediaHosts(target?: HostMediaTarget, signal?: AbortSignal) {
     const current = this.sessionContext(), { self, state } = this.view, credential = this.credential;
     const hosted = state!.channel.hostingMode === "hosted";
     const site = self!.id === state!.channel.ownerId && credential
       ? new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` }, "/prototype/channel/hosting")
       : undefined;
-    const app = !hosted && this.app?.connected ? this.app : undefined;
+    const app = target !== "domain" && !hosted && this.app?.connected ? this.app : undefined;
     const [siteDescription, appDescription] = await Promise.all([
       !hosted && site ? site.describe(signal).catch(() => undefined) : undefined,
       app?.describeHosting(signal).catch(() => undefined),
@@ -1895,7 +1895,7 @@ export class ChannelSession {
 
   hostMediaTargets: ChannelActions["hostMediaTargets"] = async signal => {
     if (this.view.connection !== "connected" || !this.view.state || !this.view.self) return [];
-    const { domain, app } = await this.nativeMediaHosts(signal);
+    const { domain, app } = await this.nativeMediaHosts(undefined, signal);
     const targets: HostMediaTarget[] = [];
     if (domain) targets.push("domain");
     if (app) targets.push("app");
@@ -1906,7 +1906,7 @@ export class ChannelSession {
   clearHostMedia: ChannelActions["clearHostMedia"] = target => this.action(`host-media:${target}`, async () => {
     const current = this.sessionContext();
     if (target !== "browser") {
-      const hosts = await this.nativeMediaHosts();
+      const hosts = await this.nativeMediaHosts(target);
       if (target === "domain" && hosts.domain) return hosts.domain.clearMedia();
       if (target === "app" && hosts.app) return hosts.app.clearHostMedia();
       throw new Error("room_host_unavailable");

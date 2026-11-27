@@ -337,13 +337,13 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
   const [fileLimits, setFileLimits] = useState<AttachmentLimits | null>(null);
   useEffect(() => {
     let current = true; setBackupAvailable(false); setFileLimits(null);
-    if (room.canManage) void channel.roomBackupAvailable(room.id).then(value => {
+    if (task === "data" && room.canManage) void channel.roomBackupAvailable(room.id).then(value => {
       if (!current) return;
       setBackupAvailable(value);
       if (value) void channel.attachments.limits().then(limits => { if (current) setFileLimits(limits); }).catch(() => {});
     });
     return () => { current = false; };
-  }, [room.id, room.canManage, room.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable, channel.attachments]);
+  }, [task, room.id, room.canManage, room.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable, channel.attachments]);
   const connected = channel.connection === "connected";
   const site = channel.state?.channel;
   const serverHosted = site?.hostingMode === "hosted";

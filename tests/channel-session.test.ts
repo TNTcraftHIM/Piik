@@ -210,7 +210,11 @@ test("media cleanup reaches dormant Native rooms, merges host aliases and skips 
     app.connected = true;
     siteReady = true;
     await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
-    await expect(session.clearHostMedia("domain")).resolves.toEqual(result);
+    await expect(session.clearHostMedia("app")).rejects.toThrow("room_host_unavailable");
+    const waitingApp = vi.spyOn(app, "describeHosting").mockImplementation(() => new Promise(() => {}));
+    const clearing = session.clearHostMedia("domain");
+    expect(waitingApp).not.toHaveBeenCalled();
+    await expect(clearing).resolves.toEqual(result);
     (session as unknown as { app?: typeof app }).app = undefined;
     socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, hostingMode: "hosted" } } });
     await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
