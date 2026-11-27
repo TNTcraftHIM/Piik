@@ -16,10 +16,6 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Manual host cleanup.** Clear the selected host's retained files and
-  image renditions while preserving text, rooms, every member, roles and settings.
-  Verify post-commit reader refresh, disk reclamation and scoped cache deletion,
-  including delayed pages, selected original files and saved-download receipts.
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
   operation feedback and the remaining capture, embed
@@ -231,14 +227,6 @@ the feedback period; they do not delay that delivery.
   owns the patch and removal boundary.
 
 ## Next
-
-- [ ] **Unnamed members and first-visit naming.** Set one representation for an
-  unnamed member across admission, profiles, stored records and copied authors.
-  Reuse the profile editor for the optional site prompt and one localized display
-  helper for guest labels and member tags. Distinguish copied authors from live
-  members and preserve deliberate names. The optional prompt follows the unnamed
-  member and remembers dismissal for that member; it needs no first-join wire flag.
-  Set the matched-version contract before changing the private formats.
 
 - [ ] **Concurrent App invitation entries.** Let local and public entries reach
   the same running authority. Define their startup, advertised addresses and

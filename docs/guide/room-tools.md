@@ -14,6 +14,8 @@ The site owner decides who can create rooms and can remove rooms from the site. 
 Use **Edit profile** beside your name to change your nickname or picture.
 The same picture appears in chat, room lists, voice and the couch.
 Choose **Remove picture** to return to the plain coloured person.
+Leave the nickname blank to use a guest label. If the site asks you to choose
+a nickname, you can select **Skip** and edit your profile later.
 
 ## Choose your interface
 
@@ -63,7 +65,12 @@ a private invitation invalidates its old links without revoking admitted users. 
 its link, expand **Reset room invitation**, then select **Confirm invitation reset**.
 Rooms with a password also offer **Password-required link**. New visitors use that password;
 people who already have access can enter directly.
-The site operator opens settings by selecting the site name above the room list.
+The site owner opens **Site settings** by selecting the site name above the room
+list. The option **Ask members without a nickname to choose one** is off by default.
+
+Use **More options → Clear hosted media…**, select the host and confirm the
+cleanup. This clears chat images, thumbnails and cached files for rooms hosted
+there. The chat text, attachment details and saved downloads stay available.
 
 ### Back up or copy a room
 

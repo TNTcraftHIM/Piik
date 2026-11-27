@@ -34,6 +34,16 @@ does not permanently consume an online slot, and admitting new friends does not
 delete historical authors, room ownership or room grants. The retained identity
 owner stays in the existing domain storage.
 
+An empty name represents an unnamed member in admission, profiles and
+stored identities. The UI formats it as a localized guest label with
+a four-character tag. Lists add tags to matching chosen names within the same
+collection. Identity and mentions still use the full member ID.
+
+The site owner can enable an optional nickname prompt for unnamed members in
+Site settings. It defaults to off, including when an existing site checkpoint
+or archive lacks the setting. The Browser remembers dismissal for the site and
+member in that browser profile. Members can edit their profile later.
+
 An edit sends the fields the user changed. The channel merges site and profile
 edits, and the current room writer merges room edits. Concurrent edits to
 different fields both take effect. Setting an image to `null` clears it.
@@ -54,8 +64,9 @@ history export. A profile update refreshes the corresponding displayed record;
 cached names and pictures never grant room access or prove live participation.
 The offline list and mention search continue to cover the site's retained users,
 including records outside the current conversation page.
-Search compares NFC-normalized, case-insensitive names; it does not rewrite the
-name saved or displayed for that person.
+The site matches saved names. The Browser also matches guest labels in its
+loaded mention candidates. Both use NFC normalization and case-insensitive
+matching.
 
 The owner accepted durable room history and attachment metadata, participant-held
 file copies and whole-file hash verification. Images and ordinary files share
@@ -79,8 +90,9 @@ An authenticated user updates only their own profile; the domain saves it before
 publishing its current summary. Rejoining preserves the saved profile.
 Messages retain the author's user ID and display their current profile, including
 when the author is offline; they do not store separate copies of the avatar.
-Imported room copies retain a historical author name with a new, archive-only
-identity. That identity does not create a site account or receive room access.
+Imported room copies retain the historical author's saved name, including an
+empty name, with a new, archive-only identity.
+That identity does not create a site account or receive room access.
 
 User avatars travel in `selfProfile` and `profiles`. An explicit null clears the
 picture. The first state on each WebSocket carries the channel icon and the room
