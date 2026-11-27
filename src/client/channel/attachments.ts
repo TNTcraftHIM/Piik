@@ -195,7 +195,7 @@ export class ChannelAttachments {
       let state = entry.progress.state;
       if (!plan?.sourceId) state = "waiting-source";
       else if (!plan.upstream) state = "connecting";
-      else if (state === "waiting-source" || (state === "connecting" && !previousPlans.find(matches)?.upstream)) state = "waiting";
+      else if (state === "waiting-source" || previousPlans.find(matches)?.upstream !== plan.upstream) state = "waiting";
       if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; changed = true; }
     }
     for (const [id, download] of this.downloads) {
