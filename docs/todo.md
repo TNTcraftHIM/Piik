@@ -258,15 +258,18 @@ the feedback period; they do not delay that delivery.
   current operation ownership. Calibrate on independent networks before tuning
   candidate budgets or measured-benefit policy.
 - [ ] **The life of a message.** Decide
-  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
-  search, quote behavior and the merge rule for text and reaction changes.
-  Set stored fields and capabilities with their consumers. Before publication,
-  verify that supported archive round trips preserve meaningful row data.
+  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, search on
+  the reader over the pages it reads, quote behavior and the merge rule for
+  text and reaction changes. Set stored fields and capabilities with their
+  consumers. Before publication, verify that supported archive round trips
+  preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
-  [ADR-0020](./adr/0020-one-vocabulary-for-extension.md) through a bounded
-  comparison with plain lifecycle-owner extraction. Identify concrete providers
-  and consumers, preserve both runtime layouts and shared-resource lifetimes,
-  and settle deletion, copying and authority before changing the wire or stores.
+  [ADR-0020](./adr/0020-one-vocabulary-for-extension.md). Before the first
+  release: a reader ignores an unknown addition at every depth of a history
+  record and shows its text, a writer refuses a draft that carries one with
+  its own outcome, and both are tested with unknown additions. No extension
+  interface is built. A part interface is weighed only by a bounded
+  comparison with plain lifecycle-owner extraction.
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.
   Keep image restoration owned by each physical connection. Any generated types
