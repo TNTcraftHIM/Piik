@@ -1,7 +1,7 @@
 import { playbackOutput } from "../../media/playback-output";
 import { PlaybackDeviceSelect } from "./PlaybackDeviceSelect";
 import { useWatchPageSlot } from "./use-watch-page-slot";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
@@ -58,8 +58,9 @@ export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
     : <small>{t("watch.forward.secure")}</small>;
 }
 
-function WatchPlaybackSettings({ receiving, originalPage, playback, children, audio, audioAvailable }: {
+function WatchPlaybackSettings({ receiving, originalPage, playback, children, audio, audioAvailable, timelineControls }: {
   receiving?: WatchReceiving; originalPage: boolean; children?: ReactNode;
+  timelineControls?: RefObject<HTMLDivElement | null>;
   audio?: ComponentProps<typeof AudioVolumeControl>; audioAvailable: boolean;
   playback?: { rate: number; rates: readonly number[]; disabled: boolean; onRate(rate: number): void };
 }) {
@@ -68,7 +69,7 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useLayerHistory(panel, open);
-  useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
+  useAnchoredPopover(timelineControls ?? trigger, panel, { side: "above", align: "end" });
   return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} controls={id} expanded={open} />
     <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
@@ -304,6 +305,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
             <AudioVolumeControl {...localVolume} compact />
           </span>}
           <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audio={localVolume} audioAvailable={audioAvailable}
+            timelineControls={showTimeline ? controls : undefined}
             playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
               onRate: rate => onPlayback({ rate }) } : undefined}>
             {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"
