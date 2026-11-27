@@ -1,6 +1,6 @@
 [package]
 name = "piik-nat"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.91"
 publish = false
@@ -15,6 +15,10 @@ name = "piik_nat"
 [[bin]]
 name = "piik-nat-lab"
 path = "src/main.rs"
+
+[[bin]]
+name = "piik-nat-observer"
+path = "src/bin/observer.rs"
 
 [profile.release]
 opt-level = "z"

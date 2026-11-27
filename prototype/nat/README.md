@@ -4,9 +4,9 @@
 
 ## 它做什么，不做什么
 
-- 向十几个公共 STUN 服务器各发几个很小的 UDP 询问包，问“你看到我从哪个地址和端口来”，然后把结果打印出来。通常二三十秒，网络不通时最多两分钟。
-- 其中能做到的服务器，还会被请求“从你的另一个地址回我一个包”，用来判断你的网络会不会放行陌生来源的包。
-- 除了这些询问包，不发送任何东西；不扫描，不上传，不改动任何设置。
+- 向十几个公共 STUN 服务器和我们自己的一台服务器各发几个很小的 UDP 询问包，问“你看到我从哪个地址和端口来”，然后把结果打印出来。通常不到一分钟，网络不通时最多两三分钟。
+- 我们自己的那台服务器还会被请求“换一个端口回我一个包”，用来判断你的网络会不会放行没联系过的来源发来的包。
+- 除了这些询问包，不发送任何东西；不扫描，不上传，不改动任何设置。服务器那边不记录谁问过它。
 - 报告里你的公网地址只显示一半，本机地址只显示类别（私有地址、运营商地址等）。
 
 ## 怎么运行
@@ -24,12 +24,18 @@
 
 ## In English
 
-`piik-nat-lab` asks public STUN servers which address and port they see for this machine, asks those that can to answer once from their other address, and prints what that says about the NAT in front of it. It sends nothing else, uploads nothing and changes no setting. The report shows half of the public address. Run it without arguments (on Windows, `运行.bat` also keeps a copy in `report.txt`), and send the report with one line saying what kind of network it was. Do not pass `--full`.
+`piik-nat-lab` asks public STUN servers and a server of our own which address and port they see for this machine, asks ours to answer once from another of its ports, and prints what that says about the NAT in front of it. It sends nothing else, uploads nothing and changes no setting, and the server keeps no record of who asked. The report shows half of the public address. Run it without arguments (on Windows, `运行.bat` also keeps a copy in `report.txt`), and send the report with one line saying what kind of network it was. Do not pass `--full`.
 
 ## For whoever reads the reports
 
 `cargo run --example replay -- [--drop <text in an observer's name>] [--only <address letter>] report.txt...` replays pasted reports offline: how often the aim read from earlier mappings would have held each new one, at several packet budgets. No packet is sent.
 
+## The server of our own
+
+`piik-nat-observer <first port> <count> [address to bind]` answers STUN Binding requests on a run of UDP ports, and answers from the next port of the run when a request asks for another port. It has one address, keeps nothing and prints nothing about who asked. `OWN_OBSERVER` in `src/main.rs` names the one the tool asks; `--observer <host>:<first port>-<last port>` asks another in its place.
+
+A run that leaves this machine nowhere: start `piik-nat-observer 41000 16 127.0.0.1` and `piik-nat-observer 41100 4 127.0.0.2`, then `piik-nat-lab --own-only --observer 127.0.0.1:41000-41015 --observer 127.0.0.2:41100-41103`.
+
 ## Building
 
-No dependencies. `cargo build --release` in this directory gives `target/release/piik-nat-lab`; `cargo test` runs the model's tests against the simulator. `package/windows/run.bat` is the Windows launcher, shipped beside the executable as `运行.bat`.
+No dependencies. `cargo build --release` in this directory gives `target/release/piik-nat-lab` and `target/release/piik-nat-observer`; `cargo test` runs the model's tests against the simulator. `package/windows/run.bat` is the Windows launcher, shipped beside the executable as `运行.bat`.

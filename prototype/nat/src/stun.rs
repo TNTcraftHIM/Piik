@@ -1,6 +1,6 @@
 //! The Binding request and the mapped address of its answer (RFC 8489, sections 5, 14.1 and 14.2),
 //! and the request that asks a server to answer from elsewhere (RFC 5780, sections 7.2 and 7.4).
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 
 const BINDING_REQUEST: u16 = 0x0001;
 const BINDING_SUCCESS: u16 = 0x0101;
@@ -29,6 +29,54 @@ pub fn request_from_elsewhere(transaction: [u8; 12], address: bool, port: bool) 
     packet[3] = 8;
     packet[20..24].copy_from_slice(&[(CHANGE_REQUEST >> 8) as u8, CHANGE_REQUEST as u8, 0, 4]);
     packet[27] = u8::from(address) << 2 | u8::from(port) << 1;
+    packet
+}
+
+/// What a Binding request asks for, as a server reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Asked {
+    pub transaction: [u8; 12],
+    pub from_other_address: bool,
+    pub from_other_port: bool,
+}
+
+/// A Binding request, or `None` for any other packet.
+pub fn asked(packet: &[u8]) -> Option<Asked> {
+    let header = packet.get(..20)?;
+    if header[..2] != BINDING_REQUEST.to_be_bytes() || header[4..8] != MAGIC_COOKIE {
+        return None;
+    }
+    let mut attributes = &packet[20..];
+    if attributes.len() != usize::from(u16::from_be_bytes([header[2], header[3]])) {
+        return None;
+    }
+    let mut flags = 0;
+    while !attributes.is_empty() {
+        let [kind_high, kind_low, length_high, length_low, rest @ ..] = attributes else { return None };
+        let length = usize::from(u16::from_be_bytes([*length_high, *length_low]));
+        let value = rest.get(..length)?;
+        if u16::from_be_bytes([*kind_high, *kind_low]) == CHANGE_REQUEST {
+            flags = *value.get(3)?;
+        }
+        attributes = rest.get(length.div_ceil(4) * 4..)?;
+    }
+    Some(Asked { transaction: header[8..].try_into().ok()?, from_other_address: flags & 4 != 0, from_other_port: flags & 2 != 0 })
+}
+
+/// A Binding success that reports `mapped` and, when given, names the server's other address.
+pub fn success(transaction: [u8; 12], mapped: SocketAddrV4, elsewhere: Option<SocketAddrV4>) -> Vec<u8> {
+    let mut packet = Vec::from(BINDING_SUCCESS.to_be_bytes());
+    packet.extend([0, if elsewhere.is_some() { 24 } else { 12 }]);
+    packet.extend(MAGIC_COOKIE);
+    packet.extend(transaction);
+    packet.extend([(XOR_MAPPED_ADDRESS >> 8) as u8, XOR_MAPPED_ADDRESS as u8, 0, 8, 0, 1]);
+    packet.extend(mapped.port().to_be_bytes().iter().zip(MAGIC_COOKIE).map(|(byte, mask)| byte ^ mask));
+    packet.extend(mapped.ip().octets().iter().zip(MAGIC_COOKIE).map(|(byte, mask)| byte ^ mask));
+    if let Some(elsewhere) = elsewhere {
+        packet.extend([(OTHER_ADDRESS >> 8) as u8, OTHER_ADDRESS as u8, 0, 8, 0, 1]);
+        packet.extend(elsewhere.port().to_be_bytes());
+        packet.extend(elsewhere.ip().octets());
+    }
     packet
 }
 
@@ -121,6 +169,17 @@ mod tests {
         assert_eq!(packet[..8], [0, 1, 0, 8, 0x21, 0x12, 0xa4, 0x42]);
         assert_eq!(packet[20..], [0, 3, 0, 4, 0, 0, 0, 6]);
         assert_eq!(request_from_elsewhere(TRANSACTION, false, true)[27], 2);
+    }
+
+    #[test]
+    fn a_server_reads_what_is_asked_and_its_answer_reads_back() {
+        assert_eq!(asked(&request(TRANSACTION)), Some(Asked { transaction: TRANSACTION, from_other_address: false, from_other_port: false }));
+        assert_eq!(asked(&request_from_elsewhere(TRANSACTION, false, true)), Some(Asked { transaction: TRANSACTION, from_other_address: false, from_other_port: true }));
+        assert_eq!(asked(&request_from_elsewhere(TRANSACTION, true, true)).map(|asked| asked.from_other_address), Some(true));
+        assert_eq!(asked(&super::success(TRANSACTION, "192.0.2.1:32853".parse().unwrap(), None)), None);
+        let (mapped, elsewhere): (SocketAddrV4, SocketAddrV4) = ("192.0.2.1:32853".parse().unwrap(), "198.51.100.7:3479".parse().unwrap());
+        assert_eq!(answer(&super::success(TRANSACTION, mapped, Some(elsewhere)), TRANSACTION), Some(Answer { mapped: mapped.into(), elsewhere: Some(elsewhere.into()) }));
+        assert_eq!(answer(&super::success(TRANSACTION, mapped, None), TRANSACTION), Some(Answer { mapped: mapped.into(), elsewhere: None }));
     }
 
     #[test]

@@ -1,8 +1,9 @@
 //! Measures the NAT in front of this machine and prints what the model reads from it.
 //!
-//! It asks a few public STUN servers which address they see, from two sockets and then from more
-//! when the answers differ, one request at a time, and prints a report to copy. It sends nothing
-//! else anywhere, and the report shows only half of the public address unless `--full` is given.
+//! It asks a few public STUN servers and a server of our own which address they see, from two
+//! sockets and then from more when the answers differ, one request at a time, and prints a report
+//! to copy. It sends nothing else anywhere, and the report shows only half of the public address
+//! unless `--full` is given.
 use piik_nat::mapping::{replay, Allocator, Cursor, Holdout, Model, Sample};
 use piik_nat::stun;
 use std::collections::hash_map::RandomState;
@@ -14,7 +15,7 @@ use std::time::{Duration, Instant};
 /// ports of one address, which shows whether a mapping follows the destination's port.
 /// `stun.chat.bilibili.com:3479` is left out: in seven field surveys it alone reported an address
 /// other than the one every other observer saw, the port being the same.
-const OBSERVERS: [&str; 19] = [
+const OBSERVERS: [&str; 11] = [
     "stun.cloudflare.com:3478",
     "stun.miwifi.com:3478",
     "stun.chat.bilibili.com:3478",
@@ -26,17 +27,14 @@ const OBSERVERS: [&str; 19] = [
     "stun.douyucdn.cn:18000",
     "stun.miwifi.com:3479",
     "stun.douyucdn.cn:18001",
-    // Four more hosts on the two ports of the first: where each destination has its own
-    // counter, they show whether it follows the destination's address, its port, or both.
-    "stun1.l.google.com:19302",
-    "stun1.l.google.com:3478",
-    "stun2.l.google.com:19302",
-    "stun2.l.google.com:3478",
-    "stun3.l.google.com:19302",
-    "stun3.l.google.com:3478",
-    "stun4.l.google.com:19302",
-    "stun4.l.google.com:3478",
 ];
+/// A server of our own, `piik-nat-observer` on a run of ports of one address. The public servers
+/// do not answer from elsewhere (six networks, none let such an answer in, open ones among them),
+/// and none offers many ports of one address: this one answers from its next port when asked,
+/// and its run shows whether a mapping follows the destination's port or only its address.
+const OWN_OBSERVER: &str = "stun.piik.tv:3481-3496";
+/// An observer answers this many requests to answer from elsewhere per address of its own.
+const FILTERING_PER_ADDRESS: usize = 2;
 /// One answer is waited for this long, twice.
 const ANSWER: Duration = Duration::from_millis(700);
 /// Mappings made from new sockets when the first answers differ, to see the allocator at work.
@@ -61,8 +59,9 @@ struct Survey {
     /// The answers of each bracket: first, middle, last.
     brackets: Vec<[Sample; 3]>,
     /// For each observer that can answer from elsewhere: whether its answer from another address
-    /// and port came in, and whether its answer from another port of the same address did.
-    filtering: Vec<(SocketAddrV4, bool, bool)>,
+    /// came in (`None` where it has no other address), and whether its answer from another port
+    /// of the same address did.
+    filtering: Vec<(SocketAddrV4, Option<bool>, bool)>,
 }
 impl Survey {
     fn record_answer(&mut self, mapped: SocketAddrV4) {
@@ -98,17 +97,19 @@ impl Survey {
     /// `observer`, which opens its mapping toward that one address and port; where the answer
     /// names another address the observer can use, it is asked to answer from that address and
     /// port, and then from another port of its own address. `None` when it names none.
-    fn filtering(&mut self, observer: SocketAddrV4) -> Option<(bool, bool)> {
+    fn filtering(&mut self, observer: SocketAddrV4) -> Option<(Option<bool>, bool)> {
         let (socket, _) = self.socket()?;
         let first = transaction();
         socket.send_to(&stun::request(first), observer).ok()?;
         let (_, elsewhere) = receive(&socket, Some(observer), first)?;
-        elsewhere?;
+        let elsewhere = elsewhere?;
         let answered = |address: bool| {
             let transaction = transaction();
             (0..2).any(|_| socket.send_to(&stun::request_from_elsewhere(transaction, address, true), observer).is_ok() && receive(&socket, None, transaction).is_some())
         };
-        let outcome = (answered(true), answered(false));
+        // An observer whose other address is its own, or none in particular, has another port only.
+        let another_address = !elsewhere.ip().is_unspecified() && elsewhere.ip() != std::net::IpAddr::V4(*observer.ip());
+        let outcome = (another_address.then(|| answered(true)), answered(false));
         self.filtering.push((observer, outcome.0, outcome.1));
         Some(outcome)
     }
@@ -191,7 +192,7 @@ fn local_address(target: &str) -> Option<IpAddr> {
     Some(socket.local_addr().ok()?.ip())
 }
 
-const USAGE: &str = "usage: piik-nat-lab [--full]\n\nAsks public STUN servers which address they see for this machine and prints what that says\nabout the NAT in front of it. Nothing else is sent anywhere.\n\n  --full   show the whole public address in the report (it shows half by default)\n  --help   show this text";
+const USAGE: &str = "usage: piik-nat-lab [--full] [--own-only] [--observer <host>:<first port>-<last port>]\n\nAsks public STUN servers and a server of our own which address they see for this machine and\nprints what that says about the NAT in front of it. Nothing else is sent anywhere.\n\n  --full       show the whole public address in the report (it shows half by default)\n  --observer   ask this server of our own, on each port of the run, in place of the built-in\n               one; may be given more than once. The report calls each port own:<port>\n  --own-only   ask no public server\n  --help       show this text";
 
 fn main() {
     // Arguments are read before any name is resolved or any socket opened.
@@ -199,27 +200,57 @@ fn main() {
     if arguments.iter().any(|argument| argument == "--help" || argument == "-h") {
         return println!("{USAGE}");
     }
-    if let Some(unknown) = arguments.iter().find(|argument| *argument != "--full") {
-        eprintln!("unknown argument: {unknown}\n\n{USAGE}");
-        std::process::exit(2);
+    let (mut full, mut public, mut own) = (false, true, Vec::new());
+    let mut rest = arguments.iter();
+    while let Some(argument) = rest.next() {
+        match (argument.as_str(), rest.clone().next()) {
+            ("--full", _) => full = true,
+            ("--own-only", _) => public = false,
+            ("--observer", Some(run)) => {
+                own.push(run.clone());
+                rest.next();
+            }
+            _ => {
+                eprintln!("unknown argument: {argument}\n\n{USAGE}");
+                std::process::exit(2);
+            }
+        }
     }
-    let full = !arguments.is_empty();
-    println!("piik-nat-lab {}: asking public STUN servers which address they see.", env!("CARGO_PKG_VERSION"));
+    if own.is_empty() {
+        own.push(OWN_OBSERVER.to_string());
+    }
+    println!("piik-nat-lab {}: asking STUN servers which address they see.", env!("CARGO_PKG_VERSION"));
     let mut survey = Survey { answered: 0, bracket_attempts: 0, addresses: Vec::new(), started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new(), filtering: Vec::new() };
     let (Some((first, first_number)), Some((second, second_number))) = (survey.socket(), survey.socket()) else {
         return println!("Could not open a UDP socket.");
     };
-    // Each observer that resolves and answers the first socket takes part.
-    let mut observers: Vec<(&str, SocketAddrV4)> = Vec::new();
-    for name in OBSERVERS {
-        let address = name.to_socket_addrs().ok().and_then(|mut found| {
-            found.find_map(|address| match address {
-                SocketAddr::V4(address) => Some(address),
-                SocketAddr::V6(_) => None,
-            })
+    // Each observer that resolves and answers the first socket takes part. A server of our own
+    // is asked on every port of its run and named by port alone, so a report does not carry
+    // its host.
+    let resolve = |name: &str| {
+        name.to_socket_addrs().ok()?.find_map(|address| match address {
+            SocketAddr::V4(address) => Some(address),
+            SocketAddr::V6(_) => None,
+        })
+    };
+    let mut candidates: Vec<(String, SocketAddrV4)> = OBSERVERS.iter().filter(|_| public).filter_map(|name| Some((name.to_string(), resolve(name)?))).collect();
+    for run in &own {
+        let ports = run.rsplit_once(':').and_then(|(host, ports)| {
+            let (low, high) = ports.split_once('-')?;
+            Some((host, low.parse::<u16>().ok()?, high.parse::<u16>().ok()?))
         });
-        let Some(address) = address.filter(|address| observers.iter().all(|(_, known)| known != address)) else { continue };
-        if survey.ask(&first, first_number, address).is_some() {
+        let Some((host, low, high)) = ports.filter(|(_, low, high)| low <= high) else {
+            eprintln!("--observer takes <host>:<first port>-<last port>\n\n{USAGE}");
+            std::process::exit(2);
+        };
+        if let Some(address) = resolve(&format!("{host}:{low}")) {
+            candidates.extend((low..=high).map(|port| (format!("own:{port}"), SocketAddrV4::new(*address.ip(), port))));
+        }
+    }
+    let asked = candidates.len();
+    let mut observers: Vec<(String, SocketAddrV4)> = Vec::new();
+    for (name, address) in candidates {
+        if observers.iter().all(|(_, known)| *known != address) && survey.ask(&first, first_number, address).is_some() {
             observers.push((name, address));
         }
     }
@@ -254,10 +285,15 @@ fn main() {
             }
         }
     }
+    // A few observers of each address are asked to answer from elsewhere: one that never does
+    // costs its whole wait.
+    let mut elsewhere: Vec<Ipv4Addr> = Vec::new();
     for (_, observer) in &observers {
-        survey.filtering(*observer);
+        if elsewhere.iter().filter(|address| *address == observer.ip()).count() < FILTERING_PER_ADDRESS && survey.filtering(*observer).is_some() {
+            elsewhere.push(*observer.ip());
+        }
     }
-    report(&survey, &observers, first_number, full);
+    report(&survey, &observers, asked, first_number, full);
 }
 
 /// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
@@ -267,7 +303,7 @@ fn cursors_line(cursors: &[Cursor]) -> String {
 }
 
 /// What the answers that show one public address say, read by themselves.
-fn read_address(samples: &[Sample], observers: &[(&str, SocketAddrV4)]) {
+fn read_address(samples: &[Sample], observers: &[(String, SocketAddrV4)]) {
     match Model::read(samples).map(|model| model.allocator) {
         Err(unusable) => println!("model: unusable ({unusable:?})"),
         Ok(Allocator::Point { port, preserved }) => println!("model: POINT. One mapping per socket whatever the destination (port {port}); local port kept: {}", if preserved { "yes" } else { "no" }),
@@ -303,7 +339,7 @@ fn read_address(samples: &[Sample], observers: &[(&str, SocketAddrV4)]) {
     }
 }
 
-fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full: bool) {
+fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, first: u16, full: bool) {
     // Each public address seen gets a letter, in the order seen.
     let addresses = &survey.addresses;
     let letter = |address: &Ipv4Addr| {
@@ -325,7 +361,7 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
     let ipv6 = matches!(local_address("[2606:4700:4700::1111]:53"), Some(IpAddr::V6(address)) if address.segments()[0] & 0xe000 == 0x2000);
     println!("\n==== report (copy from here) ====");
     println!("tool: piik-nat-lab {}", env!("CARGO_PKG_VERSION"));
-    println!("observers answered: {} of {}; requests answered {}, unanswered {}", observers.len(), OBSERVERS.len(), survey.answered, survey.unanswered);
+    println!("observers answered: {} of {}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
     println!("local: {network}; global IPv6: {}", if ipv6 { "yes" } else { "no" });
     println!("public addresses: {}", addresses.iter().map(|address| format!("{} {}", letter(address), shown(*address))).collect::<Vec<_>>().join(", "));
     // Whether the mapping follows the destination's port: the same socket, the same address, two ports.
@@ -366,18 +402,19 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
     if survey.filtering.is_empty() {
         println!("filtering: not measured, no observer here names another address to answer from");
     } else {
-        let (any_address, any_port) = (survey.filtering.iter().any(|(_, address, _)| *address), survey.filtering.iter().any(|(_, _, port)| *port));
+        let (any_address, any_port) = (survey.filtering.iter().any(|(_, address, _)| *address == Some(true)), survey.filtering.iter().any(|(_, _, port)| *port));
         println!(
             "filtering: {}",
             match (any_address, any_port) {
                 (true, _) => "a packet from an address never sent to came in (endpoint-independent)",
-                (false, true) => "only a packet from the address sent to came in, from any of its ports (address-dependent)",
-                (false, false) => "no packet from elsewhere came in (address-and-port-dependent, or the observers' other addresses do not reach this network)",
+                (false, true) => "a packet from another port of an address sent to came in (address-dependent, or more open where no observer has another address)",
+                (false, false) => "no packet from elsewhere came in (address-and-port-dependent, or the observers do not answer from elsewhere)",
             }
         );
         for (observer, address, port) in &survey.filtering {
             let index = observers.iter().position(|(_, known)| known == observer).unwrap_or(99);
-            println!("  observer {index}: from its other address and port {}; from another port of its address {}", if *address { "came in" } else { "nothing" }, if *port { "came in" } else { "nothing" });
+            let came = |came: bool| if came { "came in" } else { "nothing" };
+            println!("  observer {index}: from its other address and port {}; from another port of its address {}", address.map_or("not asked, it has one address", came), came(*port));
         }
     }
     if survey.bracket_attempts > 0 {
@@ -504,10 +541,23 @@ mod tests {
         let mut survey = Survey { answered: 0, bracket_attempts: 0, addresses: Vec::new(), started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new(), filtering: Vec::new() };
         // Nothing filters on the loopback: both answers come in.
         let able = observer_with_another_address(3);
-        assert_eq!(survey.filtering(able), Some((true, true)));
-        assert_eq!(survey.filtering, [(able, true, true)]);
+        assert_eq!(survey.filtering(able), Some((Some(true), true)));
+        assert_eq!(survey.filtering, [(able, Some(true), true)]);
+        // An observer of our own names another port of its one address: only that is asked.
+        let run = [UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap(), UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap()];
+        let (SocketAddr::V4(own), SocketAddr::V4(next)) = (run[0].local_addr().unwrap(), run[1].local_addr().unwrap()) else { unreachable!() };
+        std::thread::spawn(move || {
+            let mut packet = [0; 64];
+            for _ in 0..2 {
+                let Ok((length, SocketAddr::V4(source))) = run[0].recv_from(&mut packet) else { return };
+                let asked = stun::asked(&packet[..length]).unwrap();
+                let from = if asked.from_other_port { &run[1] } else { &run[0] };
+                from.send_to(&stun::success(asked.transaction, source, Some(next)), source).unwrap();
+            }
+        });
+        assert_eq!(survey.filtering(own), Some((None, true)));
         // An observer that names no other address is not asked.
         assert_eq!(survey.filtering(observer(Ipv4Addr::LOCALHOST, 1)), None);
-        assert_eq!(survey.filtering.len(), 1);
+        assert_eq!(survey.filtering.len(), 2);
     }
 }
