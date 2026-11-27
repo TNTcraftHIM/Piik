@@ -75,7 +75,9 @@ the feedback period; they do not delay that delivery.
   is set: trace it through each connection, bring the private code to it and
   exercise it in tests, then settle explicit reply outcomes and history and
   storage boundaries before publication. Do not add exact-version steps,
-  closed wire boundaries or individual feature flags meanwhile.
+  closed wire boundaries or individual feature flags meanwhile. Open: whether
+  the objects nested in a request or a message ignore unknown fields as the
+  top level does; until that is settled they keep their contracts.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,

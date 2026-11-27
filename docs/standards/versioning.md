@@ -114,7 +114,8 @@ the reasons and the sources. The rule:
 
 - **Two numbers.** A party states the first two numbers of its product version
   once, where it is already described: a session in its join, the Domain in
-  its welcome, the App in its discovery. The Domain publishes a session's
+  its welcome or, when the first numbers differ, in its refusal, the App in
+  its discovery. The Domain publishes a session's
   numbers with its other facts, so the numbers of a room's writer are those of
   its host's session. Parties with equal first numbers work together. When the
   first numbers differ the connection is refused and each side says which one
@@ -125,9 +126,12 @@ the reasons and the sources. The rule:
   not know ends that request as an unknown outcome, never as success. A
   notification of an unknown kind is ignored.
 - **Unknown fields.** At an extensible wire object the final recipient ignores
-  fields it does not know. A relay forwards the enclosed signed payload
-  unchanged. Known bounds, types and required fields stay strict, and nested
-  objects keep their defined contracts. A writer stores the
+  fields it does not know. A request, a reply, a notification and a message
+  are extensible at their top level, and a description of state (a snapshot,
+  a discovery answer, a metrics row) at every depth. A relay forwards the
+  enclosed signed payload unchanged. Known bounds, types and required fields
+  stay strict, and the objects nested in a request or a message keep their
+  defined contracts. A writer stores the
   fields it knows, and its confirmation carries the message as stored. Stores
   and archives are the exception, because nobody is there to be told: content
   their reader does not know is refused before anything is installed.
