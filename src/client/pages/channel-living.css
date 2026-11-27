@@ -404,9 +404,11 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"] .c3-message-body { flex: 1; width: auto; }
 [data-layout="living"] .c3-message-content-body { line-height: 1.5; }
 [data-layout="living"] :is(.c3-room-start h3, .c3-first-room h2) { font-size: 20px; }
-[data-layout="living"] .c3-room-presence .c3-couch { zoom: 1.25; }
+[data-layout="living"] .c3-room-presence .c3-couch { --c3-couch-zoom: 1.25; zoom: var(--c3-couch-zoom); }
+/* What the couch opens belongs to the page: it is placed and drawn at the page's scale. */
+.c3-couch [popover]:not([popover] *) { zoom: calc(1 / var(--c3-couch-zoom, 1)); }
 @container channel-living (max-height: 720px) {
-  [data-layout="living"] .c3-room-presence .c3-couch { zoom: 1; }
+  [data-layout="living"] .c3-room-presence .c3-couch { --c3-couch-zoom: 1; }
 }
 .c3-shell[data-layout="living"] .c3-workspace .c3-monitor { --stage-padding: var(--room-inset); gap: 0; padding-bottom: 4px; }
 [data-layout="living"] .c3-monitor:not(.is-theater) .c3-monitor-heading { display: none; }
@@ -486,7 +488,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"][data-sidebars="phone"] .c3-monitor-heading > div:first-child { display: none; }
 [data-layout="living"][data-sidebars="phone"] .c3-monitor-grid { gap: 4px; }
 .c3-shell[data-layout="living"][data-sidebars="phone"][data-companion="chat"] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { flex: 0 1 auto; max-height: 42svh; container-type: inline-size; }
-[data-layout="living"][data-sidebars="phone"] .c3-room-presence .c3-couch { zoom: 1; }
+[data-layout="living"][data-sidebars="phone"] .c3-room-presence .c3-couch { --c3-couch-zoom: 1; }
 /* Leave the room tool clear of the couch paging targets when both are shown. */
 [data-layout="living"][data-sidebars="phone"] .c3-room-presence { padding-block: 24px 8px; }
 [data-layout="living"][data-sidebars="phone"] .c3-room-presence > .c3-room-tool-entry { position: absolute; z-index: 1; inset-block-start: 4px; inset-inline-end: 4px; }
