@@ -17,8 +17,8 @@ button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
 .c3-settings-dialog-heading .lr-btn { flex: none; }
 .permission-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; letter-spacing: -.03em; }
 .permission-brand > svg { width: 28px; height: 28px; }
-.permission-body { display: flex; flex-direction: column; flex: 1; gap: 16px; }
-.permission-request { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; flex: none; }
+.c3-settings-dialog .permission-body { display: flex; flex-direction: column; flex: 1; gap: 16px; }
+.permission-request { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: flex-start; gap: 16px; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
 .permission-request > div { flex: 1 1 10em; min-width: 0; overflow-wrap: anywhere; }
 .permission-request h2 { margin: 0 0 8px; font-size: 22px; line-height: 1.35; }
 .permission-origin { overflow-wrap: anywhere; user-select: text; }
