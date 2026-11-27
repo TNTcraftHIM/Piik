@@ -187,7 +187,7 @@ describe("copy catalog", () => {
     const presentation = { lang, theme: null };
     window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;
     expect(takeClientLaunchBootstrap()).toEqual({ ...presentation, explicit: [] });
-    expect(registry.consoleLanguage(lang)).toBe(lang === "zh-Hant" ? "zh" : "en");
+    expect(registry.chineseOrEnglish(lang)).toBe(lang === "zh-Hant" ? "zh" : "en");
     const keysBeforeSelection = [...stored.keys()];
     copy.setCopy({ lang });
     expect(stored.get("piik:ui-lang")).toBe(lang);

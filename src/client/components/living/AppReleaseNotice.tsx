@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import type { ReleaseUpdateNotice } from "../../lib/release-update";
 import { renderReleaseNotes } from "../../lib/release-notes";
+import { chineseOrEnglish } from "../../locales";
 import { ChannelSettingsDialog } from "../../channel/components/ChannelSettingsDialog";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -30,7 +31,7 @@ export function AppReleaseNotice({ update, native, managementURL }: {
   const warningId = useId();
   const [viewedRelease, setViewedRelease] = useState<ReleaseUpdateNotice | null>(null);
   const major = update.kind === "major-update";
-  const headline = update.headline?.[lang === "zh" ? "zh-CN" : "en"];
+  const headline = update.headline?.[chineseOrEnglish(lang) === "zh" ? "zh-CN" : "en"];
   const label = `${t(labels[update.kind])} ${update.version}`;
   const caption = major || update.kind === "update-available" ? t("client.update.download", { version: update.version }) : label;
   const automatic = native && native.view.state !== "unavailable";

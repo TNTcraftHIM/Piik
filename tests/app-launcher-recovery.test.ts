@@ -146,7 +146,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
     windowNavigation: false, siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, startupSite: saved.startupSite, openOnApproval: false,
     mode: initialMode, lang: "en", appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
     publicEntry: { existing: publicOrigin !== undefined, origin: publicOrigin ?? "" }, publicSiteOrigin,
-    consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
+    chineseOrEnglish: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
       timers.set(++nextTimer, { callback, delay });
