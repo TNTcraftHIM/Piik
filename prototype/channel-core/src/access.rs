@@ -1,7 +1,7 @@
 use crate::wire::{identity_image, Room, RoomAccess, RoomIcon};
 use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    Algorithm, Argon2, Params, Version,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -97,6 +97,22 @@ pub(crate) fn accepts_password(hash: &str, value: &str) -> bool {
         })
 }
 
+// PHC verification uses the stored work factors. Accept the profile we generate.
+fn valid_password_hash(encoded: &str) -> bool {
+    let Ok(hash) = PasswordHash::new(encoded) else {
+        return false;
+    };
+    hash.algorithm == Algorithm::default().ident()
+        && hash.version == Some(Version::default().into())
+        && hash.salt.is_some()
+        && hash.hash.is_some()
+        && Params::try_from(&hash).is_ok_and(|params| {
+            params.m_cost() == Params::DEFAULT_M_COST
+                && params.t_cost() == Params::DEFAULT_T_COST
+                && params.p_cost() == Params::DEFAULT_P_COST
+        })
+}
+
 impl RoomState {
     /// Validate retained policy without changing its password or invitation.
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -111,7 +127,7 @@ impl RoomState {
             || self
                 .password_hash
                 .as_ref()
-                .is_some_and(|hash| PasswordHash::new(hash).is_err())
+                .is_some_and(|hash| !valid_password_hash(hash))
             || self
                 .invite_key
                 .as_ref()
