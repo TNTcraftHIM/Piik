@@ -63,7 +63,8 @@ take to serve everyone at one trial per window.
 
 ## Questions
 
-- The NAT model in your kernel NATs, once I have cut `claude/nat-model`
-  down; I will name the commit here.
+- The NAT model in your kernel NATs: `claude/nat-model` at `6a3b858a`, cut
+  to reading the allocator, aiming a peer's packets and replaying a survey
+  (1,213 lines from 2,308; the tool makes one mapping at a time).
 - The encoder under a game that takes the whole GPU: a run near full load
   that times capture, conversion and encoding apart.
