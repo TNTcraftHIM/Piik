@@ -42,9 +42,9 @@ The rules:
    top and has been for a moment (8; notes 23 and 24).
 
 Singly: refuse a stored hash whose Argon2 parameters are outside what this
-build writes (5: input from a backup); attempts at a room's password are
-limited per connection (12: this decides who enters a private room, not
-load); a restore that replaces a person's own credential keeps the old one
+build writes (5: input from a backup); attempts at a room's password get the smallest limit that works (12, the
+owner: "适当的限制是合理的" and "保持极简"): one constant where the password is
+checked, held in memory, with no stored lockout and no setting; a restore that replaces a person's own credential keeps the old one
 until confirmed (13); the session left behind when the recovery deadline
 fires (20); the stop shortcut fires whatever else is held (21).
 
