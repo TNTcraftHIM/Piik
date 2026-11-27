@@ -224,7 +224,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-tooltip-player data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
     data-diagnosis={showDiagnosis || showOutputRecovery && !thumbnail ? true : undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
@@ -267,7 +267,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </>}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon={localSeek ? "refresh" : "play"} title={resumeLabel} cap={resumeLabel} onClick={onResume} /></div>}
-    {(hasControls || actionFeedback) && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
+    {(hasControls || actionFeedback) && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} data-tooltip-controls="playback" role="group" aria-label={t("playback.controls")}>
       {actionFeedback}
       {showTimeline && <div className="c3-watch-timeline">
         {owned ? <input className="lr-range" type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
@@ -599,7 +599,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   useEffect(() => { if (ready) clearFailure?.(); }, [ready]);
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
-  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
+  return <div className="c3-video c3-mini-player" data-tooltip-player data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={shown(input)} held={held && shown(input)}
       negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
       interactive={interactive} label={label} fit={pictureFit} rotation={pictureRotation} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
@@ -611,7 +611,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
     </div>}
     {blocked && !sourcePaused && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
-    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
+    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" data-tooltip-controls="playback" role="group" aria-label={t("playback.controls")}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
       {!localSource && <>

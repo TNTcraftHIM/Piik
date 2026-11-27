@@ -188,7 +188,7 @@ export function PlaybackControlsView({
 
   return <>
     <div id={controlsId} ref={barRef} className={`lr-playback lr-media-toolbar lr-media-overlay lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
-      role="group" aria-label={t("playback.controls")}>
+      data-tooltip-controls="playback" role="group" aria-label={t("playback.controls")}>
       <div className="lr-playback-main">
         <span className="lr-playback-watch">
           <Btn icon={paused ? "play" : "pause"}

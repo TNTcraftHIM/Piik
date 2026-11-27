@@ -23,6 +23,7 @@ export function StageTv({
     <div className="lr-tv">
       <div
         className={`lr-tv-screen${hasEntry ? " has-entry" : ""}${live ? " is-on" : ""}`}
+        data-tooltip-player
         role="group"
         aria-label={label}
       >

@@ -1939,7 +1939,6 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 .lr-comic-tip * { animation-play-state: paused !important; }
 .lr-comic-tip.is-text {
   padding: 10px 14px;
-  max-width: min(320px, var(--tooltip-max-width, calc(100vw - 16px)));
   color: var(--ink);
   font: 600 14px/1.6 var(--font);
   text-align: start;
@@ -2057,7 +2056,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 @media (max-width: 640px) {
   .lr-group-actions .lr-comic-tip-wrap { flex: 1 1 0; min-width: 0; }
   .lr-group-actions .lr-comic-tip-wrap .lr-btn { width: 100%; }
-  .lr-comic-tip { max-width: min(320px, 78vw, var(--tooltip-max-width, calc(100vw - 16px))); }
+  .lr-comic-tip.has-comic { max-width: min(320px, 78vw, var(--tooltip-max-width, calc(100vw - 16px))); }
 }
 
 .lr-comic-tip-caption {
@@ -2104,7 +2103,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 
 
 @media (max-width: 640px) {
-  .lr-tv-screen .lr-comic-tip { max-width: min(62vw, var(--tooltip-max-width, calc(100vw - 16px))); }
+  .lr-tv-screen .lr-comic-tip.has-comic { max-width: min(62vw, var(--tooltip-max-width, calc(100vw - 16px))); }
 }
 
 /* append-sink: workflow agents append new rules ABOVE this line. */

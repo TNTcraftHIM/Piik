@@ -217,14 +217,12 @@ export function Tooltip({
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
     const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options, [data-tooltip-controls]"));
-    const playback = Boolean(controlBar?.closest(".lr-playback"));
+    const playback = controlBar?.dataset.tooltipControls === "playback";
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
-    const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
+    const screen = playback ? insideSurface(wrap.closest<HTMLElement>("[data-tooltip-player]")) : null;
     const player = screen?.getBoundingClientRect();
-    const mediaBoundary = insideSurface(wrap.closest<HTMLElement>(".lr-tv")) ?? screen;
-    const below = playback
-      ? mediaBoundary?.getBoundingClientRect().bottom ?? avoid.bottom
-      : avoid.bottom;
+    const mediaBoundary = insideSurface(screen?.closest<HTMLElement>(".lr-tv") ?? null) ?? screen;
+    const below = mediaBoundary?.getBoundingClientRect().bottom ?? avoid.bottom;
     const measured = panelMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     // Same idea vertically: a control scrolled near the top has no room above,
