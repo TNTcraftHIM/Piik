@@ -5,9 +5,8 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `34cb0e9d`, merged; the build and the web suite for it are
-running here and their result follows in the next push. Native was read, not
-run.
+Reviewed through `34cb0e9d`, merged: the Browser core builds, `tsc -b` passes
+and the web suite has 2,539 of 2,539 here. Native was read, not run.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
@@ -47,9 +46,17 @@ tables are sound. Read offline, for a new address, held of tried:
 | 133.18 with 223.104 (hotspot) | two real addresses chosen by socket; the first a point per socket | no aim needed | |
 | 175.2 (mobile data) | by destination, every mapping inside fifty-seven ports, one port serving several destinations | 4/32 | 30/32 |
 | 183.251 | by destination, two counters, one up and one down | 17/30 | 26/30 |
-| 61.242 (hotspot) | three addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn; brackets not yet measured | |
+| 61.242 (hotspot, twice) | three then four addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn; brackets below | |
 | 112.4 | by destination, a counter per destination | 5/30 | 6/30 |
 | 223.104 (a hotspot's second address) | by destination, a counter per destination | 0/13 | 1/13 |
+
+The first brackets, from tool 0.3.1: on 61.242 the middle port lay between
+the outer two in 4 of 5 complete triples, the outer two 2 to 9 ports apart;
+two of the five triples reached the NAT in another order than they were
+sent, and the outer span widened by its own width holds all five. On a
+campus with a counter per destination (112.4 again) it held 2 of 9, as
+expected. Four more reports have come in since the table (fifteen in all);
+they repeat kinds already in it.
 
 One-sided surveys of the owner's circle; no peer, no filtering measured.
 What they say for `peer/preparation.rs`, none of it to change yet: four of
