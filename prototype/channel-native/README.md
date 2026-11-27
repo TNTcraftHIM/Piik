@@ -129,7 +129,10 @@ input returns over the selected screen route on the same peer connections.
 Capture leases own consent and held-key cleanup, independently of room hosting.
 Changes to remote-control policy identify the selected capture lease, so a late
 request for a replaced source cannot enable control on its replacement.
-Global stop uses a process-only Windows hotkey selected by the Browser preference.
+The Browser preference selects the process-wide Windows stop chord. Its existing
+registration checks availability; a limited observer also recognizes the chord
+with Shift or Win held. It records no keys. The input executor consumes the stop
+intent and releases held input, independently of the Windows message callback.
 The [activity model](../../docs/research/channel-network-design.md#activity-and-lifecycle)
 owns authorization and retirement. Optional Windows gamepads use an already
 installed ViGEmBus through `vigem-rust`; Piik bundles or installs neither a

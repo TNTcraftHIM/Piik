@@ -112,18 +112,17 @@ the observed minimum and maximum cannot define the allocator's support.
 Mapping and filtering remain separate observations under
 [RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html#section-4.1).
 
-The isolated allocator at `1533caba` was also exercised through local STUN
-under preservation, sequential and four-counter tuple-hashed kernel routers.
-It identified the three configured allocation patterns. Prediction histories
-were frozen before the first peer-directed send. In two later single trials,
-the predicted windows included the actual sequential and hashed peer mappings,
-but their first complete window required 107 targets. Its scheduler selected
-no window under a 64-datagram total budget, so neither trial attempted a
-predicted-port scan. Sending only to the STUN-advertised port failed in both.
-Window inclusion and an abstained scan do not establish prediction-assisted
-delivery. The laboratory used synthetic peers and left production policy
-unchanged; bounded scheduling, authenticated preparation and ICE transfer remain
-the integration boundary.
+The isolated allocator was also exercised through local STUN under programmed
+kernel routers. At `6a3b858a`, two single trials paired one stable peer with
+sequential or four-counter tuple-hashed mapping. Histories and ten candidate
+ports were frozen before touching the peer. Both trials delivered synthetic
+UDP in both directions, using 53 datagrams including observations and replies
+within a 64-datagram total budget. Advertised-port-only controls did not deliver.
+The tool's round-robin sampling was truncated to ten additional observations
+to preserve that budget. Replaying the earlier frozen observations reproduced
+the candidate order. This establishes the controlled UDP path; authenticated
+preparation, ICE nomination, media and public-network coverage remain separate.
+Production preparation is unchanged.
 
 ### Native NAT64 Assessment
 

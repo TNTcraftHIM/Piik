@@ -759,8 +759,11 @@ and macOS Command shortcuts, without depending
 on the local OS delivering that combination to the page. Physical system-key
 capture remains subject to the local OS and Browser; even the
 [Keyboard Lock API](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)
-only receives keys the OS permits. Piik does not install a global keyboard hook
-or simulate the protected Ctrl+Alt+Delete sequence. Closing the keyboard returns
+only receives keys the OS permits. Browser keyboard forwarding uses those APIs;
+the protected Ctrl+Alt+Delete sequence is not simulated. The 3.0 Windows stop
+binding additionally observes its configured function key and Ctrl/Alt state,
+so held Shift or Win cannot suppress a local stop. It keeps no input history
+and follows the registered shortcut's lifetime. Closing the keyboard returns
 focus to the control surface.
 The multiline text field owns IME composition and preserves a pasted draft;
 Enter edits that draft and the explicit button submits it. One submission is
@@ -796,7 +799,7 @@ No source establishes a numerical false-positive increase for Piik.
 and [Chrome download warnings](https://support.google.com/chrome/answer/6261569?hl=en)
 are also distinct from a confirmed malware detection; signing does not guarantee
 that a new binary avoids a warning. This prototype adds no unattended access,
-startup persistence, elevation, driver, keyboard hook or security-product bypass.
+startup persistence, elevation, driver or security-product bypass.
 Do not recommend antivirus exclusions as its deployment model.
 
 ### Remote Co-play
