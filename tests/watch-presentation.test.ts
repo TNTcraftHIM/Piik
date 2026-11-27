@@ -459,7 +459,7 @@ it("counts watch joins without claiming screen delivery readiness", () => {
   expect(joined).toContain("Joined this watch");
   expect(joined).not.toContain("Connecting");
   const preparing = renderToStaticMarkup(createElement(SourceAudience, { people: [{ ...person, state: "preparing" }] }));
-  expect(preparing).toContain('aria-label="Viewers: 0 watching"');
+  expect(preparing).toContain(`aria-label="${t("en", "screen.pictureReceivedCount", { count: "0" })}"`);
 });
 
 

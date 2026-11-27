@@ -70,9 +70,12 @@ the feedback period; they do not delay that delivery.
   resource. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Freeze the first public 3.0 contract.** Decide
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
-  writers and release storage fixtures. Settle the compatibility baseline and
-  matrix, explicit reply outcomes and the implemented history and storage
-  boundaries. Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
+  writers and release storage fixtures. Settle the common extension and
+  partial-read contract, compatibility matrix, explicit reply outcomes, and
+  history and storage boundaries before publication. While that
+  design is under review, do not add exact-version steps, closed wire/storage
+  boundaries or individual feature flags to extend the current scheme.
+  Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,
   Browser and SDK readers. Keep API/Bot capabilities within existing actions

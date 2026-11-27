@@ -881,7 +881,13 @@ fn file_availability_wire_is_additive() {
         None,
     )
     .unwrap();
-    let mut room = policy.view(observation_id).unwrap();
+    let member = crate::identity::Member {
+        user_id: observation_id,
+    };
+    let mut room = crate::RoomRuntime::new(policy)
+        .snapshot(member, observation_id)
+        .unwrap()
+        .room;
     let legacy = serde_json::to_value(&room).unwrap();
     assert!(legacy.get("fileAvailability").is_none());
     let decoded: Room = serde_json::from_value(legacy).unwrap();

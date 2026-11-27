@@ -1,4 +1,4 @@
-use crate::wire::{identity_image, Room, RoomAccess, RoomIcon};
+use crate::wire::{identity_image, RoomAccess, RoomIcon};
 use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Algorithm, Argon2, Params, Version,
@@ -264,37 +264,7 @@ impl RoomState {
         })
     }
 
-    pub fn view(&self, user: Uuid) -> Option<Room> {
-        let authorized = self.reads(user);
-        let can_manage = self.manages(user);
-        if self.hidden && !authorized {
-            return None;
-        }
-        Some(Room {
-            delivery: None,
-            id: self.id.clone(),
-            name: self.name.clone(),
-            icon: self.appearance.icon.clone(),
-            picture: None,
-            creator_id: self.creator_id,
-            access: self.access,
-            hidden: self.hidden,
-            has_password: self.password_hash.is_some(),
-            voice_bitrate: self.voice_bitrate,
-            relay_capacity: self.relay_capacity,
-            relay_override: None,
-            service_relay: None,
-            authorized,
-            can_manage,
-            available: true,
-            reading: false,
-            participant_session_ids: Vec::new(),
-            history_lineage: None,
-            last_message_seq: 0,
-            file_activity: Vec::new(),
-            file_availability: None,
-            capabilities: crate::wire::RoomCapabilities { attachments: false },
-            members: can_manage.then(|| self.grants.iter().copied().collect()),
-        })
+    pub(crate) fn has_password(&self) -> bool {
+        self.password_hash.is_some()
     }
 }

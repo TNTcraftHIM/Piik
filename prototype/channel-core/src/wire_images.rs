@@ -212,20 +212,19 @@ mod tests {
         let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==".to_owned();
         let user = state.users[0].id;
         state.channel.icon = image.clone().try_into().unwrap();
-        state.channel.rooms.push(
-            crate::RoomState::new(
-                "room".into(),
-                "Room".into(),
-                crate::wire::RoomIcon::default(),
-                user,
-                crate::wire::RoomAccess::Public,
-                false,
-                None,
-            )
-            .unwrap()
-            .view(user)
-            .unwrap(),
-        );
+        let policy = crate::RoomState::new(
+            "room".into(),
+            "Room".into(),
+            crate::wire::RoomIcon::default(),
+            user,
+            crate::wire::RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap();
+        let member = crate::identity::Member { user_id: user };
+        let room = crate::RoomRuntime::new(policy).snapshot(member, user).unwrap().room;
+        state.channel.rooms.push(room);
         state.channel.rooms[0].reading = true;
         state.channel.rooms[0].picture = Some(image.clone());
         let mut state = state.clone();

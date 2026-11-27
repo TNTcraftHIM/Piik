@@ -271,7 +271,7 @@ async fn receive_track(
                     continue;
                 }
                 anyhow::ensure!(
-                    crate::media::compatible(&codec, &received_codec),
+                    packet.payload.is_empty() || crate::media::compatible(&codec, &received_codec),
                     "external_codec_changed"
                 );
                 if kind == MediaKind::Video {
@@ -723,6 +723,49 @@ mod tests {
             assert!(driver.sources.values().any(|source| source.kind == MediaKind::Audio && matches!(source.feed, SourceFeed::Rtp { .. })));
             #[cfg(any(target_os="windows",target_os="linux",target_os="macos"))]
             assert!(driver.derived.contains_key(&prepared.lease.id));
+            let output = driver.sources[&prepared.lease.id].video().unwrap().subscribe();
+            for keyframe in [true, false] {
+                frame += 1;
+                let timestamp = frame * 1800;
+                if !keyframe {
+                    // An empty RTP event on another negotiated PT consumes a sequence number.
+                    let high = RtpCodec::h264([0x64, 0, 0x1f]);
+                    let mut empty = vec![rtp::Packet::default()];
+                    empty[0].header.timestamp = timestamp;
+                    loop {
+                        let writable = video_writable.notified();
+                        tokio::pin!(writable);
+                        writable.as_mut().enable();
+                        match sender.write_au(video, String::new(), high.clone(), empty, Instant::now()).await? {
+                            None => break,
+                            Some(pending) => empty = pending,
+                        }
+                        writable.await;
+                    }
+                }
+                let payloads = video_payloads(&h264(), frame, keyframe)?;
+                let count = payloads.len();
+                let packets = payloads.into_iter().enumerate().map(|(index, payload)| rtp::Packet {
+                    header: rtp::header::Header { marker: index + 1 == count, timestamp, ..Default::default() },
+                    payload,
+                }).collect();
+                send(&sender, video, packets, Instant::now(), &video_writable).await?;
+                loop {
+                    let received = tokio::select! {
+                        value = output.recv() => value.context("external video ended")?,
+                        value = events.recv() => {
+                            if matches!(value, Some(Event::CaptureEnded { .. })) {
+                                anyhow::bail!("empty RTP ended external video");
+                            }
+                            continue;
+                        }
+                    };
+                    if received.bytes.ends_with(&frame.to_be_bytes()) {
+                        assert_eq!(received.keyframe, keyframe);
+                        break;
+                    }
+                }
+            }
             // The normal authoritative update retires the same local owner.
             driver.update(vec![], vec![], vec![]).await;
             while driver.local_producers.contains_key(&prepared.lease.id) {

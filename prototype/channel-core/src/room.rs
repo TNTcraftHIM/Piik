@@ -247,8 +247,8 @@ impl RoomRuntime {
         connected: bool,
         file_available: impl Fn(&(u64, Uuid)) -> bool,
     ) -> Option<RoomRecipient> {
-        let room = self.policy.view(member.user_id);
-        let authorized = room.as_ref().is_some_and(|room| room.authorized);
+        let authorized = self.policy.reads(member.user_id);
+        let can_manage = self.policy.manages(member.user_id);
         let files = self.files.plans(&self.policy.id, session);
         let watch_bytes = self.watch_byte_plans(session);
         let transit_endpoint = self.selected_service().filter(|service| {
@@ -259,7 +259,7 @@ impl RoomRuntime {
                         .flows()
                         .any(|flow| flow.sender == session || flow.receiver == session))
         });
-        if room.is_none() && transit_endpoint.is_none() {
+        if !authorized && self.policy.hidden && transit_endpoint.is_none() {
             return None;
         }
         let subscriptions = if authorized {
@@ -298,8 +298,8 @@ impl RoomRuntime {
                 vec![]
             },
             authorized,
-            can_manage: room.as_ref().is_some_and(|room| room.can_manage),
-            members: room.and_then(|room| room.members),
+            can_manage,
+            members: can_manage.then(|| self.policy.grants.iter().copied().collect()),
             reading: authorized && self.reading(session),
             file_availability: self
                 .activity

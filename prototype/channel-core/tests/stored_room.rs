@@ -772,7 +772,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             copy_policy.allow_service_relay,
             "a copy is a new room and takes the new-room default"
         );
-        assert!(!copy_policy.view(owner).unwrap().authorized);
+        assert!(!copy_policy.reads(owner));
         assert!(!copy_policy.accepts_invite(&invitation));
         let staged_copy = RoomBackup::stage(
             &folder.join("copy-staging.sqlite"),

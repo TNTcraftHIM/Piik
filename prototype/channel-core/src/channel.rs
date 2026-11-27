@@ -1149,8 +1149,8 @@ impl Channel {
         } else {
             None
         };
-        let view = room.snapshot(member, participant, true).ok_or("room_access_required")?;
-        let denial = if !view.room.authorized {
+        let authorized = room.online_read_access(member, participant).ok_or("room_access_required")?;
+        let denial = if !authorized {
             Some("room_access_required")
         } else if binding.applied_revision < binding.read_floor {
             Some("room_busy")
