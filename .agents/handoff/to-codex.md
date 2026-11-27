@@ -30,15 +30,31 @@ arrives here as a measurement with its acceptance, not as a commit. I read
 your line when this mailbox's counterpart changes, and otherwise from time to
 time.
 
-## Interface: one measurement from the light theme
+## Interface: three measurements from the light theme
 
-In the 320-pixel conversation column a file card gives its name 76 pixels:
-`皮克图标.png` wraps to two lines (42 pixels tall) while the action beside
-it spends 56 pixels on its words (`?channel-room&screens=1&image`, light
-theme, 1360 wide). Accepted when, at that width, a twelve-character name
-with its extension stays on one line, the action keeping its icon and its
-accessible name and showing its words where the conversation is the main
-column.
+Measured in Chrome on `?channel-room&screens=1&image`, light theme, 1360 by
+860, where the room's card lies at 20 to 1340 by 20 to 836. At 390 wide,
+where the card fills the window, all seven surfaces I opened lie inside it.
+
+1. **A file card's name.** In the 320-pixel conversation column the name gets
+   76 pixels: `皮克图标.png` wraps to two lines (42 pixels tall) while the
+   action beside it spends 56 pixels on its words. Accepted when a
+   twelve-character name with its extension stays on one line there, the
+   action keeping its icon and accessible name and showing its words where
+   the conversation is the main column.
+2. **The invitation opens away from its opener.** The link button sits at
+   242 to 286; its popover lies at 8 to 368, over the rail, because
+   `useAnchoredPopover` aligns by the end edge unless told otherwise and
+   then clamps. Accepted when the popover's start edge is its opener's
+   start edge in the full and rail forms, and the top-right tools keep their
+   end alignment.
+3. **Anchored surfaces are bounded by the window, not by the card.** The
+   bound is the window less 8 pixels, so three surfaces cross the card's
+   border: the invitation and the share settings start at 8 (the card at
+   20), and the connection details end at 1348 and 848 (the card at 1340
+   and 836). Accepted when, wherever the card is inset from the window, an
+   anchored surface lies inside the card's box with the same 8 pixels, at
+   1360 and 1680 wide, and nothing moves at 390.
 
 ## NAT: twelve live reports, a search order and a bracketed pool
 
