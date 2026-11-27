@@ -106,18 +106,6 @@ export function applyVideoCodecPreference(
   ]);
 }
 
-export function applyH264ProbeCodec(
-  transceiver: RTCRtpTransceiver,
-): boolean {
-  if (typeof RTCRtpSender === "undefined") {
-    return false;
-  }
-  const codecs = videoCapabilities();
-  const h264 = h264ModeOneCodecs(codecs);
-  return h264.length > 0 &&
-    applyCodecs(transceiver, [...h264, ...repairCodecs(codecs)]);
-}
-
 /** Drop feedback for codecs excluded from the offer.
  * Firefox can retain it after setCodecPreferences (Mozilla bug 1909443),
  * making the offer unparseable in Chromium.

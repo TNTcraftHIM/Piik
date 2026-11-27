@@ -1,4 +1,9 @@
-import { applyH264ProbeCodec, normalizeVideoOfferSdp, type BrowserVideoCodec } from "./video-codec";
+import {
+  applyVideoCodecPreference,
+  manualVideoCodecPreference,
+  normalizeVideoOfferSdp,
+  type BrowserVideoCodec,
+} from "./video-codec";
 
 /**
  * Auto proves one actual encode; it does not rate or benchmark the source.
@@ -30,7 +35,7 @@ export async function preferredVideoCodecForTrack(track: MediaStreamTrack, signa
     sender = new RTCPeerConnection({ iceServers: [] });
     receiver = new RTCPeerConnection({ iceServers: [] });
     const transceiver = sender.addTransceiver(clone, { direction: "sendonly" });
-    if (!applyH264ProbeCodec(transceiver)) return "vp8";
+    if (!applyVideoCodecPreference(transceiver, manualVideoCodecPreference("h264"))) return "vp8";
     await wait(sender.setLocalDescription(await wait(sender.createOffer())));
     await wait(gathered(sender));
     await wait(receiver.setRemoteDescription({ type: "offer", sdp: normalizeVideoOfferSdp(sender.localDescription!.sdp) }));
