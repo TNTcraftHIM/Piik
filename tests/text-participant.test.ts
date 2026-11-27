@@ -29,7 +29,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
         expect(command.protocol).toBe(CHANNEL_PROTOCOL);
         expect(command).not.toHaveProperty('ownerKey');
         const state = snapshotSchema.parse({
-          channel: { id: randomUUID(), name: 'Fixture', icon: 'couch', ownerId: owner, roomCreationPolicy: 'ordinary', hostingMode: 'lightweight', historyWindow: 100, userCount: 2, managedRoomIds: [],
+          channel: { id: randomUUID(), name: 'Fixture', icon: 'couch', ownerId: owner, roomCreationPolicy: 'ordinary', askUnnamedMemberName: false, hostingMode: 'lightweight', historyWindow: 100, userCount: 2, managedRoomIds: [],
             rooms: [{ id: 'room', name: 'Room', icon: 'couch', creatorId: owner, access: 'public', hidden: false,
               hasPassword: false, authorized: true, canManage: false, available: true, reading: true,
               participantSessionIds: [local], lastMessageSeq: 1, fileActivity: [], capabilities: { attachments: true },

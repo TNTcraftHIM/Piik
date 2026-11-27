@@ -1,3 +1,4 @@
+import { memberName } from "../member-name";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
@@ -35,7 +36,7 @@ export function RoomChatExport({ messages, users }: { messages: readonly Channel
       disabled={!hasText} onClick={() => {
         const text = formatChatTranscript(messages.filter(message => message.text).map(message => ({
           occurredAt: message.time,
-          sender: { displayName: messageAuthorName(message, users, t("room.common.user")) },
+          sender: { displayName: messageAuthorName(message, users) },
           payload: { kind: "chat" as const, text: message.text },
         })));
         downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }),
@@ -277,7 +278,7 @@ function RoomMemberAccess({ channel, roomId, userId, disabled }: {
   const { error, run } = useSettingsAction();
   return <div className="c3-room-member">
     <div className="c3-room-member-action">
-      <span>{userProfile(channel.state, channel.profiles, userId)?.name ?? t("room.common.user")}</span>
+      <span>{memberName(userId, userProfile(channel.state, channel.profiles, userId)?.name, true)}</span>
       <ChannelAction icon="x" quiet iconOnly danger label={t("room.settings.revokeAccess")} hint="hint-close"
         busy={channel.pending.has(`revoke:${roomId}:${userId}`)} disabled={disabled}
         onClick={() => { void run(() => channel.revokeRoomAccess(roomId, userId, false)); }} />

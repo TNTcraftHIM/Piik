@@ -50,6 +50,8 @@ pub enum Command {
         name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         icon: Option<IdentityIcon>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ask_unnamed_member_name: Option<bool>,
     },
     SetRoomCreationPolicy {
         policy: RoomCreationPolicy,
@@ -1008,6 +1010,7 @@ pub struct UserSummary {
 pub struct ChannelInfo {
     pub hosting_mode: HostingMode,
     pub room_creation_policy: RoomCreationPolicy,
+    pub ask_unnamed_member_name: bool,
     pub managed_room_ids: Vec<String>,
     pub user_count: usize,
     pub history_window: usize,

@@ -1,3 +1,4 @@
+import { memberName } from "../member-name";
 import { isDocumentActive } from "../../ui/document-active";
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
@@ -202,7 +203,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       return summary ? [{ ...summary, avatar: summary.version === profile?.version ? profile.avatar : null }]
         : profile ? [profile] : [];
     }), queryText);
-  }, [users, profiles, queryText, mentionPage]);
+  }, [users, profiles, queryText, mentionPage, lang]);
   const moreMentions = mentionPage.query === queryText && mentionPage.next !== null;
   async function loadMentions(after?: string) {
     if (queryText === null) return;
@@ -249,7 +250,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     if (!field) return;
     const range = replacement ?? { start: field.selectionStart, end: field.selectionEnd };
     const prefix = range.start > 0 && !/\s/.test(field.value[range.start - 1]) ? " " : "";
-    const inserted = `${prefix}@${user.name} `;
+    const inserted = `${prefix}@${memberName(user.id, user.name)} `;
     const next = field.value.slice(0, range.start) + inserted + field.value.slice(range.end);
     updateDraft(previous => ({ ...previous, text: next,
       mentions: [...editMentions(previous.text, next, previous.mentions, range), { userId: user.id, start: range.start + prefix.length, end: range.start + inserted.length - 1 }].sort((a, b) => a.start - b.start) }));
@@ -655,7 +656,7 @@ const MessageHistory = memo(function MessageHistory({ roomId, messages, users, p
   onMessage?(seq: number): void;
   onDelete?(message: ChannelMessage): void;
 }) {
-  const { lang, t } = useCopy();
+  const { lang } = useCopy();
   const formats = useMemo(() => messageDateFormats(lang, timeZone), [lang, timeZone]);
   const displayUsers = useMemo(() =>
     [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()], [profiles, users]);
@@ -670,15 +671,16 @@ const MessageHistory = memo(function MessageHistory({ roomId, messages, users, p
     const newMessages = message.id === unreadMessage;
     const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
     if (!grouped) authorMessageId = message.id;
-    const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);
-    const name = messageAuthorName(message, displayUsers, t("conversation.user"));
-    const mentionName = canMention ? displayUsers.find(user => user.id === message.userId)?.name : undefined;
+    const live = message.archivedAuthorName === undefined;
+    const author = live ? profiles.get(message.userId) : undefined, summary = live ? users.find(user => user.id === message.userId) : undefined;
+    const name = messageAuthorName(message, displayUsers);
+    const mentionName = canMention && live ? (summary ?? author)?.name : undefined;
     const reply = message.reply;
-    const replyName = reply && (reply.archivedAuthorName ?? displayUsers.find(user => user.id === reply.userId)?.name);
+    const replyName = reply && messageAuthorName(reply, displayUsers);
     // Only rendered mention marks need the live user directory.
     return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
       avatar={(summary ? profileAvatar(summary, author) : author?.avatar) ?? undefined}
-      mentionUsers={message.mentions?.length ? displayUsers : undefined} replyName={replyName} selfUserId={selfUserId} unread={newMessages} onMessage={onMessage}
+      mentionUsers={live && message.mentions?.length ? displayUsers : undefined} replyName={replyName} selfUserId={selfUserId} unread={newMessages} onMessage={onMessage}
       onReply={onReply}
       onDelete={canModerate || message.userId === selfUserId ? onDelete : undefined}
       deleting={pending?.has(`delete-message:${roomId}:${message.id}`)}

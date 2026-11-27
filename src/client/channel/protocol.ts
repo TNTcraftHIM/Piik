@@ -83,7 +83,7 @@ export const inlineImageSchema = z.object({ data: z.string(), mediaType: z.enum(
 export type ImageRendition = z.infer<typeof inlineImageSchema>;
 export const messageSchema = z.object({
   id, userId: id, text: z.string().max(MAX_MESSAGE_CODE_POINTS * 2), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
-  archivedAuthorName: z.string().min(1).max(MAX_USER_NAME_UNITS).optional(),
+  archivedAuthorName: z.string().max(MAX_USER_NAME_UNITS).optional(),
   mentions: z.array(mentionSchema).optional(),
   reply: z.object({ seq: z.number().int().positive(), userId: id, archivedAuthorName: z.string().max(MAX_USER_NAME_UNITS).optional(), text: z.string().max(160), notify: z.boolean() }).optional(),
   inlineImages: z.record(id, inlineImageSchema).optional(),
@@ -115,7 +115,7 @@ const flowBindingSchema = z.object({ id, publicationId: id, selected: z.boolean(
 export const snapshotSchema = z.object({
   channel: z.object({
     id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(CHANNEL_ROOM_LIMIT), historyWindow: z.number().int().positive(), userCount: z.number().int().nonnegative(),
-    roomCreationPolicy: roomCreationPolicySchema, hostingMode: z.enum(["lightweight", "hosted"]),
+    roomCreationPolicy: roomCreationPolicySchema, askUnnamedMemberName: z.boolean(), hostingMode: z.enum(["lightweight", "hosted"]),
     managedRoomIds: z.array(id).max(CHANNEL_ROOM_LIMIT),
   }),
   users: z.array(userSummarySchema),
@@ -281,8 +281,8 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "history_page"; messages: (ChannelMessage & { reactions: NonNullable<ChannelMessage["reactions"]> })[]; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
-export interface DomainSettings { name: string; icon: string }
-export interface RoomSettings extends DomainSettings {
+export interface DomainSettings { name: string; icon: string; askUnnamedMemberName: boolean }
+export interface RoomSettings extends Pick<DomainSettings, "name" | "icon"> {
   picture?: string | null;
   access: "public" | "private"; hidden: boolean; password?: string | null;
   voiceBitrate?: number;

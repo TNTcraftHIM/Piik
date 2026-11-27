@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import { BackButton, Btn } from "../../components/living/primitives";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
@@ -66,7 +67,8 @@ export const ChannelPeople = memo(function ChannelPeople({ channel, roomId, acti
   const listeningUsers = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams).map(publication => publication.userId));
   const activities = new Map(state ? roomActivityPeople(state, roomId, channel.profiles, channel).map(user => [user.id, user]) : []);
   const roomOwner = state?.channel.rooms.find(room => room.id === roomId)?.creatorId;
-  const row = (user: User) => <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined}
+  const duplicates = duplicateMemberNames(groups.flatMap(group => group.users));
+  const row = (user: User) => <ChannelUser key={user.id} id={user.id} name={memberName(user.id, user.name, duplicates.has(user.name))} avatar={user.avatar ?? undefined}
     self={user.id === self?.id} owner={user.id === roomOwner} online={online.has(user.id)}
     roomActivity={activities.get(user.id)} voicePlayback={listeningUsers.has(user.id) ? channel : undefined} />;
   return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading" inert={!active || undefined}>

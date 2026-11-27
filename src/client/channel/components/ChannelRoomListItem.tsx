@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Glyph } from "../../ui/icons";
 import { PawnSvg } from "../../components/living/Pawn";
@@ -24,6 +25,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
   const voices = state?.voice.filter(voice => voice.roomId === room.id) ?? [];
   const present = state && !ordering && room.authorized && room.available
     ? roomPeople(state, room.id, channel.profiles, channel) : [];
+  const duplicates = duplicateMemberNames(present);
   const shownFaces = present.length > MAX_FACES ? MAX_FACES - 1 : present.length;
   const showPeople = !compact && present.length > 0;
   const screens = state?.publications.filter(source => source.roomId === room.id && source.kind === "screen") ?? [];
@@ -77,7 +79,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         viewing={state && room.authorized && room.available ? roomSessionViewing(screens, watches, state.subscriptions, channel) : undefined}
         onSelect={onSelect} onManage={onManage} />
     {showPeople && <div id={id} className="c3-room-people" role="group" aria-label={room.name} hidden={!peopleOpen}>
-      {peopleOpen && present.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
+      {peopleOpen && present.map(person => <ChannelUser key={person.userId} id={person.userId} name={memberName(person.userId, person.name, duplicates.has(person.name))} avatar={person.avatar}
         self={person.userId === channel.self?.id} owner={person.owner} online={person.online} />)}
     </div>}
   </div>;

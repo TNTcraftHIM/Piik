@@ -499,7 +499,7 @@ export class ChannelSession {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
         sentBootstrap = newIdentity ? undefined : this.ownerBootstrap;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
+        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.closeConnection();
@@ -1937,8 +1937,8 @@ export class ChannelSession {
       if (!canResume()) throw new Error("disconnected");
       if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
       await this.connectBackupIdentity(domainId, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
-      const { name, icon } = this.view.state!.channel;
-      return { name, icon };
+      const { name, icon, askUnnamedMemberName } = this.view.state!.channel;
+      return { name, icon, askUnnamedMemberName };
     } catch (error) {
       const restored = error instanceof Error && error.message === "domain_restored_connection_failed";
       if (committed || restored) {

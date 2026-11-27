@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import { createPortal } from "react-dom";
 import { useStagePicture, type StagePictureSource } from "./use-stage-picture";
 import { PawnSvg } from "../../components/living/Pawn";
@@ -179,6 +180,7 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end", maxHeight: 360 });
+  const duplicates = duplicateMemberNames(people);
   const count = joined ? people.length : people.filter(person => "state" in person && person.state === "active").length;
   return <span ref={trigger} className="c3-screen-audience">
     <Btn icon={joined ? viewingAppearance.joined.icon : "eye"} iconOverlay={<span aria-hidden="true">{count}</span>} quiet size="dense" expanded={open} controls={id} popoverTarget={id}
@@ -188,7 +190,7 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
       <h3>{t(joined ? "watch.joined" : "screen.viewers")}</h3>
-      {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
+      {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={memberName(person.userId, person.name, duplicates.has(person.name))} avatar={person.avatar}
         self={false} owner={false} online activity={joined ? t("watch.joined") : "state" in person
           ? participantViewingLabel(person.state, t) : undefined} />)
         : <p>{t(joined ? "watch.noViewers" : "screen.noViewers")}</p>}

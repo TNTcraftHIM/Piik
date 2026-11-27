@@ -1016,7 +1016,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     };
     let state: Snapshot = serde_json::from_value(json!({
         "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
-            "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
+            "hostingMode":"lightweight","roomCreationPolicy":"ordinary","askUnnamedMemberName":false,"managedRoomIds":[],
             "userCount":2,"historyWindow":100,"rooms":[room("target",true,json!({
                 "hostSessionId":host,"bindingId":Uuid::new_v4()
             })),room("offline",false,serde_json::Value::Null)]},
@@ -1524,7 +1524,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             };
             let mut state: Snapshot = serde_json::from_value(json!({
             "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
-                "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
+                "hostingMode":"lightweight","roomCreationPolicy":"ordinary","askUnnamedMemberName":false,"managedRoomIds":[],
                 "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],

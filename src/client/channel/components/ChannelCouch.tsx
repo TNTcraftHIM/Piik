@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { CouchBench } from "../../components/living/CouchBench";
@@ -79,9 +80,11 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     setTarget(null);
     guests.current?.scrollBy({ left: direction * guestWidth });
   }
+  const duplicates = duplicateMemberNames(people);
   function seat(person: ChannelCouchPerson, clipped = false) {
+    const name = memberName(person.userId, person.name, duplicates.has(person.name));
     const active = target?.userId === person.userId;
-    const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
+    const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name });
     const { voice, ...activity } = person;
     const badges = personActivityBadges(activity, copy);
     const primary = badges[0];
@@ -91,10 +94,10 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const inner = <>
       <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
         avatar={person.avatar} voice={voice} collaboration={person.collaboration} activity={primary?.status ?? primary?.icon} />
-      <span className="lr-pawn-name">{person.name}</span>
+      <span className="lr-pawn-name">{name}</span>
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;
-    const overflow = { text: person.name, selector: ".lr-pawn-name" };
+    const overflow = { text: name, selector: ".lr-pawn-name" };
     const hint = session ? { kind: "hint-reaction-picker" as const, text: [action, ...labels].join("\n"), overflow }
       : { text: labels.length ? labels.join("\n") : undefined, overflow };
     return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId} data-pawn-clipped={clipped || undefined}>
@@ -102,7 +105,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
         {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={details}
           aria-expanded={active} aria-controls={pickerId}
           onClick={event => setTarget({ userId: person.userId, trigger: event.currentTarget })}>{inner}</button>
-          : details ? <button type="button" className={pawnClass} aria-label={person.name} aria-description={details}>{inner}</button>
+          : details ? <button type="button" className={pawnClass} aria-label={name} aria-description={details}>{inner}</button>
             : <span className={pawnClass}>{inner}</span>}
       </Tooltip>
     </span>;
@@ -142,16 +145,16 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     )}
     {target && selected && state && session && <RoomQuickReactions key={selected.userId} id={pickerId} trigger={target.trigger} side="below"
       identity={<div className="lr-person-menu-target">
-        <ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
+        <ChannelUser id={selected.userId} name={memberName(selected.userId, selected.name, true)} avatar={selected.avatar} self={selected.userId === selfUserId}
           owner={!!selected.owner} online roomActivity={selected} collaboration={selected.collaboration}
           onPreviewAvatar={() => setAvatarPreview({ userId: selected.userId, trigger: target.trigger })} />
       </div>}
-      person={{ peerId: selected.userId, displayName: selected.name }} selfPeerId={selfUserId}
+      person={{ peerId: selected.userId, displayName: memberName(selected.userId, selected.name) }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}
       canSend={state.ready && !state.pending && !state.coolingDown}
       onSend={(reaction, targetUserId) => session.send({ kind: "reaction", reaction, ...(targetUserId ? { targetPeerId: targetUserId } : {}) })}
       onClose={() => setTarget(null)} />}
     {avatarPreview && previewPerson?.avatar && <ChannelImageDialog src={previewPerson.avatar}
-      name={t("channel.user.avatar", { name: previewPerson.name })} onClose={() => setAvatarPreview(null)} />}
+      name={t("channel.user.avatar", { name: memberName(previewPerson.userId, previewPerson.name) })} onClose={() => setAvatarPreview(null)} />}
   </section>;
 }

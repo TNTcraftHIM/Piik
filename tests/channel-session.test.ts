@@ -163,7 +163,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   const socket = ChannelSocket.current;
   await socket.onopen?.();
   socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: {
-    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: window, userCount: 1, managedRoomIds: roomIds,
+    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", historyWindow: window, userCount: 1, managedRoomIds: roomIds,
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
@@ -964,7 +964,7 @@ test("opening the site creates identity before independently applying a room inv
   let reloaded: ChannelSession | undefined;
   try {
     const join = socket.sent.find(command => command.type === "join")!;
-    expect(join).toMatchObject({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Guest" });
+    expect(join).toMatchObject({ type: "join", protocol: CHANNEL_PROTOCOL, name: "" });
     for (const field of ["key", "password", "roomId"]) expect(join).not.toHaveProperty(field);
     const entry = socket.sent.find(command => command.type === "enter_room")!;
     expect(entry).toMatchObject({ roomId: "first", inviteKey: "room-key" });
@@ -11660,7 +11660,7 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(saved).not.toHaveBeenCalled();
     location.hash = "owner=restored-owner&room=other-room&invite=friend-link&other=keep";
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "restored-personal-credential", sessionId: "endpoint", state });
-    await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon });
+    await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon, askUnnamedMemberName: state.channel.askUnnamedMemberName });
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
     expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
     expect(saved.mock.calls.some(call => call[1] === metadata.ownerKey)).toBe(false);
@@ -11824,7 +11824,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     mediaType: "application/octet-stream" as const, sha256: hash.finish() };
   const quotedAuthor = crypto.randomUUID();
   vi.spyOn(session, "loadProfiles").mockImplementation(async ids => ids.includes(quotedAuthor)
-    ? [{ id: quotedAuthor, name: "Guest", avatar: null, version: "0".repeat(64) }] : []);
+    ? [{ id: quotedAuthor, name: "", avatar: null, version: "0".repeat(64) }] : []);
   Object.assign(row, { seq: 2, id: messageId, userId: author, nonce: "owned-copy-nonce", archivedAuthorName: "Archived author",
     reply: { seq: 1, userId: quotedAuthor, text: "Original message", notify: true },
     attachments: [attachment], reactions: { revision: 1, counts: { wave: 1 } } });
@@ -11838,7 +11838,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const metadata = await backupArchive.readBackup(archive, {
       metadata: () => {}, row: value => { history.push(value); }, content: (digest, value) => { content.set(digest, value); },
     });
-    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: { [quotedAuthor]: "Guest" }, retainedFiles: [{ messageSeq: row.seq, attachment }] });
+    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: { [quotedAuthor]: "" }, retainedFiles: [{ messageSeq: row.seq, attachment }] });
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
@@ -11861,7 +11861,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const copied = JSON.parse(importer.accept(JSON.stringify(history[0]))) as BackupHistoryRow;
     importer.finish();
     expect(copied).toMatchObject({ seq: row.seq, text: row.text, attachments: [attachment],
-      archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "Guest" } });
+      archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "" } });
     if (!("id" in copied)) throw new Error("expected live archive message");
     expect(copied.reply!.userId).not.toBe(quotedAuthor);
     expect(copied.id).not.toBe(messageId); expect(copied.userId).not.toBe(author); expect(copied.nonce).not.toBe(row.nonce);
@@ -17214,7 +17214,7 @@ test.each([false, true])("exports flow reports and plan retirement only with Bro
     setTimeout, clearTimeout,
   }));
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  vi.stubGlobal("document", { documentElement: { lang: "" }, body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
   vi.spyOn(console, "info").mockImplementation(() => {});
   const { ChannelSession: DebugSession } = await import("../src/client/channel/session");
   const { ChannelConversation: DebugConversation } = await import("../src/client/channel/conversation");
@@ -17279,7 +17279,7 @@ async function debugChannelSession(enabled: boolean) {
 
 test.each([false, true])("logs flow assignments, selections and link states only with Browser debug enabled (%s)", async enabled => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  vi.stubGlobal("document", { documentElement: { lang: "" }, body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
   const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
   const [pairId, incomingId, outgoingId, publicationId] = Array.from({ length: 4 }, () => crypto.randomUUID());
   const peerId = "source";

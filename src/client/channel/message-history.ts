@@ -63,8 +63,9 @@ export function historyProfileIds(messages: readonly ChannelMessage[]): readonly
   if (cached) return cached;
   const ids = new Set<string>();
   for (const message of messages) {
-    if (!message.archivedAuthorName) ids.add(message.userId);
-    if (message.reply && !message.reply.archivedAuthorName) ids.add(message.reply.userId);
+    if (message.archivedAuthorName === undefined) ids.add(message.userId);
+    if (message.reply && message.reply.archivedAuthorName === undefined) ids.add(message.reply.userId);
+    if (message.archivedAuthorName !== undefined) continue;
     for (const mention of message.mentions ?? []) ids.add(mention.userId);
   }
   const result = [...ids];

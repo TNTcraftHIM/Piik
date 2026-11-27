@@ -11,7 +11,7 @@ vi.mock("../src/client/channel/components/ChannelAction", () => ({ ChannelAction
   actions.push(props);
   return createElement("button", { disabled: props.disabled }, props.label);
 } }));
-vi.mock("../src/client/ui/copy", () => ({ isCopyKey: () => false,
+vi.mock("../src/client/ui/copy", () => ({ isCopyKey: () => false, say: (key: keyof typeof en) => en[key],
   useCopy: () => ({ lang: "en", t: (key: keyof typeof en) => en[key] }) }));
 vi.mock("../src/client/lib/download", () => ({ downloadBlob: vi.fn() }));
 
@@ -44,4 +44,11 @@ test("exports the loaded window as readable UTF-8 text without fetching history,
 test.each([{ messages: [] }, { messages: [message(1, "")] }])("disables export when the loaded window has no text: $messages", ({ messages }) => {
   expect(render(messages).disabled).toBe(true);
   expect(downloadBlob).not.toHaveBeenCalled();
+});
+
+test("copied unnamed authors retain their own label in the transcript", async () => {
+  const archived = { ...message(1, "Copied"), archivedAuthorName: "" };
+  render([archived]).onClick!();
+  const [blob] = vi.mocked(downloadBlob).mock.calls[0];
+  expect(await blob.text()).toMatch(/Guest #[2-9A-HJ-NP-Z]{4}\r\nCopied/);
 });
