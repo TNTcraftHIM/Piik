@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import type { ConnectionMetrics } from "../../types";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { ConnectionSummaryCells, MetricCells, MetricDetailsToggle, hasDetailedMetrics } from "./Metrics";
+import { ConnectionSummaryCells, MetricCells, MetricDetailsToggle, MetricGroups, secondaryMetrics } from "./Metrics";
 import { Tooltip } from "./Tooltip";
 
 export interface ConnectionDetail {
@@ -57,12 +57,15 @@ export function ConnectionDetails({ rows, id }: { rows: readonly ConnectionDetai
   const bodyId = useId();
   const groups = (["video", "audio"] as const).flatMap(media => (["receive", "send"] as const).flatMap(direction => {
     const members = rows.filter(row => !row.detailOnly && (row.metrics || row.cells) && row.media === media && (row.direction ?? "receive") === direction);
-    return members.length ? [{ key: `${media}/${direction}`, media, direction, members }] : [];
+    if (!members.length) return [];
+    const singleVideoMetrics = media === "video" && members.length === 1 ? members[0]!.metrics : null;
+    const details = singleVideoMetrics ? secondaryMetrics(singleVideoMetrics, direction, t, media) : [];
+    return [{ key: `${media}/${direction}`, media, direction, members, details }];
   }));
   const extraDetails = rows.filter(row => row.detailOnly);
   const notices = rows.filter(row => !row.detailOnly && !row.metrics && !row.cells);
-  const expandable = extraDetails.length > 0 || groups.some(group => group.media === "audio" || group.members.length > 1 ||
-    group.members.some(row => row.metrics && hasDetailedMetrics(row.metrics, group.direction, group.media)));
+  const expandable = extraDetails.length > 0 || groups.some(group =>
+    group.media === "audio" || group.members.length > 1 || group.details.length > 0);
   const rawDetail = (row: ConnectionDetail, primary = true) => <section className="lr-media-detail" key={row.key} role="group" aria-label={row.label}>
     <ConnectionDetailHeading media={row.media} label={row.label} icon={row.icon} direction={row.direction} note={row.note} routes={row.route ? [row.route] : []} />
     {row.cells ?? (row.metrics && <MetricCells metrics={row.metrics} direction={row.direction ?? "receive"} media={row.media} primary={primary} expanded />)}
@@ -87,7 +90,7 @@ export function ConnectionDetails({ rows, id }: { rows: readonly ConnectionDetai
           {samples.length ? <ConnectionSummaryCells samples={samples} media={group.media} direction={group.direction} /> : group.members[0]!.cells}
           {expanded && (group.members.length > 1 || group.media === "audio"
             ? <div className="lr-connection-paths">{group.members.map(row => rawDetail(row, group.members.length > 1))}</div>
-            : group.members[0]!.metrics && <MetricCells metrics={group.members[0]!.metrics} media={group.media} direction={group.direction} primary={false} expanded />)}
+            : <MetricGroups groups={group.details} />)}
         </section>;
       })}
       {expanded && extraDetails.map(row => rawDetail(row))}

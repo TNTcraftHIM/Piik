@@ -1,6 +1,7 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
 use crate::diagnostics::RetirementReason;
 use crate::{
+    capture::CaptureOptions,
     data::{self, DataLink, Lane},
     file::Files,
     media::{
@@ -615,14 +616,7 @@ enum Input {
     PrepareCapture(
         CaptureScope,
         Option<Uuid>,
-        crate::capture::Target,
-        crate::capture::Settings,
-        crate::capture::VideoCodecMode,
-        crate::capture::EncodingExecution,
-        bool,
-        Option<crate::capture::Target>,
-        Option<String>,
-        bool,
+        CaptureOptions,
         oneshot::Sender<Result<CaptureLease>>,
     ),
     #[cfg(feature = "capture")]
@@ -993,34 +987,8 @@ impl NativePeers {
                             let _ = done.send(publications);
                         }
                         #[cfg(feature = "capture")]
-                        Turn::Input(Input::PrepareCapture(
-                            scope,
-                            replaces,
-                            target,
-                            settings,
-                            mode,
-                            execution,
-                            audio,
-                            exclude_audio,
-                            render_endpoint_id,
-                            show_capture_border,
-                            done,
-                        )) => {
-                            let _ = done.send(
-                                d.prepare_capture(
-                                    scope,
-                                    replaces,
-                                    target,
-                                    settings,
-                                    mode,
-                                    execution,
-                                    audio,
-                                    exclude_audio,
-                                    render_endpoint_id,
-                                    show_capture_border,
-                                )
-                                .await,
-                            );
+                        Turn::Input(Input::PrepareCapture(scope, replaces, options, done)) => {
+                            let _ = done.send(d.prepare_capture(scope, replaces, options).await);
                         }
                         Turn::Input(Input::CommitCapture(id, done)) => {
                             let _ = done.send(d.commit_capture(id).await);
@@ -1158,50 +1126,20 @@ impl NativePeers {
         &self,
         scope: CaptureScope,
         replaces: Option<Uuid>,
-        target: crate::capture::Target,
-        settings: crate::capture::Settings,
-        mode: crate::capture::VideoCodecMode,
-        execution: crate::capture::EncodingExecution,
-        audio: bool,
-        exclude_audio: Option<crate::capture::Target>,
-        render_endpoint_id: Option<String>,
-        show_capture_border: bool,
+        options: CaptureOptions,
     ) -> Result<CaptureLease> {
-        execution.validate()?;
+        options.encoding_execution.validate()?;
         #[cfg(feature = "capture")]
         {
             let (tx, rx) = oneshot::channel();
             self.input
-                .send(Input::PrepareCapture(
-                    scope,
-                    replaces,
-                    target,
-                    settings,
-                    mode,
-                    execution,
-                    audio,
-                    exclude_audio,
-                    render_endpoint_id,
-                    show_capture_border,
-                    tx,
-                ))
+                .send(Input::PrepareCapture(scope, replaces, options, tx))
                 .await?;
             rx.await?
         }
         #[cfg(not(feature = "capture"))]
         {
-            let _ = (
-                scope,
-                replaces,
-                target,
-                settings,
-                mode,
-                execution,
-                audio,
-                exclude_audio,
-                render_endpoint_id,
-                show_capture_border,
-            );
+            let _ = (scope, replaces, options);
             anyhow::bail!("capture_unavailable")
         }
     }
@@ -1573,18 +1511,21 @@ impl Driver {
         &mut self,
         scope: CaptureScope,
         replaces: Option<Uuid>,
-        target: crate::capture::Target,
-        settings: crate::capture::Settings,
-        mode: crate::capture::VideoCodecMode,
-        execution: crate::capture::EncodingExecution,
-        audio: bool,
-        exclude_audio: Option<crate::capture::Target>,
-        render_endpoint_id: Option<String>,
-        show_capture_border: bool,
+        options: CaptureOptions,
     ) -> Result<CaptureLease> {
         let publication = scope.publication_id;
         self.cancelled_audio().await;
         self.check_local_preparation(&scope, replaces)?;
+        let CaptureOptions {
+            target,
+            settings,
+            codec_mode: mode,
+            encoding_execution: execution,
+            audio,
+            exclude_audio,
+            render_endpoint_id,
+            show_capture_border,
+        } = options;
         let audio = crate::capture::AudioScope::from_request(
             &target, audio, exclude_audio, render_endpoint_id,
         )?;
@@ -2227,15 +2168,10 @@ impl Driver {
         rtc_pair(id, RtcPairEvent::PreparationFinished { outcome });
     }
 
-    async fn local_signal(&self, id: Uuid, exchange: Uuid) -> Result<Signal> {
-        let p = &self.pairs[&id];
-        let (kind, sdp) = p.pc.local_description().await?;
-        Ok(Signal {
+    fn local_signal(p: &Pair, exchange: Uuid, description: Description) -> Signal {
+        Signal {
             udp: None,
-            description: Some(Description {
-                kind,
-                sdp: Some(sdp),
-            }),
+            description: Some(description),
             candidate: None,
             tracks: Some(
                 p.outputs
@@ -2248,7 +2184,7 @@ impl Driver {
             ),
             resync: None,
             exchange_id: Some(exchange),
-        })
+        }
     }
     async fn send_signal(&self, id: Uuid, mut payload: Signal) {
         // SDP/exchange are immutable protocol state. Flow bindings are a
@@ -2348,12 +2284,11 @@ impl Driver {
             return Ok(());
         }
         p.negotiate = false;
-        if !p.pc.offer().await? {
+        let Some(description) = p.pc.offer().await? else {
             return Ok(());
-        }
+        };
         let outputs = p.output_ids();
-        let offer = self.local_signal(id, Uuid::new_v4()).await?;
-        let p = self.pairs.get_mut(&id).unwrap();
+        let offer = Self::local_signal(p, Uuid::new_v4(), description);
         p.pending_offer = Some(PendingOffer {
             signal: offer.clone(),
             outputs,
@@ -2416,18 +2351,19 @@ impl Driver {
                 .filter(|t| p.plan.incoming.iter().any(|flow| flow.id == t.flow_id))
                 .map(|t| (t.stream_id, t.flow_id))
                 .collect();
-            p.pc.accept_flows(
-                description.kind,
-                description.sdp.unwrap_or_default(),
-                p.remote.clone(),
-            )
-            .await?;
+            let answer = p
+                .pc
+                .accept_flows(
+                    description.kind,
+                    description.sdp.unwrap_or_default(),
+                    p.remote.clone(),
+                )
+                .await?;
             for c in p.candidates.drain(..) {
                 let _ = p.pc.add_signaled_candidate(c).await;
             }
-            if offer {
-                let answer = self.local_signal(id, exchange).await?;
-                let p = self.pairs.get_mut(&id).unwrap();
+            if let Some(description) = answer {
+                let answer = Self::local_signal(p, exchange, description);
                 let confirmed = if collision {
                     p.stable_outputs.clone().unwrap_or_default()
                 } else {

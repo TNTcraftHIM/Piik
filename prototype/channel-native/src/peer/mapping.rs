@@ -486,8 +486,10 @@ mod tests {
             signaled.push(candidate.to_sdp_string());
         }
         transport.create_channel("mapping-check").await?;
-        transport.offer().await?;
-        let (_, description) = transport.local_description().await?;
+        let description = transport.offer()
+            .await?
+            .and_then(|offer| offer.sdp)
+            .ok_or_else(|| anyhow!("missing local offer"))?;
         for candidate in signaled {
             ensure!(
                 description.contains(&candidate),

@@ -15,6 +15,8 @@ export type RoomLayout = z.infer<typeof roomLayoutSchema>;
 const unitCoordinate = z.number().min(0).max(1);
 const stickPosition = z.object({ x: unitCoordinate, y: unitCoordinate });
 
+const storedVoiceShortcut = voiceShortcutBindingSchema.nullable().catch(null).optional();
+
 const roomPreferencesSchema = z.object({
   feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1),
     muted: z.object({ message: z.boolean().optional(), throw: z.boolean().optional() }).optional(),
@@ -42,9 +44,9 @@ const roomPreferencesSchema = z.object({
     activationThreshold: z.number().min(VOICE_ACTIVATION_RANGE_DBFS[0]).max(VOICE_ACTIVATION_RANGE_DBFS[1]),
   }).catch({ mode: "open", activationThreshold: SPEAKING_LEVEL_DBFS }),
   voiceShortcuts: z.object({
-    microphone: voiceShortcutBindingSchema.nullable().optional(),
-    listening: voiceShortcutBindingSchema.nullable().optional(),
-    talk: voiceShortcutBindingSchema.nullable().optional(),
+    microphone: storedVoiceShortcut,
+    listening: storedVoiceShortcut,
+    talk: storedVoiceShortcut,
   }).catch({}).default({}),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),
   combineKeys: z.boolean().default(false),

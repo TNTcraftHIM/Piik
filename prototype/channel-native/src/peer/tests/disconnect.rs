@@ -57,7 +57,6 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
         let control = f.driver.pairs[&pair].dc.as_ref().unwrap().0;
         let bulk = f.driver.pairs[&pair].bulk.as_ref().map(|channel| channel.0);
         let source_ids: HashSet<_> = f.driver.sources.keys().copied().collect();
-        let description = left.local_description().await?;
         f.reported.clear();
         drop_stun(&left, true).await?;
         drop_stun(&right, true).await?;
@@ -74,6 +73,7 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
         eprintln!("RECOVERY disconnected_ms={}", cut.elapsed().as_millis());
 
         // Signaling restoration reports the current observation, not the old positive one.
+        ensure!(f.local_sdp(pair).is_none(), "disconnection renegotiated the RTC");
         f.reported.clear();
         f.driver.resync().await;
         until(&mut f, "disconnected resync was not reported", |f| {
@@ -109,7 +109,7 @@ async fn native_disconnection_preserves_established_media_until_sdk_consent_expi
         }).await?;
         ensure!(f.driver.pairs[&pair].pc.instance == instance);
         ensure!(f.driver.pairs[&pair].output_ids() == outputs);
-        ensure!(left.local_description().await? == description, "recovery renegotiated the RTC");
+        ensure!(f.local_sdp(pair).is_none(), "recovery renegotiated the RTC");
         ensure!(f.observed(&stream, MediaKind::Video).unwrap().0 == before.0);
         ensure!(f.driver.pairs[&pair].dc.as_ref().unwrap().0 == control);
         eprintln!("RECOVERY same_instance_reconnected_ms={}", cut.elapsed().as_millis());
@@ -334,8 +334,11 @@ async fn healthy_ice_restart_keeps_the_established_transport_while_consent_is_re
             ensure!(PeerState::established(engine.state.load(Ordering::Acquire)));
             Ok(offer.to_sdp_string())
         }).await?;
-        right.accept("offer".into(), offer).await?;
-        let (kind, answer) = right.local_description().await?;
+        let Description { kind, sdp: answer } = right
+            .accept("offer".into(), offer)
+            .await?
+            .context("missing local answer")?;
+        let answer = answer.unwrap();
         left.accept(kind, answer).await?;
         exchange(&send, &receive, "after restart").await?;
         ensure!(left.call(|engine| Ok(engine.rtc.is_alive() && engine.rtc.has_send_consent())).await?);

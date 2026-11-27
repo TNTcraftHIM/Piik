@@ -8,6 +8,7 @@ use crate::media::{
 };
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
+use piik_channel_core::wire::Description;
 use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
@@ -466,7 +467,6 @@ pub(crate) struct Engine {
     sender_reports: HashMap<u32, (Mid, SourceClockReport, Instant)>,
     outputs: HashMap<Uuid, Outgoing>,
     pending: Option<SdpPendingOffer>,
-    local: Option<(String, String)>,
     remote: bool,
     remote_media: HashMap<Mid, (String, String, Option<Uuid>)>,
     linear_enabled: bool,
@@ -763,8 +763,11 @@ impl Runtime {
             )
             .await?;
         let result = async {
-            transport.accept("offer".into(), offer.to_owned()).await?;
-            let (_, answer) = transport.local_description().await?;
+            let answer = transport
+                .accept("offer".into(), offer.to_owned())
+                .await?
+                .and_then(|description| description.sdp)
+                .context("no local answer")?;
             let parsed = SdpAnswer::from_sdp_string(&answer)?;
             let mids = parsed
                 .media_lines
@@ -1042,7 +1045,6 @@ impl Runtime {
             sender_reports: HashMap::new(),
             outputs: HashMap::new(),
             pending: None,
-            local: None,
             remote: false,
             remote_media: HashMap::new(),
             linear_enabled: linear,
@@ -1241,11 +1243,7 @@ impl Transport {
             .await
             .unwrap_or(false)
     }
-    pub async fn local_description(&self) -> Result<(String, String)> {
-        self.call(|e| e.local.clone().context("no local description"))
-            .await
-    }
-    pub async fn offer(&self) -> Result<bool> {
+    pub async fn offer(&self) -> Result<Option<Description>> {
         self.call(|e| {
             ensure!(!e.events.local(), "local input is receive-only");
             ensure!(e.pending.is_none(), "pending transport offer");
@@ -1292,15 +1290,17 @@ impl Transport {
                 }
             }
             let Some((offer, pending)) = changes.apply() else {
-                return Ok(false);
+                return Ok(None);
             };
-            e.local = Some(("offer".into(), offer.to_sdp_string()));
             e.pending = Some(pending);
-            Ok(true)
+            Ok(Some(Description {
+                kind: "offer".into(),
+                sdp: Some(offer.to_sdp_string()),
+            }))
         })
         .await
     }
-    pub async fn accept(&self, kind: String, sdp: String) -> Result<()> {
+    pub async fn accept(&self, kind: String, sdp: String) -> Result<Option<Description>> {
         self.accept_flows(kind, sdp, HashMap::new()).await
     }
     pub async fn accept_flows(
@@ -1308,7 +1308,7 @@ impl Transport {
         kind: String,
         sdp: String,
         flows: HashMap<String, Uuid>,
-    ) -> Result<()> {
+    ) -> Result<Option<Description>> {
         self.call(move |e| {
             let parsed = SdpOffer::from_sdp_string(&sdp)?;
             if e.events.local() {
@@ -1334,16 +1334,20 @@ impl Transport {
                     })
                 })
                 .collect::<HashMap<_, _>>();
-            if kind == "offer" {
+            let answer = if kind == "offer" {
                 e.pending = None;
                 let answer = e.rtc.sdp_api().accept_offer(parsed)?;
-                e.local = Some(("answer".into(), answer.to_sdp_string()));
+                Some(Description {
+                    kind: "answer".into(),
+                    sdp: Some(answer.to_sdp_string()),
+                })
             } else {
                 let pending = e.pending.take().context("answer without pending offer")?;
                 e.rtc
                     .sdp_api()
                     .accept_answer(pending, SdpAnswer::from_sdp_string(&sdp)?)?;
-            }
+                None
+            };
             if !e.events.local() {
                 for line in sdp
                     .lines()
@@ -1399,7 +1403,7 @@ impl Transport {
             {
                 e.emit(Event::Negotiate(e.handle.pair));
             }
-            Ok(())
+            Ok(answer)
         })
         .await
     }

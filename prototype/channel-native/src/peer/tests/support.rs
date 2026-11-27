@@ -264,18 +264,14 @@ impl Fixture {
             video_enabled: true,
             video_codec: self.video_codec.clone(),
         });
-        ensure_offer(remote).await?;
-        let (kind, sdp) = remote.local_description().await?;
+        let offer = remote.offer().await?.context("missing media offer")?;
         let flow = self.plans.iter().find(|p| p.id == pair).unwrap().incoming[0].id;
         self.driver
             .signal(
                 pair,
                 Signal {
                     udp: None,
-                    description: Some(Description {
-                        kind,
-                        sdp: Some(sdp),
-                    }),
+                    description: Some(offer),
                     exchange_id: Some(Uuid::new_v4()),
                     tracks: Some(vec![WireTrack {
                         flow_id: flow,
@@ -310,14 +306,14 @@ impl Fixture {
             Some(command)=self.commands.recv()=>match command {
                 NativeEvent::Command(Command::Signal{pair_id,payload}) => {
                 let remote=&self.remote[&pair_id];
-                if let Some(description)=payload.description {
+                if let Some(description)=payload.description.as_ref() {
                     if description.kind=="offer" && self.withheld.contains(&pair_id){return Ok(());}
-                    if description.kind=="answer" {remote.accept(description.kind,description.sdp.unwrap()).await?;}
-                    else {
-                        remote.accept(description.kind,description.sdp.unwrap()).await?;
-                        let(kind,sdp)=remote.local_description().await?;
+                    let answer = remote.accept(description.kind.clone(), description.sdp.clone().unwrap()).await?;
+                    let exchange_id = payload.exchange_id;
+                    self.reported.push(Command::Signal { pair_id, payload });
+                    if let Some(answer) = answer {
                         let tracks=self.parents.iter().find(|p|p.pair==pair_id).map(|p|vec![WireTrack{flow_id:self.plans.iter().find(|plan|plan.id==pair_id).unwrap().incoming[0].id,stream_id:p.stream.clone()}]).unwrap_or_default();
-                        self.driver.signal(pair_id,Signal{udp:None,description:Some(Description{kind,sdp:Some(sdp)}),exchange_id:payload.exchange_id,tracks:Some(tracks),candidate:None,resync:None}).await?;
+                        self.driver.signal(pair_id,Signal{udp:None,description:Some(answer),exchange_id,tracks:Some(tracks),candidate:None,resync:None}).await?;
                     }
                 }else if let Some(candidate)=payload.candidate {let _=remote.add_candidate(candidate.candidate.unwrap_or_default()).await;}
                 },
@@ -406,19 +402,16 @@ impl Fixture {
             .clone();
         let description = signal.description.unwrap();
         let remote = &self.remote[&pair];
-        remote
+        let answer = remote
             .accept(description.kind, description.sdp.unwrap())
-            .await?;
-        let (kind, sdp) = remote.local_description().await?;
+            .await?
+            .context("missing local answer")?;
         self.driver
             .signal(
                 pair,
                 Signal {
                     udp: None,
-                    description: Some(Description {
-                        kind,
-                        sdp: Some(sdp),
-                    }),
+                    description: Some(answer),
                     exchange_id: signal.exchange_id,
                     tracks: Some(vec![]),
                     candidate: None,
@@ -427,16 +420,20 @@ impl Fixture {
             )
             .await
     }
+    pub(in crate::peer) fn local_sdp(&self, pair: Uuid) -> Option<&str> {
+        self.reported.iter().rev().find_map(|command| match command {
+            Command::Signal { pair_id, payload } if *pair_id == pair => {
+                payload.description.as_ref()?.sdp.as_deref()
+            }
+            _ => None,
+        })
+    }
     pub(in crate::peer) async fn close(self) {
         self.driver.close().await.unwrap();
         for runtime in self.runtimes {
             runtime.close().await;
         }
     }
-}
-async fn ensure_offer(transport: &Transport) -> Result<()> {
-    anyhow::ensure!(transport.offer().await?, "missing media offer");
-    Ok(())
 }
 
 pub(in crate::peer) fn vp8() -> RtpCodec {
@@ -545,12 +542,23 @@ pub(in crate::peer) async fn open(
     right: &Transport,
     events: &mut mpsc::Receiver<Event>,
 ) -> Result<(Arc<Channel>, Arc<Channel>)> {
+    let (local, remote, _) = open_with_answer(left, right, events).await?;
+    Ok((local, remote))
+}
+
+pub(in crate::peer) async fn open_with_answer(
+    left: &Transport,
+    right: &Transport,
+    events: &mut mpsc::Receiver<Event>,
+) -> Result<(Arc<Channel>, Arc<Channel>, String)> {
     let local = left.create_channel("piik-room").await?;
-    ensure!(left.offer().await?, "missing first SDP offer");
-    let (kind, sdp) = left.local_description().await?;
-    right.accept(kind, sdp).await?;
-    let (kind, sdp) = right.local_description().await?;
-    left.accept(kind, sdp).await?;
+    let offer = left.offer().await?.context("missing first SDP offer")?;
+    let answer = right
+        .accept(offer.kind, offer.sdp.unwrap())
+        .await?
+        .context("missing local answer")?;
+    let sdp = answer.sdp.unwrap();
+    left.accept(answer.kind, sdp.clone()).await?;
     let remote = tokio::time::timeout(Duration::from_secs(5), async {
         while let Some(event) = events.recv().await {
             if let Event::Channel(_, channel) = event {
@@ -569,7 +577,7 @@ pub(in crate::peer) async fn open(
             "missing channel-open event"
         );
     }
-    Ok((local, remote))
+    Ok((local, remote, sdp))
 }
 
 pub(in crate::peer) fn message(_tag: &str) -> Result<(Vec<u8>, MessageScope, impl Clone)> {

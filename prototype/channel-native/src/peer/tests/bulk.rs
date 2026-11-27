@@ -140,7 +140,7 @@ async fn scenario() -> Result<serde_json::Value> {
             vec![String::new()],
         )
         .await?;
-    ensure!(a.offer().await?);
+    let offer = a.offer().await?.context("missing local offer")?;
     let without_candidates = |sdp: String| {
         sdp.lines()
             .filter(|line| !line.starts_with("a=candidate:"))
@@ -148,10 +148,11 @@ async fn scenario() -> Result<serde_json::Value> {
             .join("\r\n")
             + "\r\n"
     };
-    let (kind, sdp) = a.local_description().await?;
-    b.accept(kind, without_candidates(sdp)).await?;
-    let (kind, sdp) = b.local_description().await?;
-    a.accept(kind, without_candidates(sdp)).await?;
+    let answer = b
+        .accept(offer.kind, without_candidates(offer.sdp.unwrap()))
+        .await?
+        .context("missing local answer")?;
+    a.accept(answer.kind, without_candidates(answer.sdp.unwrap())).await?;
     let candidate = Candidate::host(proxy_addr, "udp")?.to_sdp_string();
     a.add_candidate(candidate.clone()).await?;
     b.add_candidate(candidate).await?;

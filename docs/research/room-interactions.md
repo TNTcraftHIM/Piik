@@ -349,6 +349,8 @@ Ctrl+Shift+D follows the same rule independently for local room listening.
 macOS uses Command in place of Ctrl. Both keys
 can be reassigned or cleared. Text entry, IME composition, shortcut recording
 and remote keyboard control have priority. A held key toggles once.
+Voice bindings exclude Ctrl+Alt+F1–F11 with any Shift or Win modifiers; that
+family belongs to stopping remote control. Only the selected stop key is registered.
 
 Windows also supports opt-in background shortcuts. While the user
 has joined voice, the App registers the keys with Windows and sends each action

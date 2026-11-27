@@ -803,7 +803,7 @@ export const en: Record<CopyKey, string> = {
   "voice.shortcuts.edit": "Change {action} shortcut ({shortcut})",
   "voice.shortcuts.clear": "Clear {action} shortcut",
   "voice.shortcuts.record": "Press a shortcut. Esc cancels.",
-  "voice.shortcuts.unsupported": "Choose a letter, number or F1–F11 with Ctrl, Alt or Command.",
+  "voice.shortcuts.unsupported": "Choose a letter, number or F1–F11 with Ctrl, Alt or Command. Ctrl+Alt with F1–F11 is reserved for stopping remote control.",
   "voice.shortcuts.duplicate": "This shortcut is already assigned to {action}.",
   "voice.mode.push": "Push to talk",
   "voice.mode": "Microphone mode",

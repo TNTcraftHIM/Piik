@@ -544,8 +544,10 @@ mod tests {
             let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4()).await?;
             let video = Uuid::new_v4();
             let (_, writable, _) = sender.add_output(video, h264(), MediaKind::Video, "obs".into(), vec![]).await?;
-            sender.offer().await?;
-            let (_, offer) = sender.local_description().await?;
+            let offer = sender.offer()
+                .await?
+                .and_then(|offer| offer.sdp)
+                .ok_or_else(|| anyhow!("missing local offer"))?;
             let mut prepared = driver.prepare_external(CaptureScope {
                 publication_id: Uuid::new_v4(), room_id: "external-room".into(), binding_id: Uuid::new_v4(),
             }, None, offer).await?;
@@ -607,8 +609,10 @@ mod tests {
                 vec![],
             )
             .await?;
-        sender.offer().await?;
-        let (_, offer) = sender.local_description().await?;
+        let offer = sender.offer()
+            .await?
+            .and_then(|offer| offer.sdp)
+            .ok_or_else(|| anyhow!("missing local offer"))?;
         let scope = CaptureScope {
             publication_id: Uuid::new_v4(),
             room_id: "external-room".into(),
@@ -675,8 +679,10 @@ mod tests {
         let (_, audio_writable, _) = sender
             .add_output(audio, codec(), MediaKind::Audio, "obs".into(), vec![])
             .await?;
-        sender.offer().await?;
-        let (_, offer) = sender.local_description().await?;
+        let offer = sender.offer()
+            .await?
+            .and_then(|offer| offer.sdp)
+            .ok_or_else(|| anyhow!("missing local offer"))?;
         let scope = CaptureScope {
             publication_id: Uuid::new_v4(),
             room_id: "external-room".into(),

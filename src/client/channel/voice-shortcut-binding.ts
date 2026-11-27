@@ -7,13 +7,16 @@ export type VoiceToggleAction = typeof voiceToggleActions[number];
 export const voiceShortcutActions = [...voiceToggleActions, "talk"] as const;
 export type VoiceShortcutAction = typeof voiceShortcutActions[number];
 
+const functionKey = /^F(?:[1-9]|10|11)$/;
+
 export const voiceShortcutBindingSchema = z.object({
-  key: z.string().regex(/^(?:[A-Z0-9]|F(?:[1-9]|10|11))$/),
+  key: z.string().refine(key => /^[A-Z0-9]$/.test(key) || functionKey.test(key)),
   ctrl: z.boolean(),
   alt: z.boolean(),
   shift: z.boolean(),
   meta: z.boolean(),
-}).refine(({ ctrl, alt, meta }) => ctrl || alt || meta);
+}).refine(({ ctrl, alt, meta }) => ctrl || alt || meta)
+  .refine(({ key, ctrl, alt }) => !(ctrl && alt && functionKey.test(key)));
 
 export type VoiceShortcutBinding = z.infer<typeof voiceShortcutBindingSchema>;
 export type VoiceShortcuts = Record<VoiceShortcutAction, VoiceShortcutBinding | null>;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::capture::{Settings, Target};
 use serde_json::json;
 
 #[test]
@@ -1170,26 +1171,28 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
     PrepareCapture {
         publication_id: Uuid::new_v4(),
         room_id: "target".into(),
-        target: Target {
-            kind: crate::capture::TargetKind::Picker,
-            source_id: "1".into(),
-            title: "Unavailable fixture picker".into(),
-            pid: 0,
-            creation_time: None,
+        options: CaptureOptions {
+            target: Target {
+                kind: crate::capture::TargetKind::Picker,
+                source_id: "1".into(),
+                title: "Unavailable fixture picker".into(),
+                pid: 0,
+                creation_time: None,
+            },
+            settings: Settings {
+                degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
+                width: 640,
+                height: 360,
+                fps: 30,
+                bitrate: 1_000_000,
+            },
+            codec_mode: crate::capture::VideoCodecMode::Vp8,
+            encoding_execution: crate::capture::EncodingExecution::Auto,
+            audio: false,
+            show_capture_border: false,
+            exclude_audio: None,
+            render_endpoint_id: None,
         },
-        settings: Settings {
-            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
-            width: 640,
-            height: 360,
-            fps: 30,
-            bitrate: 1_000_000,
-        },
-        codec_mode: crate::capture::VideoCodecMode::Vp8,
-        encoding_execution: crate::capture::EncodingExecution::Auto,
-        audio: false,
-        show_capture_border: false,
-        exclude_audio: None,
-        render_endpoint_id: None,
         replaces: None,
         result,
     }
@@ -1234,8 +1237,9 @@ async fn capture_prepare_waits_for_room_authority_before_platform_preparation() 
         let (mut session, mut socket, mut remote, state) = capture_projection_session().await;
         let (result, mut response) = oneshot::channel();
         let mut request = projection_capture(result);
-        // The real producer admission rejects this replacement before opening a device.
+        // Replacement ownership must reject before the invalid audio request.
         request.replaces = Some(Uuid::new_v4());
+        request.options.render_endpoint_id = Some(String::new());
         session.prepare_capture(request, &mut socket).await.unwrap();
         match response.try_recv() {
             Err(oneshot::error::TryRecvError::Empty) => {}

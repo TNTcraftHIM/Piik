@@ -82,10 +82,13 @@ async fn keyframe_feedback_preserves_rid_and_shared_siblings() -> Result<()> {
         false,
     )
     .await?;
-    ensure!(tx.offer().await?);
-    let (kind, sdp) = tx.local_description().await?;
-    rx.accept(kind, sdp).await?;
-    let (kind, sdp) = rx.local_description().await?;
+    let Description { kind, sdp } = tx.offer().await?.context("missing local offer")?;
+    let sdp = sdp.unwrap();
+    let Description { kind, sdp } = rx
+        .accept(kind, sdp)
+        .await?
+        .context("missing local answer")?;
+    let sdp = sdp.unwrap();
     tx.accept(kind, sdp).await?;
     for output in [&layered, &ordinary] {
         output.confirm(tx.confirm(output.id).await?.flatten())?;
