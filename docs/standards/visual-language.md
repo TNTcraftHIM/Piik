@@ -186,11 +186,12 @@ frame. This presentation choice does not remove meaningful content cards or
 create separate page implementations. Keep one visible application identity.
 Shared modal materials must remain consistent across the content and any
 separately trusted window controls, whose commands stay with the native host.
-The main Windows caption provides Saved sites alongside minimize,
-maximize/restore and close. Its Saved sites action opens the shared site
-management interface and preserves the current page until an explicit switch.
-Saved-site rows navigate, Add opens creation, and Manage edits an existing site
-or its App access. Language, theme and help share the same More options menu in
+The main Windows caption provides the star button **Manage sites** alongside
+minimize, maximize/restore and close. The button opens the shared site management
+interface and preserves the current page until an explicit switch. The interface
+lists saved sites, sites with App access, and the App’s own site. **Save a site**
+opens the address form and **Manage** opens an existing site’s details. The
+launcher’s **Saved sites** list opens saved addresses. Language, theme and help share the same More options menu in
 the launcher and room workspace, identified by the ellipsis rather than a settings icon.
 
 Keep the room invitation beside the upper room title, and group Share with its

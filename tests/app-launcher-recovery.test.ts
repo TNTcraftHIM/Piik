@@ -14,7 +14,7 @@ import { z } from "zod";
 import { SiteStartControls, type LocalCertificate } from "../src/client/components/living/LauncherForm";
 import { SiteManagement } from "../src/client/components/living/SiteManagement";
 import { Btn } from "../src/client/components/living/primitives";
-import { publicSiteOrigin, siteEntryURL } from "../src/client/lib/site-address";
+import { isQuickTunnelAddress, publicSiteOrigin, siteEntryError, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
 import { appUpdateSchema } from "../src/client/lib/use-app-update";
 import { say } from "../src/client/ui/copy";
@@ -443,6 +443,12 @@ describe("App launcher state recovery", () => {
   });
 
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
+    const invitation = siteEntryURL("https://friendly-site.trycloudflare.com/r/1234#invite");
+    expect(isQuickTunnelAddress(invitation)).toBe(true);
+    expect(siteEntryError("site_unavailable", invitation)).toBe("client.bookmarks.temporaryUnavailable");
+    for (const stable of ["piik.example", "trycloudflare.com", "nested.site.trycloudflare.com", "site.trycloudflare.com.example", "site.trycloudflare.com:8443"]) {
+      expect(isQuickTunnelAddress(siteEntryURL(stable))).toBe(false);
+    }
     expect(siteEntryURL(" PIIK.example:443 ")?.origin).toBe("https://piik.example");
     expect(siteEntryURL("https://piik.example/r/1234?lang=en#v=private-invitation")?.origin).toBe("https://piik.example");
     expect(siteEntryURL("https://example.com/my room?q=hello world")?.origin).toBe("https://example.com");

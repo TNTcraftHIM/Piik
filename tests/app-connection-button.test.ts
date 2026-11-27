@@ -94,12 +94,12 @@ describe("shared App connection entry", () => {
       .mockReturnValueOnce([undefined, vi.fn()])
       .mockReturnValueOnce([{ url: "http://127.0.0.1:39721/client", updateSupported: false }, vi.fn()]);
     const html = renderToStaticMarkup(createElement(AppConnectionButton, { connected: true }));
-    expect(html).toContain('target="_blank" rel="noopener noreferrer" aria-label="Bookmarks"');
+    expect(html).toContain('target="_blank" rel="noopener noreferrer" aria-label="Manage sites"');
     expect(html).toContain("bookmarks=1");
     expect(html).toContain("piik-lang=en");
-    expect(html.match(/aria-label="Bookmarks"/g)).toHaveLength(1);
+    expect(html.match(/aria-label="Manage sites"/g)).toHaveLength(1);
     expect(html).toContain('class="lr-btn is-compact lr-app-connect is-ready is-quiet"');
-    const url = new URL(html.match(/href="([^"]+)" target="_blank" rel="noopener noreferrer" aria-label="Bookmarks"/)![1].replaceAll("&amp;", "&"));
+    const url = new URL(html.match(/href="([^"]+)" target="_blank" rel="noopener noreferrer" aria-label="Manage sites"/)![1].replaceAll("&amp;", "&"));
     expect(url.origin + url.pathname).toBe("http://127.0.0.1:39721/client");
     expect(url.searchParams.get("bookmarks")).toBe("1");
     expect(url.searchParams.has("site")).toBe(false);

@@ -12,13 +12,13 @@
     "microphone": ["M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z", "M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"]
   },
   "permissionScope": {
-    "en": "If you allow, Piik remembers this site's permission. To ask again, choose Reset website permissions in Saved sites.",
-    "zh": "允许后，Piik 会为此站点记住这项权限。要再次询问，请在「收藏的站点」中选择「重置网页权限」。"
+    "en": "If you allow, Piik remembers this site's permission. To ask again, open Manage sites and choose Reset website permissions in the site’s details.",
+    "zh": "允许后，Piik 会为此站点记住这项权限。要再次询问，请打开「站点管理」，在站点详情中选择「重置网页权限」。"
   },
   "labels": {
     "en": {
       "share": "Share…",
-      "bookmarks": "Saved sites",
+      "bookmarks": "Manage sites",
       "revealQuestion": "Show the downloaded file in File Explorer?",
       "reveal": "Show file",
       "minimize": "Minimize",
@@ -34,7 +34,7 @@
     },
     "zh": {
       "share": "分享…",
-      "bookmarks": "收藏的站点",
+      "bookmarks": "站点管理",
       "revealQuestion": "在文件资源管理器中显示下载的文件？",
       "reveal": "显示文件",
       "minimize": "最小化",
@@ -50,7 +50,7 @@
     },
     "zh-Hant": {
       "share": "分享…",
-      "bookmarks": "收藏的站點",
+      "bookmarks": "站點管理",
       "revealQuestion": "在檔案總管中顯示下載的檔案？",
       "reveal": "顯示檔案",
       "minimize": "最小化",
@@ -66,7 +66,7 @@
     },
     "ja": {
       "share": "共有…",
-      "bookmarks": "保存したサイト",
+      "bookmarks": "サイトの管理",
       "revealQuestion": "ダウンロードしたファイルをエクスプローラーに表示しますか？",
       "reveal": "ファイルを表示",
       "minimize": "最小化",
@@ -82,7 +82,7 @@
     },
     "ko": {
       "share": "공유…",
-      "bookmarks": "저장된 사이트",
+      "bookmarks": "사이트 관리",
       "revealQuestion": "다운로드한 파일을 파일 탐색기에 표시할까요?",
       "reveal": "파일 표시",
       "minimize": "최소화",

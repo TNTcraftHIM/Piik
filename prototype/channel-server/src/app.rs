@@ -933,6 +933,9 @@ async fn save_bookmark(
     };
     let previous = saved(&registry)?;
     if previous.as_ref().is_none_or(|entry| entry.origin != origin) {
+        if tunnel::quick_tunnel_origin(&origin).is_some() {
+            return Err(invalid_request("temporary_bookmark"));
+        }
         drop(registry);
         verify_launcher_site(&app, &origin).await?;
         registry = app.registry.lock().await;
@@ -4005,6 +4008,22 @@ mod lifecycle_tests {
             .build()
             .unwrap();
         let endpoint = format!("{local}/api/client-launcher/bookmarks");
+        let old_origin = "https://legacy-site.trycloudflare.com";
+        let old_id = Uuid::new_v4();
+        app.registry.lock().await.sites.save_bookmark(&sites::Bookmark {
+            id: old_id, name: "Previous link".into(), origin: old_origin.into(),
+        }).unwrap();
+        let listed = client.get(&endpoint).send().await.unwrap();
+        let listed: Value = serde_json::from_str(&listed.text().await.unwrap()).unwrap();
+        assert_eq!(listed["bookmarks"][0]["origin"], old_origin);
+        let renamed = client.post(&endpoint).header("Origin", &local)
+            .header("Content-Type", "application/json")
+            .body(json!({"id":old_id,"name":"Old link","origin":old_origin}).to_string())
+            .send().await.unwrap();
+        assert_eq!(renamed.status(), StatusCode::OK);
+        let removed = client.delete(format!("{endpoint}/{old_id}")).header("Origin", &local)
+            .send().await.unwrap();
+        assert_eq!(removed.status(), StatusCode::OK);
         let create = json!({"origin":remote,"name":"  Friend  "});
         for method in [
             reqwest::Method::GET,
@@ -4043,6 +4062,7 @@ mod lifecycle_tests {
             StatusCode::FORBIDDEN
         );
         for origin in [
+            "https://temporary-site.trycloudflare.com",
             "https://friend.example/#invite=secret",
             "https://user:secret@friend.example",
             "file:///private",

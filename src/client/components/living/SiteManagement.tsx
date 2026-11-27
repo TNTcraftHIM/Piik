@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { BackButton, Btn, Pill } from "./primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { siteEntryError, siteEntryURL } from "../../lib/site-address";
+import { isQuickTunnelAddress, siteEntryError, siteEntryURL } from "../../lib/site-address";
 import { isStartupSite, type AppMode } from "../../lib/app-launch";
 import type { SiteBookmark } from "../../lib/site-address";
 import "./site-management.css";
@@ -39,8 +39,11 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
   const [bookmarkError, setBookmarkError] = useState<CopyKey>();
   const busy = ownerBusy || pending !== undefined;
   const origins = [...new Set([...bookmarks.map(site => site.origin), ...sites, ...(localSite ? [localSite] : [])])];
+  const draftURL = detail ? siteEntryURL(detail.draft.origin) : null;
+  const temporary = isQuickTunnelAddress(draftURL);
   const selected = detail?.origin;
   const selectedBookmark = bookmarks.find(site => site.origin === selected);
+  const canSaveBookmark = !temporary || selectedBookmark?.origin === draftURL?.origin;
   const automatic = Boolean(selected && selected === localSite);
   const approved = automatic || Boolean(selected && sites.includes(selected));
   const opensOnStart = (origin: string) => isStartupSite(origin, startupSite, ownedStartup, ownedSites);
@@ -63,7 +66,8 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
   function back() { if (!busy) { setDetail(undefined); setBookmarkError(undefined); } }
   async function save(remove = false) {
     if (!detail || busy) return;
-    const url = siteEntryURL(detail.draft.origin);
+    if (!remove && !canSaveBookmark) return;
+    const url = draftURL;
     if (!remove && !url) { setBookmarkError("client.bookmarks.invalidAddress"); return; }
     setPending(remove ? "remove" : "save");
     setBookmarkError(undefined);
@@ -91,9 +95,9 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         <h4><Glyph name="star" size={18} /><span>{t("client.sites.bookmark")}</span></h4>
         <label><span>{t("client.bookmarks.name")}</span><span className="lr-input"><Glyph name="pencil" size={18} /><input autoComplete="off" maxLength={40} disabled={busy} value={detail.draft.name} onChange={event => setDetail({ ...detail, draft: { ...detail.draft, name: event.target.value } })} /></span></label>
         <label><span>{t("client.connect.siteAddress")}</span><span className="lr-input"><Glyph name="globe" size={18} /><input inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} dir="ltr" required placeholder="https://friends.example" disabled={busy} value={detail.draft.origin} onChange={event => setDetail({ ...detail, draft: { ...detail.draft, origin: event.target.value } })} /></span></label>
-        <p>{t("client.bookmarks.addressHint")}</p>
+        <p aria-live="polite">{t(temporary ? "client.bookmarks.temporaryAddress" : "client.bookmarks.addressHint")}</p>
         {bookmarkError && <Pill icon="alert" tone="bad" comic="signal-failed" alert label={t(bookmarkError)} />}
-        <div className="lr-site-form-actions">{detail.draft.id && <Btn icon="linkOff" quiet tone="danger" size="compact" title="client.bookmarks.remove" cap="client.bookmarks.remove" disabled={busy} busy={pending === "remove"} onClick={() => void save(true)} />}<Btn icon="check" type="submit" tone="primary" size="compact" title="client.bookmarks.save" cap="client.bookmarks.save" disabled={busy} busy={pending === "save"} /></div>
+        <div className="lr-site-form-actions">{detail.draft.id && <Btn icon="linkOff" quiet tone="danger" size="compact" title="client.bookmarks.remove" cap="client.bookmarks.remove" disabled={busy} busy={pending === "remove"} onClick={() => void save(true)} />}{canSaveBookmark && <Btn icon="check" type="submit" tone="primary" size="compact" title="client.bookmarks.save" cap="client.bookmarks.save" disabled={busy} busy={pending === "save"} />}</div>
       </form>
       {selected && <section className="lr-site-section">
         <h4><Glyph name="lock" size={18} /><span>{t("client.sites.appAccess")}</span></h4>

@@ -102,7 +102,7 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
       await openLauncherSite(entryURL(target));
       setPending(undefined);
       if (closeOnOpen && windowNavigation) window.close();
-    } catch (error) { setOpenError(t(siteEntryError(error instanceof Error && error.message) ?? "client.bookmarks.openFailed")); }
+    } catch (error) { setOpenError(t(siteEntryError(error instanceof Error && error.message, siteEntryURL(target)) ?? "client.bookmarks.openFailed")); }
     finally { setOpening(false); }
   }
   const editor = bookmarks ? <SiteManagement {...access} busy={busy} bookmarks={bookmarks} currentOrigin={entry.site ? siteEntryURL(entry.site)?.origin : undefined}
