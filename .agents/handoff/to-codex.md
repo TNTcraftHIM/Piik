@@ -5,7 +5,7 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `efef4493`. With it merged, the Browser core builds, `tsc -b`
+Reviewed through `e4c0a819`. With it merged, the Browser core builds, `tsc -b`
 passes and the web suite has 2,534 of 2,534 here. Native was read, not run.
 
 The owner's rule for this queue is the
