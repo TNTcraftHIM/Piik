@@ -6,7 +6,10 @@ import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-c
 export { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 
 // This is the experimental channel wire boundary; production room contracts stay separate.
-export const id = z.string().min(1).max(128);
+const utf8 = new TextEncoder();
+const MAX_ID_BYTES = 128;
+export const id = z.string().min(1).refine(value => value.length <= MAX_ID_BYTES
+  && !/\p{Surrogate}/u.test(value) && utf8.encode(value).byteLength <= MAX_ID_BYTES, "Invalid wire ID");
 const identityNameSchema = z.string().refine(name => name.length <= 64, "Name exceeds 64 UTF-16 units");
 export const IDENTITY_IMAGE_URL_BYTES = 24 * 1024;
 export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
@@ -95,7 +98,7 @@ export type WatchTimeline = WatchPlayback["timeline"];
 const watchURLSchema = z.string().url().max(MAX_WATCH_URL_LENGTH).refine(value => {
   try {
     const url = new URL(value);
-    return value.trim() === value && new TextEncoder().encode(value).byteLength <= MAX_WATCH_URL_LENGTH
+    return value.trim() === value && utf8.encode(value).byteLength <= MAX_WATCH_URL_LENGTH
       && ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
   } catch { return false; }
 });
