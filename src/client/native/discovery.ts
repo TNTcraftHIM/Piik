@@ -78,18 +78,3 @@ export async function discoverLocalApp<T>(
     controller.abort();
   }
 }
-
-export function appApprovalURL(value: string): string {
-  const url = appManagementURL(value);
-  url.searchParams.set("site", window.location.origin);
-  return url.toString();
-}
-
-export function appManagementURL(value: string): URL {
-  const url = new URL(value);
-  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
-      url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
-    throw new Error("Invalid local App approval address");
-  }
-  return url;
-}

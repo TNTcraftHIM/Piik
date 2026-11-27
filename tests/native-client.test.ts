@@ -84,18 +84,36 @@ describe("current App discovery", () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/r/9527") });
     const socket = vi.fn();
     vi.stubGlobal("WebSocket", socket);
+    const local = `http://127.0.0.1:${health.port}/client`;
     const fetcher = vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/connect-discovery`
-      ? new Response(JSON.stringify({ ...health, connectURL: "http://127.0.0.1:54321/client" }))
+      ? Response.json({ ...health, connectURL: local })
       : new Response(null, { status: 404 }));
     vi.stubGlobal("fetch", fetcher);
-    await expect(channelAppDiscovery.connect()).resolves.toBe("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example");
+    await expect(channelAppDiscovery.connect()).resolves.toBe(`${local}?site=https%3A%2F%2Fpiik.example`);
     expect(fetcher.mock.calls.every(([url]) => url.endsWith("/connect-discovery"))).toBe(true);
     expect(socket).not.toHaveBeenCalled();
   });
 
+  it("waits for a consistent launcher address when an earlier response reports another port", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    const laterPort = health.port + 1;
+    const local = `http://127.0.0.1:${laterPort}/client`;
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const port = Number(new URL(input).port);
+      if (port === health.port) return Response.json({ ...health, connectURL: `http://127.0.0.1:${laterPort + 1}/client` });
+      if (port !== laterPort) return new Response(null, { status: 404 });
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return Response.json({ ...health, port, connectURL: local });
+    }));
+    const approval = channelAppDiscovery.connect();
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(approval).resolves.toBe(`${local}?site=https%3A%2F%2Fpiik.example`);
+  });
+
   it.each([
-    "https://untrusted.example/client", "http://localhost:54321/client", "http://127.0.0.1:54321/other",
-    "http://user@127.0.0.1:54321/client", "http://127.0.0.1:54321/client?site=https://other.example",
+    "https://untrusted.example/client", `http://localhost:${health.port}/client`, `http://127.0.0.1:${health.port}/other`,
+    `http://user@127.0.0.1:${health.port}/client`, `http://127.0.0.1:${health.port}/client?site=https://other.example`,
   ])("rejects an unsafe App approval address: %s", async (connectURL) => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/connect-discovery`
