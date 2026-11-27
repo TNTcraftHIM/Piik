@@ -444,8 +444,8 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
         let mut effects = hub.authority.handle(connection, request, now());
         // Queue authority snapshots in the turn that produced them. Otherwise a
         // later turn can reach healthy readers while this one waits for a peer.
-        let ([(_, Event::Conversation { .. })], []) =
-            (effects.events.as_slice(), effects.close.as_slice())
+        let (true, [(_, Event::Conversation { .. })], []) =
+            (effects.conversation_to_writer, effects.events.as_slice(), effects.close.as_slice())
         else {
             hub.apply(effects);
             return;
@@ -456,7 +456,7 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
         };
         (client, event)
     };
-    // History pages span more than one socket queue. Wait for the sole recipient.
+    // A member may wait for its writer. The writer never waits for an individual reader.
     let mut closing = client.close.subscribe();
     if *closing.borrow() {
         return;

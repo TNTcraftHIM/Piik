@@ -679,7 +679,7 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
         vec![],
     )
     .unwrap();
-    let (host, mut reader, mut observer, packet) = {
+    let (mut host, reader, mut observer, confirmation, page, history, closing) = {
         let mut hub = domain.hub.lock().unwrap();
         let mut host = Endpoint::join(&mut hub, "owner");
         let mut reader = Endpoint::join(&mut hub, "invite");
@@ -706,6 +706,15 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
             json!({"type":"browse","roomId":"living","active":true}),
         );
         let binding = stored_turn(&mut hub, &mut host, &mut room);
+        let history = SessionSigner::from_seed([1; 32]).sign(reader.session, &json!({
+            "roomId":"living","bindingId":binding,"sender":reader.session,
+            "recipient":host.session,"requestId":"history","command":{"type":"history","before":null}
+        })).unwrap();
+        let page = SessionSigner::from_seed([1; 32]).sign(host.session, &json!({
+            "roomId":"living","bindingId":binding,"sender":host.session,
+            "recipient":reader.session,"requestId":"history",
+            "record":{"type":"history_page","messages":[],"hasMore":false,"oldestSeq":null,"before":null}
+        })).unwrap();
         let packet = SessionSigner::from_seed([1;32]).sign(host.session, &json!({
             "roomId":"living","bindingId":binding,"sender":host.session,
             "recipient":reader.session,"requestId":"chat",
@@ -715,31 +724,34 @@ async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
         })).unwrap();
         reader.drain();
         observer.drain();
-        // Keep this reader's writer paused until the next authority turn.
-        let queue = &hub.clients[&reader.id].events;
-        while queue.capacity() > 0 {
-            queue
-                .try_send(Event::Ack {
-                    request_id: "queued".into(),
-                })
-                .unwrap();
-        }
-        (host, reader, observer, packet)
+        let client = hub.clients.get_mut(&reader.id).unwrap();
+        let closing = client.close.subscribe();
+        (client.events, reader.events) = mpsc::channel(1);
+        client.events.try_send(Event::Ack { request_id: "queued".into() }).unwrap();
+        let writer = hub.clients.get_mut(&host.id).unwrap();
+        (writer.events, host.events) = mpsc::channel(1);
+        writer.events.try_send(Event::Ack { request_id: "queued".into() }).unwrap();
+        (host, reader, observer, packet, page, history, closing)
     };
 
-    let request =
-        Request::parse(&json!({"type":"conversation","packet":packet}).to_string()).unwrap();
-    let confirmation = dispatch_request(&domain, host.id, request);
-    tokio::pin!(confirmation);
-    let completed = confirmation.as_mut().now_or_never().is_some();
+    let request = |packet| {
+        Request::parse(&json!({"type":"conversation","packet":packet}).to_string()).unwrap()
+    };
+    let forwarding = dispatch_request(&domain, reader.id, request(history));
+    tokio::pin!(forwarding);
+    assert!(forwarding.as_mut().now_or_never().is_none());
+    host.drain();
+    forwarding.await;
+    assert!(matches!(host.events.try_recv(), Ok(Event::Conversation { .. })));
+    // The next writer turn can proceed while this recipient still has a full queue.
+    assert!(dispatch_request(&domain, host.id, request(page)).now_or_never().is_some());
+    assert!(*closing.borrow());
+    dispatch_request(&domain, host.id, request(confirmation)).await;
     observer.request(
         &mut domain.hub.lock().unwrap(),
         json!({"type":"set_profile","avatar":null,"name":"Updated"}),
     );
-    reader.drain();
-    if !completed {
-        confirmation.await;
-    }
+    drop(reader);
     let names: Vec<_> = std::iter::from_fn(|| observer.events.try_recv().ok())
         .filter_map(|event| match event {
             Event::State { state } => state
