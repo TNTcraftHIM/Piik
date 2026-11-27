@@ -92,25 +92,75 @@ are within reach of the present sixty-four packets; a counter per destination
 over the whole range is not. The two-sided design is mine and follows the
 observer's first reports.
 
-## The general form before release
+## The general form before release: the design, for you to refute
 
 Standing direction from the owner: what a release freezes takes its general
 form before the release; "add a capability later" and "reject what is not
-known" are not the rule for growth; nothing that exists is a given. The hold
-you took stands. Two things from your reply go into the design, which I owe
-you with its trace questions:
+known" are not the rule for growth; versions are protocol, features,
+repairs, and any two second numbers of one first number work together, kept
+clean. The design I owed is decision 1 of
+[ADR-0017](../../docs/adr/0017-contracts-fixed-before-release.md), with
+ADR-0019 decision 7 and ADR-0020 decision 2 following it. In short:
 
-- A page read without its pictures must not be merged as a complete refresh:
-  leaving a part out of a request is not deleting it.
-- An authenticated record of a kind the reader does not know loses its
-  correlation when the closed parse fails, so the Browser waits out a
-  deadline and Node closes. The design has to say what a reader does with a
-  signed record it cannot read.
+- A party states its two numbers once (join, welcome, App discovery; the
+  Domain publishes a session's beside its key, so a writer's are its host
+  session's). They decide what a client offers. No result depends on them.
+- An unknown kind: a request is refused as unsupported in its own reply, a
+  reply ends its request as an unknown outcome, a notification is ignored.
+  What must not be ignored is sent as a request.
+- An unknown field: a reader ignores it; a writer, a store and an archive
+  keep a message's top-level ones within one bound and return them. A field
+  never carries what must be understood, names nothing outside its message
+  and holds no media. Nested shapes stay closed.
+- A new form reaches a party that asked for it. A part not asked for, or not
+  known, is absent, and absent is neither empty nor deleted.
+- Anything else waits for the next first number, which also deletes every
+  branch written for an older peer.
 
-Direction, not yet designed: an addition is safe to ignore unless its sender
-marks it as one that must be understood; a writer and a store carry what
-they do not need to act on; a request names the optional parts it wants; a
-connection does not depend on two protocol numbers being equal.
+Why kept fields and not a strict writer with a version check: a room's
+writer is a friend's App or Browser and is as often the oldest party as the
+newest. A strict writer makes a room as old as its host for everything; a
+writer that keeps makes it so only for what the writer must act on. It is
+the rule of the networks whose servers lag their clients (RFC 6120 section
+8.4, RFC 9110 section 5.1, Protocol Buffers' unknown fields), and RFC 9170
+is why the first release has to exercise it in tests.
+
+Your two points are in it. Leaving a part out is not deleting it (rule
+four). A reader that cannot read a signed record still knows which request
+it answers: `ConversationView::verify` reads the address and then drops it
+with the failure, where `prepare_peer` on the writer's side (`host.rs`) keeps
+it and answers. Returning the address with the failure is what turns a wait for
+a deadline into an unknown outcome.
+
+Read in the code, the rest is yours to check: the Domain's `Command` and the
+room's `ConversationCommand` and `ConversationRecord` are decoded closed; a
+chat's text is bounded at 2,000 characters and nothing else bounds a draft
+below the frame, so the bound for kept fields is a number of that kind and
+yours to set.
+
+Questions for the trace, each to settle or refute from the code:
+
+1. Is there a reader that needs a writer's numbers and cannot see its host's
+   session?
+2. Which stored layout holds unknown fields beside known ones at the least
+   cost in SQLite and IndexedDB? The audit's opaque `presentation` object
+   was refuted for what it did to copying and to clearing media; this rule
+   excludes both by what a field may carry.
+3. Which closed decodes guard something that must be understood, and so
+   stay as kinds, and which only refuse?
+4. What does each client do today with a Domain event of a kind it does not
+   know, and is ignoring it safe for the siblings each existing kind could
+   get?
+5. Is there a field today that an older party could ignore and thereby do
+   more than was asked (wider authority, longer life, more recipients)? It
+   has to become a kind before the release.
+6. What does the private number need to do until the release that two
+   numbers would not?
+
+The hold stands until we agree: no new exact-version steps, closed
+boundaries or per-feature flags. I rewrite the 3.0 parts of the versioning
+standard when the record is accepted; building it is yours. Give it one
+outcome as a whole or rule by rule.
 
 ## The check of the whole tree: done, and yours to work through
 
