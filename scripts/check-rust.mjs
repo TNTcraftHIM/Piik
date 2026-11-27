@@ -45,7 +45,8 @@ cargo("build", "server", "--bin", "piik-channel-prototype");
 const { buildChannelWeb, verifyCheckoutWeb } = await import(pathToFileURL(join(root, "scripts/build-channel-web.mjs")).href);
 env.PIIK_CHANNEL_WEB_DIR = env.PIIK_CHANNEL_WEB_DIR
   ? verifyCheckoutWeb(root, env.PIIK_CHANNEL_WEB_DIR)
-  : buildChannelWeb(root, { version: "development", revision: "development", cargoTarget: target });
+  : buildChannelWeb(root, { version: env.PIIK_BUILD_VERSION || "development",
+    revision: env.PIIK_BUILD_REVISION || "development", cargoTarget: target });
 run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "prototype/channel-browser/tsconfig.json"]);
 run(process.execPath, ["prototype/channel-server/run-browser-check.mjs", "--protocol", "--built-server"]);
 process.stdout.write("Rust, Web/WASM and protocol checks passed (capture disabled).\n");
