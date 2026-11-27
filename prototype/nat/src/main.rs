@@ -304,7 +304,14 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
     if addresses.len() == 1 {
         read_address(&survey.samples, observers);
     } else {
-        println!("note: {} public addresses observed. Each replay assumes the target's public address is known.", addresses.len());
+        // One socket that shows two addresses was sent out by its destination; otherwise each
+        // socket keeps to one way out.
+        let by_destination = survey.samples.iter().any(|one| survey.samples.iter().any(|other| other.socket == one.socket && other.mapped.ip() != one.mapped.ip()));
+        println!(
+            "note: {} public addresses observed, chosen by the {}. A carrier or a router with several lines does this, and so does a proxy or VPN that carries part of the traffic. Each replay assumes the target's public address is known.",
+            addresses.len(),
+            if by_destination { "destination" } else { "socket" }
+        );
         for address in addresses {
             let on_address: Vec<Sample> = survey.samples.iter().copied().filter(|sample| sample.mapped.ip() == address).collect();
             if on_address.is_empty() {
