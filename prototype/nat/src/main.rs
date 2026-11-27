@@ -3,7 +3,11 @@
 //! It asks a few public STUN servers which address they see, from two sockets and then from more
 //! when the answers differ, and prints a report to copy. It sends nothing else anywhere, and the
 //! report shows only half of the public address unless `--full` is given.
-use piik_nat::mapping::{measured, Allocator, Cursor, Model, PortSet, Sample};
+//!
+//! Where new mappings follow cursors it also tries the two things a pair of such networks needs,
+//! with an observer standing in for the peer, because the observer says where the mapping really
+//! landed: finding a mapping after it was made, and taking the ports next past a reading.
+use piik_nat::mapping::{located, measured, walk, Aim, Allocator, Cursor, Model, PortSet, Sample};
 use piik_nat::stun;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
@@ -12,7 +16,7 @@ use std::time::{Duration, Instant};
 
 /// Observers reachable from most networks, the product's defaults first. One appears on two ports
 /// to show whether a mapping depends on the destination's port as well as its address.
-const OBSERVERS: [&str; 7] = [
+const OBSERVERS: [&str; 9] = [
     "stun.cloudflare.com:3478",
     "stun.miwifi.com:3478",
     "stun.chat.bilibili.com:3478",
@@ -20,6 +24,8 @@ const OBSERVERS: [&str; 7] = [
     "stun.cloudflare.com:53",
     "stun.l.google.com:3478",
     "stun.qq.com:3478",
+    "stun.hitv.com:3478",
+    "stun.douyucdn.cn:18000",
 ];
 /// One answer is waited for this long, twice.
 const ANSWER: Duration = Duration::from_millis(700);
@@ -27,6 +33,16 @@ const ANSWER: Duration = Duration::from_millis(700);
 const EXTRA_MAPPINGS: usize = 10;
 /// Measurements of one mapping between two observations.
 const BRACKETS: usize = 5;
+/// A replay judges a mapping once this many were made before it.
+const REPLAY_AFTER: usize = 8;
+/// Mappings looked for after they were made, and the readings on each side of one.
+const LOCATED: usize = 6;
+const READINGS: usize = 5;
+/// Times the most used cursor is read and then met with sockets one after another, the wait that
+/// stands for the peer's answer before the second reading, and the sockets of one such time.
+const CLIMBS: usize = 4;
+const PEER_WAIT: Duration = Duration::from_millis(400);
+const CLIMB_SOCKETS: usize = 8;
 
 struct Survey {
     started: Instant,
@@ -36,7 +52,7 @@ struct Survey {
 }
 impl Survey {
     /// Asks `observer` from `socket` and records the answer under `number`.
-    fn ask(&mut self, socket: &UdpSocket, number: u8, observer: SocketAddrV4) -> Option<SocketAddrV4> {
+    fn ask(&mut self, socket: &UdpSocket, number: u16, observer: SocketAddrV4) -> Option<SocketAddrV4> {
         let sent_ms = self.started.elapsed().as_millis() as u32;
         let transaction = send(socket, observer)?;
         let mapped = receive(socket, observer, transaction).or_else(|| {
@@ -46,12 +62,100 @@ impl Survey {
         self.samples.push(Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped });
         Some(mapped)
     }
-    fn socket(&mut self) -> Option<(UdpSocket, u8)> {
+    fn socket(&mut self) -> Option<(UdpSocket, u16)> {
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
         socket.set_read_timeout(Some(ANSWER)).ok()?;
         self.local_ports.push(socket.local_addr().ok()?.port());
-        Some((socket, (self.local_ports.len() - 1) as u8))
+        Some((socket, (self.local_ports.len() - 1) as u16))
     }
+    /// Makes one mapping toward each observer from a socket of its own, all sent before any answer
+    /// is read, and records them in the order sent. The NAT meets them in that order unless the
+    /// path reorders them.
+    fn burst(&mut self, observers: &[SocketAddrV4]) -> Vec<Option<Sample>> {
+        let sent: Vec<_> = observers
+            .iter()
+            .map(|observer| {
+                let (socket, number) = self.socket()?;
+                let sent_ms = self.started.elapsed().as_millis() as u32;
+                Some((send(&socket, *observer)?, socket, number, sent_ms))
+            })
+            .collect();
+        let answers: Vec<Option<Sample>> = sent
+            .into_iter()
+            .zip(observers)
+            .map(|(sent, &observer)| {
+                let (transaction, socket, number, sent_ms) = sent?;
+                // The mapping exists once the request has left, so asking again reads the same one.
+                let mapped = receive(&socket, observer, transaction).or_else(|| {
+                    socket.send_to(&stun::request(transaction), observer).ok()?;
+                    receive(&socket, observer, transaction)
+                })?;
+                Some(Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped })
+            })
+            .collect();
+        self.samples.extend(answers.iter().flatten());
+        answers
+    }
+    /// The new mappings seen on `address` so far, in the order they were made.
+    fn allocations(&self, address: &Ipv4Addr) -> Vec<(u32, u16)> {
+        allocations_on(&self.samples, address)
+    }
+}
+
+/// A mapping made between readings and looked for afterwards.
+struct Located {
+    port: u16,
+    /// Where [`located`] named the port, counting from one.
+    rank: Option<usize>,
+    named: usize,
+}
+
+
+/// Makes a mapping toward one observer between readings from the others, and asks the model where
+/// it landed. The observer's answer is the truth the model does not see.
+fn locate(survey: &mut Survey, observers: &[SocketAddrV4], public: &Ipv4Addr) -> Vec<Located> {
+    let mut found = Vec::new();
+    for round in 0..LOCATED {
+        let peer = observers[round % observers.len()];
+        let others: Vec<SocketAddrV4> = observers.iter().copied().filter(|observer| *observer != peer).collect();
+        let readings = || -> Vec<SocketAddrV4> { (0..READINGS).map(|_| others[(random() % others.len() as u64) as usize]).collect() };
+        // Each burst is answered before the next is sent, which keeps the three apart at the NAT.
+        survey.burst(&readings());
+        let before = survey.allocations(public);
+        let Some(made) = survey.burst(&[peer])[0].filter(|made| made.mapped.ip() == public) else { continue };
+        let after: Vec<u16> = survey.burst(&readings()).iter().flatten().filter(|sample| sample.mapped.ip() == public).map(|sample| sample.mapped.port()).collect();
+        let named = located(&before, made.sent_ms, &after);
+        found.push(Located { port: made.mapped.port(), rank: named.iter().position(|port| *port == made.mapped.port()).map(|at| at + 1), named: named.len() });
+    }
+    found
+}
+
+/// Reads the allocator, waits as long as a peer's answer takes, reads it again, and then opens
+/// sockets toward one observer, each answered before the next. For each socket: how many steps past
+/// the second reading of the most used cursor it landed, or nothing when it landed elsewhere. A peer
+/// that had aimed one mapping at each of those steps would be met by a socket that sends to the
+/// mapping of the step it takes.
+fn climbs(survey: &mut Survey, observers: &[SocketAddrV4], public: &Ipv4Addr) -> Vec<Vec<Option<u16>>> {
+    let mut climbed = Vec::new();
+    for round in 0..CLIMBS {
+        let peer = observers[round % observers.len()];
+        let others: Vec<SocketAddrV4> = observers.iter().copied().filter(|observer| *observer != peer).collect();
+        let readings = || -> Vec<SocketAddrV4> { (0..READINGS).map(|_| others[(random() % others.len() as u64) as usize]).collect() };
+        survey.burst(&readings());
+        std::thread::sleep(PEER_WAIT);
+        survey.burst(&readings());
+        let Allocator::Cursors(cursors) = Allocator::of(&survey.allocations(public)) else { break };
+        let cursor = cursors[0];
+        climbed.push(
+            (0..CLIMB_SOCKETS)
+                .map(|_| {
+                    let made = survey.burst(&[peer])[0].filter(|made| made.mapped.ip() == public)?;
+                    walk(cursor.last, cursor.step, made.mapped.port()).filter(|steps| usize::from(*steps) <= 4 * CLIMB_SOCKETS)
+                })
+                .collect(),
+        );
+    }
+    climbed
 }
 
 fn send(socket: &UdpSocket, observer: SocketAddrV4) -> Option<[u8; 12]> {
@@ -94,15 +198,43 @@ fn shuffled(count: usize) -> Vec<usize> {
     order
 }
 
-/// The new mappings a survey saw on one public address, in the order they were made.
-fn allocations_on(samples: &[Sample], address: &Ipv4Addr) -> Vec<(u32, u16)> {
-    let mut allocations: Vec<(u32, u16)> = Vec::new();
+/// The samples that each show a new mapping on one public address, in the order they were made.
+fn made_on<'a>(samples: &'a [Sample], address: &Ipv4Addr) -> Vec<&'a Sample> {
+    let mut made: Vec<&Sample> = Vec::new();
     for sample in samples.iter().filter(|sample| sample.mapped.ip() == address) {
-        if !allocations.iter().any(|&(_, port)| port == sample.mapped.port()) {
-            allocations.push((sample.sent_ms, sample.mapped.port()));
+        // A socket that shows a port again is reading the mapping it already has.
+        if !made.iter().any(|earlier| earlier.socket == sample.socket && earlier.mapped == sample.mapped) {
+            made.push(sample);
         }
     }
-    allocations
+    made
+}
+
+/// The new mappings a survey saw on one public address, in the order they were made.
+fn allocations_on(samples: &[Sample], address: &Ipv4Addr) -> Vec<(u32, u16)> {
+    made_on(samples, address).iter().map(|sample| (sample.sent_ms, sample.mapped.port())).collect()
+}
+
+/// Replays the survey. For each mapping: would the windows aimed from the mappings before it have
+/// held its port? Counted twice, once reading every earlier mapping and once only those toward
+/// other observers, which is all a peer can be told about a mapping toward itself. Returns the
+/// mappings judged and how many each reading held.
+fn replay(samples: &[Sample], address: &Ipv4Addr) -> (usize, usize, usize) {
+    let made = made_on(samples, address);
+    let held = |earlier: &mut dyn Iterator<Item = &&Sample>, sample: &Sample| {
+        let allocations: Vec<(u32, u16)> = earlier.map(|earlier| (earlier.sent_ms, earlier.mapped.port())).collect();
+        let aim = Model { address: *address, allocator: Allocator::of(&allocations) }.aim(sample.sent_ms);
+        matches!(aim, Some(Aim::Windows(windows)) if windows.iter().any(|window| window.holds(sample.mapped.port())))
+    };
+    let (mut judged, mut all, mut others) = (0, 0, 0);
+    for (index, sample) in made.iter().enumerate().skip(REPLAY_AFTER) {
+        // Mappings sent in the same millisecond are one burst, and none of them is known to the rest.
+        let earlier = || made[..index].iter().filter(|earlier| earlier.sent_ms < sample.sent_ms);
+        judged += 1;
+        all += usize::from(held(&mut earlier(), sample));
+        others += usize::from(held(&mut earlier().filter(|earlier| earlier.observer != sample.observer), sample));
+    }
+    (judged, all, others)
 }
 
 /// The address this machine would send from toward `target`; no packet is sent to learn it.
@@ -165,6 +297,7 @@ fn main() {
     });
     let mut brackets = Vec::new();
     let mut burst = Vec::new();
+    let (mut found, mut climbed) = (Vec::new(), Vec::new());
     if dependent {
         for _ in 0..EXTRA_MAPPINGS {
             if let Some((socket, number)) = survey.socket() {
@@ -194,9 +327,25 @@ fn main() {
             let sockets: Vec<UdpSocket> = (0..8).filter_map(|_| survey.socket().map(|(socket, _)| socket)).collect();
             let sent: Vec<_> = sockets.iter().map(|socket| send(socket, observers[0].1)).collect();
             burst = sockets.iter().zip(sent).filter_map(|(socket, sent)| Some(receive(socket, observers[0].1, sent?)?.port())).collect();
+            // The two experiments use the observers that a new socket reaches from this address,
+            // so that a mapping made toward any of them lands on the allocator being read. Where
+            // some traffic leaves through a proxy, a socket's first destination chooses its way out.
+            let first_of = |socket: u16| survey.samples.iter().find(|sample| sample.socket == socket);
+            let seeing: Vec<SocketAddrV4> = observers
+                .iter()
+                .map(|(_, observer)| *observer)
+                .filter(|observer| {
+                    let mut firsts = survey.samples.iter().filter(|sample| sample.observer == *observer && first_of(sample.socket).is_some_and(|first| first.observer == *observer && first.sent_ms == sample.sent_ms));
+                    firsts.clone().count() > 0 && firsts.all(|sample| *sample.mapped.ip() == public)
+                })
+                .collect();
+            if seeing.len() >= 2 {
+                found = locate(&mut survey, &seeing, &public);
+                climbed = climbs(&mut survey, &seeing, &public);
+            }
         }
     }
-    report(&survey, &observers, by_port, &brackets, &burst, full);
+    report(&survey, &observers, by_port, &brackets, &burst, &found, &climbed, full);
 }
 
 /// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
@@ -208,7 +357,17 @@ fn cursors_line(cursors: &[Cursor]) -> String {
     format!("CURSORS. {} counter(s), next mapping one step past one of: {}", cursors.len(), each.join(", "))
 }
 
-fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], by_port: Option<bool>, brackets: &[(u16, u16, u16, bool)], burst: &[u16], full: bool) {
+#[allow(clippy::too_many_arguments)]
+fn report(
+    survey: &Survey,
+    observers: &[(&str, SocketAddrV4)],
+    by_port: Option<bool>,
+    brackets: &[(u16, u16, u16, bool)],
+    burst: &[u16],
+    found: &[Located],
+    climbed: &[Vec<Option<u16>>],
+    full: bool,
+) {
     let model = Model::read(&survey.samples);
     let public = *survey.samples[0].mapped.ip();
     let shown = |address: Ipv4Addr| match full {
@@ -257,6 +416,21 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], by_port: Option<b
     }
     if !burst.is_empty() {
         println!("burst of {}: {burst:?}", burst.len());
+    }
+    let (judged, all, others) = replay(&survey.samples, &public);
+    if judged > 0 {
+        println!("replay: of {judged} mappings, the aim read from all earlier ones held {all}, and read from those toward other observers {others}");
+    }
+    if !found.is_empty() {
+        let first = found.iter().filter(|located| located.rank == Some(1)).count();
+        let named = found.iter().filter(|located| located.rank.is_some()).count();
+        let each: Vec<String> = found.iter().map(|located| format!("{}:{}/{}", located.port, located.rank.map_or("-".into(), |rank| rank.to_string()), located.named)).collect();
+        println!("found afterwards: {first} of {} named first, {named} named at all (port:rank/named) {}", found.len(), each.join(" "));
+    }
+    if !climbed.is_empty() {
+        let next = climbed.iter().filter(|steps| steps.iter().flatten().next() == Some(&1)).count();
+        let each: Vec<String> = climbed.iter().map(|steps| steps.iter().map(|step| step.map_or("-".into(), |step| step.to_string())).collect::<Vec<_>>().join(" ")).collect();
+        println!("steps past a reading, socket by socket: the cursor's next port was taken in {next} of {} | {}", climbed.len(), each.join(" | "));
     }
     // Each public address seen gets a letter, and the mappings made on it are read on their own.
     let mut addresses: Vec<Ipv4Addr> = Vec::new();
