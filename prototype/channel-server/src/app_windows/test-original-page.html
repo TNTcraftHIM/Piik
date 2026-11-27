@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<video muted aria-label="Paused local video"></video>
+<script>
+  const video = document.querySelector('video');
+  const canvas = document.createElement('canvas');
+  canvas.width = 160;
+  canvas.height = 90;
+  const ctx = canvas.getContext('2d');
+  const stream = canvas.captureStream(30);
+  let frame = 0;
+  setInterval(() => {
+    ctx.fillStyle = frame++ % 2 ? '#264a73' : '#4574a8';
+    ctx.fillRect(0, 0, 160, 90);
+  }, 33);
+
+  async function playFixture() {
+    const previous = video.getAttribute('src');
+    video.removeAttribute('src');
+    video.srcObject = stream;
+    if (previous) URL.revokeObjectURL(previous);
+    await video.play();
+    video.pause();
+  }
+
+  function emptyFixture() {
+    video.srcObject = null;
+    video.src = URL.createObjectURL(new MediaSource());
+  }
+</script>

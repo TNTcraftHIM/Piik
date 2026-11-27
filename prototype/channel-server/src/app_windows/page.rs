@@ -1346,6 +1346,7 @@ fn whole_webview_process_exits_retire_the_view() {
 #[tokio::test]
 #[ignore = "opens a WebView2 window on an interactive Windows desktop"]
 async fn cancelled_prepare_and_queued_close_release_native_windows() {
+    use futures_util::FutureExt;
     use std::{
         collections::HashSet,
         sync::Arc,
@@ -1375,7 +1376,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
         *icon.borrow_mut() = Some(tao::window::Icon::from_rgba(vec![0; 4], 1, 1).unwrap());
     });
     let (dispatch, mut commands) = mpsc::unbounded_channel();
-    let (outgoing, mut events) = mpsc::channel(8);
+    let (outgoing, mut events) = mpsc::channel(32);
     let connection = page::Connection::new(
         Some(Arc::new(move |cmd| dispatch.send(cmd).is_ok())),
         outgoing,
@@ -1478,7 +1479,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     }
 
     let child = Uuid::new_v4();
-    let mut view = page_view(
+    let view = page_view(
         WebViewBuilder::new().with_environment(environment.cast().unwrap()),
         child,
         target.create_proxy(),
@@ -1487,29 +1488,113 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     .unwrap();
     let child_window = view.window.id();
     windows.insert(child_window);
-    let retired = view.media.borrow().retired.subscribe();
-    let child_frame = Uuid::new_v4();
-    let child_media = Uuid::new_v4();
-    view.document = Some(child_frame);
+    view.window.set_visible(true);
+    view.view.load_html(include_str!("test-original-page.html")).unwrap();
     reopened.views.borrow_mut().insert(child, view);
-    let candidate = Uuid::new_v4();
-    reopened.candidates.insert(
-        candidate,
-        Candidate {
-            view: child,
-            frame: child_frame,
-            ancestors: vec![],
-            source: ReportedCandidate {
-                media: child_media,
-                resource: "blob:owned".into(),
-                revision: 0,
-                title: "Owned popup".into(),
-                url: None,
-                duration: Some(60.),
-            },
-        },
-    );
-    reopened.selected = Some(candidate);
+
+    // Dispatch the same WebView2 callbacks as the App while waiting for media
+    // and command replies. Retain the destruction notifications for cleanup.
+    let mut pump = |pages: &mut Pages, stage: &str, done: &mut dyn FnMut(&Pages, Option<&Value>) -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut complete = false;
+        let proxy = target.create_proxy();
+        target.run_return(|event, target, flow| {
+            match event {
+                Event::UserEvent(ServiceEvent::PageMessage(id, body)) => pages.message(id, &body),
+                Event::UserEvent(ServiceEvent::PageNavigate(id)) => pages.navigate(id),
+                Event::UserEvent(ServiceEvent::PageProcessExited(id)) => pages.process_exited(id),
+                Event::WindowEvent { event: WindowEvent::Destroyed, window_id, .. } => {
+                    windows.remove(&window_id);
+                }
+                _ => {}
+            }
+            while let Ok(command) = commands.try_recv() {
+                pages.command(command, target, proxy.clone());
+            }
+            for event in std::iter::from_fn(|| events.try_recv().ok()) {
+                assert_ne!(event["type"], "page_closed", "page closed during {stage}");
+                assert_ne!(event["type"], "page_selection_lost", "selection lost during {stage}");
+                complete |= done(pages, Some(&event));
+            }
+            if !complete {
+                complete = done(pages, None);
+            }
+            *flow = if complete || Instant::now() >= deadline {
+                ControlFlow::Exit
+            } else {
+                ControlFlow::WaitUntil(deadline)
+            };
+        });
+        assert!(complete, "timed out during {stage}");
+    };
+    let mut candidate = None;
+    pump(&mut pages, "video discovery", &mut |pages, _| {
+        candidate = pages.pages.values().next().and_then(|page| {
+            page.candidates.iter().find(|(_, candidate)| candidate.view == child).map(|(id, _)| *id)
+        });
+        candidate.is_some()
+    });
+    let candidate = candidate.unwrap();
+    let script = |pages: &Pages, code: &str| {
+        pages.pages.values().next().unwrap().views.borrow()[&child]
+            .view.evaluate_script(code).unwrap();
+    };
+    let is_sample = |event: Option<&Value>, kind: &str| {
+        event.is_some_and(|event| {
+            event["type"] == "page_sample" && event["event"] == kind
+                && event["pageId"] == json!(page_id) && event["candidateId"] == json!(candidate)
+        })
+    };
+    script(&pages, "playFixture()");
+    pump(&mut pages, "initial paused video", &mut |_, event| is_sample(event, "pause"));
+
+    let mut selected = Box::pin(connection.request(Operation::PageSelect {
+        page_id, candidate_id: candidate, original_page: true, resource_id: None,
+    }));
+    assert!(futures_util::poll!(&mut selected).is_pending());
+    let mut state = None;
+    pump(&mut pages, "original-page selection", &mut |_, _| {
+        state = state.take().or_else(|| selected.as_mut().now_or_never());
+        state.is_some()
+    });
+    let state = state.unwrap().unwrap();
+    assert_eq!(state["paused"], true);
+    assert!(state["readyState"].as_u64().unwrap() >= 2, "{state}");
+    for (code, sample, stage) in [
+        ("emptyFixture()", "emptied", "empty selected video"),
+        ("playFixture()", "loadeddata", "restored selected video"),
+    ] {
+        let retired = pages.pages.values().next().unwrap().views.borrow()[&child]
+            .media.borrow().retired.subscribe();
+        assert!(!*retired.borrow(), "media lifetime already retired before {stage}");
+
+        script(&pages, code);
+        let mut sampled = false;
+        pump(&mut pages, stage, &mut |_, event| {
+            sampled |= is_sample(event, sample);
+            sampled && (sample == "emptied" || is_sample(event, "pause"))
+        });
+        assert!(*retired.borrow(), "resource replacement retained the old media lifetime");
+        let mut request = Box::pin(connection.request(Operation::PageRead { page_id, candidate_id: None }));
+        assert!(futures_util::poll!(&mut request).is_pending());
+        let mut state = None;
+        pump(&mut pages, stage, &mut |_, _| {
+            state = state.take().or_else(|| request.as_mut().now_or_never());
+            state.is_some()
+        });
+        let state = state.unwrap().unwrap();
+        assert_eq!(state["paused"], true);
+        let readiness = state["readyState"].as_u64().unwrap();
+        if sample == "emptied" {
+            assert_eq!(readiness, 0, "{state}");
+        } else {
+            assert!(readiness >= 2, "{state}");
+        }
+    }
+    let page = pages.pages.values().next().unwrap();
+    assert_eq!(page.selected, Some(candidate));
+    let (child_frame, child_media) = (page.candidates[&candidate].frame, page.candidates[&candidate].source.media);
+    let retired = page.views.borrow()[&child].media.borrow().retired.subscribe();
     for (operation, visible) in [
         (Operation::PageHide { page_id }, false),
         (Operation::PageFocus { page_id }, true),
@@ -1568,6 +1653,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     let empty_catalog = events.try_recv().unwrap();
     let page = pages.pages.values().next().unwrap();
     let retired = page.views.borrow()[&child].media.borrow().retired.subscribe();
+    assert!(!*retired.borrow(), "media lifetime already retired before page close");
 
     let mut close = Box::pin(connection.request(Operation::PageClose { page_id }));
     assert!(futures_util::poll!(&mut close).is_pending());
