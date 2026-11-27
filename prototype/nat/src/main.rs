@@ -7,7 +7,7 @@
 //! Where new mappings follow cursors it also tries the two things a pair of such networks needs,
 //! with an observer standing in for the peer, because the observer says where the mapping really
 //! landed: finding a mapping after it was made, and taking the ports next past a reading.
-use piik_nat::mapping::{located, measured, replay, walk, Allocator, Cursor, Holdout, Model, PortSet, Sample};
+use piik_nat::mapping::{located, measured, replay, walk, Allocator, Budget, Cursor, Holdout, Model, PortSet, Sample};
 use piik_nat::stun;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
@@ -33,8 +33,10 @@ const ANSWER: Duration = Duration::from_millis(700);
 const EXTRA_MAPPINGS: usize = 10;
 /// Measurements of one mapping between two observations.
 const BRACKETS: usize = 5;
-/// A replay judges a mapping once this many were made before it.
+/// A replay judges a mapping once this many were made before it, against the aim a peer with the
+/// product's present allowance would be given.
 const REPLAY_AFTER: usize = 8;
+const REPLAY_BUDGET: Budget = Budget { mappings: 256, packets: 1024 };
 /// Mappings looked for after they were made, and the readings on each side of one.
 const LOCATED: usize = 6;
 const READINGS: usize = 5;
@@ -426,7 +428,7 @@ fn report(
         survey.unsent
     );
     for (reading, holdout) in [("all earlier mappings", Holdout::Nothing), ("other destinations", Holdout::Destination), ("other addresses", Holdout::Address)] {
-        let replayed = replay(&made, REPLAY_AFTER, holdout);
+        let replayed = replay(&made, REPLAY_AFTER, holdout, REPLAY_BUDGET);
         println!(
             "replay reading {reading}: held {}, missed {}, no aim {}, too little before {}, made in a burst and not judged {}",
             replayed.held, replayed.missed, replayed.no_aim, replayed.too_early, replayed.in_bursts

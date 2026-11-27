@@ -203,24 +203,67 @@ impl Model {
         Ok(Self { address, allocator: Allocator::of(&allocations) })
     }
 
-    /// Where the next mappings will be when they are made `lead_ms` after the survey began.
+    /// Where the next mappings will be when they are made `lead_ms` after the survey began, for a
+    /// peer with `budget`. For cursors these are the ports the peer's packets are best spent on.
     /// `None` when no cursor has a window inside the ports that are searched.
-    pub fn aim(&self, lead_ms: u32) -> Option<Aim> {
+    pub fn aim(&self, lead_ms: u32, budget: Budget) -> Option<Aim> {
         match &self.allocator {
             Allocator::Point { port, .. } => Some(Aim::Port(*port)),
             Allocator::Set(set) => Some(Aim::Set(*set)),
             Allocator::Cursors(cursors) => {
-                let windows: Vec<Window> = windowed(cursors, lead_ms).map(|(_, window)| window).collect();
+                let windows: Vec<Window> = aimed(cursors, lead_ms, budget.packets).into_iter().map(|(window, _)| window).collect();
                 (!windows.is_empty()).then_some(Aim::Windows(windows))
             }
         }
     }
 }
 
-/// The cursors that have a window at `lead_ms`, each with it, in the allocator's order. The aim and
-/// the score both read this list, so a cursor without a window is absent from both.
-fn windowed(cursors: &[Cursor], lead_ms: u32) -> impl Iterator<Item = (&Cursor, Window)> {
-    cursors.iter().filter_map(move |cursor| Some((cursor, cursor.window(lead_ms)?)))
+/// The ports `packets` are best spent on: for each cursor that gets any, the ports sent to and the
+/// chance that a mapping lands on that cursor and on one of them. A port's worth is its cursor's
+/// share of landings times the chance that other traffic carries the cursor exactly there, and
+/// the worthiest are taken first, so a cursor whose whole window does not fit still gets the
+/// part of it around its likeliest port.
+fn aimed(cursors: &[Cursor], lead_ms: u32, packets: u16) -> Vec<(Window, f64)> {
+    let total: f64 = cursors.iter().map(|cursor| f64::from(cursor.landings)).sum();
+    // For each cursor with a window: its share, the least count of foreign allocations, the
+    // chance of each count from there, and the counts taken so far as a range of indexes.
+    let mut spreads: Vec<Option<(f64, u32, Vec<f64>, Option<(usize, usize)>)>> = cursors
+        .iter()
+        .map(|cursor| {
+            cursor.window(lead_ms)?;
+            let (low, terms) = spread(cursor.foreign, cursor.watched_ms, lead_ms.saturating_sub(cursor.at_ms))?;
+            Some((f64::from(cursor.landings) / total, low, terms, None))
+        })
+        .collect();
+    for _ in 0..packets {
+        // The worthiest port not yet taken is the likeliest count of a cursor, or a neighbour of
+        // the counts already taken on it: the chances fall away on both sides of the likeliest.
+        let best = spreads
+            .iter()
+            .enumerate()
+            .filter_map(|(index, spread)| {
+                let (share, _, terms, taken) = spread.as_ref()?;
+                let candidates = match *taken {
+                    None => [terms.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|(at, _)| at), None],
+                    Some((first, last)) => [first.checked_sub(1), (last + 1 < terms.len()).then_some(last + 1)],
+                };
+                candidates.into_iter().flatten().map(|at| (share * terms[at], index, at)).max_by(|a, b| a.0.total_cmp(&b.0))
+            })
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((_, index, at)) = best else { break };
+        let taken = &mut spreads[index].as_mut().unwrap().3;
+        *taken = Some(taken.map_or((at, at), |(first, last)| (first.min(at), last.max(at))));
+    }
+    cursors
+        .iter()
+        .zip(spreads)
+        .filter_map(|(cursor, spread)| {
+            let (share, low, terms, taken) = spread?;
+            let (first, last) = taken?;
+            let window = Window { first: cursor.port(low + first as u32 + 1)?, step: cursor.step, count: (last - first + 1) as u16 };
+            Some((window, share * terms[first..=last].iter().sum::<f64>()))
+        })
+        .collect()
 }
 
 /// The share of a survey's landings that fell on cursors it saw: one less the share that fell on
@@ -432,7 +475,7 @@ pub struct Replay {
 /// and a NAT takes a burst in the order it arrives. A target with fewer than `least` readable
 /// mappings before it is counted apart, and so is one whose history gives no windows: neither is a
 /// miss, and leaving them out would change what the rest is a share of.
-pub fn replay(made: &[(u32, Sample)], least: usize, holdout: Holdout) -> Replay {
+pub fn replay(made: &[(u32, Sample)], least: usize, holdout: Holdout, budget: Budget) -> Replay {
     let mut replay = Replay::default();
     for (group, target) in made {
         if made.iter().filter(|(other, _)| other == group).count() > 1 {
@@ -451,7 +494,7 @@ pub fn replay(made: &[(u32, Sample)], least: usize, holdout: Holdout) -> Replay 
             })
             .map(|(_, sample)| (sample.sent_ms, sample.mapped.port()))
             .collect();
-        let aim = Model { address: *target.mapped.ip(), allocator: Allocator::of(&known) }.aim(target.sent_ms);
+        let aim = Model { address: *target.mapped.ip(), allocator: Allocator::of(&known) }.aim(target.sent_ms, budget);
         let outcome = match aim {
             _ if known.len() < least => &mut replay.too_early,
             Some(Aim::Windows(windows)) if windows.iter().any(|window| window.holds(target.mapped.port())) => &mut replay.held,
@@ -507,7 +550,7 @@ pub fn part(local: &Model, own: &Aim, remote: &Aim, peer: Ipv4Addr, budget: Budg
 /// inside a burst of mappings except where a walker races for its port. `None` is an abstention, as
 /// in [`part`].
 pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms: u32, budget: Budget) -> Option<f64> {
-    let (local_aim, remote_aim) = (local.aim(local_lead_ms)?, remote.aim(remote_lead_ms)?);
+    let (local_aim, remote_aim) = (local.aim(local_lead_ms, budget)?, remote.aim(remote_lead_ms, budget)?);
     let local_part = part(local, &local_aim, &remote_aim, remote.address, budget)?;
     let remote_part = part(remote, &remote_aim, &local_aim, local.address, budget)?;
     // One side of the pair as the other's part meets it.
@@ -515,8 +558,7 @@ pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms:
         // The peer sweeps some of this side's windows: the mapping must land on a swept cursor
         // and that cursor's traffic must stay inside its window.
         (Allocator::Cursors(cursors), _, Part::Sweep(swept)) => {
-            let total: f64 = cursors.iter().map(|cursor| f64::from(cursor.landings)).sum();
-            let reached: f64 = windowed(cursors, lead_ms).take(swept.len()).map(|(cursor, _)| f64::from(cursor.landings) / total * cursor.covered(lead_ms)).sum();
+            let reached: f64 = aimed(cursors, lead_ms, budget.packets).iter().take(swept.len()).map(|(_, chance)| chance).sum();
             seen(cursors) * reached
         }
         // Measured: nothing may fall inside the measurement.
@@ -757,22 +799,30 @@ fn port_set(allocations: &[(u32, u16)]) -> PortSet {
 /// watch (Jeffreys' prior on the rate), so a short watch gives a wide range. `None` when the range
 /// would pass [`WIDEST_WINDOW`].
 fn predicted(foreign: u16, watched_ms: u32, lead_ms: u32) -> Option<(u32, u32, f64)> {
+    spread(foreign, watched_ms, lead_ms).map(|(low, terms)| (low, low + terms.len() as u32 - 1, terms.iter().sum()))
+}
+
+/// The chance of each count of foreign allocations in the range of [`predicted`], from its least.
+fn spread(foreign: u16, watched_ms: u32, lead_ms: u32) -> Option<(u32, Vec<f64>)> {
     if lead_ms == 0 {
-        return Some((0, 0, 1.0));
+        return Some((0, vec![1.0]));
     }
     let shape = f64::from(foreign) + 0.5;
     let watched = f64::from(watched_ms.max(1));
     let stay = watched / (watched + f64::from(lead_ms));
     let mut log_term = shape * stay.ln();
-    let (mut below, mut total, mut low) = (0.0, 0.0, None);
+    let (mut total, mut low, mut terms) = (0.0, None, Vec::new());
     for count in 0..=WIDEST_WINDOW {
         let term = log_term.exp();
         if low.is_none() && total + term > TAIL {
-            (low, below) = (Some(count), total);
+            low = Some(count);
+        }
+        if low.is_some() {
+            terms.push(term);
         }
         total += term;
         if total >= 1.0 - TAIL {
-            return Some((low?, count, total - below));
+            return Some((low?, terms));
         }
         log_term += ((f64::from(count) + shape) / f64::from(count + 1)).ln() + (1.0 - stay).ln();
     }
@@ -831,7 +881,7 @@ mod tests {
         Allocator::Cursors(vec![Cursor { last, at_ms, step, landings, foreign, watched_ms: at_ms }])
     }
     fn windows(model: &Model, lead_ms: u32) -> Vec<Window> {
-        match model.aim(lead_ms) {
+        match model.aim(lead_ms, BUDGET) {
             Some(Aim::Windows(windows)) => windows,
             other => panic!("no windows: {other:?}"),
         }
@@ -871,6 +921,33 @@ mod tests {
     }
 
     #[test]
+    fn an_aim_wider_than_the_allowance_keeps_its_likeliest_ports() {
+        // Sixty foreign allocations in a tenth of a second: a tenth of a second on, the cursor may
+        // stand anywhere over more ports than a peer allowed 64 packets can send to.
+        let busy = Model { address: WAN, allocator: Allocator::Cursors(vec![Cursor { last: 40_000, at_ms: 1_000, step: 1, landings: 5, foreign: 60, watched_ms: 100 }]) };
+        let (low, high, _) = predicted(60, 100, 100).unwrap();
+        assert!(high - low + 1 > 64);
+        let small = Budget { mappings: 256, packets: 64 };
+        let Some(Aim::Windows(windows)) = busy.aim(1_100, small) else { panic!("no aim") };
+        // The peer gets 64 ports in a row around the likeliest, sixty past the cursor.
+        assert_eq!((windows.len(), windows[0].count), (1, 64));
+        assert!(windows[0].holds(40_060) && !windows[0].holds(40_001));
+        let point = Model { address: PEER, allocator: Allocator::Point { port: 50_000, preserved: true } };
+        assert_eq!(part(&point, &Aim::Port(50_000), &Aim::Windows(windows.clone()), WAN, small), Some(Part::Sweep(windows)));
+        // The chance is what those ports hold, less than the whole window would.
+        let (cut, whole) = (chance(&busy, 1_100, &point, 0, small).unwrap(), chance(&busy, 1_100, &point, 0, BUDGET).unwrap());
+        assert!(cut > 0.5 && cut < whole && whole > 0.99, "{cut} {whole}");
+        // Two cursors share the packets by what each port is worth: the one used more often gets more.
+        let pair = Allocator::Cursors(vec![
+            Cursor { last: 40_000, at_ms: 1_000, step: 1, landings: 9, foreign: 60, watched_ms: 100 },
+            Cursor { last: 50_000, at_ms: 1_000, step: 1, landings: 3, foreign: 60, watched_ms: 100 },
+        ]);
+        let Some(Aim::Windows(shared)) = (Model { address: WAN, allocator: pair }).aim(1_100, small) else { panic!("no aim") };
+        assert_eq!(shared.iter().map(|window| window.count).sum::<u16>(), 64);
+        assert!(shared[0].count > shared[1].count && shared[1].count > 0);
+    }
+
+    #[test]
     fn the_set_assumed_is_no_larger_than_one_the_ports_could_come_from() {
         let timed = |ports: &[u16]| -> Vec<(u32, u16)> { ports.iter().enumerate().map(|(index, port)| (index as u32 * EVERY_MS, *port)).collect() };
         // Two ports of one port set of 240 lie 57,345 apart: the set assumed is the 240.
@@ -904,27 +981,27 @@ mod tests {
         // One counter read eight times, one group each, toward four destinations on two addresses.
         let mut made: Vec<(u32, Sample)> = (0..8).map(|index| (index, sample(index, observer(index as u8 % 4), 40_000 + index as u16))).collect();
         // The first eight have too little before them; none is a miss.
-        assert_eq!(replay(&made, 8, Holdout::Nothing), Replay { too_early: 8, ..Replay::default() });
+        assert_eq!(replay(&made, 8, Holdout::Nothing, BUDGET), Replay { too_early: 8, ..Replay::default() });
         // A ninth is held by the aim from the eight, whichever of them the aim may read.
         made.push((8, sample(8, observer(0), 40_008)));
-        assert_eq!(replay(&made, 8, Holdout::Nothing), Replay { held: 1, too_early: 8, ..Replay::default() });
+        assert_eq!(replay(&made, 8, Holdout::Nothing, BUDGET), Replay { held: 1, too_early: 8, ..Replay::default() });
         // Asked for four before it, more are judged, and none is missed whichever the aim may read:
         // toward other destinations, or toward other addresses, which leaves fewer.
-        assert_eq!(replay(&made, 4, Holdout::Destination), Replay { held: 4, too_early: 5, ..Replay::default() });
-        assert_eq!(replay(&made, 4, Holdout::Address), Replay { held: 3, too_early: 6, ..Replay::default() });
+        assert_eq!(replay(&made, 4, Holdout::Destination, BUDGET), Replay { held: 4, too_early: 5, ..Replay::default() });
+        assert_eq!(replay(&made, 4, Holdout::Address, BUDGET), Replay { held: 3, too_early: 6, ..Replay::default() });
         // With one of the eight unanswered the ninth has too little before it: it is counted so,
         // and does not vanish from the count.
         let mut short = made.clone();
         short.remove(3);
-        assert_eq!(replay(&short, 8, Holdout::Nothing), Replay { too_early: 8, ..Replay::default() });
+        assert_eq!(replay(&short, 8, Holdout::Nothing, BUDGET), Replay { too_early: 8, ..Replay::default() });
         // Four mappings sent as one group are not judged: each lands behind the others of its
         // group, which nothing made before the group could tell. Given a group each, the first
         // lands on a counter nothing showed and is missed, and the window past it holds the rest.
         let mut burst: Vec<(u32, Sample)> = made[..8].to_vec();
         burst.extend((8..12).map(|index| (8, sample(index, observer(index as u8 % 4), 45_000 + index as u16))));
-        assert_eq!(replay(&burst, 8, Holdout::Nothing), Replay { in_bursts: 4, too_early: 8, ..Replay::default() });
+        assert_eq!(replay(&burst, 8, Holdout::Nothing, BUDGET), Replay { in_bursts: 4, too_early: 8, ..Replay::default() });
         let apart: Vec<(u32, Sample)> = burst.iter().enumerate().map(|(index, (_, sample))| (index as u32, *sample)).collect();
-        assert_eq!(replay(&apart, 8, Holdout::Nothing), Replay { held: 3, missed: 1, too_early: 8, ..Replay::default() });
+        assert_eq!(replay(&apart, 8, Holdout::Nothing, BUDGET), Replay { held: 3, missed: 1, too_early: 8, ..Replay::default() });
     }
 
     #[test]
@@ -994,7 +1071,7 @@ mod tests {
         // ago gets the wider window, and the five take 35 packets together.
         let network = Model { address: WAN, allocator: Allocator::Cursors(cursors) };
         let point = model(1, &[40_000, 40_000, 40_000]);
-        let aim = network.aim(lead(ports.len())).unwrap();
+        let aim = network.aim(lead(ports.len()), BUDGET).unwrap();
         let Some(Part::Sweep(swept)) = part(&point, &Aim::Port(40_000), &aim, WAN, BUDGET) else { panic!("no sweep") };
         assert_eq!(swept.iter().map(|window| window.first).collect::<Vec<_>>(), [63_301, 34_192, 6_255, 21_020, 14_157]);
         assert_eq!(swept.iter().map(|window| u32::from(window.count)).sum::<u32>(), 35);
@@ -1071,7 +1148,7 @@ mod tests {
         // A counter that would run past the last port has no aim. Three ports four apart are not
         // yet likelier a counter than draws from a small block; five that all rise are read as one.
         assert!(matches!(model(1, &[65_520, 65_524, 65_528]).allocator, Allocator::Set(_)));
-        assert_eq!(model(1, &[65_512, 65_516, 65_520, 65_524, 65_528]).aim(lead(5)), None);
+        assert_eq!(model(1, &[65_512, 65_516, 65_520, 65_524, 65_528]).aim(lead(5), BUDGET), None);
     }
 
     #[test]
@@ -1080,7 +1157,7 @@ mod tests {
         let quiet = model(1, &[50_000, 50_001, 50_002, 50_003, 50_004, 50_005]);
         let busy = model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]);
         let set = model(2, &[51_200, 60_011, 50_333, 64_100, 57_000, 52_048]);
-        let aim = |model: &Model| model.aim(lead(6)).unwrap();
+        let aim = |model: &Model| model.aim(lead(6), BUDGET).unwrap();
         let (quiet_window, busy_window) = (windows(&quiet, lead(6))[0], windows(&busy, lead(6))[0]);
         assert!(quiet_window.count < busy_window.count);
         assert_eq!(part(&point, &aim(&point), &aim(&point), PEER, BUDGET), Some(Part::Send(40_000)));
@@ -1145,7 +1222,7 @@ mod tests {
         // A span six ports drew holds five mappings of seven. In 62,901 ports a pool of 256 meets a
         // search of 1,024 about nineteen times in twenty; a block of 2,021 ports is met with eleven.
         assert!((0.94..0.96).contains(&chance(&point, 40, &wide, at, BUDGET).unwrap()));
-        assert_eq!(part(&block, &block.aim(at).unwrap(), &Aim::Port(40_000), PEER, BUDGET), Some(Part::Open { sockets: 11, port: 40_000 }));
+        assert_eq!(part(&block, &block.aim(at, BUDGET).unwrap(), &Aim::Port(40_000), PEER, BUDGET), Some(Part::Open { sockets: 11, port: 40_000 }));
         assert!(chance(&point, 40, &block, at, BUDGET).unwrap() > 0.99);
         assert!((binomial_at_least(14, 6.0 / 14.0, 4) - 0.914).abs() < 0.005);
         assert!(binomial_at_least(19, 6.0 / 14.0, 4) > 0.98);

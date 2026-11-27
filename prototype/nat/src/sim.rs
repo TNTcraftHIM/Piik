@@ -268,7 +268,7 @@ mod tests {
             let easy_port = easy.send(0, observer(0), 0);
             let easy_model = Model { address: EASY, allocator: Allocator::Point { port: easy_port, preserved: true } };
             let open_ms = ended_ms + 300;
-            let Some(aim) = model.aim(open_ms) else { continue };
+            let Some(aim) = model.aim(open_ms, BUDGET) else { continue };
             let Some(Part::Sweep(windows)) = part(&easy_model, &Aim::Port(easy_port), &aim, HARD, BUDGET) else { continue };
             // The hard side opens toward the easy side's one mapping, and the easy side sweeps.
             let opened: Vec<u16> = (0..sockets).map(|socket| hard.send(1_000 + socket, SocketAddrV4::new(EASY, easy_port), open_ms)).collect();
