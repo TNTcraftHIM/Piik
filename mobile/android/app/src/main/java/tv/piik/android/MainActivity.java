@@ -123,6 +123,7 @@ public final class MainActivity extends Activity {
     var owner = AppRuntimeService.runtime();
     if (owner == null) return;
     if (wakeEntry()) {
+      service.startupEntryHandled = true;
       finish();
       return;
     }
@@ -136,7 +137,9 @@ public final class MainActivity extends Activity {
     }
     if (getIntent().getData() == null) {
       try {
-        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(owner.entryURL())));
+        String entry = service.startupEntryHandled ? owner.url() : owner.entryURL();
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(entry)));
+        service.startupEntryHandled = true;
       } catch (ActivityNotFoundException error) {
         new AlertDialog.Builder(this)
             .setMessage(R.string.no_browser)

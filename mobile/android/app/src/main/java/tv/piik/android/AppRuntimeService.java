@@ -23,6 +23,7 @@ public final class AppRuntimeService extends Service {
   final ExecutorService work = Executors.newSingleThreadExecutor();
   final ArrayDeque<MediaRequest> requests = new ArrayDeque<>();
   Runtime runtime;
+  boolean startupEntryHandled;
   CompletableFuture<Runtime> startup;
   Throwable failure;
   MediaRequest active;
