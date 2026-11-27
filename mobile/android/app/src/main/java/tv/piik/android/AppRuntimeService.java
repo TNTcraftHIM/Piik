@@ -337,7 +337,6 @@ public final class AppRuntimeService extends Service {
     if (!admitted && preparing == request) preparing = null;
     MainActivity activity = MainActivity.current;
     if (activity != null && activity.permissionRequest == request) {
-      activity.permissionOwner = null;
       activity.permissionRequest = null;
     }
     if (!admitted) request.owner.captureEnded(request.id);

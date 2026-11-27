@@ -27,12 +27,7 @@ public final class MainActivity extends Activity {
       IBinder saved = state.getBinder("permissionOwner");
       if (!(saved instanceof PermissionBinding)) return null;
       PermissionBinding binding = (PermissionBinding) saved;
-      // A canceled Go capture still owns its outstanding physical OS result.
-      return binding.service == AppRuntimeService.instance
-              && binding.service.active == binding.request
-              && binding.request.awaitingResult
-          ? binding
-          : null;
+      return binding.service == AppRuntimeService.instance ? binding : null;
     }
   }
 
@@ -46,6 +41,8 @@ public final class MainActivity extends Activity {
   }
 
   boolean canConfirmMedia() {
+    if (handledMedia) return !isFinishing() && permissionOwner != null
+        && permissionOwner == AppRuntimeService.instance;
     return !wakeEntry() && (getIntent().getData() == null || mediaEntry());
   }
 
@@ -59,7 +56,9 @@ public final class MainActivity extends Activity {
       PermissionBinding binding = PermissionBinding.restore(state);
       if (binding != null) {
         permissionOwner = binding.service;
-        permissionRequest = binding.request;
+        // A canceled Go capture still owns its outstanding physical OS result.
+        if (binding.request != null && binding.service.active == binding.request
+            && binding.request.awaitingResult) permissionRequest = binding.request;
       }
     }
     Uri requested = getIntent().getData();
@@ -88,7 +87,7 @@ public final class MainActivity extends Activity {
     state.putBoolean("notificationRequest", notificationRequest);
     state.putBinder(
         "permissionOwner",
-        permissionOwner != null && permissionRequest != null
+        permissionOwner != null
             ? new PermissionBinding(permissionOwner, permissionRequest)
             : null);
     super.onSaveInstanceState(state);
@@ -99,6 +98,12 @@ public final class MainActivity extends Activity {
     super.onStart();
     current = this;
     visible = true;
+    if (handledMedia) {
+      // Returning from system consent belongs to the Service that presented it.
+      if (permissionOwner == null || permissionOwner != AppRuntimeService.instance) finish();
+      else permissionOwner.processRequests();
+      return;
+    }
     // Service foreground readiness precedes reopening even an existing runtime.
     startForegroundService(new Intent(this, AppRuntimeService.class));
   }
@@ -173,31 +178,32 @@ public final class MainActivity extends Activity {
     if (request == NOTIFICATIONS) {
       notificationRequest = false;
       startForegroundService(new Intent(this, AppRuntimeService.class));
-    } else if (request == AppRuntimeService.AUDIO_PERMISSION && permissionOwner != null) {
+    } else if (request == AppRuntimeService.AUDIO_PERMISSION && permissionRequest != null) {
       AppRuntimeService owner = permissionOwner;
       AppRuntimeService.MediaRequest pending = permissionRequest;
-      permissionOwner = null;
       permissionRequest = null;
-      owner.audioPermissionResult(pending);
+      if (owner != AppRuntimeService.instance) finish();
+      else owner.audioPermissionResult(pending);
     }
   }
 
   @Override
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
-    if (request == AppRuntimeService.PROJECTION && permissionOwner != null) {
+    if (request == AppRuntimeService.PROJECTION && permissionRequest != null) {
       AppRuntimeService owner = permissionOwner;
       AppRuntimeService.MediaRequest pending = permissionRequest;
-      permissionOwner = null;
       permissionRequest = null;
-      owner.projectionResult(this, pending, result, data);
+      if (owner != AppRuntimeService.instance) finish();
+      else owner.projectionResult(this, pending, result, data);
     }
   }
 
   @Override
   public void onBackPressed() {
-    if ((mediaEntry() || handledMedia) && AppRuntimeService.instance != null)
-      AppRuntimeService.instance.cancelPending();
+    AppRuntimeService service = AppRuntimeService.instance;
+    if (service != null && (handledMedia ? permissionOwner == service : mediaEntry()))
+      service.cancelPending();
     finish();
   }
 
