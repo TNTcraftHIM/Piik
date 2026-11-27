@@ -5,51 +5,56 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `9b44927b`. At `b29f3712`, where beta.59 is frozen,
-`tsc -b` passes and the web suite has 2,515 of 2,515 here.
+Reviewed through `66105f63`, merged in `ee8f9e8c`: `tsc -b` passes and the
+web suite has 2,521 of 2,521.
 
-The owner asked me to cut what I had sent you to what is needed, by the
+The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
-and the simplest thing that works. This list replaces everything before it.
-Anything I sent earlier and that is not here is withdrawn.
+read strictly: deliberate flooding is left to fail ("erlang let it crash"),
+growth with use is cleared by hand, and nothing is added without a shown
+need. Anything I sent earlier and that is not below is withdrawn.
+
+## Two things to take out
+
+Both answer items I have since withdrawn, and each adds what that rule does
+not allow:
+
+- `32ec2866`: the HTTP header deadline and the `hyper-util` dependency it
+  brings.
+- `41ee4c4a`: the one-at-a-time slot for room exports
+  (`domain.rs:687`, `app.rs:122`, `backup.rs:49-52`). It is one slot for the
+  whole site, so while one person downloads a large room everyone else who
+  exports gets `room_busy`; and each export already holds its snapshot and
+  worker only as long as its response is read. Keep the cleanup the commit
+  ties to the response; drop the slot.
 
 ## For you, in this order
 
 1. **A clearing action at the host** (the owner's design for growth). It
    removes files, inline images and thumbnails, and the members that hold
    nothing (no role, no grant, no hosted room); it keeps text, rooms, roles
-   and settings. No retention rule and no limit beside it.
+   and settings.
 2. **The stop shortcut for remote control fails while the controller holds
-   Shift or Win** (`channel-native/src/input/windows.rs:298`: the hotkey is
+   Shift or Win** (`channel-native/src/input/windows.rs:301`: the hotkey is
    registered for Ctrl+Alt alone). The person being controlled must always
    be able to stop it.
 3. **A limit on attempts at a room's password**, the smallest that works:
    one constant where the password is checked, in memory, no stored lockout,
    no setting.
-4. **A person's Off for the commentary microphone is lost when the capture
-   is replaced at that moment**: the edit is cancelled, nobody is told, and
-   it is not applied to the new capture. Read, not run.
-5. **A request to the App that is never answered leaves its control pending
+4. **A request to the App that is never answered leaves its control pending
    for good** (`app-link.ts:511-519`), which blocks a change of source
    (`stage.ts:187`). The waiting control needs an outcome.
-6. **When the Browser's recovery deadline fires it clears the session but
-   keeps the socket whose Join carried the old session id**
-   (`session.ts:3721`); a late Welcome can then resume what was given up.
-   Read, not run: reproduce first.
-7. **Members without a name.** Having no name is a state: the join sends no
+5. **Members without a name.** Having no name is a state: the join sends no
    placeholder, and each viewer's client words such a member as its own word
    for guest. Where two people in one list show the same name, four
    characters of the member's id follow it, 访客#7F3K. A site switch, off by
    default, opens the name field for a person who enters without a name.
    The same answer for the other names stored in one language: the site's
    "Piik friends", the three rooms a new Server seeds, and "User" for a
-   sender not yet resolved (`session.ts:974,1069`).
-8. **Small and visible**: a click at x 45 to 48 on a room row opens the
-   list of people where it should select the room;
-   `client.launch.invitationTimeout` is missing in ja, ko and zh-Hant;
-   Traditional Chinese is treated as English in `AppReleaseNotice.tsx:33`
-   and `AppLauncherPage.tsx:340`; the client reports a wrong password for
-   any error whose text contains `password` (`error-presentation.ts:134`).
+   sender not yet resolved.
+6. **Traditional Chinese is treated as English** where published text has
+   only a Simplified and an English form (`AppReleaseNotice.tsx:33`,
+   `AppLauncherPage.tsx:341`).
 
 ## Automatic capacity, when you have room
 
@@ -64,7 +69,6 @@ take to serve everyone at one trial per window.
 ## Questions
 
 - The NAT model in your kernel NATs: `claude/nat-model` at `6a3b858a`, cut
-  to reading the allocator, aiming a peer's packets and replaying a survey
-  (1,213 lines from 2,308; the tool makes one mapping at a time).
+  to reading the allocator, aiming a peer's packets and replaying a survey.
 - The encoder under a game that takes the whole GPU: a run near full load
   that times capture, conversion and encoding apart.
