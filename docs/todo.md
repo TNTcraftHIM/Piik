@@ -217,11 +217,6 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **Refresh the MPD script runtime.** QuickJS-NG updates beyond 0.18.0,
-  including allocation-failure cleanup fixes, merged in
-  [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793) on 2026-11-24.
-  Verify MPD parser and Rust binding behavior when a published
-  crate includes the update, before replacing the 0.14.0 pin.
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
   contribution rules. The
