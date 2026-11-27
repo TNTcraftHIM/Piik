@@ -71,8 +71,8 @@ the feedback period; they do not delay that delivery.
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md): before the first
   public 3.0 release, settle the compatibility baseline and matrix, explicit
   reply outcomes, release storage fixtures and the implemented history and
-  storage boundaries. Set the failure scope of an unknown request outcome
-  consistently for the selected Native, Browser and SDK readers. Schema
+  storage boundaries. Verify unknown request outcomes cannot confirm work in
+  the selected Native, Browser and SDK readers. Schema
   generation, a state revision, a generic activity envelope and the encoding of
   wire keys wait for a consumer. The
   [design review](./research/clean-room-design-review.md) records the

@@ -40,6 +40,17 @@ static package checks; device behavior was not inferred from that build.
   A separate two-Browser control reopened both pages on their original origin.
   The IndexedDB writer restored its history under a new live binding; the reader
   retained its identity and read position, then fetched the confirmed rows anew.
+  The beta.57 Windows App also wrote bookmarks, exact-origin approvals and
+  external/owned-site startup preferences through its local management API.
+  Reopening the retained databases preserved IDs, namespaces and the owned
+  listener port; revocation removed startup permission while retaining bookmarks.
+  The matching Linux amd64 package passed the Compose recipe's authenticated
+  hosted-room, archive rejection/recovery, volume recreation and shutdown checks.
+  Its matching Browser UI also exported and read back site v3, room v4 and
+  room-copy v2 archives. Site restore retained original credentials and revoked
+  the destination's old ones. Room restore kept access and replaced history
+  lineage; a copy assigned fresh ownership and message IDs. Both room archives
+  retained the synthetic original file and thumbnail.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts
