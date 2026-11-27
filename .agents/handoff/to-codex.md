@@ -5,8 +5,8 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `66105f63`, merged in `ee8f9e8c`: `tsc -b` passes and the
-web suite has 2,521 of 2,521.
+Reviewed through `346ec0da`. At `66105f63` `tsc -b` passes and the web suite
+has 2,521 of 2,521 here.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
@@ -30,29 +30,19 @@ not allow:
 
 ## For you, in this order
 
-1. **A clearing action at the host** (the owner's design for growth). It
-   removes files, inline images and thumbnails, and the members that hold
-   nothing (no role, no grant, no hosted room); it keeps text, rooms, roles
-   and settings.
+1. **A clearing action at the host**, for media only: files, inline images
+   and thumbnails go; text, rooms, policy, settings and every member stay.
+   Members are left alone: a host cannot always see what a member holds,
+   and nothing has shown their number to be a problem.
 2. **The stop shortcut for remote control fails while the controller holds
-   Shift or Win** (`channel-native/src/input/windows.rs:301`: the hotkey is
-   registered for Ctrl+Alt alone). The person being controlled must always
-   be able to stop it.
-3. **A limit on attempts at a room's password**, the smallest that works:
-   one constant where the password is checked, in memory, no stored lockout,
-   no setting.
-4. **A request to the App that is never answered leaves its control pending
-   for good** (`app-link.ts:511-519`), which blocks a change of source
-   (`stage.ts:187`). The waiting control needs an outcome.
-5. **Members without a name.** Having no name is a state: the join sends no
+   Shift or Win.** The person being controlled must always be able to stop
+   it; the smallest change that does that.
+3. **Members without a name.** Having no name is a state: the join sends no
    placeholder, and each viewer's client words such a member as its own word
    for guest. Where two people in one list show the same name, four
    characters of the member's id follow it, 访客#7F3K. A site switch, off by
    default, opens the name field for a person who enters without a name.
-   The same answer for the other names stored in one language: the site's
-   "Piik friends", the three rooms a new Server seeds, and "User" for a
-   sender not yet resolved.
-6. **Traditional Chinese is treated as English** where published text has
+4. **Traditional Chinese is treated as English** where published text has
    only a Simplified and an English form (`AppReleaseNotice.tsx:33`,
    `AppLauncherPage.tsx:341`).
 
