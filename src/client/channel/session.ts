@@ -2625,10 +2625,10 @@ export class ChannelSession {
       catch { /* Session recovery owns disconnection and authority retirement. */ }
     }));
   };
-  private makeWatchPlayer(id: string, roomId: string, owner: boolean, media: WatchMedia,
-    closeWatch = () => owner ? this.stopWatchResource(id, "media-closed") : this.leaveWatchResource(id)): WatchPlayer {
+  private makeWatchPlayer(id: string, roomId: string, owner: boolean, media: WatchMedia): WatchPlayer {
     const player = new WatchPlayer(roomId, owner, media, () => this.patch({}), () => {
-      if (this.watchPlayer(id) === player) void closeWatch().catch(() => {});
+      if (this.watchPlayer(id) === player)
+        void (owner ? this.stopWatchResource(id, "media-closed") : this.leaveWatchResource(id)).catch(() => {});
       else if (this.pendingWatchPlayer(id) === player) this.cancelWatchPage(id);
     });
     return player;
@@ -2934,10 +2934,8 @@ export class ChannelSession {
   private async commitWatch(roomId: string, source: WatchSource, media: WatchMedia, selection: SourceSelection, byteSource?: WatchByteSource, confirmPage?: () => Promise<void>): Promise<void> {
     const current = () => this.stages.get(roomId)?.sourceSelection === selection;
     const id = crypto.randomUUID();
-    // Closing an App page can finish the selection before the player hears it close.
-    const player = this.makeWatchPlayer(id, roomId, true, media, () => this.stopWatchResource(id, "media-closed", candidate));
-    const candidate = { player, stopping: false };
-    selection.watchCandidate = candidate;
+    const player = this.makeWatchPlayer(id, roomId, true, media);
+    selection.watchCandidate = player;
     let committed = false;
     let startSocket: WebSocket | null = null;
     try {
@@ -2999,7 +2997,7 @@ export class ChannelSession {
         else player.close();
         // Once submitted, this selection owns rollback. A replacement socket
         // reconciles orphaned activities from Welcome.
-        if (!candidate.stopping && startSocket && this.socket === startSocket) this.send({ type: "stop_watch", roomId, id });
+        if (!player.stopRequested && startSocket && this.socket === startSocket) this.send({ type: "stop_watch", roomId, id });
       }
       this.finishSourceSelection(roomId, selection);
     }
@@ -3117,8 +3115,7 @@ export class ChannelSession {
   }
   stopWatch = (id: string, reportError: ReportError = true): Promise<void> =>
     this.action(`stop:${id}`, () => this.stopWatchResource(id, "stop-requested"), reportError);
-  private async stopWatchResource(id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement",
-    closingCandidate?: SourceSelection["watchCandidate"]): Promise<void> {
+  private async stopWatchResource(id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement"): Promise<void> {
     const player = this.watchPlayer(id);
     if (!player?.owner) {
       if (player || reason !== "stop-requested" || this.view.connection !== "connected") return;
@@ -3126,8 +3123,7 @@ export class ChannelSession {
       if (activity) await this.request({ type: "stop_watch", roomId: activity.roomId, id }, undefined, activity.roomId);
       return;
     }
-    const candidate = closingCandidate ?? this.stages.get(player.roomId)?.sourceSelection?.watchCandidate;
-    if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
+    if (this.view.connection === "connected") player.stopRequested = true;
     this.retireWatchPlayer(id, reason);
     this.refreshActivity();
     this.browseRooms();

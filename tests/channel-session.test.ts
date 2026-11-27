@@ -17167,7 +17167,7 @@ test("stopping a borrowed-page replacement before confirmation keeps it retired"
   } finally { session.close(); }
 });
 
-test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowed original page replacement handles %s", async failure => {
+test.each(["catalog", "app-reply", "page-closed", "host-signaling-loss"] as const)("a confirmed borrowed original page replacement handles %s", async failure => {
   const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   commit.mockRestore();
   const roomId = "first";
@@ -17184,8 +17184,10 @@ test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowe
     const update = socket.sent.findLast(command => command.type === "update_watch" && command.id === id)!;
     socket.receive({ type: "room_reply", roomId, requestId: update.requestId, result: { type: "done" } });
   };
-  const snapshot = (start: Awaited<ReturnType<typeof waitForStart>>) => {
-    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [{
+  const snapshot = (start: Awaited<ReturnType<typeof waitForStart>>, available = true) => {
+    const state = session.getSnapshot().state!;
+    const rooms = state.channel.rooms.map(room => room.id === roomId ? { ...room, available } : room);
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, rooms }, watchActivities: [{
       id: start.id, roomId, sessionId: "endpoint", userId: "self", viewerSessionIds: [],
       source: start.source, playback: start.playback,
     }] } });
@@ -17222,7 +17224,8 @@ test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowe
 
     openPicker();
     const selecting = select(nextId);
-    const lost = failure === "page-closed" ? expect(selecting).rejects.toMatchObject({ name: "AbortError" })
+    const interrupted = failure === "page-closed" || failure === "host-signaling-loss";
+    const lost = interrupted ? expect(selecting).rejects.toMatchObject({ name: "AbortError" })
       : expect(selecting).rejects.toThrow("watch_source_unavailable");
     const failed = await waitForStart(2);
     expect(failed.replaceId).toBe(old.id);
@@ -17231,11 +17234,21 @@ test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowe
     snapshot(failed);
     now += 3000;
     expect(session.getSnapshot().watchPlayers.has(String(old.id))).toBe(false);
-    if (failure === "page-closed") {
-      page.receive({ type: "page_closed", pageId: page.id });
+    if (interrupted) {
+      let stopping: Promise<void> | undefined;
+      if (failure === "page-closed") page.receive({ type: "page_closed", pageId: page.id });
+      else {
+        // An admitted participant keeps the last room activity while the writer's signaling recovers.
+        snapshot(failed, false);
+        expect(session.sourceSelectionCommitting(roomId)).toBe(false);
+        expect(session.getSnapshot().state?.watchActivities.map(activity => activity.id)).toEqual([failed.id]);
+        snapshot(failed);
+        stopping = session.stopWatch(String(failed.id));
+      }
       const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
       expect(stop.id).toBe(failed.id);
       socket.receive({ type: "room_reply", roomId, requestId: stop.requestId, result: { type: "done" } });
+      await stopping;
       finishSelection(false);
       await lost;
       expect(session.getSnapshot().watchPlayers.has(String(failed.id))).toBe(false);
