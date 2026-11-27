@@ -99,8 +99,16 @@ networks in all):
    are then one path, and a prediction is a window. A true single counter
    must not lose against the present eight sockets.
 
+One fact more for item 3, read from reports 026 and 034: on the campus with
+three addresses and on the hotspot with three, the three default servers
+each answered through a different address, so `observe` ends the enhancement
+there on every attempt. On the campus the local port is kept on all three,
+so ordinary discovery may still connect; on the hotspot each destination
+takes a new port from a fast counter, so it cannot.
+
 None of this is two-sided evidence. A physical pair across the campus is
-what settles it, through a private build once the order is in.
+what settles it, through a private build once the order is in. The owner is
+asking when a build with the order exists; item 1 alone is one expression.
 
 ## The general form before release: one rule at every depth, and the envelope
 
