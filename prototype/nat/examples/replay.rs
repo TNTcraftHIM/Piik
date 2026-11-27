@@ -2,8 +2,8 @@
 //!
 //!   cargo run --example replay -- [--drop <text in an observer's name>]... [--only <address letter>] report.txt...
 //!
-//! A report masks its addresses, so each address letter and each observer host gets a stand-in
-//! address; observers on one host share one, as they do in the field.
+//! A report masks its addresses. Stand-in addresses preserve the observer address groups in
+//! the report. Older reports are grouped by observer hostname.
 use piik_nat::mapping::{replay, Allocator, Holdout, Model, Sample};
 use std::{collections::BTreeMap, net::{Ipv4Addr, SocketAddrV4}};
 
@@ -19,6 +19,10 @@ fn main() {
     }
     for file in files {
         let text = std::fs::read_to_string(&file).unwrap_or_else(|error| panic!("{file}: {error}"));
+        let address_groups: Option<Vec<u32>> = text.lines().find_map(|line| {
+            line.trim().strip_prefix("observer address groups: ")?
+                .split_whitespace().map(|group| group.parse().ok()).collect()
+        });
         // "observers: 0=stun.example.com:3478 1=..." names each observer index.
         let mut observers = BTreeMap::new();
         let mut hosts: Vec<String> = Vec::new();
@@ -27,11 +31,17 @@ fn main() {
                 let Some((index, name)) = entry.split_once('=') else { continue };
                 let Some((host, port)) = name.rsplit_once(':') else { continue };
                 let (Ok(index), Ok(port)) = (index.parse::<u16>(), port.parse::<u16>()) else { continue };
-                let host_index = hosts.iter().position(|known| known == host).unwrap_or_else(|| {
-                    hosts.push(host.to_owned());
-                    hosts.len() - 1
-                });
-                observers.insert(index, (name.to_owned(), SocketAddrV4::new(Ipv4Addr::new(203, 0, 113, host_index as u8 + 1), port)));
+                let group = if let Some(groups) = &address_groups {
+                    let Some(&group) = groups.get(usize::from(index)) else { continue };
+                    group
+                } else {
+                    let host_index = hosts.iter().position(|known| known == host).unwrap_or_else(|| {
+                        hosts.push(host.to_owned());
+                        hosts.len() - 1
+                    });
+                    host_index as u32 + 1
+                };
+                observers.insert(index, (name.to_owned(), SocketAddrV4::new(Ipv4Addr::from(group), port)));
             }
         }
         let mut groups = BTreeMap::<&str, Vec<Sample>>::new();

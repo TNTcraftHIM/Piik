@@ -6,7 +6,7 @@
 //! unless `--full` is given.
 use piik_nat::mapping::{replay, Allocator, Cursor, Holdout, Model, Sample};
 use piik_nat::stun;
-use std::collections::hash_map::RandomState;
+use std::collections::{hash_map::RandomState, BTreeMap, BTreeSet};
 use std::hash::{BuildHasher, Hasher};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs, UdpSocket};
 use std::time::{Duration, Instant};
@@ -197,7 +197,7 @@ fn local_address(target: &str) -> Option<IpAddr> {
     Some(socket.local_addr().ok()?.ip())
 }
 
-const USAGE: &str = "usage: piik-nat-lab [--full] [--own-only] [--observer <host>:<first port>-<last port>]\n\nAsks public STUN servers and a server of our own which address they see for this machine and\nprints what that says about the NAT in front of it. Nothing else is sent anywhere.\n\n  --full       show the whole public address in the report (it shows half by default)\n  --observer   ask this server of our own, on each port of the run, in place of the built-in\n               one; may be given more than once. The report calls each port own1:<port>\n  --own-only   ask no public server\n  --help       show this text";
+const USAGE: &str = "usage: piik-nat-lab [--full] [--own-only] [--observer <host>:<first port>-<last port>]\n\nAsks public STUN servers and a server of our own which address they see for this machine and\nprints what that says about the NAT in front of it. Nothing else is sent anywhere.\n\n  --full       show the whole public address in the report (it shows half by default)\n  --observer   ask this server of our own, on each port of the run, in place of the built-in\n               one; may be given more than once. The report groups ports by IPv4 (own1, own2, ...)\n  --own-only   ask no public server\n  --help       show this text";
 
 fn main() {
     // Arguments are read before any name is resolved or any socket opened.
@@ -230,8 +230,8 @@ fn main() {
         return println!("Could not open a UDP socket.");
     };
     // Each observer that resolves and answers the first socket takes part. A server of our own
-    // is asked on every port of its run and named by its run and port, so a report does not
-    // carry its host. A run whose first port does not answer is not asked further.
+    // is named by its address group and port, so a report does not carry its host.
+    // A run whose first port does not answer is not asked further.
     let resolve = |name: &str| {
         name.to_socket_addrs().ok()?.find_map(|address| match address {
             SocketAddr::V4(address) => Some(address),
@@ -240,7 +240,8 @@ fn main() {
     };
     let mut candidates: Vec<(String, SocketAddrV4, Option<SocketAddrV4>)> =
         OBSERVERS.iter().filter(|_| public).filter_map(|name| Some((name.to_string(), resolve(name)?, None))).collect();
-    for (run_number, run) in own.iter().enumerate() {
+    let mut own_addresses = BTreeMap::new();
+    for run in &own {
         let ports = run.rsplit_once(':').and_then(|(host, ports)| {
             let (low, high) = ports.split_once('-')?;
             Some((host, low.parse::<u16>().ok()?, high.parse::<u16>().ok()?))
@@ -250,23 +251,33 @@ fn main() {
             std::process::exit(2);
         };
         if let Some(address) = resolve(&format!("{host}:{low}")) {
+            let next_group = own_addresses.len() + 1;
+            let group = *own_addresses.entry(*address.ip()).or_insert(next_group);
             let gate = SocketAddrV4::new(*address.ip(), low);
-            candidates.extend((low..=high).map(|port| (format!("own{}:{port}", run_number + 1), SocketAddrV4::new(*address.ip(), port), Some(gate))));
+            candidates.extend((low..=high).map(|port| (format!("own{group}:{port}"), SocketAddrV4::new(*address.ip(), port), Some(gate))));
         }
     }
-    let asked = candidates.len();
+    let resolved: BTreeSet<_> = candidates.iter().map(|(_, address, _)| *address).collect();
+    let mut attempted = BTreeSet::new();
     let mut observers: Vec<(String, SocketAddrV4)> = Vec::new();
     for (name, address, gate) in candidates {
         if gate.is_some_and(|gate| gate != address && observers.iter().all(|(_, known)| *known != gate)) {
             continue;
         }
-        if observers.iter().all(|(_, known)| *known != address) && survey.ask(&first, first_number, address).is_some() {
-            observers.push((name, address));
+        if observers.iter().all(|(_, known)| *known != address) {
+            attempted.insert(address);
+            if survey.ask(&first, first_number, address).is_some() {
+                observers.push((name, address));
+            }
         }
     }
+    let (attempted, answered) = (attempted.len(), observers.len());
+    let unanswered = attempted - answered;
+    let skipped = resolved.len() - attempted;
+    let discovery = format!("observer endpoints: {attempted} attempted, {answered} answered, {unanswered} unanswered, {skipped} skipped");
     // Two observers are the least that can be compared, on one address or on two.
-    if observers.len() < 2 {
-        return println!("Fewer than two STUN servers answered ({}). UDP may be blocked on this network.", observers.len());
+    if answered < 2 {
+        return println!("{discovery}\nFewer than two observer endpoints answered.");
     }
     for index in shuffled(observers.len()) {
         survey.ask(&second, second_number, observers[index].1);
@@ -301,7 +312,7 @@ fn main() {
             elsewhere.push(*observer.ip());
         }
     }
-    report(&survey, &observers, asked, first_number, full);
+    report(&survey, &observers, &discovery, first_number, full);
 }
 
 /// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
@@ -347,7 +358,7 @@ fn read_address(samples: &[Sample], observers: &[(String, SocketAddrV4)]) {
     }
 }
 
-fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, first: u16, full: bool) {
+fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], discovery: &str, first: u16, full: bool) {
     // Each public address seen gets a letter, in the order seen.
     let addresses = &survey.addresses;
     let letter = |address: &Ipv4Addr| {
@@ -369,7 +380,8 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, f
     let ipv6 = matches!(local_address("[2606:4700:4700::1111]:53"), Some(IpAddr::V6(address)) if address.segments()[0] & 0xe000 == 0x2000);
     println!("\n==== report (copy from here) ====");
     println!("tool: piik-nat-lab {}", env!("CARGO_PKG_VERSION"));
-    println!("observers answered: {} of {}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
+    println!("{discovery}");
+    println!("mapping requests: {} answered, {} unanswered", survey.answered, survey.unanswered);
     println!("local: {network}; global IPv6: {}", if ipv6 { "yes" } else { "no" });
     println!("public addresses: {}", addresses.iter().map(|address| format!("{} {}", letter(address), shown(*address))).collect::<Vec<_>>().join(", "));
     // Whether the mapping follows the destination's port: the same socket, the same address, two ports.
@@ -461,6 +473,12 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, f
         println!("  {:>2} {:>2} {:>5} {} {:>5} {:>5}", sample.socket, observer, sample.sent_ms, letter(sample.mapped.ip()), sample.mapped.port(), survey.local_ports[usize::from(sample.socket)]);
     }
     println!("observers: {}", observers.iter().enumerate().map(|(index, (name, _))| format!("{index}={name}")).collect::<Vec<_>>().join(" "));
+    let mut address_groups = BTreeMap::new();
+    let group_numbers: Vec<String> = observers.iter().map(|(_, observer)| {
+        let next_group = address_groups.len() + 1;
+        address_groups.entry(*observer.ip()).or_insert(next_group).to_string()
+    }).collect();
+    println!("observer address groups: {}", group_numbers.join(" "));
     println!("==== end of report ====");
 }
 

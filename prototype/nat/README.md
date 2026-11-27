@@ -30,9 +30,11 @@
 
 `cargo run --example replay -- [--drop <text in an observer's name>] [--only <address letter>] report.txt...` replays pasted reports offline: how often the aim read from earlier mappings would have held each new one, at several packet budgets. No packet is sent.
 
+The endpoint counts describe distinct resolved IPv4 addresses and ports during discovery. The report lists how many were attempted, how many answered, how many went unanswered and how many were skipped. Replay uses the anonymous observer address groups when present and observer names in older reports.
+
 ## The server of our own
 
-`piik-nat-observer <first port> <count> [address to bind]` answers STUN Binding requests on a run of UDP ports, and answers from the next port of the run when a request asks for another port. It has one address, keeps nothing and prints nothing about who asked. `OWN_OBSERVER` in `src/main.rs` names the one the tool asks; `--observer <host>:<first port>-<last port>` asks another in its place. A report names its ports `own1:<port>`, a second run's `own2:<port>`. A run whose first port does not answer is not asked further, so a server that is down costs one wait and not sixteen.
+`piik-nat-observer <first port> <count> [address to bind]` answers STUN Binding requests on a run of UDP ports, and answers from the next port of the run when a request asks for another port. It has one address, keeps nothing and prints nothing about who asked. `OWN_OBSERVER` in `src/main.rs` names the one the tool asks. Use `--observer <host>:<first port>-<last port>` to specify a replacement. Ports at the same resolved IPv4 address share a name such as `own1:<port>`, even across runs or hostnames. When a run's first port goes unanswered, the survey skips the rest of that run.
 
 A run that leaves this machine nowhere: start `piik-nat-observer 41000 16 127.0.0.1` and `piik-nat-observer 41100 4 127.0.0.2`, then `piik-nat-lab --own-only --observer 127.0.0.1:41000-41015 --observer 127.0.0.2:41100-41103`.
 
