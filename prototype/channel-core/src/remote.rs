@@ -57,6 +57,16 @@ pub(crate) struct RemoteRoom {
     pub projection: Option<RoomProjection>,
 }
 
+enum DirectoryView<'a> {
+    Projected(&'a RoomProjection, &'a crate::room::RoomRecipient),
+    Summary {
+        summary: &'a RoomSummary,
+        authorized: bool,
+        can_manage: bool,
+        available: bool,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum ByteActivity {
     File(u64, Uuid),
@@ -404,14 +414,14 @@ impl RemoteRoom {
         ))
     }
 
-    pub fn snapshot(&self, member: Member, session: Uuid, available: bool) -> Option<RoomSnapshot> {
+    fn directory_view(&self, member: Member, session: Uuid, available: bool) -> Option<DirectoryView<'_>> {
         // Existing participant work can survive a signaling-only disconnect
         // until the binding retires. Public directory visitors see no such row.
         let known = self.known_sessions.contains(&session);
         if available || (self.binding.is_some() && known) {
             if let Some(projection) = &self.projection {
-                if projection.views.contains_key(&session) {
-                    return projection.snapshot(session, available);
+                if let Some(view) = projection.views.get(&session) {
+                    return Some(DirectoryView::Projected(projection, view));
                 }
             }
         }
@@ -424,6 +434,30 @@ impl RemoteRoom {
         if !manager && !discoverable && !(known && self.projection.is_some()) {
             return None;
         }
+        Some(DirectoryView::Summary {
+            summary,
+            authorized: manager || known || summary.access == RoomAccess::Public,
+            can_manage: manager,
+            available: discoverable,
+        })
+    }
+
+    pub fn online_read_access(&self, member: Member, session: Uuid) -> Option<bool> {
+        match self.directory_view(member, session, true)? {
+            DirectoryView::Projected(projection, view) => {
+                projection.visible_recipient(view).then_some(view.authorized)
+            }
+            DirectoryView::Summary { authorized, .. } => Some(authorized),
+        }
+    }
+
+    pub fn snapshot(&self, member: Member, session: Uuid, online: bool) -> Option<RoomSnapshot> {
+        let (summary, authorized, can_manage, available) = match self.directory_view(member, session, online)? {
+            DirectoryView::Projected(projection, view) => return projection.recipient_snapshot(view, online),
+            DirectoryView::Summary { summary, authorized, can_manage, available } => {
+                (summary, authorized, can_manage, available)
+            }
+        };
         Some(RoomSnapshot {
             watch_activities: vec![],
             watch_subscriptions: vec![],
@@ -442,9 +476,9 @@ impl RemoteRoom {
                 relay_capacity: summary.relay_capacity,
                 relay_override: None,
                 service_relay: None,
-                authorized: manager || known || summary.access == RoomAccess::Public,
-                can_manage: manager,
-                available: discoverable,
+                authorized,
+                can_manage,
+                available,
                 reading: false,
                 participant_session_ids: Vec::new(),
                 history_lineage: None,

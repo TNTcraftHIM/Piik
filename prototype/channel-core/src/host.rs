@@ -70,17 +70,16 @@ impl RoomSummary {
         Ok(())
     }
     pub fn from_policy(policy: &RoomState) -> Self {
-        let view = policy.view(policy.creator_id).expect("room owner");
         Self {
-            id: view.id,
-            name: view.name,
-            icon: view.icon,
-            creator_id: view.creator_id,
-            access: view.access,
-            hidden: view.hidden,
-            has_password: view.has_password,
-            voice_bitrate: view.voice_bitrate,
-            relay_capacity: view.relay_capacity,
+            id: policy.id.clone(),
+            name: policy.name.clone(),
+            icon: policy.appearance.icon.clone(),
+            creator_id: policy.creator_id,
+            access: policy.access,
+            hidden: policy.hidden,
+            has_password: policy.has_password(),
+            voice_bitrate: policy.voice_bitrate,
+            relay_capacity: policy.relay_capacity,
         }
     }
 }
@@ -519,10 +518,17 @@ impl RoomProjection {
             .collect()
     }
 
+    pub(crate) fn visible_recipient(&self, view: &RoomRecipient) -> bool {
+        view.authorized || (!self.summary.hidden && view.transit_endpoint.is_none())
+    }
+
     /// Assemble only the recipient's authorized view; the host owns these rights.
     pub fn snapshot(&self, session: Uuid, available: bool) -> Option<RoomSnapshot> {
-        let view = self.views.get(&session)?;
-        if !view.authorized && (view.transit_endpoint.is_some() || self.summary.hidden) {
+        self.recipient_snapshot(self.views.get(&session)?, available)
+    }
+
+    pub(crate) fn recipient_snapshot(&self, view: &RoomRecipient, available: bool) -> Option<RoomSnapshot> {
+        if !self.visible_recipient(view) {
             return None;
         }
         let mut snapshot = RoomSnapshot {
