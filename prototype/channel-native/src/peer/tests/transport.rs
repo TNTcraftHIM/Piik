@@ -921,10 +921,13 @@ async fn negotiated_profiles_map_actual_au_codec_on_one_sender() -> Result<()> {
                 vec![],
             )
             .await?;
-        tx.offer().await?;
-        let (kind, sdp) = tx.local_description().await?;
-        rx.accept(kind, sdp).await?;
-        let (kind, sdp) = rx.local_description().await?;
+        let Description { kind, sdp } = tx.offer().await?.context("missing local offer")?;
+        let sdp = sdp.unwrap();
+        let Description { kind, sdp } = rx
+            .accept(kind, sdp)
+            .await?
+            .context("missing local answer")?;
+        let sdp = sdp.unwrap();
         tx.accept(kind, sdp).await?;
         let alternatives = tx
             .confirm(id)
@@ -1022,10 +1025,13 @@ async fn restricted_profile_confirmation_retains_alternatives_but_rejects_wrong_
             vec![],
         )
         .await?;
-        tx.offer().await?;
-        let (kind, sdp) = tx.local_description().await?;
-        rx.accept(kind, sdp).await?;
-        let (kind, sdp) = rx.local_description().await?;
+        let Description { kind, sdp } = tx.offer().await?.context("missing local offer")?;
+        let sdp = sdp.unwrap();
+        let Description { kind, sdp } = rx
+            .accept(kind, sdp)
+            .await?
+            .context("missing local answer")?;
+        let sdp = sdp.unwrap();
         tx.accept(kind, sdp).await?;
         let alternatives = tx
             .confirm(id)
@@ -1104,8 +1110,10 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
             vec![],
         )
         .await?;
-    sender.offer().await?;
-    let (_, offer) = sender.local_description().await?;
+    let offer = sender.offer()
+        .await?
+        .and_then(|offer| offer.sdp)
+        .ok_or_else(|| anyhow!("missing local offer"))?;
     ensure!(!offer.contains("urn:3gpp:video-orientation"));
     ensure!(!offer.lines().any(|line| line == "a=ice-lite"));
     let local_offer = publisher_offer(&offer);
@@ -1230,8 +1238,10 @@ async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
             vec![],
         )
         .await?;
-    sender.offer().await?;
-    let (_, sdp) = sender.local_description().await?;
+    let sdp = sender.offer()
+        .await?
+        .and_then(|offer| offer.sdp)
+        .ok_or_else(|| anyhow!("missing local offer"))?;
     let offer = sdp;
     ensure!(runtime.accept_local_input(&offer.replace("a=sendonly", "a=sendrecv")).await.is_err());
     // Keep the actual sender offer and replace all advertised profiles with High 10.
@@ -1252,14 +1262,16 @@ async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
     let accepted = runtime.accept_local_input(&orientation_offer).await?;
     ensure!(!accepted.answer.contains("urn:3gpp:video-orientation"));
     ensure!(accepted.transport.stable().await);
-    let error = accepted.transport.offer().await.unwrap_err();
+    let error = accepted.transport.offer().await.err().context("unexpected offer success")?;
     ensure!(error.to_string() == "local input is receive-only", "{error}");
     ensure!(accepted.transport.stable().await);
     sender.accept("answer".into(), accepted.answer).await?;
     accepted.transport.close().await?;
     sender.create_channel("not-local-media").await?;
-    sender.offer().await?;
-    let (_, sdp) = sender.local_description().await?;
+    let sdp = sender.offer()
+        .await?
+        .and_then(|offer| offer.sdp)
+        .ok_or_else(|| anyhow!("missing local offer"))?;
     ensure!(runtime.accept_local_input(&sdp).await.is_err());
     sender.close().await?;
     runtime.close().await;
@@ -1587,30 +1599,32 @@ async fn room_transport_offer_distinguishes_no_change_pending_and_retired() -> R
     let (left, _left_events) = endpoint(&runtime, id).await?;
     let (right, _right_events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let result = async {
-        ensure!(!left.offer().await?);
+        ensure!(left.offer().await?.is_none());
         let _channel = left.create_channel("first").await?;
-        ensure!(left.offer().await?);
+        let offer = left.offer().await?.context("missing local offer")?;
+        ensure!(offer.kind == "offer");
         ensure!(!left.stable().await);
-        let (kind, offer) = left.local_description().await?;
-        let error = left.offer().await.unwrap_err();
+        let error = left.offer().await.err().context("unexpected offer success")?;
         ensure!(error.to_string() == "pending transport offer", "{error}");
         ensure!(!left.stable().await);
-        ensure!(left.local_description().await? == (kind.clone(), offer.clone()));
-
-        right.accept(kind, offer).await?;
-        let (kind, answer) = right.local_description().await?;
-        left.accept(kind.clone(), answer.clone()).await?;
+        let answer = right
+            .accept(offer.kind, offer.sdp.unwrap())
+            .await?
+            .context("missing local answer")?;
+        ensure!(answer.kind == "answer");
+        let answer_sdp = answer.sdp.unwrap();
+        ensure!(left.accept(answer.kind.clone(), answer_sdp.clone()).await?.is_none());
         ensure!(left.stable().await);
-        ensure!(!left.offer().await?);
+        ensure!(left.offer().await?.is_none());
         ensure!(left.stable().await);
 
         left.close().await?;
         let (replacement, _replacement_events) = endpoint(&runtime, id).await?;
-        let error = left.offer().await.unwrap_err();
+        let error = left.offer().await.err().context("unexpected offer success")?;
         ensure!(error.to_string() == "transport retired", "{error}");
         ensure!(!left.stable().await);
-        ensure!(!replacement.offer().await?);
-        let error = left.accept(kind, answer).await.unwrap_err();
+        ensure!(replacement.offer().await?.is_none());
+        let error = left.accept(answer.kind, answer_sdp).await.err().context("accept succeeded on a retired transport")?;
         ensure!(error.to_string() == "transport retired", "{error}");
         Ok(())
     }
@@ -1634,10 +1648,9 @@ async fn native_opus_offer_and_answer_request_stereo_receive() -> Result<()> {
                 vec![],
             )
             .await?;
-        ensure!(left.offer().await?);
-        let (kind, offer) = left.local_description().await?;
-        right.accept(kind, offer.clone()).await?;
-        let (_, answer) = right.local_description().await?;
+        let Description { kind, sdp: offer } = left.offer().await?.context("missing local offer")?;
+        let offer = offer.unwrap();
+        let answer = right.accept(kind, offer.clone()).await?.and_then(|answer| answer.sdp).context("missing local answer")?;
         for (phase, sdp) in [("offer", offer), ("answer", answer)] {
             let pt = sdp
                 .lines()
@@ -1677,10 +1690,13 @@ async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Res
     let (right, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let (old, _) = open(&left, &right, &mut events).await?;
     let next = left.create_channel("piik-room").await?;
-    if left.offer().await? {
-        let (kind, sdp) = left.local_description().await?;
-        right.accept(kind, sdp).await?;
-        let (kind, sdp) = right.local_description().await?;
+    if let Some(Description { kind, sdp }) = left.offer().await? {
+        let sdp = sdp.unwrap();
+        let Description { kind, sdp } = right
+            .accept(kind, sdp)
+            .await?
+            .context("missing local answer")?;
+        let sdp = sdp.unwrap();
         left.accept(kind, sdp).await?;
     }
     let remote = tokio::time::timeout(Duration::from_secs(5), async {
@@ -1862,8 +1878,8 @@ async fn live_ice_adopts_prepared_path_on_original_pair() -> Result<()> {
         ensure!(deadlines.0.is_some() && deadlines.1.is_some());
         let silent = std::net::UdpSocket::bind("[::1]:0")?;
         let local = a.create_channel("piik-room").await?;
-        a.offer().await?;
-        let (k, s) = a.local_description().await?;
+        let Description { kind: k, sdp: s } = a.offer().await?.context("missing local offer")?;
+        let s = s.unwrap();
         let [(wa, la), (wb, lb)] = loopback_winners(id).await?;
         let mut local_winner = Some(wa);
         let mut remote_winner = Some(wb);
@@ -1873,8 +1889,11 @@ async fn live_ice_adopts_prepared_path_on_original_pair() -> Result<()> {
             // Both ICE agents advance without remote credentials until SDP arrives.
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
-        b.accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? }).await?;
-        let (k, s) = b.local_description().await?;
+        let Description { kind: k, sdp: s } = b
+            .accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? })
+            .await?
+            .context("missing local answer")?;
+        let s = s.unwrap();
         a.accept(k, if ordinary_first { s } else { sink_sdp(s, silent.local_addr()?)? }).await?;
         let identities = (identity(&a).await?, identity(&b).await?);
         ensure!(std::net::UdpSocket::bind(la).is_err() && std::net::UdpSocket::bind(lb).is_err());

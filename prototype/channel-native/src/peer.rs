@@ -2227,15 +2227,10 @@ impl Driver {
         rtc_pair(id, RtcPairEvent::PreparationFinished { outcome });
     }
 
-    async fn local_signal(&self, id: Uuid, exchange: Uuid) -> Result<Signal> {
-        let p = &self.pairs[&id];
-        let (kind, sdp) = p.pc.local_description().await?;
-        Ok(Signal {
+    fn local_signal(p: &Pair, exchange: Uuid, description: Description) -> Signal {
+        Signal {
             udp: None,
-            description: Some(Description {
-                kind,
-                sdp: Some(sdp),
-            }),
+            description: Some(description),
             candidate: None,
             tracks: Some(
                 p.outputs
@@ -2248,7 +2243,7 @@ impl Driver {
             ),
             resync: None,
             exchange_id: Some(exchange),
-        })
+        }
     }
     async fn send_signal(&self, id: Uuid, mut payload: Signal) {
         // SDP/exchange are immutable protocol state. Flow bindings are a
@@ -2348,12 +2343,11 @@ impl Driver {
             return Ok(());
         }
         p.negotiate = false;
-        if !p.pc.offer().await? {
+        let Some(description) = p.pc.offer().await? else {
             return Ok(());
-        }
+        };
         let outputs = p.output_ids();
-        let offer = self.local_signal(id, Uuid::new_v4()).await?;
-        let p = self.pairs.get_mut(&id).unwrap();
+        let offer = Self::local_signal(p, Uuid::new_v4(), description);
         p.pending_offer = Some(PendingOffer {
             signal: offer.clone(),
             outputs,
@@ -2416,18 +2410,19 @@ impl Driver {
                 .filter(|t| p.plan.incoming.iter().any(|flow| flow.id == t.flow_id))
                 .map(|t| (t.stream_id, t.flow_id))
                 .collect();
-            p.pc.accept_flows(
-                description.kind,
-                description.sdp.unwrap_or_default(),
-                p.remote.clone(),
-            )
-            .await?;
+            let answer = p
+                .pc
+                .accept_flows(
+                    description.kind,
+                    description.sdp.unwrap_or_default(),
+                    p.remote.clone(),
+                )
+                .await?;
             for c in p.candidates.drain(..) {
                 let _ = p.pc.add_signaled_candidate(c).await;
             }
-            if offer {
-                let answer = self.local_signal(id, exchange).await?;
-                let p = self.pairs.get_mut(&id).unwrap();
+            if let Some(description) = answer {
+                let answer = Self::local_signal(p, exchange, description);
                 let confirmed = if collision {
                     p.stable_outputs.clone().unwrap_or_default()
                 } else {

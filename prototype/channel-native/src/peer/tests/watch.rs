@@ -61,10 +61,13 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     let (right, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
     let (control, remote_control) = open(&left, &right, &mut events).await?;
     let bulk = left.create_channel("piik-file").await?;
-    if left.offer().await? {
-        let (kind, sdp) = left.local_description().await?;
-        right.accept(kind, sdp).await?;
-        let (kind, sdp) = right.local_description().await?;
+    if let Some(Description { kind, sdp }) = left.offer().await? {
+        let sdp = sdp.unwrap();
+        let Description { kind, sdp } = right
+            .accept(kind, sdp)
+            .await?
+            .context("missing local answer")?;
+        let sdp = sdp.unwrap();
         left.accept(kind, sdp).await?;
     }
     let remote_bulk = tokio::time::timeout(Duration::from_secs(5), async {

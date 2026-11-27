@@ -49,8 +49,10 @@ pub async fn run() -> Result<serde_json::Value> {
             vec![String::new()],
         )
         .await?;
-    ensure!(tx.offer().await?, "missing unconnected offer");
-    let (_, sdp) = tx.local_description().await?;
+    let sdp = tx.offer()
+        .await?
+        .and_then(|offer| offer.sdp)
+        .ok_or_else(|| anyhow!("missing unconnected offer"))?;
     let mut remote = Rtc::builder()
         .clear_codecs()
         .enable_vp8(true)
@@ -139,10 +141,13 @@ pub async fn run() -> Result<serde_json::Value> {
             vec![String::new()],
         )
         .await?;
-    ensure!(tx.offer().await?, "missing actual Output offer");
-    let (kind, sdp) = tx.local_description().await?;
-    rx.accept(kind, sdp).await?;
-    let (kind, sdp) = rx.local_description().await?;
+    let Description { kind, sdp } = tx.offer().await?.context("missing actual Output offer")?;
+    let sdp = sdp.unwrap();
+    let Description { kind, sdp } = rx
+        .accept(kind, sdp)
+        .await?
+        .context("missing local answer")?;
+    let sdp = sdp.unwrap();
     tx.accept(kind, sdp).await?;
     output.confirm(tx.confirm(output.id).await?.flatten())?;
     output.select_layers(&layers, EncodingDemand::Original, now)?;
@@ -235,7 +240,7 @@ pub async fn run() -> Result<serde_json::Value> {
         "temporary admission fullness failed the output"
     );
     let _ = tx.create_channel("withheld-stop-offer").await?;
-    ensure!(tx.offer().await?, "missing withheld signaling offer");
+    let withheld = tx.offer().await?.context("missing withheld signaling offer")?;
     let (retired_ssrcs, queued_before, rtx_enabled) = tx
         .call(move |e| {
             ensure!(e.pending.is_some(), "offer was not withheld");
@@ -296,15 +301,19 @@ pub async fn run() -> Result<serde_json::Value> {
     receive(&survivor, 90_000).await?;
     // Finish the already pending exchange, then let the unchanged SDP owner
     // acknowledge the inactive carrier while the other output keeps its stream.
-    for _ in 0..2 {
-        let (kind, sdp) = tx.local_description().await?;
-        rx.accept(kind, sdp).await?;
-        let (kind, sdp) = rx.local_description().await?;
-        tx.accept(kind, sdp).await?;
-        if tx.call(move |e| Ok(e.outputs[&output_id].reusable)).await? {
-            break;
-        }
-        ensure!(tx.offer().await?, "deferred inactive offer missing");
+    let Description { kind, sdp } = withheld;
+    let answer = rx
+        .accept(kind, sdp.unwrap())
+        .await?
+        .context("missing local answer")?;
+    tx.accept(answer.kind, answer.sdp.unwrap()).await?;
+    if !tx.call(move |e| Ok(e.outputs[&output_id].reusable)).await? {
+        let offer = tx.offer().await?.context("deferred inactive offer missing")?;
+        let answer = rx
+            .accept(offer.kind, offer.sdp.unwrap())
+            .await?
+            .context("missing local answer")?;
+        tx.accept(answer.kind, answer.sdp.unwrap()).await?;
     }
     tx.call(move |e| {
         ensure!(

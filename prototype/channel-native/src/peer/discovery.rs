@@ -490,8 +490,10 @@ mod tests {
         assert!(peer.can_signal_linear(generation.clone()).await);
         assert!(!peer.can_signal_linear("stale".into()).await);
         peer.create_channel("ordinary-owner").await?;
-        peer.offer().await?;
-        let (_, sdp) = peer.local_description().await?;
+        let sdp = peer.offer()
+            .await?
+            .and_then(|offer| offer.sdp)
+            .ok_or_else(|| anyhow!("missing local offer"))?;
         let mappings: Vec<_> = sdp
             .lines()
             .filter_map(|line| line.strip_prefix("a=candidate:"))

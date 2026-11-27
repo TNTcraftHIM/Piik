@@ -45,7 +45,6 @@ async fn companion_rejection_waits_for_its_source_or_flow_to_change() -> Result<
             let (offer, pending) = changes.apply().context("audio direction changed")?;
             let sdp = offer.to_sdp_string();
             engine.pending = Some(pending);
-            engine.local = Some(("offer".into(), sdp.clone()));
             Ok((sdp, Uuid::new_v4()))
         }).await?;
         f.driver.signal(sink, Signal {
@@ -124,8 +123,11 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
             .signal
             .clone();
         let offer = signal.description.unwrap();
-        remote.accept(offer.kind, offer.sdp.unwrap()).await?;
-        let (kind, sdp) = remote.local_description().await?;
+        let Description { kind, sdp } = remote
+            .accept(offer.kind, offer.sdp.unwrap())
+            .await?
+            .context("missing local answer")?;
+        let sdp = sdp.unwrap();
         driver
             .signal(pair, description(kind, sdp, signal.exchange_id.unwrap()))
             .await
@@ -294,12 +296,11 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
                 vec![String::new()],
             )
             .await?;
-        ensure!(remote.offer().await?);
-        let (kind, offer) = remote.local_description().await?;
+        let Description { kind, sdp: offer } = remote.offer().await?.context("missing local offer")?;
+        let offer = offer.unwrap();
         let competing = Uuid::new_v4();
-        driver
-            .signal(pair, description(kind, offer, competing))
-            .await?;
+        let competing_offer = description(kind, offer, competing);
+        driver.signal(pair, competing_offer.clone()).await?;
         let replacement = driver.pairs[&pair]
             .pending_offer
             .as_ref()
@@ -328,6 +329,26 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
                 < offer_signal,
             "answer must precede replacement offer"
         );
+        driver.replay_pending(pair).await;
+        driver.signal(pair, competing_offer).await?;
+        let replayed: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok())
+            .filter_map(|event| match event {
+                NativeEvent::Command(crate::peer::Command::Signal { payload, .. })
+                    if payload.description.is_some() =>
+                {
+                    Some(payload)
+                }
+                _ => None,
+            })
+            .collect();
+        ensure!(replayed.len() == 2, "expected one replay per exchange");
+        for (actual, original) in replayed.iter().zip([&replacement, answer_signal]) {
+            let actual_description = actual.description.as_ref().unwrap();
+            let original_description = original.description.as_ref().unwrap();
+            ensure!(actual.exchange_id == original.exchange_id);
+            ensure!(actual_description.kind == original_description.kind);
+            ensure!(actual_description.sdp == original_description.sdp);
+        }
         let value = answer_signal.description.as_ref().unwrap();
         remote
             .accept(value.kind.clone(), value.sdp.clone().unwrap())
@@ -440,10 +461,13 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
                 vec![String::new()],
             )
             .await?;
-        ensure!(pc.offer().await?);
-        let (kind, offer) = pc.local_description().await?;
-        remote.accept(kind, offer).await?;
-        let (kind, answer) = remote.local_description().await?;
+        let Description { kind, sdp: offer } = pc.offer().await?.context("missing local offer")?;
+        let offer = offer.unwrap();
+        let Description { kind, sdp: answer } = remote
+            .accept(kind, offer)
+            .await?
+            .context("missing local answer")?;
+        let answer = answer.unwrap();
         pc.accept(kind, answer).await?;
         let mid = pc.call(move |e| Ok(e.outputs[&id].mid.unwrap())).await?;
         // Browser addTrack may attach its microphone to our audio transceiver.
@@ -463,13 +487,16 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
                 Ok(())
             })
             .await?;
-        ensure!(remote.offer().await?);
-        let (kind, offer) = remote.local_description().await?;
-        pc.accept(kind, offer).await?;
-        let (kind, answer) = pc.local_description().await?;
+        let Description { kind, sdp: offer } = remote.offer().await?.context("missing local offer")?;
+        let offer = offer.unwrap();
+        let Description { kind, sdp: answer } = pc
+            .accept(kind, offer)
+            .await?
+            .context("missing local answer")?;
+        let answer = answer.unwrap();
         remote.accept(kind, answer).await?;
         ensure!(
-            !pc.offer().await?,
+            pc.offer().await?.is_none(),
             "active output removed the receiving direction"
         );
         let next = Uuid::new_v4();
@@ -493,10 +520,13 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
                 sending = (next, writable);
             }
             if phase > 0 {
-                ensure!(pc.offer().await?);
-                let (kind, offer) = pc.local_description().await?;
-                remote.accept(kind, offer).await?;
-                let (kind, answer) = remote.local_description().await?;
+                let Description { kind, sdp: offer } = pc.offer().await?.context("missing local offer")?;
+                let offer = offer.unwrap();
+                let Description { kind, sdp: answer } = remote
+                    .accept(kind, offer)
+                    .await?
+                    .context("missing local answer")?;
+                let answer = answer.unwrap();
                 pc.accept(kind, answer).await?;
             }
             pc.call(move |e| {
@@ -646,8 +676,10 @@ async fn rejected_fixed_codec_reuses_inactive_media_after_the_answer() -> Result
                     vec![String::new()],
                 )
                 .await?;
-            ensure!(pc.offer().await?);
-            let (_, offer) = pc.local_description().await?;
+            let offer = pc.offer()
+                .await?
+                .and_then(|offer| offer.sdp)
+                .ok_or_else(|| anyhow!("missing local offer"))?;
             ensure!(
                 offer
                     .lines()
@@ -693,8 +725,10 @@ async fn rejected_fixed_codec_reuses_inactive_media_after_the_answer() -> Result
                 carrier = Some((mid, stream));
             }
             pc.retire_output(id).await?;
-            ensure!(pc.offer().await?);
-            let (_, offer) = pc.local_description().await?;
+            let offer = pc.offer()
+                .await?
+                .and_then(|offer| offer.sdp)
+                .ok_or_else(|| anyhow!("missing local offer"))?;
             let answer = remote
                 .sdp_api()
                 .accept_offer(SdpOffer::from_sdp_string(&offer)?)?;
@@ -712,8 +746,10 @@ async fn rejected_fixed_codec_reuses_inactive_media_after_the_answer() -> Result
                 vec![String::new()],
             )
             .await?;
-        ensure!(pc.offer().await?);
-        let (_, offer) = pc.local_description().await?;
+        let offer = pc.offer()
+            .await?
+            .and_then(|offer| offer.sdp)
+            .ok_or_else(|| anyhow!("missing local offer"))?;
         let answer = remote
             .sdp_api()
             .accept_offer(SdpOffer::from_sdp_string(&offer)?)?;
@@ -723,7 +759,7 @@ async fn rejected_fixed_codec_reuses_inactive_media_after_the_answer() -> Result
             "compatible output did not recover"
         );
         pc.retire_output(id).await?;
-        ensure!(pc.offer().await?);
+        ensure!(pc.offer().await?.is_some());
         let next = Uuid::new_v4();
         let (_, _, next_stream) = pc
             .add_output(
@@ -792,10 +828,7 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
             .unwrap();
         let mut previous_audio = fixture.observed(&stream, MediaKind::Audio).unwrap();
         let mut previous_video = fixture.observed(&stream, MediaKind::Video).unwrap();
-        let sections = pc
-            .local_description()
-            .await?
-            .1
+        let sections = fixture.local_sdp(sink).context("missing initial SDP")?
             .lines()
             .filter(|line| line.starts_with("m="))
             .count();
@@ -905,7 +938,7 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                     && fixture.output(sibling, MediaKind::Video) == sibling_video
             );
             ensure!(fixture.driver.pairs[&sink].connected() && fixture.driver.pairs[&sink].data.control_open());
-            let (_, sdp) = pc.local_description().await?;
+            let sdp = fixture.local_sdp(sink).context("missing reuse SDP")?;
             ensure!(sdp.lines().filter(|line| line.starts_with("m=")).count() == sections);
             pc.call(|engine| {
                 ensure!(engine.outputs.len() == 4, "retired AV leases accumulated");

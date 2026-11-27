@@ -272,8 +272,8 @@ async fn actual_vp8_then_h264_on_the_same_ssrc_replaces_only_video_format() -> R
         f.parents[0].video_enabled = false;
         let remote = &f.remote[&pair];
         remote.retire_output(f.parents[0].video).await?;
-        ensure!(remote.offer().await?);
-        let (kind, sdp) = remote.local_description().await?;
+        let Description { kind, sdp } = remote.offer().await?.context("missing local offer")?;
+        let sdp = sdp.unwrap();
         f.driver
             .signal(
                 pair,

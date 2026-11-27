@@ -2,7 +2,7 @@ use super::*;
 use crate::peer::server_udp::ServerUdp;
 use crate::peer::transport::Runtime;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
-use support::{endpoint, exchange, open};
+use support::{endpoint, exchange, open, open_with_answer};
 fn available(address: SocketAddr) -> bool {
     std::net::UdpSocket::bind(address).is_ok()
 }
@@ -49,10 +49,9 @@ async fn fixed_and_ordinary_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
         .collect();
     let (server6, _) = endpoint(&server, pair6).await?;
     let (remote6, mut events6) = endpoint(&client6, pair6).await?;
-    let (left4, right4) = open(&server4, &remote4, &mut events4)
+    let (left4, right4, sdp) = open_with_answer(&server4, &remote4, &mut events4)
         .await
         .context("ordinary IPv4 pair")?;
-    let (_, sdp) = remote4.local_description().await?;
     let addresses = local_candidates(&sdp)?;
     ensure!(
         !announced.is_empty()

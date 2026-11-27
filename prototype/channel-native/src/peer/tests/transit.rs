@@ -34,8 +34,8 @@ async fn reused_browser_stream_binds_fresh_audio_and_video_readers_to_the_new_fl
                     vec![String::new()],
                 )
                 .await?;
-            ensure!(remote.offer().await?);
-            let (kind, sdp) = remote.local_description().await?;
+            let Description { kind, sdp } = remote.offer().await?.context("missing local offer")?;
+            let sdp = sdp.unwrap();
             f.driver
                 .signal(
                     pair,
@@ -121,8 +121,8 @@ async fn declared_source_withdrawal_remaps_the_same_flow_without_failing_its_pai
         let remote = f.remote[&pair].clone();
         remote.retire_output(parent.audio).await?;
         remote.retire_output(parent.video).await?;
-        ensure!(remote.offer().await?);
-        let (kind, sdp) = remote.local_description().await?;
+        let Description { kind, sdp } = remote.offer().await?.context("missing local offer")?;
+        let sdp = sdp.unwrap();
         f.driver
             .signal(
                 pair,
@@ -189,8 +189,8 @@ async fn declared_source_withdrawal_remaps_the_same_flow_without_failing_its_pai
         parent.video_enabled = false;
         let stream = parent.stream.clone();
         remote.retire_output(parent.video).await?;
-        ensure!(remote.offer().await?);
-        let (kind, sdp) = remote.local_description().await?;
+        let Description { kind, sdp } = remote.offer().await?.context("missing local offer")?;
+        let sdp = sdp.unwrap();
         f.driver
             .signal(
                 pair,
@@ -510,8 +510,8 @@ async fn early_room_data_channels_follow_physical_slots_until_room_projection_ar
     async fn open(f: &mut Fixture, label: &str) -> Result<Arc<Channel>> {
         let remote = f.remote[&f.sink].clone();
         let channel = remote.create_channel(label).await?;
-        if remote.offer().await? {
-            let (kind, sdp) = remote.local_description().await?;
+        if let Some(Description { kind, sdp }) = remote.offer().await? {
+            let sdp = sdp.unwrap();
             f.driver
                 .signal(
                     f.sink,
