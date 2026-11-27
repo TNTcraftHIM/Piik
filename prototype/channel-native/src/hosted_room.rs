@@ -46,7 +46,7 @@ impl HostedRoom {
 
     pub fn from_backup(path: &Path, backup: &RoomBackup, identity: (Uuid, Uuid)) -> Result<Self> {
         backup_identity(backup, identity)?;
-        let file_owner = lock(path, &backup.metadata().policy.id)?;
+        let file_owner = lock(path)?;
         Self::install(path, file_owner, |staged| {
             StoredRoomHost::from_backup(staged, backup)
         })
@@ -64,7 +64,7 @@ impl HostedRoom {
     }
 
     pub fn open(path: &Path, room_id: &str, creator: Uuid) -> Result<Self> {
-        let file_owner = lock(path, room_id)?;
+        let file_owner = lock(path)?;
         let host = StoredRoomHost::open(path).map_err(storage_error)?;
         if host.policy().id != room_id || host.policy().creator_id != creator {
             bail!("room storage does not belong to this room and admitted identity");
@@ -78,7 +78,7 @@ impl HostedRoom {
     }
 
     pub fn create(path: &Path, policy: RoomState) -> Result<Self> {
-        let file_owner = lock(path, &policy.id)?;
+        let file_owner = lock(path)?;
         Self::install(path, file_owner, |staged| {
             StoredRoomHost::create(staged, policy)
         })
@@ -234,17 +234,17 @@ pub fn try_lock_file(file: &File) -> io::Result<()> {
 }
 
 #[derive(Debug)]
-pub(crate) struct RoomStorageInUse(String);
+pub(crate) struct RoomStorageInUse;
 
 impl std::fmt::Display for RoomStorageInUse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "room_storage_in_use: {}", self.0)
+        f.write_str("room_storage_in_use")
     }
 }
 
 impl std::error::Error for RoomStorageInUse {}
 
-fn lock(path: &Path, room_id: &str) -> Result<File> {
+fn lock(path: &Path) -> Result<File> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -253,9 +253,7 @@ fn lock(path: &Path, room_id: &str) -> Result<File> {
         .open(path.with_added_extension("lock"))?;
     match try_lock_file(&file) {
         Ok(()) => Ok(file),
-        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-            Err(RoomStorageInUse(room_id.into()).into())
-        }
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => Err(RoomStorageInUse.into()),
         Err(error) => Err(error.into()),
     }
 }
@@ -283,7 +281,7 @@ mod tests {
         let path = folder.path().join("living.sqlite");
         let sibling = folder.path().join("quiet.sqlite");
         let quiet = HostedRoom::create(&sibling, policy("quiet"))?;
-        let result = HostedRoom::install(&path, lock(&path, "living")?, |staged| {
+        let result = HostedRoom::install(&path, lock(&path)?, |staged| {
             File::create_new(staged)?;
             assert!(!path.try_exists()?);
             Err("interrupted_before_schema".into())
@@ -585,13 +583,10 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("piik-room-lock-{}", Uuid::new_v4()));
         std::fs::create_dir(&directory)?;
         let path = directory.join("room.sqlite");
-        let owner = lock(&path, "test-room")?;
-        assert_eq!(
-            lock(&path, "test-room").unwrap_err().to_string(),
-            "room_storage_in_use: test-room"
-        );
+        let owner = lock(&path)?;
+        assert_eq!(lock(&path).unwrap_err().to_string(), "room_storage_in_use");
         drop(owner);
-        drop(lock(&path, "test-room")?);
+        drop(lock(&path)?);
         std::fs::remove_file(directory.join("room.sqlite.lock"))?;
         std::fs::remove_dir(directory)?;
         Ok(())
