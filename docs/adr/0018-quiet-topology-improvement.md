@@ -57,8 +57,9 @@ yet.
    settled. A flow's target rate does not: it fell by three quarters on an
    admission that harmed no viewer. The proposed reading is each flow's
    delivered share, what it sends of what the sender had to send in the same
-   seconds, which the sender holds for all of its flows; recorded controls
-   decide whether it follows what receivers present. Otherwise the new child
+   seconds. Its source and output observations must first be mapped to each
+   flow and selected representation; recorded controls decide whether it
+   follows what receivers present. Otherwise the new child
    alone is withdrawn, by its generation, and that sender is not
    tried again without fresh evidence. A node healthy with N children has
    proved N for that workload, nothing more, and the room's number is where it

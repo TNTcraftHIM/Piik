@@ -14247,7 +14247,7 @@ test('active original-page settings reuse discovery and retire it without closin
   let candidates = [video.candidate];
   const inspect = vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async candidate => candidate.id === video.candidate.id ? video : audio);
   const discover = vi.fn(async () => ({ choices: [], indexedCandidates: candidates, byteSource: null }));
-  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(discover);
+  const { session, page, socket, candidateId, commit, dispose, request } = await websiteSourceSelection(discover);
   const settings = new AbortController(), reopened = new AbortController(), published = vi.fn();
   try {
     await session.selectWatchPage('first', candidateId);
@@ -14276,14 +14276,35 @@ test('active original-page settings reuse discovery and retire it without closin
     expect(discover).toHaveBeenCalledTimes(beforeCancel);
     expect(dispose).not.toHaveBeenCalled();
     expect(session.getSnapshot().watchPlayers.get(id)?.media.page).toBe(page);
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: 'state', state: { ...state, watchActivities: [{ id, roomId: 'first',
+      viewerSessionIds: [], sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback }] } });
+    vi.stubGlobal('window', new EventTarget());
+    page.receive({ type: 'page_share_requested', pageId: page.id });
+    const otherId = crypto.randomUUID();
+    page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [
+      ...page.candidates, { pageURL: page.url, id: otherId, title: 'Next', url: null, duration: 60 },
+    ] });
+    await session.selectWatchPage('first', otherId, undefined, false, 'choose-source');
     await session.watchMediaChoices(id, reopened.signal, published);
+    const manifest = mpdSelectionFixture();
+    let reply!: (value: unknown) => void;
+    request.mockImplementationOnce(() => new Promise(resolve => { reply = resolve; }));
+    const cancelled = expect(session.inspectWatchMpdSource('first', manifest.candidate.id, reopened.signal, id))
+      .rejects.toMatchObject({ name: 'AbortError' });
+    expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'inspect_mpd',
+      choiceId: manifest.candidate.id, candidateId: undefined }), expect.any(AbortSignal));
+    socket.receive({ type: 'state', state: { ...state, watchActivities: [] } });
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ action: 'cancel' }), expect.any(AbortSignal));
+    reply(manifest.catalog);
+    await cancelled;
     const beforeClose = discover.mock.calls.length;
-    page.receive({ type: 'page_closed', pageId: page.id });
     page.receive({ type: 'page_media_changed', pageId: page.id });
-    await Promise.resolve();
-    expect(discover).toHaveBeenCalledTimes(beforeClose);
-    expect(dispose).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(discover).toHaveBeenCalledTimes(beforeClose + 1)); // The picker still observes B.
+    expect(dispose).not.toHaveBeenCalled();
     expect(session.getSnapshot().watchPlayers.has(id)).toBe(false);
+    page.receive({ type: 'page_closed', pageId: page.id });
+    expect(dispose).toHaveBeenCalledOnce();
   } finally { settings.abort(); reopened.abort(); session.close(); }
 });
 

@@ -118,10 +118,6 @@ public final class MainActivity extends Activity {
     var owner = service.runtime;
     if (owner == null) return;
     if (mediaEntry()) { captureAvailable(); return; }
-    if (wakeEntry()) {
-      finish();
-      return;
-    }
     if (getIntent().getData() == null) {
       try {
         startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(owner.entryURL())));
@@ -134,6 +130,7 @@ public final class MainActivity extends Activity {
       }
     }
     // App wake returns to its caller. Only the launcher entry opens a URL.
+    owner.startupHandled();
     finish();
   }
 

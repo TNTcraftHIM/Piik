@@ -258,19 +258,9 @@ the feedback period; they do not delay that delivery.
   Editing supplies the first concrete addition; no extension interface or
   generic capability registry is built. A part interface is weighed only by a bounded
   comparison with plain lifecycle-owner extraction.
-- [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
-  projection crossings and unused return data before changing their boundaries.
-  Keep image restoration owned by each physical connection. Any generated types
-  must replace their old owner and retain runtime validation, omission and null
-  semantics.
-- [ ] **App configuration ownership.** Consolidate startup environment reads
-  where their meanings and lifetimes match, retaining consent scope and cache namespaces.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
-- [ ] **Connection attempt deadlines.** Trace pair establishment, concurrent UDP preparation,
-  signaling recovery and data-channel readiness. Consolidate deadlines by their
-  actual owner while retaining the intended retry and resource-release behavior.
 - [ ] **Prepared-path migration after TURN.** Extend the verified Native
   transport handoff to full App signaling and independent networks. Correlate
   selected-path traffic with picture and sound continuity; unknown candidate
@@ -278,13 +268,10 @@ the feedback period; they do not delay that delivery.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.
+  Compare admitted input and actual output around forced frames and codec priming.
 - [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
   separate mechanical format pass and review actionable Clippy findings by owner.
   Keep style-only changes separate from behavior fixes and new lint gates.
-- [ ] **Native frame admission.** Set one policy for fresh, forced and priming
-  frames across encoder workers. Compare the shared timestamp trace with actual
-  output feedback; keep platform timestamp acquisition and codec priming in the
-  adapters.
 - [ ] **3.0 documentation ownership.** Review remaining research files that
   differ from their 2.x copies, unused research data and outdated couch markers
   against current readers and code.

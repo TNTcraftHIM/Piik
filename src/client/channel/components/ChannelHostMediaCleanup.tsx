@@ -60,6 +60,10 @@ function CleanupTarget({ channel, target, disabled }: {
   const [result, setResult] = useState<CleanupResult | null>(null);
   const busy = channel.pending.has(`host-media:${target}`);
   const name = t(`channel.hostMedia.target.${target}`);
+  // Cache (Browser) and compaction (Native) failures each count only rooms whose clear committed.
+  const followUpFailures = result ? result.cacheFailures + result.compactionFailures : 0;
+  const completedRooms = result ? result.clearedRooms - followUpFailures : 0;
+  const retryRooms = result ? result.failedRooms + followUpFailures : 0;
   return <li>
     <strong>{name}</strong>
     <ChannelInlineConfirm label={t("channel.hostMedia.clear")}
@@ -74,14 +78,11 @@ function CleanupTarget({ channel, target, disabled }: {
     <div className="c3-host-media-result" role="status">
       {busy && <p>{t("channel.hostMedia.clearing")}</p>}
       {result && <>
-        <p data-result={result.failedRooms > 0 ? "failed" : "cleared"}>
-          {t("channel.hostMedia.result", { cleared: String(result.clearedRooms), failed: String(result.failedRooms) })}
+        <p data-result={completedRooms > 0 ? "cleared" : undefined}>
+          {t("channel.hostMedia.result", { count: String(completedRooms) })}
         </p>
-        {result.cacheFailures > 0 && <p>
-          {t("channel.hostMedia.cache", { count: String(result.cacheFailures) })}
-        </p>}
-        {result.compactionFailures > 0 && <p>
-          {t("channel.hostMedia.space", { count: String(result.compactionFailures) })}
+        {retryRooms > 0 && <p data-result="failed">
+          {t("channel.hostMedia.retry", { count: String(retryRooms) })}
         </p>}
       </>}
     </div>

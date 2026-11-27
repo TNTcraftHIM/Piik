@@ -61,9 +61,8 @@ static package checks; device behavior was not inferred from that build.
   Server and independent Chrome sessions on loopback, site-host media cleanup
   removed the old thumbnail, preserved text and attachment details, and let
   the reader receive a new thumbnail. An unnamed guest skipped the nickname
-  prompt and kept the same label without a new prompt on return. Source review
-  confirmed App control 27 with Domain protocol 55 and the existing saved-data
-  formats.
+  prompt and kept the same label without a new prompt on return. The existing
+  saved-data formats were retained.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts

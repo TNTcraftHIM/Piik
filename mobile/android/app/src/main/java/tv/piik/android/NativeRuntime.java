@@ -73,6 +73,12 @@ final class NativeRuntime implements AutoCloseable {
 
   String entryURL() { return entry; }
 
+  // Subsequent launcher and notification entries return to the running App.
+  void startupHandled() {
+    int query = entry.indexOf('?');
+    if (query >= 0) entry = entry.substring(0, query);
+  }
+
   // Called by the runtime thread, including failures before start returns.
   private void runtimeStopped(String reason) { stopped.complete(reason); }
 

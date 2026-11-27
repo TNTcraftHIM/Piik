@@ -1,5 +1,5 @@
 import type { NativeCaptureSelection } from "../native/capture-selection";
-import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
+import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, roomSummarySchema, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
 import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
   nativePageResourceReadSchema, nativePageResourceResultSchema,
@@ -21,7 +21,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 27;
+export const APP_PROTOCOL = 28;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
@@ -109,6 +109,12 @@ function isIncompatible(error: unknown): boolean {
   return error instanceof Error && isIncompatibleProtocol(error.message);
 }
 type AppCommand = { type: string; publicationId?: string; roomId?: string; [key: string]: unknown };
+
+const nullResultCommands = new Set([
+  "hello", "page_patch", "page_focus", "page_hide", "page_media_stop", "page_close", "cancel_preview",
+  "capture_audio_settings", "capture_video_settings", "capture_paused", "capture_direct_limit", "capture_title",
+  "commit_capture", "transfer_source", "cancel_external_input", "cancel_capture", "stop_capture", "input_policy", "input_decide",
+]);
 
 export class AppPage implements AppPagePort {
   candidates: readonly NativePageCandidate[] = [];
@@ -495,7 +501,7 @@ export class ChannelApp {
         const failed = "error" in reply;
         if (reply.type !== undefined || success === failed
           || (failed && (typeof reply.error !== "string" || !reply.error))
-          || (success && request.command.type === "hello" && reply.result !== null)) {
+          || (success && nullResultCommands.has(request.command.type) && reply.result !== null)) {
           request.reject(new Error("invalid_app_response"));
           return;
         }
@@ -579,9 +585,11 @@ export class ChannelApp {
     }
   }
 
-  async open(policy: string): Promise<RoomSummary> {
+  async open(policy: string, roomId: string): Promise<RoomSummary> {
     await this.ready;
-    return this.request({ type: "open", policy });
+    const room = roomSummarySchema.safeParse(await this.request({ type: "open", policy }));
+    if (!room.success || room.data.id !== roomId) throw new Error("invalid_app_response");
+    return room.data;
   }
 
   async localEndpoint(signal?: AbortSignal): Promise<string | null> {

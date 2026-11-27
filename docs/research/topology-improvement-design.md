@@ -342,6 +342,42 @@ is an upper bound for a sender.
 | 15 | 1,265 kbit/s | 4,266 kbit/s | 24 to 26% |
 | 31 | 2,616 kbit/s | 8,815 kbit/s | 47 to 51% |
 
+## Sender Capacity Observations
+
+Two controls used the frozen beta.59 source at `b29f3712` with Chromium
+152.0.7977.64 in isolated Linux networks. A 640×360 canvas supplied motion at
+10 fps. Both viewers connected directly to the Browser source, without service
+transit or a viewer relay. Each measured phase lasted fifteen seconds.
+
+| Source uplink | Viewers | Incumbent presentation callbacks/s | New reported freezes |
+| --- | --- | ---: | ---: |
+| 212 kbit/s | One | 7.66 | 0 |
+| 212 kbit/s | Two | 2.55 | 15 |
+| 212 kbit/s | One after removal | 5.24 | 2 |
+| 1 Mbit/s | One | 10 | 0 |
+| 1 Mbit/s | Two | 10 | 0 |
+| 1 Mbit/s | One after removal | 10 | 0 |
+
+The 212 kbit/s single-viewer baseline was already changing resolution. Adding
+the second viewer produced queue loss and 10.975 seconds of new reported freeze
+duration. Removing it did not restore the original cadence within the measured
+window. This establishes congestion in that sequence, without a stable baseline.
+
+The 1 Mbit/s baseline held 640×360 and 10 fps for 10.5 sampled seconds. The
+incumbent retained that presentation after admission and removal. The two-viewer
+phase used about 388 kbit/s in total, with no queue drops. Yet the incumbent
+carrier's target fell from 2.429 Mbit/s to 627 kbit/s after admission. Target
+reduction alone would reject a healthy trial.
+
+These were single runs of each condition. They do not establish a stable-to-
+overloaded transition or a general sender threshold. The probe recorded carrier,
+producer and receiver rows separately, but did not record source-frame counters
+or an explicit producer-to-flow binding. A carrier's 16×16 frame size described
+the pooled carrier, not the actual received picture. A per-flow comparison must
+keep the selected representation, source supply, encoding, transport and
+presentation measurements distinct. Packet loss cannot be subtracted directly
+from a frame count.
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to

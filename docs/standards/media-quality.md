@@ -427,7 +427,10 @@ current fixed-output implementation pending equivalent physical acceptance.
 Android shares one Projection and captured texture across demand-driven
 MediaCodec outputs. Each output uses the pinned WebRTC FrameDropper before
 encoder submission, with encoded-byte feedback and the current allocation;
-dropping an output frame never stops the shared capture clock. Unsupported
+each fresh admitted input advances the drop schedule even when a keyframe
+request bypasses dropping. Reusing a retained frame for a refresh does not
+advance the capture cadence. Dropping an output frame never stops the shared
+capture clock. Unsupported
 optional encoders leave the original usable. Its fixed spatial outputs and
 platform codec still bound extremely low-bandwidth delivery.
 Each source groups compatible effective direct-child requests and keeps

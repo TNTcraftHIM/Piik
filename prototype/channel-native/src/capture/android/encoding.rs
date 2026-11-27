@@ -412,10 +412,11 @@ fn run(
                 dropper.set_rates(bitrate as f32 / 1000., fps);
             }
             dropper.leak(rate.fps.unwrap_or(fps as f32).round().max(1.) as u32);
-        }
-        if !force && dropper.drop_frame() {
-            policy.report_drop();
-            continue;
+            // Advance the drop schedule once per fresh input, including forced frames.
+            if dropper.drop_frame() && !force {
+                policy.report_drop();
+                continue;
+            }
         }
         if codec
             .as_ref()
