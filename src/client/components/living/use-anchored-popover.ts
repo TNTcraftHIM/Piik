@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { surfaceViewport } from "../../ui/window-appearance";
 
+const roomWorkspace = (anchor: HTMLElement) => anchor.closest<HTMLElement>('[data-app-shell][data-layout="living"]');
+
 // Place the native popover beside its anchor. Nested callers can supply a
 // return target for when the browser leaves focus behind in the closing layer.
 export function useAnchoredPopover(
@@ -32,8 +34,10 @@ export function useAnchoredPopover(
       if (!anchor || !menu.matches(":popover-open")) return;
       const rect = anchor.getBoundingClientRect();
       const bounds = surfaceViewport(menu.ownerDocument);
-      const left = bounds.left + 8, top = bounds.top + 8;
-      const right = bounds.right - 8, bottom = bounds.bottom - 8;
+      const workspace = roomWorkspace(anchor);
+      const room = workspace?.checkVisibility({ visibilityProperty: true }) ? workspace.getBoundingClientRect() : bounds;
+      const left = Math.max(bounds.left, room.left) + 8, top = Math.max(bounds.top, room.top) + 8;
+      const right = Math.min(bounds.right, room.right) - 8, bottom = Math.min(bounds.bottom, room.bottom) - 8;
       // Placement insets do not make a visible anchor offscreen.
       const anchorOutside = rect.bottom < (viewport?.offsetTop ?? 0) || rect.top > bounds.bottom
         || rect.right < bounds.left || rect.left > bounds.right;
@@ -94,6 +98,8 @@ export function useAnchoredPopover(
       const anchor = trigger.current;
       if (anchor) {
         observer.observe(anchor);
+        const workspace = roomWorkspace(anchor);
+        if (workspace) observer.observe(workspace);
         visibility?.observe(anchor);
       }
       const parentPopover = anchor?.closest("[popover]");

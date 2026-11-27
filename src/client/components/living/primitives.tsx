@@ -47,6 +47,7 @@ export function Btn({
   autoFocus,
   icon,
   cap,
+  capOverflowTooltip,
   tone,
   size,
   quiet = false,
@@ -78,6 +79,8 @@ export function Btn({
   autoFocus?: boolean;
   icon: GlyphName;
   cap?: ControlCopy;
+  /** Show guidance if the visible caption is clipped or condensed by CSS. */
+  capOverflowTooltip?: boolean;
   tone?: "primary" | "danger" | "on";
   size?: "compact" | "dense";
   quiet?: boolean;
@@ -111,6 +114,7 @@ export function Btn({
 }) {
   const { t } = useCopy();
   const label = typeof title === "string" ? t(title) : title.text;
+  const caption = capOverflowTooltip && (typeof cap === "string" ? t(cap) : cap?.text);
   const wrapped = Boolean(hint || textTooltip);
   const softDisabled = Boolean(wrapped && disabled);
   const activeTone = tone ?? (pressed ? "on" : undefined);
@@ -154,7 +158,9 @@ export function Btn({
   );
   return hint ? (
     <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} place={hintPlace} align={hintAlign} text={hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
-  ) : textTooltip ? <Tooltip text={shortcutLabel ? label + " · " + shortcutLabel : label} disabled={expanded}>{button}</Tooltip> : (
+  ) : textTooltip ? <Tooltip text={shortcutLabel ? label + " · " + shortcutLabel : label} disabled={expanded}>{button}</Tooltip> : caption ? (
+    <Tooltip overflow={{ text: caption, selector: ".lr-cap" }} disabled={expanded}>{button}</Tooltip>
+  ) : (
     button
   );
 }

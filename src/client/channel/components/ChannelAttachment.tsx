@@ -5,6 +5,7 @@ import type { ChannelAttachment as Attachment, ImageRendition } from "../protoco
 import { attachmentDownloadDocument, type ChannelAttachments, fileSize, isNativeSavePending } from "../attachments";
 import { inlineImageFile } from "../image-preview";
 import { ChannelAction } from "./ChannelAction";
+import { Btn } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import { channelErrorPresentation } from "../../components/error-presentation";
@@ -151,6 +152,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const canReveal = savedCopy && typeof attachmentDownloadDocument(surfaceDocument)?.defaultView?.piikRevealDownload === "function";
   const canRetryDownload = !unavailable && downloadError &&
     !["file_offer_failed", "reveal_saved_copy_failed", "saved_copy_missing"].includes(downloadError);
+  const downloadControlBusy = savePending || (revealing && !download.busy);
   const downloadLabel = download.busy ? t("channel.attachment.cancelDownload")
     : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
     : canReveal ? t("channel.attachment.revealSaved")
@@ -168,10 +170,10 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name={saved ? "check" : "fileDown"} size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
-      <ChannelAction icon={download.busy ? "x" : canReveal ? "folder" : canRetryDownload ? "refresh" : "arrowDown"}
-        label={downloadLabel} accessibleLabel={labelForFile(downloadLabel)}
-        quiet iconOnly={savePending} busy={savePending || (revealing && !download.busy)}
-        disabled={unavailable && !download.busy && !savePending && !canReveal}
+      <Btn icon={download.busy ? "x" : canReveal ? "folder" : canRetryDownload ? "refresh" : "arrowDown"}
+        title={{ text: labelForFile(downloadLabel) }} cap={savePending ? undefined : { text: downloadLabel }} capOverflowTooltip
+        quiet size="compact" busy={downloadControlBusy}
+        disabled={downloadControlBusy || (unavailable && !download.busy && !canReveal)}
         onClick={() => {
           if (download.busy) { client.cancelDownload(key); return; }
           const surface = downloadSurface.current;
