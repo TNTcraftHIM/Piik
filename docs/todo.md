@@ -18,9 +18,9 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
-  interaction lifetime, operation feedback and the remaining capture, embed
+  operation feedback and the remaining capture, embed
   and source-setting operations. Review their acquisition and release at the
-  actual resource owner; App-page acquisition and watch retirement now belong to Stage.
+  actual resource owner.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
 - [ ] **Native optional-flow acceptance.** Complete presented playback and
@@ -54,10 +54,11 @@ the feedback period; they do not delay that delivery.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.
-- [ ] **Virtual LAN invitations time out.** Investigate intermittent page access
-  and media failures reported on Android across several browsers in 2.x.
-  Correlate the selected virtual address, effective firewall rules and incoming
-  requests before attributing the failure to page loading or media routing.
+- [ ] **Virtual LAN invitation and page access.** For intermittent Android 2.x
+  failures across browsers, correlate the selected virtual address, effective
+  firewall rules and incoming requests. Establish whether page access or media
+  delivery failed. For the UU report where only the tab title appears, capture
+  the stalled document or script response.
 - [ ] **Intermittent App-to-Browser virtual LAN video.** After initial playback
   is reachable, correlate the reported roughly 22-second connection replacement
   cycle with receiver frame counters and the first flow-retirement event.
@@ -67,22 +68,16 @@ the feedback period; they do not delay that delivery.
   control connection. Preserve original-page playback when the selected video
   element changes its resource URL; keep media-byte grants bound to the selected
   resource. [Original-page controls](./verification-status.md#current-evidence)
-- [ ] **Contracts fixed before release.** Decide
-  [ADR-0017](./adr/0017-contracts-fixed-before-release.md): before the first
-  public 3.0 release, settle the compatibility baseline and matrix, explicit
-  reply outcomes, release storage fixtures and the implemented history and
-  storage boundaries. Verify unknown request outcomes cannot confirm work in
-  the selected Native, Browser and SDK readers. Schema
-  generation, a state revision, a generic activity envelope and the encoding of
-  wire keys wait for a consumer. The
-  [design review](./research/clean-room-design-review.md) records the
-  evidence.
-- [ ] **Freeze the first public 3.0 contract.** Confirm the
-  [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
-  and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
-  against actual readers, writers and stored samples. Keep API/Bot capabilities
-  within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
-  records the adopted architecture separately from public release acceptance.
+- [ ] **Freeze the first public 3.0 contract.** Decide
+  [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
+  writers and release storage fixtures. Settle the compatibility baseline and
+  matrix, explicit reply outcomes and the implemented history and storage
+  boundaries. Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
+  and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
+  Verify unknown request outcomes cannot confirm work in the selected Native,
+  Browser and SDK readers. Keep API/Bot capabilities within existing actions
+  and authority. [Adopted architecture](./adr/0016-shared-rust-core.md) ·
+  [Design review](./research/clean-room-design-review.md)
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -140,11 +135,13 @@ the feedback period; they do not delay that delivery.
   sender, relay and receiver timing, frame dimensions and repair counters before
   attributing this to loss, codec adaptation or changing sender latency. Keep
   optional receive buffering separate from identifying this report's cause.
-- [ ] **Whole-system sound in beta.29.** The reporter hears normal sound in
-  beta.25, but beta.29 needs any process excluded before sound reaches viewers.
-  Compare default-endpoint packets and queue/output progress with process
-  loopback on that setup; the capture and mixing code is unchanged between the
-  two builds. Keep this report distinct from the earlier process-specific noise.
+- [ ] **Windows shared sound only works with process exclusion.** The beta.29
+  reporter needs any process excluded for viewers to hear sound, while beta.25
+  works normally. Compare default-endpoint packets and queue/output progress
+  with process loopback on that setup. For [#534](https://github.com/TNTcraftHIM/Piik/issues/534), record the application's
+  playback endpoint and capture result before and after first using exclusion.
+  The [output-routing control](./research/media-fidelity.md#windows-output-routing)
+  reproduced the contrast on an alternate endpoint. Each setup still needs its own trace.
 - [ ] **Host UDP errors and blurry viewing.** A reported beta.25 Host repeatedly
   prints Windows network-unreachable error 10051 while a friend can view a blurry
   picture. Identify whether the errors affect the selected media path or other
@@ -153,9 +150,7 @@ the feedback period; they do not delay that delivery.
   removed-local-address repair as resolution without a matching control.
 - [ ] **beta.25 mobile reconnect report.** Identify the actual Browser RTC setup
   error or socket-close cause on the reporting phone. The supplied recording
-  shows site reconnection while waiting for a shared picture. A reproduced RTC
-  constructor failure is now isolated from the site socket; confirm the reporting
-  device's cause before treating this boundary repair as resolution of that report.
+  shows site reconnection while waiting for a shared picture.
 - [ ] **3.0 viewing remains at 60 fps above the requested setting.** Collect the
   actual capture source, applied resolution/frame rate and receiver counters for
   the reported path. Compare capture, encoded, received and decoded cadence;
@@ -173,11 +168,6 @@ the feedback period; they do not delay that delivery.
   the platform's Release tag or trigger its immediate synchronization during
   publication. Do not assume disabling Pull synchronization makes the repository
   writable. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
-- [ ] **Windows sound only works with exclusion (#534).** Compare the affected
-  application's playback endpoint with Piik's default-endpoint capture. The
-  [output-routing control](./research/media-fidelity.md#windows-output-routing)
-  reproduces this contrast with an alternate output device; the reported change
-  after first using exclusion remains to be located.
 - [ ] **Blue-tinted sharing (#529).** The report has no source, codec, GPU or
   HDR/SDR details. Existing SDR conversion evidence cannot identify its cause;
   obtain a sender/receiver colour-bar or solid-colour comparison before changing
@@ -188,9 +178,6 @@ the feedback period; they do not delay that delivery.
   two-hop relay and per-person volume paths retain stereo in controlled input.
   [Media fidelity](./research/media-fidelity.md#30-room-microphone) owns the evidence.
   Keep the published 2.x mono contract separate.
-- [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
-  title appears and the page never loads. Static compression reduces transfer
-  size; capture the stalled document/script response to locate this failure.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
@@ -295,11 +282,9 @@ the feedback period; they do not delay that delivery.
   frames across encoder workers. Compare the shared timestamp trace with actual
   output feedback; keep platform timestamp acquisition and codec priming in the
   adapters.
-- [ ] **3.0 documentation ownership.** Review the remaining research files that
+- [ ] **3.0 documentation ownership.** Review remaining research files that
   differ from their 2.x copies, unused research data and outdated couch markers
-  against current readers and code. Consolidate repeated work-ledger prose
-  without dropping unresolved feedback. Align the homepage and public source
-  links at the accepted cutover.
+  against current readers and code.
 - [ ] **Whole-page collaboration.** Choose the intended co-browsing flow before
   extending synchronized playback. Evaluate a shared page with explicitly
   granted page-scoped input and each site's own collaborative links. Reuse the
@@ -317,8 +302,9 @@ the feedback period; they do not delay that delivery.
 - [ ] **Accept the unified 3.0 sharing experience.** Review the optional
   screen-centred view with the owner and repeat the first share on the release
   candidate. At integration, resolve main CI against the Rust release jobs and
-  coordinate the Pages guides, latest downloads and Demo with the published
-  version. Pin historical 2.x references at the final 2.x revision.
+  align the homepage, public source links, Pages guides, latest downloads and
+  Demo with the published version. Pin historical 2.x references at the final
+  2.x revision.
   Publish the 2.x pinning guidance and verify clear startup refusal for recognized
   incompatible configuration before changing the default major
   ([evidence](./research/container-tags.md)).

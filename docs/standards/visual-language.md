@@ -365,6 +365,11 @@ language track. Low-frequency help stays unframed and quiet; it need not carry
 the outline or shadow of direct settings. Narrow layouts shorten captions or
 spacing before changing that hierarchy.
 
+Each target in a split button keeps the chosen control size when the pair
+stacks vertically. A navigation row takes its height from its mark, text,
+metadata and embedded controls. Its primary target covers the row around
+the independent actions.
+
 In a room directory, the room mark and name select the row. Its leading
 chevron opens the roster independently. On a fine pointer these embedded
 actions take a 28 px line, with at least 24 px of width for the leading

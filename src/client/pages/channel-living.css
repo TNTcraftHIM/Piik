@@ -1,11 +1,11 @@
 /* The workspace owns placement; shared controls, palette, cast and motion keep their owners. */
 .c3-app { --c3-content-width: calc(100% - 40px); --c3-heading-height: 66px; --c3-stage-picture-min: 160px; height: 100dvh; min-height: 0; padding-top: 20px; }
-.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-rows: auto minmax(var(--c3-heading-height), auto) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
+.c3-shell { --room-list-padding-end: 12px; flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-rows: auto minmax(var(--c3-heading-height), auto) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
 .c3-shell:not([data-companion="people"]) > .c3-people-panel { display: none; }
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
 .c3-shell button:disabled { cursor: default; }
-.c3-sidebar { grid-column: 1; grid-row: 2 / 4; min-width: 0; min-height: 0; padding-bottom: 12px; background: var(--wall); }
+.c3-sidebar { grid-column: 1; grid-row: 2 / 4; min-width: 0; min-height: 0; padding-block-end: var(--room-list-padding-end); background: var(--wall); }
 .c3-sidebar-browse { height: 100%; min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .c3-site-bar { grid-column: 1 / -1; grid-row: 1; display: flex; flex-wrap: wrap; align-content: center; align-items: center; gap: 4px 16px; min-width: 0; min-height: 58px; padding: 6px 16px; background: var(--wall); container: channel-site-bar / inline-size; }
 .c3-site-identity {
@@ -186,6 +186,7 @@
 /* Placement for the living room. Each region uses the site's or the room's surface. */
 .c3-shell[data-layout="living"] {
   --room-list: 232px;
+  --room-list-heading: 46px;
   --heading-line: max(48px, var(--surface-inset-top, 0px));
   --heading-end-inset: 8px;
   --room-nav: var(--room-list);
@@ -290,7 +291,11 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-personal > :is(.c3-living-actions, .c3-identity) { width: calc(var(--room-rail) - 9px); }
 [data-layout="living"]:not([data-sidebars="phone"], [data-minimal]) .c3-sidebar-browse { width: var(--room-list); }
-[data-layout="living"][data-sidebars="rail"][data-room-list-open] > .c3-sidebar { box-shadow: 10px 0 22px -15px var(--ink); }
+/* The open rail casts a shadow along the drawer edge below the site cell. */
+[data-layout="living"][data-sidebars="rail"][data-room-list-open] > .c3-sidebar {
+  box-shadow: 10px 0 22px -15px var(--ink);
+  clip-path: inset(0 -100% 0 0);
+}
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-sidebar { pointer-events: none; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-sidebar-browse {
   max-width: var(--room-rail);
@@ -300,7 +305,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
    selected room. The heading begins with the control that folds the column, on the rail's axis, so that folding
    and unfolding leave it under the pointer; what acts on the rooms ends the heading. */
 [data-layout="living"] .c3-room-navigation { --room-list-inset: 8px; padding-inline: var(--room-list-inset); }
-[data-layout="living"] .c3-room-navigation > .c3-section-label { display: grid; grid-template-columns: var(--room-text-start) minmax(0, 1fr) auto; gap: 0; min-height: 46px;
+[data-layout="living"] .c3-room-navigation > .c3-section-label { display: grid; grid-template-columns: var(--room-text-start) minmax(0, 1fr) auto; gap: 0; min-height: var(--room-list-heading);
   padding-inline: 0 calc(var(--room-end-inset) + (var(--room-line) - var(--control-dense-size)) / 2); }
 [data-layout="living"] .c3-room-navigation > .c3-section-label > :is(#c3-rooms-trigger, :has(> #c3-rooms-trigger)) { grid-column: 1; justify-self: start; margin-inline-start: calc((var(--room-rail) - var(--control-dense-size)) / 2 - var(--room-list-inset)); }
 [data-layout="living"] .c3-room-navigation > .c3-section-label > .c3-section-caption { grid-column: 2; justify-self: start; }
@@ -366,9 +371,12 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"]:is([data-sidebars="list"], [data-sidebars="rail"][data-room-list-open]):not([data-minimal]) .c3-living-actions .lr-btn-split { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
 [data-layout="living"]:is([data-sidebars="list"], [data-sidebars="rail"][data-room-list-open]):not([data-minimal]) .c3-living-actions .c3-share-actions { width: 100%; }
 .c3-living-actions .c3-voice-entry { padding: 0; }
-/* The rail stacks every control, so in a short window my dock may take more of the column and the rooms scroll
-   first. What scrolls in the rail does so without a bar, which would take a sixth of it and push the marks off its axis. */
-[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-personal { max-height: 80cqh; padding-inline: 4px; scrollbar-width: none; }
+/* Keep the entire room heading available above the stacked rail controls. Both areas can scroll. */
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) > .c3-personal {
+  max-height: calc(100cqh - var(--heading-line) - var(--room-list-heading) - var(--room-list-padding-end));
+  padding-inline: 4px;
+  scrollbar-width: none;
+}
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-sidebar-browse { scrollbar-width: none; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) :is(.c3-living-actions, .c3-identity) { align-items: center; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { justify-content: center; padding-inline: 0; }
@@ -377,7 +385,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split { flex-direction: column; align-items: stretch; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split .lr-btn.is-split-main { border-radius: 12px 12px 0 0; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split .lr-btn.is-split-more {
-  --button-size: 24px; width: 100%; border-radius: 0 0 12px 12px;
+  width: 100%; border-radius: 0 0 12px 12px;
   border-inline-start-color: transparent; border-block-start-color: color-mix(in srgb, currentColor 44%, transparent);
 }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { flex-direction: column; }

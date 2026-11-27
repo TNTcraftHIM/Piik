@@ -43,7 +43,7 @@ export function ChannelForwardingSettings({ channel }: { channel: ChannelControl
   }, [open, connected, channel.appConnected, channel.sessionId, read]);
   if (!channel.self) return null;
   return <details className="c3-forwarding-settings" onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary className="lr-btn is-compact is-quiet"><Glyph name="chevron" size={16} />{t("channel.forwarding.title")}</summary>
+    <summary className="lr-btn is-compact is-quiet"><Glyph name="chevron" size={16} /><span className="lr-cap">{t("channel.forwarding.title")}</span></summary>
     <p>{t("channel.forwarding.note")}</p>
     <ForwardingLimit label={t("room.relay.webpage")} value={channel.forwardingLimit} onChange={channel.setForwardingLimit} />
     {channel.appConnected && (app ? <ForwardingLimit label={t("room.relay.app")} value={app.relayOverride ?? -1}

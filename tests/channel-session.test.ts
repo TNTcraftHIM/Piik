@@ -1506,6 +1506,36 @@ test.each(["room_reply", "error"] as const)("a refused interaction subscription 
   } finally { session.close(); }
 });
 
+test("a reconnect keeps the interaction and retires the previous socket's ready request", async () => {
+  const { session, socket, peer } = await setup(1000, true, "room=first", false);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    const previous = peer.interactions[0];
+    const ready = { type: "interaction_ready" as const, serverTime: Date.now(), reactionIds: ["wave"], publicationReactions: [] };
+
+    socket.close();
+    peer.reply(previous, ready);
+    expect(interaction.getSnapshot().ready).toBe(false);
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(peer.interactions).toHaveLength(1);
+    const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
+    resumed.receive({ type: "ack", requestId: browse.requestId });
+    peer.page(await peer.next(), [], false, null);
+
+    expect(peer.interactions).toHaveLength(2);
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(interaction);
+    resumed.receive({ type: "error", requestId: previous.requestId, code: "room_busy" });
+    peer.reply(previous, ready);
+    expect(interaction.getSnapshot().ready).toBe(false);
+    peer.reply(peer.interactions[1], ready);
+    expect(interaction.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
+  } finally { session.close(); }
+});
+
 test("content reaction targets and delayed events stay with the current room binding", async () => {
   const { session, socket, peer } = await setup();
   try {

@@ -138,6 +138,10 @@ outside those checks. An isolated shutdown stall remains unexplained.
 
 macOS CI built Server/App, compiled the capture path and Native tests, and
 verified synthetic VideoToolbox H264 encode/decode and quality feedback.
+The `f13ddafa` macOS run also verifies that static refresh keeps the first
+late-arriving captured change and gives adjacent output frames distinct RTP
+timestamps. Its source-time roundtrip decoded all 60 submitted frames.
+[Capture timing and roundtrip run](https://github.com/TNTcraftHIM/Piik/actions/runs/45926487008)
 Earlier checks exercised LaunchServices startup and startup-error cleanup.
 System Quit, Dock/Finder return, permissions, physical capture, sound and input
 require device acceptance. [Build and codec run](https://github.com/TNTcraftHIM/Piik/actions/runs/45341981837) ·

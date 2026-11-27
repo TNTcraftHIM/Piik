@@ -571,16 +571,29 @@ require measurements on those networks.
 
 ### First frame on a cold and reused connection
 
-In two ordinary Linux kernel NAT trials on `1e00d9e0` (Core32), the source was
-already publishing through the Native host when the Chromium viewer joined voice.
-From `watch()` to the first `requestVideoFrameCallback` on the subscribed video,
-the cold trials took 1,465 and 1,253 ms. ICE first showed connected 279 and
-158 ms after `watch()`, leaving 1,187 and 1,095 ms until the frame callback.
-Including voice join, the cold totals were 2,064 and 1,685 ms. After withdrawing
-the subscription and watching again, first frames took 711 and 451 ms. In each
-trial the viewer retained the same `RTCPeerConnection`, selected ICE candidate
-pair ID and connected DTLS transport across withdrawal and resubscription.
-Both trials ran cold first, so the observed reduction includes any media warm-up.
+Two older trials on `1e00d9e0` measured cold first pictures at 1,465/1,253 ms
+and rewatch at 711/451 ms. Rewatch followed previous decoding. Their first-ICE
+timestamp matched any connection, so it cannot isolate transport time for the
+video-carrying pair.
+
+On 2026-11-26, the frozen beta.58 Linux package and Web (`f28d8205`, Domain 54)
+used fresh Chromium 152 receivers with no previous subscription or decoded
+frames. SDP and receiver tracks identified the actual video-carrying connection.
+The source was already publishing a synthetic 640×360 picture; a separate viewer
+continued decoding throughout. One cold/warm pair ran for each topology:
+
+| Selected route | Cold first picture | Confirmed idle pair | Difference |
+| --- | ---: | ---: | ---: |
+| Browser relay in ordinary kernel NAT | 1,235.0 ms | 1,047.7 ms | 187.3 ms |
+| Server Native relay with Browser-to-Browser UDP blocked | 278.6 ms | 198.7 ms | 79.9 ms |
+
+The warm connection had completed ICE/DTLS and had no assigned media before
+Watch. Ordinary-path cold ICE completed at +213.0 ms; the Native-path cold
+connection was created at +42.6 ms and completed DTLS at +92.1 ms. The selected
+video's frame callback supplied first presentation. DOM observation and browser
+scheduling affect those timings. Each topology has one pair measured cold
+first; these controls establish useful reuse on these paths, not a field
+success rate or a reason to change standby budgets.
 
 ### Playable Route Improvement
 
