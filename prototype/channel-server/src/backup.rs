@@ -44,7 +44,12 @@ pub(crate) async fn export(
     room_id: String,
     creator: Option<uuid::Uuid>,
     credential: OwnCredential,
+    exports: std::sync::Arc<tokio::sync::Semaphore>,
 ) -> ApiResult {
+    // A slow reader keeps both the ZIP worker and the room's SQLite snapshot.
+    let export = exports
+        .try_acquire_owned()
+        .map_err(|_| error(StatusCode::CONFLICT, "room_busy"))?;
     let (result, response) = oneshot::channel();
     commands
         .send(HostCommand::Snapshot(SnapshotRoom {
@@ -65,6 +70,7 @@ pub(crate) async fn export(
             bail!("file_source_unavailable")
         });
         drop(snapshot);
+        drop(export);
         result
     }))
 }
@@ -247,6 +253,84 @@ fn copy_bounded(input: &mut impl Read, output: &mut impl io::Write, budget: u64)
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use piik_channel_core::{
+        backup::{DeletedHistoryRow, HistoryRow, RoomMetadata},
+        history::{HistoryRequest, HistoryResult, MessageDraft},
+        storage::Storage,
+        wire::RoomAccess,
+        RoomBackup, RoomState,
+    };
+    use std::{sync::Arc, time::Duration};
+    use tokio::sync::Semaphore;
+    use uuid::Uuid;
+
+    #[test]
+    fn unread_export_retains_admission_until_its_snapshot_closes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .max_blocking_threads(2)
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let site = Arc::new(Semaphore::new(1));
+            let (commands, mut received) = mpsc::channel(1);
+            let owner = Uuid::new_v4();
+            let request = || export(commands.clone(), "room".into(), Some(owner), OwnCredential {
+                user_id: owner,
+                credential: "test-owner".into(),
+            }, site.clone());
+
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("room.sqlite");
+            let metadata = RoomMetadata {
+                version: RoomMetadata::VERSION,
+                domain_id: Uuid::new_v4(),
+                policy: RoomState::new("room".into(), "Room".into(), Default::default(), owner,
+                    RoomAccess::Public, false, None).unwrap(),
+                own_credential: None,
+                retained_files: vec![],
+            };
+            // The STORE archive exceeds the bridge buffer before history finishes.
+            let rows = (1..=1024).map(|seq| Ok(HistoryRow::Deleted(DeletedHistoryRow {
+                seq,
+                retry_key: format!("{seq:064x}"),
+            })));
+            let room = RoomBackup::stage(&path, metadata, rows).unwrap();
+            let (response, ()) = tokio::join!(request(), async {
+                let Some(HostCommand::Snapshot(request)) = received.recv().await else {
+                    panic!("expected room snapshot");
+                };
+                assert!(request.result.send(Ok(RoomSnapshot { room, directory })).is_ok());
+            });
+            let unread = response.unwrap();
+            let (status, body) = tokio::time::timeout(Duration::from_secs(5), request())
+                .await.unwrap().unwrap_err();
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(body.0["error"], "room_busy");
+            assert!(matches!(received.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+            let chat = tokio::task::spawn_blocking(move || {
+                let sibling = tempfile::tempdir().unwrap();
+                let mut storage = Storage::open(&sibling.path().join("room.sqlite")).unwrap();
+                storage.history(&HistoryRequest::Send {
+                    room_id: "sibling".into(),
+                    draft: MessageDraft::new(owner, "test-send".into(), "hello".into(),
+                        vec![], Default::default(), vec![], None, 1).unwrap(),
+                }).unwrap()
+            });
+            let reply = tokio::time::timeout(Duration::from_secs(5), chat).await.unwrap().unwrap();
+            assert!(matches!(reply, HistoryResult::Sent(_)));
+            assert!(path.is_file());
+            drop(unread);
+            let _released = tokio::time::timeout(Duration::from_secs(5), site.acquire())
+                .await.unwrap().unwrap();
+            assert!(!path.exists());
+        });
+    }
 }
 
 #[cfg(test)]
