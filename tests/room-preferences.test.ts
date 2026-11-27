@@ -19,10 +19,10 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences().previewAutoPause).toBe(true);
   expect(readRoomPreferences().roomLayout).toBeUndefined();
   expect(readRoomPreferences().remoteTouchMode).toBe("direct");
-  saveRoomPreferences({ roomLayout: "minimal", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text", combineKeys: true });
+  saveRoomPreferences({ roomLayout: "minimal", pictureFit: "cover", previewAutoPause: false, keyboardPage: "text", combineKeys: true });
   saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
-  expect(readRoomPreferences()).toMatchObject({ roomLayout: "minimal", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text",
+  expect(readRoomPreferences()).toMatchObject({ roomLayout: "minimal", pictureFit: "cover", previewAutoPause: false, keyboardPage: "text",
     combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
@@ -39,8 +39,9 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences().pictureFit).toBe("cover");
   saveRoomPreferences(JSON.parse('{"remoteTouchMode":"unknown"}'));
   expect(readRoomPreferences().remoteTouchMode).toBe("trackpad");
-  values.set("piik:room-preferences:v1", JSON.stringify({ pictureFit: "cover", pictureRotation: 45 }));
-  expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 0, remoteTouchMode: "direct" });
+  values.set("piik:room-preferences:v1", JSON.stringify({ pictureFit: "cover", pictureRotation: 90 }));
+  expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", remoteTouchMode: "direct" });
+  expect(readRoomPreferences()).not.toHaveProperty("pictureRotation");
   values.set("piik:room-preferences:v1", JSON.stringify({ overlayAppearance: { scale: 1.2, opacity: .7 } }));
   expect(readRoomPreferences().overlayAppearance).toEqual({ scale: 1.2, opacity: .7, speed: 1, colorBySender: false });
 });

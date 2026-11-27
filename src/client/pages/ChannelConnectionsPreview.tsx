@@ -16,7 +16,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
   const roomOnly = mode === "room" || mode === "room-links";
   const participants = roomOnly ? ["host", "self", "friend", "app"] : ["host", "self", "friend"];
   const state = snapshotSchema.parse({
-    channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 100, userCount: 3, managedRoomIds: [],
+    channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", historyWindow: 100, userCount: 3, managedRoomIds: [],
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: participants,
         fileActivity: [],

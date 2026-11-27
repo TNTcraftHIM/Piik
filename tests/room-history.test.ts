@@ -87,3 +87,52 @@ test("resetting the window keeps removal markers", () => {
   expect(history.visible(message(1))).toBeUndefined();
   expect(history.visible(message(2))).toEqual(message(2));
 });
+
+const image = { data: "AAAA", mediaType: "image/png" as const, original: false, width: 1, height: 1 };
+const photo = (seq: number) => ({
+  ...message(seq, "@reader"), mentions: [{ userId: "reader", start: 0, end: 7 }],
+  attachments: [{ id: "pic", name: "photo.png", size: 3, sha256: "1".repeat(64), mediaType: image.mediaType }],
+  inlineImages: { pic: image },
+});
+
+test("a page saved before media cleanup cannot restore old images", () => {
+  const history = new RoomHistory();
+  const prior = photo(2), later = photo(3);
+  const { inlineImages: _images, ...clean } = prior;
+  const reactions = { revision: 1, counts: { heart: 1 } };
+  history.openPage("latest", { bindingId: binding, replace: false });
+  merge(history, "latest", end([prior], null, 1, true));
+  history.dropPage("latest");
+  history.openPage("older", { bindingId: binding, before: 2, replace: false });
+  history.applyReactions(binding, reactionSnapshot(2, reactions.revision, reactions.counts));
+  history.clearMedia(2);
+  expect(history.messages).toEqual([{ ...clean, reactions }]);
+  history.clearMedia(1);
+  merge(history, "older", end([photo(1)], 2, 1));
+  expect(history.messages?.[0].inlineImages).toBeUndefined();
+  expect(history.messages?.[1]).toEqual({ ...clean, reactions });
+  for (const live of [true, false]) {
+    history.receiveMessage(prior, live, historyWindow);
+    expect(history.messages?.[1]).toEqual({ ...clean, reactions });
+  }
+  history.receiveMessage(later, true, historyWindow);
+  expect(history.messages?.[2]).toEqual(later);
+  history.resetWindow();
+  expect(history.visible(prior)).toEqual(clean);
+  expect(new RoomHistory().visible(prior)).toEqual(prior);
+});
+
+test("a split refresh uses the writer's current renditions after a missed cleanup", () => {
+  const history = new RoomHistory();
+  history.openPage("latest", { bindingId: binding, replace: false });
+  merge(history, "latest", end([photo(1), photo(2)], null, 1));
+  history.dropPage("latest");
+  const refresh = { from: 1, through: 2, latest: true, window: [] as ChannelMessage[] };
+  const clean = [photo(1), photo(2)].map(({ inlineImages: _images, ...row }) => row);
+  history.openPage("refresh", { bindingId: binding, replace: false, refresh });
+  expect(merge(history, "refresh", end([clean[1]], null, 1, true))).toBe(false);
+  history.dropPage("refresh");
+  history.openPage("rest", { bindingId: binding, before: 2, replace: true, refresh });
+  expect(merge(history, "rest", end([clean[0]], 2, 1))).toBe(true);
+  expect(history.messages).toEqual(clean);
+});

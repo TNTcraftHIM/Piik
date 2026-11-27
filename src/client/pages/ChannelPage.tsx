@@ -1,3 +1,4 @@
+import { memberName } from "../channel/member-name";
 import { canWatchInBrowser, originalWatchURL } from "../channel/watch-embed-source";
 import { roomAvailabilityGroups, useRoomOrder } from "../channel/room-order";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -39,6 +40,7 @@ import { RoomCreationInterrupted, roomCreationPolicyFor, readSimpleShareRoom, re
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
+import { ChannelHostMediaCleanup } from "../channel/components/ChannelHostMediaCleanup";
 import { ChannelRoomListItem } from "../channel/components/ChannelRoomListItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelSiteEntry } from "../channel/components/ChannelSiteEntry";
@@ -187,7 +189,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         const next = successorOf(room.id, source.id);
         if (next && (channel.waitingWatchPages?.has(next.id) || state.watchSubscriptions.some(sub => sub.id === next.id) || state.subscriptions.includes(next.id))) continue;
         waiting.push({ kind: "waiting", id: next?.id ?? source.id, userId: source.userId, roomId: room.id, roomName: room.name,
-          name: old.users.find(u => u.id === source.userId)?.name ?? t("channel.previewPage.user"),
+          name: memberName(source.userId, old.users.find(u => u.id === source.userId)?.name),
           title: "playback" in source ? watchTitle(source.source.url) : screenTitle(source, t),
           avatar: userProfile(old, channel.profiles, source.userId)?.avatar ?? undefined });
       }
@@ -371,7 +373,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     disabled={joined || !connected || !room.available} busy={busy("voice", roomId)}
     error={voiceJoin.error} onJoin={listenOnly => { void voiceJoin.run(() => channel.joinVoice(roomId, listenOnly, false), () => setVoiceFocus(roomId)); }} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
-  const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? t("channel.previewPage.user");
+  const nameOfUser = (id: string) => memberName(id, state?.users.find(value => value.id === id)?.name);
   const voiceStreams = useVoicePlayback(state, sessionId, streams);
   const [voiceRendering, setVoiceRendering] = useState(new Map<string, { stream: MediaStream; state: VoiceRendering }>());
   const reportVoiceRendering = useCallback((id: string, stream: MediaStream, state: VoiceRendering | undefined) => {
@@ -520,7 +522,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       {!chatInBar && chatToggle}
     </>}
   </div></div>
-  <div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls} /></div></div>
+  <div className="lr-top c3-global-tools">{standingTools}<HeaderControls appControl={appControl} personalControls={personalControls}
+    maintenanceControls={(open, restoreFocus) => <ChannelHostMediaCleanup channel={channel} moreOpen={open} restoreFocus={restoreFocus} />} /></div></div>
 </div>;
   const ownShare = mine.find(source => source.roomId === roomId);
   const ownWatch = activeWatches.find(source => source.roomId === roomId && ownsWatch(source.id));
@@ -530,10 +533,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const identity = self && <div className="c3-identity">
       {(bar || !roomListCompact) && <PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />}
       {!minimal && <div className="c3-identity-copy">
-        <Tooltip overflow={{ text: self.name, selector: "strong" }}><strong>{self.name}</strong></Tooltip>
+        <Tooltip overflow={{ text: nameOfUser(self.id), selector: "strong" }}><strong>{nameOfUser(self.id)}</strong></Tooltip>
         <small>{t("channel.previewPage.yourName")}</small>
       </div>}
-      <ChannelProfileEditor triggerStyle={minimal ? "name" : !bar && roomListCompact ? "pawn" : "pencil"} key={self.id}
+      <ChannelProfileEditor triggerStyle={minimal ? "name" : !bar && roomListCompact ? "pawn" : "pencil"} key={JSON.stringify([state?.channel.id, self.id])}
+        siteId={state?.channel.id} askUnnamedMemberName={state?.channel.askUnnamedMemberName ?? false}
         userId={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
         busy={busy("profile")} onSave={channel.updateProfile} />
     </div>;

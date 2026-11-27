@@ -348,6 +348,23 @@ window.runBrowserRoomCheck = async () => {
       }
       check(sizes.join() === "2,2,2,1" && received.sort((a, b) => a - b).join() === "1,2,3,4,5,6,7",
         "real IndexedDB cursor pages match SQLite 2/2/2/1 without dropping a boundary row");
+      await imageHost.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId,
+        hostSessionId: session, revision: 2, endpoints, action: { type: "command",
+          context: { connection, sessionId: peerSession, requestId: "read-images", now: Date.now() },
+          command: { type: "browse", roomId: imageHost.roomId, active: true } } });
+      const cleared = await imageHost.clearMedia(binding);
+      check(cleared.throughSeq === 7 && cleared.historyLineage && cleared.replies.some(reply =>
+        reply.recipient === peerSession && reply.record.type === "room_media_cleared" && reply.record.throughSeq === 7),
+        "the writer commits the selected media prefix and addresses its signed update to the reader");
+      const snapshot = await imageHost.snapshot();
+      try {
+        let count = 0;
+        for await (const row of snapshot.rows) {
+          check("id" in row && row.attachments[0].id === image.id && !row.inlineImages, "export keeps attachment metadata after media cleanup");
+          count++;
+        }
+        check(count === 7, "media cleanup preserves every message");
+      } finally { await snapshot.close(); }
       const gifData = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
       const gif = new File([imageBytes(gifData)], "tiny.gif", { type: "image/gif" });
       const digest = await crypto.subtle.digest("SHA-256", await gif.arrayBuffer());
@@ -961,6 +978,9 @@ window.runBrowserRoomCheck = async () => {
       const previousTab = new FileStore(fileScope);
       const key = { roomId, messageSeq: 2, attachmentId: attachment.id };
       await previousTab.remove(key, stale, { forgetReceipt: true });
+      await fileStore.clearRetained(roomId, 1, () => true);
+      check((await fileStore.list([roomId])).map(entry => entry.key.messageSeq).join() === "2"
+        && (await fileStore.receipts([roomId])).length === 2, "host cleanup preserves receipts and later cached bytes");
       await fileStore.removeMessages(roomId, seq => seq <= 1);
       const reopened = new FileStore(fileScope);
       check((await reopened.list([roomId])).map(entry => entry.key.messageSeq).join() === "2"

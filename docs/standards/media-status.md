@@ -168,6 +168,8 @@ bar, sound output, picture-in-picture and fullscreen. A candidate input is
 displayed only after it has composited a frame, and it keeps the current local
 pause and volume. Adding, replacing or removing audio on the same binding
 updates only its sound output and preserves frame proof and local playback.
+Rotation belongs to the individual local player. Each new player starts at
+its original orientation.
 
 A connection, track object or `playing` event alone does not prove that a
 picture is visible. The page removes its waiting presentation only after the

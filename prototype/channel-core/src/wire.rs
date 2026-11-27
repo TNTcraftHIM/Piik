@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 54;
+pub const CHANNEL_PROTOCOL: u8 = 55;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -50,6 +50,8 @@ pub enum Command {
         name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         icon: Option<IdentityIcon>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ask_unnamed_member_name: Option<bool>,
     },
     SetRoomCreationPolicy {
         policy: RoomCreationPolicy,
@@ -1008,6 +1010,7 @@ pub struct UserSummary {
 pub struct ChannelInfo {
     pub hosting_mode: HostingMode,
     pub room_creation_policy: RoomCreationPolicy,
+    pub ask_unnamed_member_name: bool,
     pub managed_room_ids: Vec<String>,
     pub user_count: usize,
     pub history_window: usize,

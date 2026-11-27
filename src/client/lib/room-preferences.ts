@@ -24,8 +24,8 @@ const roomPreferencesSchema = z.object({
   roomLayout: roomLayoutSchema.optional(),
   screenBufferTargetMs: z.number().min(0).max(SCREEN_BUFFER_TARGET_MAX_MS).nullable().default(null),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
-  pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),
+  nicknamePromptDismissedByIdentity: z.record(z.string(), z.literal(true)).default({}),
   forwardingLimitByIdentity: z.record(z.string(), z.number().int().min(-1).max(MAX_RELAY_CAPACITY)).default({}),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({

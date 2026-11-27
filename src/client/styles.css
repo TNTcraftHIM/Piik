@@ -142,9 +142,11 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-header-options :is(.lr-capture-device small, .c3-feedback-sounds p) { font-size: 12px; }
 .lr-capture-device-controls > .lr-device-value { flex: 1; min-width: 0; }
 .lr-header-options .c3-forwarding-settings { padding-top: 6px; border-top: 1px solid var(--control-edge); }
+.lr-header-maintenance { padding-top: 6px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content { padding-top: 12px; border-top: 1px solid var(--control-edge); }
 .lr-header-options .lr-help-content header { margin: 0 0 8px; }
 .lr-header-options[popover] > .c3-forwarding-settings > summary.lr-btn.is-compact,
+.lr-header-options[popover] > .lr-header-maintenance > .lr-btn.is-compact,
 .lr-header-options[popover] > span > .lr-comic-tip-wrap > .lr-btn.is-compact,
 .lr-header-options[popover] .lr-help-content nav .lr-btn.is-compact {
   justify-content: start;

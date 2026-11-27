@@ -5,7 +5,7 @@ import ts from "typescript";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChannelConnectionReport } from "../src/client/channel/components/ChannelConnections";
-import { channelConnectionGraph, channelConnectionRows } from "../src/client/channel/components/channel-connection-data";
+import { channelConnectionGraph, channelConnectionRows, connectionMemberNames } from "../src/client/channel/components/channel-connection-data";
 import { channelConnectionPreview } from "../src/client/pages/ChannelConnectionsPreview";
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../src/client/channel/native-connection-metrics";
 import type { NativeConnectionMetrics } from "../src/client/channel/app-link";
@@ -76,6 +76,22 @@ describe("connection sampling lifetime", () => {
 });
 
 describe("channel connection presentation", () => {
+  it("distinguishes people sharing a name within each connection view", () => {
+    const { state, roomId, sessionId, topology } = channelConnectionPreview("room-links");
+    for (const user of state.users) if (user.id === "self-user" || user.id === "friend-user") user.name = "Ada";
+    const names = connectionMemberNames(state.users, ["self-user", "friend-user", "self-user"]);
+    expect(names.get("self-user")).toMatch(/^Ada #[A-Z2-9]{4}$/);
+    expect(names.get("friend-user")).toMatch(/^Ada #[A-Z2-9]{4}$/);
+    expect(names.get("self-user")).not.toBe(names.get("friend-user"));
+    expect(connectionMemberNames(state.users, ["self-user", "self-user"]).get("self-user")).toBe("Ada");
+    const graph = channelConnectionGraph(state, roomId, sessionId, topology, t);
+    for (const id of ["self", "app", "friend"]) {
+      const node = graph.nodes.find(node => node.id === id)!;
+      expect(node.label).toBe(names.get(node.identity!));
+    }
+    expect(graph.endpointGroups.find(group => group.userId === "self-user")?.name).toBe(names.get("self-user"));
+  });
+
   it("draws the actual service as forwarding infrastructure while keeping its operator's real endpoint", () => {
     const fixture = channelConnectionPreview("host-endpoints");
     fixture.topology.transitSession = "app";

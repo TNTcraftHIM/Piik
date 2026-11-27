@@ -37,6 +37,8 @@ interface MediaInput {
   metrics?: Map<string, StatsAccumulator>;
 }
 
+export class CaptureQualityRollbackError extends AggregateError {}
+
 export class ChannelMedia {
   private screenBufferTargetMs: number | null = null;
   // A null runtime records a failed acquisition for a still-admitted pair.
@@ -110,7 +112,7 @@ export class ChannelMedia {
     this.refresh();
   }
 
-  async configureLocal(id: string, profile: QualityProfile): Promise<void> {
+  async configureLocal(id: string, profile: QualityProfile, publish?: () => Promise<void>): Promise<void> {
     const local = this.local.get(id);
     if (!local?.profile) throw new Error("capture_unavailable");
     const previous = local.profile;
@@ -127,10 +129,15 @@ export class ChannelMedia {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       local.profile = profile;
       this.refresh();
+      await publish?.();
     } catch (error) {
       if (current()) {
+        local.profile = previous;
         const restored = await Promise.allSettled([applyCaptureProfile(local.stream, previous), ...senders(previous)]);
-        for (const result of restored) if (result.status === "rejected") console.warn("Channel source quality rollback failed", result.reason);
+        const failures = restored.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+        if (failures.length) throw new CaptureQualityRollbackError([error, ...failures],
+          error instanceof Error ? error.message : "operation_failed", { cause: error });
+        if (current()) this.refresh();
       }
       throw error;
     }

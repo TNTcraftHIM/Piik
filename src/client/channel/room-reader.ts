@@ -1,3 +1,4 @@
+import { memberName } from "./member-name";
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
 import { MAX_CHAT_CODE_POINTS, type ReactionId } from "../../shared/room-interactions";
 import type { ChannelCommand, ChannelMessage, ConversationReply, MessageReactionSnapshot, PublicationReactionSnapshot } from "./protocol";
@@ -89,7 +90,7 @@ export class RoomReader {
         }
         const { senderUserId, target } = event;
         interaction.receive({ type: "room-interaction", id: event.id, requestId, occurredAt: event.occurredAt,
-          sender: { peerId: senderUserId, displayName: this.options.userName(senderUserId) ?? "User", role: "viewer" },
+          sender: { peerId: senderUserId, displayName: memberName(senderUserId, this.options.userName(senderUserId)), role: "viewer" },
           payload: { kind: "reaction", reaction: event.reaction as ReactionId,
             ...(target.type === "person" ? { targetPeerId: target.userId } : {}) },
           ...(target.type === "message" ? { contentTarget: { messageSeq: target.messageSeq, messageId: target.messageId } }
@@ -117,7 +118,7 @@ export class RoomReader {
   receiveLiveMessage(message: ChannelMessage): void {
     const interaction = this.interactionSession;
     if (!interaction) return;
-    const displayName = this.options.userName(message.userId) ?? message.archivedAuthorName ?? "User";
+    const displayName = memberName(message.userId, message.archivedAuthorName ?? this.options.userName(message.userId));
     const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
     const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
     interaction.receiveConfirmedChat({

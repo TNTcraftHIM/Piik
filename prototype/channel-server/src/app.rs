@@ -519,6 +519,7 @@ pub async fn serve(
         .merge(whip::routes())
         .route("/rooms/{domain}/{user}/{room}/backup", get(backup::export))
         .route("/rooms/{domain}/{user}/backup", put(backup::restore))
+        .route("/rooms/{domain}/{user}/media/clear", post(backup::clear_media))
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
         .route("/api/client-launcher", get(launcher))
         .route(
@@ -772,7 +773,7 @@ async fn access(
         response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
             whip_methods
-                .unwrap_or(if backup { "GET, PUT, OPTIONS" } else { "GET" })
+                .unwrap_or(if backup { "GET, PUT, POST, OPTIONS" } else { "GET" })
                 .parse()
                 .unwrap(),
         );

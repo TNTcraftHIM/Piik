@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { PawnSvg } from "../../components/living/Pawn";
@@ -35,7 +36,7 @@ export function mentionQuery(text: string, start: number, end = start) {
 
 export function matchingMentionUsers<T extends ChannelUserSummary>(users: readonly T[], query: string): T[] {
   const search = query.normalize("NFC").toLowerCase();
-  return users.filter(user => user.name.normalize("NFC").toLowerCase().includes(search));
+  return users.filter(user => memberName(user.id, user.name).normalize("NFC").toLowerCase().includes(search));
 }
 
 /** The textarea retains focus and owns IME, Arrow/Enter/Escape and active-descendant. */
@@ -46,6 +47,7 @@ export function ChannelMentionSuggestions({ id, users, activeIndex, onActiveInde
   loading?: boolean; error?: boolean; hasMore?: boolean; onMore?(): void;
 }) {
   const { t } = useCopy();
+  const duplicates = duplicateMemberNames(users);
   const list = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const ownerDocument = useSurfaceDocument();
@@ -66,7 +68,7 @@ export function ChannelMentionSuggestions({ id, users, activeIndex, onActiveInde
         onPointerDown={event => event.preventDefault()} onPointerMove={() => onActiveIndex(index)}
         onClick={() => onSelect(user)}>
         <PawnSvg centered color={participantColor(user.id)} avatar={user.avatar ?? undefined} />
-        <span>{user.name}</span>
+        <span>{memberName(user.id, user.name, duplicates.has(user.name))}</span>
       </button>)}
     </div>
     {!users.length && !loading && !error && <p role="status">{t("channel.mentionSuggestions.noMatchingUsers")}</p>}

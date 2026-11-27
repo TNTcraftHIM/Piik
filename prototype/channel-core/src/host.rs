@@ -1797,6 +1797,39 @@ impl RoomHost {
         })
     }
 
+    /// Called inside the host adapter's serialized room turn.
+    pub fn media_clear_request(&self) -> HistoryRequest {
+        HistoryRequest::ClearMedia {
+            room_id: self.policy().id.clone(),
+            history_lineage: self.room.history_lineage,
+            through_seq: self.room.last_message_seq,
+        }
+    }
+
+    pub fn media_clear_replies(
+        &self,
+        through_seq: u64,
+    ) -> Vec<crate::conversation::ConversationReply> {
+        use crate::conversation::{ConversationAddress, ConversationRecord, ConversationReply};
+        let Some(authority) = &self.authority else {
+            return vec![];
+        };
+        let request_id = Uuid::new_v4().to_string();
+        self.current_readers()
+            .into_iter()
+            .map(|recipient| ConversationReply {
+                address: ConversationAddress {
+                    room_id: self.policy().id.clone(),
+                    binding_id: authority.binding_id,
+                    sender: authority.host_session_id,
+                    recipient,
+                    request_id: request_id.clone(),
+                },
+                record: ConversationRecord::RoomMediaCleared { through_seq },
+            })
+            .collect()
+    }
+
     pub fn current_readers(&self) -> Vec<Uuid> {
         self.readers_and_file_participants(&BTreeSet::new())
     }

@@ -31,6 +31,7 @@ pub struct Channel {
     pub(crate) hosting_mode: HostingMode,
     pub(crate) room_writer: Option<crate::host::ServiceEndpoint>,
     room_creation_policy: RoomCreationPolicy,
+    ask_unnamed_member_name: bool,
     restorable_rooms: BTreeMap<String, Uuid>,
     pub(crate) pending_room_deletions: BTreeMap<String, Uuid>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
@@ -197,6 +198,7 @@ impl Channel {
             hosting_mode: HostingMode::default(),
             room_writer: None,
             room_creation_policy: RoomCreationPolicy::default(),
+            ask_unnamed_member_name: false,
             restorable_rooms: BTreeMap::new(),
             pending_room_deletions: BTreeMap::new(),
             remote: BTreeMap::new(),
@@ -249,7 +251,7 @@ impl Channel {
                     .unwrap()
                     .set_profile(name, avatar)?;
             }
-            Command::UpdateDomain { name, icon } => {
+            Command::UpdateDomain { name, icon, ask_unnamed_member_name } => {
                 if user_id != self.identity.owner_id {
                     return Err("forbidden");
                 }
@@ -258,6 +260,9 @@ impl Channel {
                 }
                 if let Some(icon) = icon {
                     self.icon = icon;
+                }
+                if let Some(ask) = ask_unnamed_member_name {
+                    self.ask_unnamed_member_name = ask;
                 }
                 broadcast = true;
             }
@@ -651,6 +656,7 @@ impl Channel {
         DomainStateHeader {
             hosting_mode: self.hosting_mode,
             room_creation_policy: self.room_creation_policy,
+            ask_unnamed_member_name: self.ask_unnamed_member_name,
             restorable_rooms: self.restorable_rooms.clone(),
             pending_room_deletions: self.pending_room_deletions.clone(),
             id: self.id,
@@ -746,6 +752,7 @@ impl Channel {
         self.hosting_mode = state.header.hosting_mode;
         self.room_writer = None;
         self.room_creation_policy = state.header.room_creation_policy;
+        self.ask_unnamed_member_name = state.header.ask_unnamed_member_name;
         self.restorable_rooms = state.header.restorable_rooms;
         self.pending_room_deletions = state.header.pending_room_deletions;
         self.remote = state
@@ -2340,6 +2347,7 @@ impl Channel {
             channel: ChannelInfo {
                 hosting_mode: self.hosting_mode,
                 room_creation_policy: self.room_creation_policy,
+                ask_unnamed_member_name: self.ask_unnamed_member_name,
                 managed_room_ids: if member
                     .is_some_and(|member| member.user_id == self.identity.owner_id)
                 {
@@ -2410,6 +2418,8 @@ pub struct DomainStateHeader {
     pub(crate) hosting_mode: HostingMode,
     #[serde(default)]
     pub(crate) room_creation_policy: RoomCreationPolicy,
+    #[serde(default)]
+    pub(crate) ask_unnamed_member_name: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) restorable_rooms: BTreeMap<String, Uuid>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

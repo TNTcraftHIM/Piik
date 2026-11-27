@@ -50,7 +50,7 @@ export interface TextParticipantOptions {
   url: string;
   origin: string;
   roomId?: string;
-  name: string;
+  name?: string;
   credential?: string;
   admission?: { inviteKey?: string; password?: string };
 }
@@ -122,7 +122,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         };
         const join = () => {
           try {
-            this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: this.options.name, credential: this.credential,
+            this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: this.options.name ?? '', credential: this.credential,
               sessionId: this.sessionId, signingKey: Array.from(this.signer.signing_key()) });
           }
           catch (error) {

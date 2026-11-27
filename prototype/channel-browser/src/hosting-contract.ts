@@ -33,6 +33,7 @@ export interface HostedRoom {
   bind(bindingId: string): Promise<void>;
   dispatch(input: unknown, options?: HostDispatchOptions): Promise<unknown>;
   dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<PeerDelivery>;
+  clearMedia(bindingId: string): Promise<{ historyLineage: string; throughSeq: number; replies: ConversationReply[] }>;
   broadcastRecipients(requester: string): Promise<string[]>;
   snapshot(signal?: AbortSignal): Promise<BrowserRoomSnapshot>;
   close(): Promise<void>;

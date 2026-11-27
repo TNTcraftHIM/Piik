@@ -35,19 +35,16 @@ signed, so a change to a row breaks no signature.
    that page. Nothing else synchronises. The rule that merges a change of text
    with a change of reactions is set when editing is built; a later change of
    reactions must never hide an earlier change of text.
-5. **Search runs on the reader**, over the pages it reads. A reader holds
-   a bounded window of the pages it has fetched, so a search walks back
-   through the history with the read that already exists, matches each page
-   as it arrives and keeps the matches, shows how far back it has looked and
-   stops when the person stops it. It is a
-   literal match of the query within the text, with its treatment of case and
-   of equivalent characters stated; it does not claim to understand the words
-   of any language. The writer gains no operation, the wire and the stores no
-   field, and nothing about search is fixed by a release.
-6. **Edit is a capability** a writer announces, under the compatibility rule
+5. **Search runs at the writer**, over the retained message text. Each bounded
+   scan returns matches and its last scanned position, including when no
+   message matched. The reader shows the searched range and requests another
+   batch only while the person continues searching. Selecting a match opens
+   its context through the existing history read. Matching is literal, with
+   case and character equivalence specified when the feature is built. The
+   matching rule lives in the core; each store supplies its ordered rows.
+6. **Edit and search are capabilities** a writer announces, under the compatibility rule
    of [ADR-0017](./0017-contracts-fixed-before-release.md), so it can ship
-   after the first release. Its stored fields and events are set with the
-   feature.
+   after the first release. Their fields and events are set with the features.
 
 Settled before the stored format is first published: a supported backup must
 not drop a row's data without notice. Room backups and room copies reject history rows with
@@ -62,10 +59,7 @@ unrecognized fields before installing the archive.
 - Editing someone else's text, by anyone.
 - A copy of the history or a search index kept on a reader between visits.
   The writer is the one authority, and saved and live stay separate.
-- A search operation at the writer. A long history is searched in time
-  proportional to its length; an operation at the writer is the remedy if a
-  real room shows that to be too slow, and it can be added as a capability
-  then.
+- A search index before a measured need. It can be rebuilt from retained text.
 - Search across rooms at the channel, which keeps only basic metadata.
 - Deletion as a request that a holder may ignore. With one writer a deletion
   is a commit.
@@ -74,8 +68,9 @@ unrecognized fields before installing the archive.
 
 - The interface gains an edit action on one's own messages, an edited mark,
   and a search field in the room.
-- A search far back reads the pages between, fifty messages at a time, from
-  the device that hosts the room.
+- A search far back scans the retained text at its writer. Nonmatching
+  messages and their inline images do not travel to the reader or change its
+  current reading window.
 
 ## References
 

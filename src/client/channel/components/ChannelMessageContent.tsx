@@ -1,3 +1,4 @@
+import { memberName } from "../member-name";
 import { createElement, Fragment, useMemo, type ReactNode } from "react";
 import MarkdownIt, { type Token } from "markdown-it";
 import type { ChannelMessage, ChannelUserSummary } from "../protocol";
@@ -49,8 +50,9 @@ export function ChannelMessageContent({ message, users, selfUserId }: {
     if (index % 2 === 0) return part;
     const reference = references[Number(part)];
     if (!reference || String(Number(part)) !== part) return marker + part + (index < parts.length - 1 ? marker : "");
+    const user = users.find(user => user.id === reference.mention.userId);
     return <mark key={index} className={`c3-message-mention${reference.mention.userId === selfUserId ? " is-self" : ""}`}
-      title={users.find(user => user.id === reference.mention.userId)?.name}>{reference.text}</mark>;
+      title={user && memberName(user.id, user.name)}>{reference.text}</mark>;
   });
   function render(tokens: Token[]): ReactNode[] {
     let index = 0;

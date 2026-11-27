@@ -2,6 +2,14 @@ import { z } from "zod";
 import { roomSchema, roomSummarySchema, type RoomSummary } from "./protocol";
 import { RoomCreationInterrupted } from "./room-creation";
 
+const mediaClearResult = z.object({
+  clearedRooms: z.number().int().nonnegative(),
+  failedRooms: z.number().int().nonnegative(),
+  compactionFailures: z.number().int().nonnegative(),
+  cacheFailures: z.number().int().nonnegative(),
+});
+export type MediaClearResult = z.infer<typeof mediaClearResult>;
+
 const nativeRoomOpenReasonSchema = z.enum(["in_use", "ambiguous"]);
 export type NativeRoomOpenReason = z.infer<typeof nativeRoomOpenReasonSchema>;
 
@@ -22,6 +30,13 @@ export function roomRestoreRecovery(error: unknown): RoomRestoreRecovery | null 
 export class NativeRoomHosting {
   constructor(private readonly roomsURL: string, private readonly authorization: HeadersInit,
     private readonly descriptionURL = `${roomsURL}/hosting`) {}
+
+  async clearMedia(): Promise<MediaClearResult> {
+    const response = await fetch(`${this.roomsURL}/media/clear`, { method: "POST", headers: this.authorization });
+    const value: unknown = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(failureSchema.safeParse(value).data?.error ?? "room_host_unavailable");
+    return mediaClearResult.parse(value);
+  }
 
   async describe(signal?: AbortSignal): Promise<NativeHostingDescription> {
     return descriptionSchema.parse(await (await hostingRequest(this.descriptionURL, this.authorization, undefined, signal)).json());

@@ -388,6 +388,9 @@ pub struct ConversationRequest {
     deny_unknown_fields
 )]
 pub enum ConversationRecord {
+    RoomMediaCleared {
+        through_seq: u64,
+    },
     MessageDeleted {
         message_seq: u64,
     },
@@ -594,6 +597,9 @@ impl ConversationAddress {
                     oldest_seq,
                     before,
                 }]
+            }
+            Ok(ConversationResult::History(HistoryResult::MediaCleared { through_seq })) => {
+                vec![ConversationRecord::RoomMediaCleared { through_seq }]
             }
             Ok(ConversationResult::History(HistoryResult::Attachment { .. })) => {
                 return Err("invalid_conversation_result")

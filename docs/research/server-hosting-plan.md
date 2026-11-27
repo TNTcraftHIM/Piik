@@ -64,7 +64,7 @@ On a stable origin, the same browser profile can reuse its saved credential if t
 
 ## Sending and storing an attachment
 
-The room records text, replies, reactions and the attachment's name, type, size, digest and optional bounded thumbnail. The thumbnail is message metadata. It follows the message's access, retention, deletion and history export in both modes. Each room's existing writer persists it. The receiving device can display it with history even when the original is unavailable.
+The room records text, replies, reactions and the attachment's name, type, size, digest and optional bounded thumbnail. The thumbnail is message metadata. It follows the message's access and history export in both modes, with separate removal through [room maintenance](#room-maintenance). Each room's existing writer persists it. The receiving device can display it with history even when the original is unavailable.
 
 An original is obtained from an eligible live holder or an explicitly saved local copy. The sender announces the attachment to the room. A recipient can fetch it over peer edges or an authorized server relay's reliable file channel. Intermediates use bounded buffers until the selected ranges are delivered. The room creator's role alone assigns no relay traffic. Offering transit spends bandwidth, while durable originals remain with file holders or an external provider. The [routing proposal](./channel-forwarding-plan.md#server-transit-by-payload) owns which traffic the service admits.
 [Jami group file transfers](https://jami.net/swarm-file-transfers/)
@@ -100,6 +100,7 @@ writer to record that the share ended.
 | Forward a particular flow | A capable endpoint with an explicit relay assignment and available capacity | A service can forward the assigned traffic without acquiring a personal chat or viewing subscription. A lobby peer can assist rendezvous |
 | Delete one message | Its authenticated author, the room owner or an admitted channel owner | The writer removes it in that room, including its reactions, thumbnail and attachment references. Other people's replies remain, with the removed quotation unavailable |
 | Clear cache | The person controlling that device or an authorized manager of that room's managed storage | Release disposable copies there and unregister sources that disappear. Keep message history, its canonical thumbnails and users' saved downloads |
+| Clear hosted media | The site owner for the site host, or the member operating their own local host | Remove inline images and host-retained attachment caches for this site on the selected host. Keep rooms, members, roles, settings, chat text, attachment descriptions and independently saved files |
 | Clear room history | The room owner or an admitted channel owner | The current writer confirms the purge. Preserve room identity, settings, grants and monotonic message sequence. Readers, reconnects and future exports reflect the deletion |
 | Remove a room from the channel | Its room owner or the channel owner | The channel owner can remove any binding, including hidden, private or offline rooms, without entering them. Old invites, registrations and activity for that binding retire |
 
@@ -107,6 +108,13 @@ The room writer verifies the selected message's sequence and ID in the delete
 transaction and checks the caller's current admission and authority. A host operating
 the room's storage processes the content entrusted to it. Previously saved
 participant downloads remain under the recipient's control.
+
+Hosted-media cleanup covers active rooms and locally stored dormant rooms on
+Native hosts, and rooms bound to the current Browser page on that target.
+The writer commits the removal and sends current readers a signed room-sequence
+cutoff. Late history pages cannot restore older inline images, and messages past
+the cutoff retain theirs. The result distinguishes rooms whose history failed to
+clear from post-commit Native compaction or Browser cache removal failures.
 
 The channel owner's management view exposes only the directory information
 needed to identify and remove a room. For a hosted room, removal deletes

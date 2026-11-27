@@ -1,3 +1,4 @@
+import { memberName } from "./member-name";
 import type { Copy, CopyKey } from "../ui/copy";
 import type { GlyphName } from "../ui/icons";
 import type { ChannelMessage, ChannelPublication, ChannelRoom, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
@@ -31,8 +32,8 @@ export function firstUnreadMessageId(messages: readonly Pick<ChannelMessage, "id
   return after === undefined ? undefined : messages.find(message => message.seq > after && message.userId !== selfUserId)?.id;
 }
 
-export function messageAuthorName(message: ChannelMessage, users: readonly Pick<ChannelUser, "id" | "name">[], fallback: string): string {
-  return message.archivedAuthorName ?? users.find(user => user.id === message.userId)?.name ?? fallback;
+export function messageAuthorName(message: Pick<ChannelMessage, "userId" | "archivedAuthorName">, users: readonly Pick<ChannelUser, "id" | "name">[]): string {
+  return memberName(message.userId, message.archivedAuthorName ?? users.find(user => user.id === message.userId)?.name);
 }
 
 /** Snapshot names are current; avatars display only at their matching profile version. */

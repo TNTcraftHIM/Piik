@@ -1,6 +1,6 @@
 use super::{Action, Bounds, Held, Sink, TargetState};
 use crate::capture::{Target, TargetKind};
-use crate::windows_hotkeys::{Activation, Binding, Hotkeys};
+use crate::windows_hotkeys::Hotkeys;
 use ::windows::Win32::{
     Foundation::{CloseHandle, FILETIME, HWND, RECT},
     Graphics::{
@@ -287,44 +287,6 @@ fn key(scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
     }
 }
 
-#[derive(Default)]
-pub(super) struct StopPending(std::sync::atomic::AtomicU8);
-
-impl StopPending {
-    const ARMED: u8 = 1;
-    const PENDING: u8 = 2;
-
-    pub(super) fn arm(&self, active: bool) {
-        use std::sync::atomic::Ordering::Relaxed;
-        if active {
-            self.0.fetch_or(Self::ARMED, Relaxed);
-        } else {
-            self.0.fetch_and(!Self::ARMED, Relaxed);
-        }
-    }
-
-    pub(super) fn signal(&self, event: Activation) -> bool {
-        use std::sync::atomic::Ordering::Relaxed;
-        match event {
-            Activation::Registered(_) => {
-                self.0.fetch_or(Self::PENDING, Relaxed) & Self::PENDING == 0
-            }
-            // Admit at the key event. A subsequent release cannot cancel the pending stop.
-            Activation::StopChord => self
-                .0
-                .compare_exchange(Self::ARMED, Self::ARMED | Self::PENDING, Relaxed, Relaxed)
-                .is_ok(),
-        }
-    }
-
-    pub(super) fn take(&self) -> bool {
-        self.0
-            .fetch_and(!Self::PENDING, std::sync::atomic::Ordering::Relaxed)
-            & Self::PENDING
-            != 0
-    }
-}
-
 /// One process hotkey, independent of the number of sites and captures. The
 /// thread owns its Windows message queue/registration; the executor owns consent.
 pub(super) struct Shortcut {
@@ -332,24 +294,14 @@ pub(super) struct Shortcut {
     _hotkeys: Hotkeys,
 }
 impl Shortcut {
-    pub fn new(
-        key: u8,
-        pending: std::sync::Arc<StopPending>,
-        wake: std::sync::Arc<tokio::sync::Notify>,
-    ) -> Result<Self> {
-        let (hotkeys, [result]) = Hotkeys::register_stop(
-            Binding {
-                modifiers: MOD_CONTROL | MOD_ALT,
-                key: 0x6f + u32::from(key),
-            },
-            move |event| {
-                if pending.signal(event) {
-                    wake.notify_one();
-                }
-            },
-        )?;
+    pub fn new(key: u8, owner: std::sync::Weak<std::sync::Mutex<super::Executor>>) -> Result<Self> {
+        let (hotkeys, results) = Hotkeys::register_stop(0x6f + u32::from(key), move |_| {
+            if let Some(owner) = owner.upgrade() {
+                owner.lock().unwrap().revoke();
+            }
+        })?;
         let Some(hotkeys) = hotkeys else {
-            anyhow::bail!("input_shortcut_unavailable: {result:?}")
+            anyhow::bail!("input_shortcut_unavailable: {results:?}")
         };
         Ok(Self {
             key,

@@ -1,3 +1,4 @@
+import { CaptureQualityRollbackError } from "./media";
 import type { AppPage, ChannelApp } from "./app-link";
 import type { EncodingExecution } from "../native/wire";
 import type { CommentaryInput } from "../media/host-audio";
@@ -55,8 +56,7 @@ export interface ScreenShare {
 interface ScreenQualityEffects {
   local(id: string): object | undefined;
   app(): ChannelApp | undefined;
-  configure(id: string, profile: QualityProfile): Promise<void>;
-  publish(id: string, roomId: string, profile: QualityProfile): Promise<void>;
+  configure(id: string, profile: QualityProfile, current: () => boolean): Promise<void>;
   retire(id: string): Promise<void>;
   remember(profile: QualityProfile): void;
   begin(): (error: unknown) => void;
@@ -113,26 +113,15 @@ export class Stage {
       try {
         while (current()) {
           const next = edit.requested;
-          let restore: QualityProfile | undefined;
           try {
-            if (local) {
-              await this.quality.configure(id, next);
-              if (!current()) break;
-              restore = share.profile;
-              await this.quality.publish(id, this.roomId, next);
-            } else await app!.setCaptureQuality(id, next);
+            if (local) await this.quality.configure(id, next, current);
+            else await app!.setCaptureQuality(id, next);
           } catch (error) {
             if (!current()) break;
-            if (restore) {
-              try { await this.quality.configure(id, restore); }
-              catch (rollback) {
-                if (!current()) break;
-                const errors = [error, rollback];
-                try { await this.quality.retire(id); }
-                catch (retirement) { errors.push(retirement); }
-                throw new AggregateError(errors, error instanceof Error ? error.message : "operation_failed", { cause: error });
-              }
-              if (!current()) break;
+            if (error instanceof CaptureQualityRollbackError) {
+              try { await this.quality.retire(id); }
+              catch (retirement) { error.errors.push(retirement); }
+              throw error;
             }
             if (edit.requested !== next) continue;
             throw error;

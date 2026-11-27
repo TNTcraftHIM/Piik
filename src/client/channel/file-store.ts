@@ -155,11 +155,20 @@ export class FileStore {
   }
 
   removeMessages(roomId: string, removed: (seq: number) => boolean): Promise<void> {
-    return this.transaction<void>(["files", "receipts"], "readwrite", transaction => {
+    return this.removeRoomEntries(["files", "receipts"], roomId, removed);
+  }
+
+  clearRetained(roomId: string, throughSeq: number, current: () => boolean): Promise<void> {
+    return this.removeRoomEntries(["files"], roomId, seq => seq <= throughSeq, current);
+  }
+
+  private removeRoomEntries(tables: string[], roomId: string, removed: (seq: number) => boolean, current = () => true): Promise<void> {
+    return this.transaction<void>(tables, "readwrite", transaction => {
       const range = roomKeys(roomId);
       for (const name of transaction.objectStoreNames) {
         const request = roomIndex(transaction.objectStore(name)).openCursor(range);
         request.onsuccess = () => {
+          if (!current()) { transaction.abort(); return; }
           const cursor = request.result;
           if (!cursor) return;
           const { key } = cursor.value as StoredFile | SavedReceipt;

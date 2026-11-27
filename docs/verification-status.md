@@ -13,7 +13,9 @@ An isolated Windows runner at `0b2519be` exercised the actual WebView2 window
 lifecycle and local stop shortcut. It verified candidate retirement, window and
 browser-process exit, profile cleanup, and all four combinations of extra Shift
 and Win while stopping remote control. Held input was released and the same
-shortcut could be rebound. [Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45955148938/job/140359799475)
+shortcut could be rebound. That run covered the previous hook implementation.
+The four-registration implementation still needs a Windows runtime check of
+activation and collision cleanup. [Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45955148938/job/140359799475)
 
 The Windows x64 review builds opened WebView2, created a room and
 decoded a synthetic screen from an independent Browser on loopback. Main-window
@@ -56,7 +58,13 @@ static package checks; device behavior was not inferred from that build.
   room-copy v2 archives. Site restore retained original credentials and revoked
   the destination's old ones. Room restore kept access and replaced history
   lineage; a copy assigned fresh ownership and message IDs. Both room archives
-  retained the synthetic original file and thumbnail.
+  retained the synthetic original file and thumbnail. With the protocol-55
+  Server and independent Chrome sessions on loopback, site-host media cleanup
+  removed the old thumbnail, preserved text and attachment details, and let
+  the reader receive a new thumbnail. An unnamed guest skipped the nickname
+  prompt and kept the same label without a new prompt on return. Source review
+  confirmed App control 27 with Domain protocol 55 and the existing saved-data
+  formats.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts

@@ -95,6 +95,11 @@ pub(super) async fn export(
     backup::export(commands, room, Some(credential.user_id), credential).await
 }
 
+pub(super) async fn clear_media(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {
+    let commands = room_commands(&owner(&domain, &headers)?.1)?;
+    backup::clear_media(commands).await
+}
+
 pub(super) async fn describe(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {
     let commands = room_commands(&owner(&domain, &headers)?.1)?;
     backup::describe(commands).await

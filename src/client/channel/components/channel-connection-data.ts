@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import type { ChannelSnapshot, ChannelTopology } from "../protocol";
 import type { ChannelConnectionSample } from "../types";
 import type { ConnectionDetail } from "../../components/living/ConnectionDetails";
@@ -15,9 +16,18 @@ export function hasSelectedLocalDisplay(topology: ChannelTopology | null, sessio
   return topology?.screen?.edges.some(edge => edge.presentation && edge.selected && edge.receiver === sessionId) ?? false;
 }
 
-export function connectionSessionName(state: ChannelSnapshot, sessionId: string, t: Translate): string {
+/** A member may appear at several endpoints in the same view. */
+export function connectionMemberNames(users: ChannelSnapshot["users"], userIds: readonly string[]): Map<string, string> {
+  const ids = new Set(userIds);
+  const members = users.filter(user => ids.has(user.id));
+  const duplicates = duplicateMemberNames(members);
+  return new Map(members.map(user => [user.id, memberName(user.id, user.name, duplicates.has(user.name))]));
+}
+
+function connectionSessionName(state: ChannelSnapshot, sessionId: string, t: Translate): string {
   const session = state.sessions.find(value => value.id === sessionId);
-  return state.users.find(user => user.id === session?.userId)?.name ?? t("voice.participant");
+  const user = state.users.find(user => user.id === session?.userId);
+  return user ? memberName(user.id, user.name) : t("voice.participant");
 }
 
 export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, sessionId: string,
@@ -37,8 +47,10 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
   const sessionUsers = new Map(state.sessions.map(session => [session.id, session.userId]));
   const identity = (id: string) => sessionUsers.get(id) ?? id;
   const people = ids.filter(id => id !== topology.transitSession && sessionUsers.has(id));
-  const groups = [...new Set(people.map(identity))].map(userId => ({ userId,
-    name: state.users.find(user => user.id === userId)?.name ?? t("voice.participant"),
+  const userIds = [...new Set(people.map(identity))];
+  const names = connectionMemberNames(state.users, userIds);
+  const groups = userIds.map(userId => ({ userId,
+    name: names.get(userId) ?? t("voice.participant"),
     ids: people.filter(id => identity(id) === userId).sort(),
   }));
   const endpointKind = (id: string) => apps.has(id) ? "app" as const
@@ -55,7 +67,7 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
     const userId = sessionUsers.get(id);
     if (!userId) return { id, kind: "endpoint", you: id === sessionId,
       label: t("connection.endpoint", { number: String(index + 1) }) };
-    const name = connectionSessionName(state, id, t);
+    const name = names.get(userId) ?? t("voice.participant");
     const multiple = groups.some(group => group.userId === identity(id) && group.ids.length > 1);
     const host = id === room?.delivery?.hostSessionId && userId === room?.creatorId;
     const kind = endpointKind(id);

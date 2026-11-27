@@ -62,7 +62,7 @@ impl User {
         }
         if let Some(name) = name {
             let name = name.trim();
-            if name.is_empty() || name.encode_utf16().count() > 40 {
+            if !valid_member_name(name) {
                 return Err("invalid_name");
             }
             self.name = name.to_owned();
@@ -73,6 +73,10 @@ impl User {
         self.version = profile_version(&self.name, &self.avatar);
         Ok(true)
     }
+}
+
+pub(crate) fn valid_member_name(name: &str) -> bool {
+    name == name.trim() && name.encode_utf16().count() <= 40
 }
 
 fn profile_version(name: &str, avatar: &Option<String>) -> String {
@@ -266,7 +270,7 @@ impl Identity {
         now: u64,
     ) -> Result<Admitted, &'static str> {
         let name = input.name.trim();
-        if name.is_empty() || name.encode_utf16().count() > 40 {
+        if !valid_member_name(name) {
             return Err("invalid_name");
         }
         let existing = input
@@ -431,9 +435,7 @@ pub struct StoredUser {
 impl StoredUser {
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.id.is_nil()
-            || self.name.trim().is_empty()
-            || self.name != self.name.trim()
-            || self.name.encode_utf16().count() > 40
+            || !valid_member_name(&self.name)
             || self
                 .avatar
                 .as_deref()

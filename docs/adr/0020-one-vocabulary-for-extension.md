@@ -21,12 +21,6 @@ code they never approved, stored history cannot be undone, and each
 participant may run different extensions, so the shared rules have to stay
 fixed.
 
-Three designers worked from the requirements and this evidence without
-reading the repository, one of them asked to find where a plugin boundary
-costs more than it gives. The implementer then traced the proposal against
-the present consumers, authority, layouts and record formats. This record
-holds what survived both.
-
 ## Decision
 
 1. **One vocabulary, four places.** A *point* is a typed place of attachment
@@ -47,35 +41,32 @@ holds what survived both.
    After a release, the readers and writers already installed decide what a
    later version may add ([ADR-0017](./0017-contracts-fixed-before-release.md)).
    For a room's history:
-   - *A reader shows what it understands.* A history record is a message: an
-     author, a time, text and files. Whatever a later version adds rides on
-     that message. A reader ignores an addition it does not know, at every
-     depth of the record, and shows the text; a record without text is shown
-     as one this version cannot show. So every record is written with the
-     text a plain reader shows, including one that a newer client draws as
-     something else.
+   - *A reader shows what it understands.* A message carries its author,
+     sequence, time, text and files. Optional presentation additions belong
+     on that message. An older reader may ignore those fields and display
+     the recognized text and files, including an attachment-only message.
+     The signature covers the original payload before this projection.
+     Nested structures retain their defined shapes; they are not separate
+     extension points.
    - *The writer is strict and says what it stores.* A writer refuses a draft
-     that carries anything it does not know, with an outcome a client can
-     tell from a failed send, and the room's capabilities list what it
-     accepts. A client offers a feature in a room only when that room lists
-     it. The project's names are plain words; any other name begins with a
-     domain its author controls.
+     that carries anything it does not know at the existing signed-command
+     boundary, with a rejection correlated to that request. A new feature
+     adds its capability to the room's existing contract together with its
+     producer and consumer. No generic capability registry is needed first.
    - *A program is a participant* (decision 5). It joins and acts through
      the wire a person's client uses, so no second interface has to keep
      step with the first, and joining never comes to depend on something only
      a browser has. The tree's own text participant already reads and writes
      this way from Node.
 
-   An extension point that is not exercised stops working. Each reader is
-   tested with records and capability lists that carry unknown additions,
-   each writer with drafts that do, and editing
-   ([ADR-0019](./0019-the-life-of-a-message.md)) is the first feature to
-   arrive this way. A record has no type, envelope or version of its own: an
-   incompatible change takes a new name. Deleting a record removes its
-   additions with it, and an archive whose records carry something the
-   receiving writer does not list is refused before it is installed. A record
-   can read differently in a client that knows an addition and in one that
-   does not; its author is shown in both.
+   Tests exercise an additive message field through each actual reader,
+   preserve payload signature verification, and require unsupported drafts
+   to be rejected through the existing reply. Editing
+   ([ADR-0019](./0019-the-life-of-a-message.md)) supplies the first real
+   additional presentation field. Deleting a message removes its additions
+   with it. Archives remain strict and reject data the receiving writer
+   cannot preserve before installation. Wire and stored-format compatibility
+   remain under the existing versioning policy.
 3. **Each owner undoes its own registrations.** A lifetime owner releases its
    listeners and the leases it borrowed when it ends, as
    [ADR-0015](./0015-browser-session-lifetime-owners.md) decided. Ending one

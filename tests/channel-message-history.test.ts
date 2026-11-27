@@ -8,13 +8,14 @@ function message(seq: number, text = ""): ChannelMessage {
 
 test("history tracks live profiles for each retained page and excludes archived identities", () => {
   const quote = { seq: 1, userId: "author", text: "earlier", notify: true };
-  const row = { ...message(2), reply: quote, mentions: [{ userId: "reader", start: 0, end: 1 }] };
+  const row = { ...message(2), reply: quote, mentions: [{ userId: "mentioned", start: 0, end: 1 }] };
   const page = [row, message(3)];
   const ids = historyProfileIds(page);
-  expect(ids).toEqual(["reader", "author"]);
+  expect(ids).toEqual(["reader", "author", "mentioned"]);
   expect(historyProfileIds(page)).toBe(ids);
-  expect(historyProfileIds([{ ...row, archivedAuthorName: "Archive", reply: { ...quote, archivedAuthorName: "Archive" } }]))
-    .toEqual(["reader"]);
+  expect(historyProfileIds([{ ...row, archivedAuthorName: "Archive", reply: { ...quote, archivedAuthorName: "" } }]))
+    .toEqual([]);
+  expect(historyProfileIds([{ ...row, archivedAuthorName: "", reply: quote }])).toEqual(["author"]);
 });
 
 test("history byte limits count image data and use the replacement row when its text changes", () => {

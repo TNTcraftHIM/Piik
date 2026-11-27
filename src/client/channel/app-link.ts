@@ -594,6 +594,7 @@ export class ChannelApp {
     await this.ready;
     return this.roomHosting.describe(signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal);
   }
+  async clearHostMedia() { await this.ready; return this.roomHosting.clearMedia(); }
   async snapshotRoom(roomId: string, signal?: AbortSignal): Promise<Blob> { await this.ready; return this.roomHosting.snapshot(roomId, signal); }
   async restoreRoom(archive: Blob): Promise<RoomSummary> { await this.ready; return this.roomHosting.restore(archive); }
 

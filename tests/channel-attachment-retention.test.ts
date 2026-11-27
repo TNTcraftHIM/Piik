@@ -337,7 +337,83 @@ test("clearing one room cache withdraws its copies and ignores an older cache sn
   } finally { files.reset(); }
 });
 
-test("clearing a room retires its completed OPFS download and preserves a selected upload", async () => {
+test("a host cleanup invalidates older reads and restores only through its confirmed sequence", async () => {
+  const files = setup(), lineage = crypto.randomUUID(), scope = { domainId: "domain", userId: "self" };
+  const room = { id: key.roomId, authorized: true, available: true, historyLineage: lineage } as ChannelRoom;
+  files.update("endpoint", scope, [], [room], []);
+  const file = new File(["GIF89a"], attachment.name);
+  const rows = [1, 2, 3].map(messageSeq => ({ key: { ...key, messageSeq }, attachment, file }));
+  let finishSnapshot!: (value: typeof rows) => void;
+  const snapshot = new Promise<typeof rows>(resolve => { finishSnapshot = resolve; });
+  let finishRetention!: (value: { file: File; evicted: [] }) => void;
+  const retention = new Promise<{ file: File; evicted: [] }>(resolve => { finishRetention = resolve; });
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockReturnValueOnce(retention)
+    .mockResolvedValue({ file, evicted: [] });
+  const clear = vi.spyOn(FileStore.prototype, "clearRetained").mockResolvedValue();
+  try {
+    vi.mocked(FileStore.prototype.list).mockReturnValueOnce(snapshot);
+    const inventory = files.retained(key.roomId);
+    const restore = files.restoreRetained(key.roomId, rows);
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
+    await expect(files.clearRetainedFor(key.roomId, "stale", 2)).rejects.toThrow("room_unavailable");
+    expect(clear).not.toHaveBeenCalled();
+    await files.clearRetainedFor(key.roomId, lineage, 2);
+    expect(retain.mock.calls[0][2]?.()).toBe(false);
+    finishSnapshot(rows);
+    await expect(inventory).resolves.toEqual([rows[2]]);
+    finishRetention({ file, evicted: [] });
+    await expect(restore).resolves.toBe(false);
+    expect(retain.mock.calls.map(([row]) => row.key.messageSeq)).toEqual([1, 3]);
+    await expect(files.retained(key.roomId)).resolves.toEqual([rows[2]]);
+  } finally { files.reset(); }
+});
+
+test("an old session cleanup failure cannot release the replacement session pending cache guard", async () => {
+  const files = setup(), lineage = crypto.randomUUID(), scope = { domainId: "domain", userId: "self" };
+  const rooms = [{ id: key.roomId, available: true, authorized: true, historyLineage: lineage }] as ChannelRoom[];
+  let failFirst!: (error: Error) => void, finishSecond!: () => void;
+  const first = new Promise<void>((_resolve, reject) => { failFirst = reject; });
+  const second = new Promise<void>(resolve => { finishSecond = resolve; });
+  vi.spyOn(FileStore.prototype, "clearRetained").mockReturnValueOnce(first).mockReturnValueOnce(second);
+  const entry = { key, attachment, file: new File(["GIF89a"], attachment.name) };
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file: entry.file, evicted: [] });
+  try {
+    files.update("endpoint", scope, [], rooms, []);
+    const retired = files.clearRetainedFor(key.roomId, lineage, 1);
+    files.update("replacement", scope, [], rooms, []);
+    const current = files.clearRetainedFor(key.roomId, lineage, 1);
+    failFirst(new Error("store closed"));
+    await expect(retired).rejects.toThrow("store closed");
+    expect(await files.restoreRetained(key.roomId, [entry])).toBe(false);
+    expect(retain).not.toHaveBeenCalled();
+    finishSecond();
+    await current;
+    expect(await files.restoreRetained(key.roomId, [entry])).toBe(true);
+  } finally { files.reset(); }
+});
+
+test("host cleanup switches a cached upload to the selected file and permits a later explicit restore", async () => {
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const lineage = crypto.randomUUID(), scope = { domainId: "domain", userId: "self" };
+  const original = new File(["GIF89a"], attachment.name), copy = new File([original], original.name);
+  const signal = new AbortController().signal;
+  vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file: copy, evicted: [] });
+  vi.spyOn(FileStore.prototype, "clearRetained").mockResolvedValue();
+  try {
+    files.update("endpoint", scope, [], [{ id: key.roomId, available: true, authorized: true, historyLineage: lineage }] as ChannelRoom[], []);
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: original }]);
+    await vi.waitFor(async () => expect(await files.content(key, attachment, signal)).toBe(copy));
+    await files.clearRetainedFor(key.roomId, lineage, key.messageSeq);
+    expect(command).not.toHaveBeenCalledWith(expect.objectContaining({ type: "file_offer", available: false }));
+    expect(await files.content(key, attachment, signal)).toBe(original);
+    expect(await files.restoreRetained(key.roomId, [{ key, attachment, file: copy }])).toBe(true);
+    expect(await files.content(key, attachment, signal)).toBe(copy);
+    await files.clearRetainedFor(key.roomId, lineage, key.messageSeq);
+    expect(files.originalAvailability(key, attachment, false)).toBeUndefined();
+  } finally { files.reset(); }
+});
+
+test.each(["local", "host"] as const)("clearing the %s cache retires its completed OPFS download and preserves a selected upload", async kind => {
   const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
   const file = new File(["GIF89a"], attachment.name), signal = new AbortController().signal;
   const upload = new File(["GIF89a"], attachment.name);
@@ -363,7 +439,16 @@ test("clearing a room retires its completed OPFS download and preserves a select
     files.data("source", "control", "verified");
     expect(await downloaded).toBe(file);
     expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: true });
-    await files.clearLocalCache(key.roomId);
+    if (kind === "host") {
+      const lineage = crypto.randomUUID();
+      files.update("endpoint", { domainId: "domain", userId: "self" }, [],
+        [{ id: key.roomId, available: true, authorized: true, historyLineage: lineage }] as ChannelRoom[], []);
+      vi.spyOn(FileStore.prototype, "clearRetained").mockResolvedValue();
+      removeEntry.mockRejectedValueOnce(new Error("busy"));
+      await expect(files.clearRetainedFor(key.roomId, lineage, selected.messageSeq)).rejects.toThrow("busy");
+      removeEntry.mockClear();
+      await files.clearRetainedFor(key.roomId, lineage, selected.messageSeq);
+    } else await files.clearLocalCache(key.roomId);
     expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: false });
     expect(removeEntry).toHaveBeenCalledExactlyOnceWith(getFileHandle.mock.calls[0][0]);
     expect(files.originalAvailability(key, attachment, false)).toBeUndefined();

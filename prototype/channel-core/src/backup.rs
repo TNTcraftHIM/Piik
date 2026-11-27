@@ -65,16 +65,12 @@ impl RoomCopyMetadata {
         }) || self
             .authors
             .iter()
-            .any(|(id, name)| id.is_nil() || !valid_author_name(name))
+            .any(|(id, name)| id.is_nil() || !crate::identity::valid_member_name(name))
         {
             return Err("invalid_room_copy");
         }
         validate_files(&self.retained_files)
     }
-}
-
-fn valid_author_name(name: &str) -> bool {
-    !name.trim().is_empty() && name == name.trim() && name.encode_utf16().count() <= 40
 }
 
 /// Durable domain checkpoint, independent of the portable archive's version.
@@ -487,12 +483,12 @@ impl LiveHistoryRow {
                     || reply
                         .archived_author_name
                         .as_deref()
-                        .is_some_and(|name| !valid_author_name(name))
+                        .is_some_and(|name| !crate::identity::valid_member_name(name))
             })
             || message
                 .archived_author_name
                 .as_deref()
-                .is_some_and(|name| !valid_author_name(name))
+                .is_some_and(|name| !crate::identity::valid_member_name(name))
             || self
                 .message
                 .reactions

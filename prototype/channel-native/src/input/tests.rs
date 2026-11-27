@@ -1274,61 +1274,6 @@ fn carrier_release_preserves_replay_counter_and_allows_fresh_consent() {
 
 #[cfg(target_os = "windows")]
 #[tokio::test]
-async fn windows_stop_pending_respects_consent_and_releases_held_input() {
-    use crate::windows_hotkeys::Activation;
-    let (d, recording) = desktop();
-    let (s, mut replies, view) = source(&d);
-    s.set_mode(Mode::Room).unwrap();
-    let pending = d.0.lock().unwrap().stop_pending.clone();
-    pending.signal(Activation::StopChord);
-    assert!(!pending.take());
-    let mut c = Client::new(&s);
-    c.send(&s, json!({"type":"request","intent":Uuid::new_v4()}));
-    let grant = c.state(&mut replies)["grant"].clone();
-    c.send(&s, json!({"type":"key","grant":grant,"code":"ShiftLeft","down":true}));
-    pending.signal(Activation::StopChord);
-    d.tick_when_needed(&mut None).await;
-    assert_eq!(view.borrow().mode, Mode::Ask);
-    assert_eq!(recording.lock().unwrap().events.len(), 2);
-    pending.signal(Activation::Registered(0));
-    pending.signal(Activation::StopChord);
-    assert!(pending.take());
-}
-
-#[cfg(target_os = "windows")]
-#[tokio::test]
-async fn windows_stop_ordering_active_chord_survives_release() {
-    use crate::windows_hotkeys::Activation;
-    let (desktop, _) = desktop();
-    let (source, mut replies, view) = source(&desktop);
-    source.set_mode(Mode::Room).unwrap();
-    let mut client = Client::new(&source);
-    client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
-    assert_eq!(client.state(&mut replies)["state"], "active");
-    desktop.0.lock().unwrap().stop_pending.signal(Activation::StopChord);
-    source.release(client.id, client.flow).unwrap();
-    desktop.tick_when_needed(&mut None).await;
-    assert_eq!(view.borrow().mode, Mode::Ask);
-}
-
-#[cfg(target_os = "windows")]
-#[tokio::test]
-async fn windows_stop_ordering_idle_chord_preserves_later_grant() {
-    use crate::windows_hotkeys::Activation;
-    let (desktop, _) = desktop();
-    let (source, mut replies, view) = source(&desktop);
-    source.set_mode(Mode::Room).unwrap();
-    desktop.0.lock().unwrap().stop_pending.signal(Activation::StopChord);
-    let mut client = Client::new(&source);
-    client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
-    assert_eq!(client.state(&mut replies)["state"], "active");
-    desktop.tick_when_needed(&mut None).await;
-    assert_eq!(view.borrow().mode, Mode::Room);
-    assert!(desktop.0.lock().unwrap().owner.is_some());
-}
-
-#[cfg(target_os = "windows")]
-#[tokio::test]
 #[ignore = "scoped Windows hotkey registration; posts only to its own queue, never types desktop input"]
 async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
     let (d, _) = desktop();
@@ -1344,12 +1289,6 @@ async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
     assert_eq!(view.borrow().stop_shortcut, Some(key));
     d.set_shortcut(key).unwrap();
     d.1.lock().unwrap().as_ref().unwrap().notify_test().unwrap();
-    tokio::time::timeout(Duration::from_secs(2), async {
-        let mut timer = None;
-        while d.0.lock().unwrap().owner.is_some() {
-            d.tick_when_needed(&mut timer).await;
-        }
-    }).await.unwrap();
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             if view.borrow().mode == Mode::Ask && view.borrow().requests.is_empty() {
@@ -1414,7 +1353,7 @@ async fn windows_stop_shortcut_on_isolated_desktop() -> Result<()> {
                 .ok_or_else(|| anyhow!("no available Windows fixture shortcut"))?,
         };
         selected = Some(key);
-        let (source, mut replies, view) = source(&desktop);
+        let (source, mut replies, mut view) = source(&desktop);
         source.set_mode(Mode::Room)?;
         let mut client = Client::new(&source);
         client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
@@ -1428,10 +1367,7 @@ async fn windows_stop_shortcut_on_isolated_desktop() -> Result<()> {
         chord.press("AltLeft")?;
         chord.press(&format!("F{key}"))?;
         tokio::time::timeout(Duration::from_secs(5), async {
-            let mut timer = None;
-            while desktop.0.lock().unwrap().owner.is_some() {
-                desktop.tick_when_needed(&mut timer).await;
-            }
+            drop(view.wait_for(|state| state.mode == Mode::Ask).await.unwrap());
         }).await.map_err(|_| anyhow!("stop timed out with Shift={shift}, Win={win}"))?;
         chord.release()?;
         assert_eq!(view.borrow().mode, Mode::Ask);

@@ -673,7 +673,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                 voice_bitrate: host.policy().voice_bitrate,
                 relay_capacity: host.policy().relay_capacity,
             }),
-            authors: BTreeMap::from([(owner, "Original owner".into())]),
+            authors: BTreeMap::from([(owner, String::new())]),
             retained_files: vec![RetainedFile {
                 message_seq: 1,
                 attachment: rows[0].message.message.attachments[0].clone(),
@@ -725,13 +725,13 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                 .unwrap()
                 .archived_author_name
                 .as_deref(),
-            Some("Original owner")
+            Some("")
         );
         for (original, copy) in rows.iter().zip(&copied) {
             assert_eq!(copy.message.message.user_id, archived);
             assert_eq!(
                 copy.message.message.archived_author_name.as_deref(),
-                Some("Original owner")
+                Some("")
             );
             assert_ne!(copy.message.message.id, original.message.message.id);
             assert_ne!(copy.nonce, original.nonce);
@@ -759,7 +759,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         );
         assert_eq!(
             copied_again.message.message.archived_author_name.as_deref(),
-            Some("Original owner")
+            Some("")
         );
         assert_ne!(copied_again.message.message.user_id, archived);
         let mut malformed = copied[0].clone();

@@ -10,7 +10,7 @@ import { Glyph } from "../../ui/icons";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { useCopy } from "../../ui/copy";
-import { channelConnectionGraph, channelConnectionRows, connectionSessionName, hasSelectedLocalDisplay } from "./channel-connection-data";
+import { channelConnectionGraph, channelConnectionRows, connectionMemberNames, hasSelectedLocalDisplay } from "./channel-connection-data";
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../native-connection-metrics";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import "./channel-connections.css";
@@ -61,6 +61,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
   const state = channel.state, sessionId = channel.sessionId;
   const room = state?.channel.rooms.find(room => room.id === roomId);
   const screens = state?.publications.filter(publication => publication.roomId === roomId && publication.kind === "screen") ?? [];
+  const screenNames = connectionMemberNames(state?.users ?? [], screens.map(screen => screen.userId));
   const initial = screens.find(screen => channel.screenInputs.has(screen.id)) ?? screens.find(screen => channel.ownedScreens.has(screen.id)) ?? screens[0];
   const selected = publication === undefined ? initial?.id ?? "" : screens.some(screen => screen.id === publication) ? publication : "";
   const scope = JSON.stringify([state?.channel.id, channel.self?.id, sessionId, roomId, room?.delivery?.bindingId,
@@ -110,7 +111,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
       <select className="lr-select" aria-label={t("connection.scope")} value={selected} onChange={event => setPublication(event.target.value)}>
         <option value="">{t("connection.room")}</option>
         {screens.map(screen => <option key={screen.id} value={screen.id}>
-          {state && connectionSessionName(state, screen.sessionId, t)}
+          {screenNames.get(screen.userId) ?? t("voice.participant")}
         </option>)}
       </select>
     </label>

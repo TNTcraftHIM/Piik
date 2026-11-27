@@ -678,12 +678,13 @@ from its page. Windows also supplies a local Ctrl+Alt+F10 stop shortcut by defau
 macOS uses Control+Option+F10. The Host can change the function key in the control
 panel; the current Site's Browser storage owns this preference and reapplies it
 before enabling control. App keeps only the running binding, with no shortcut
-configuration file. Configuration probes availability;
-registration lasts only while at least one native session enables control,
-never merely because App is running. An occupied key fails that operation
-without disabling capture or the input backend. Replacing
-the shortcut retains the old binding until registration succeeds; only a
-successful change is saved in the Browser. Each Site has its own preference.
+configuration file. Configuration probes availability. Windows registers four
+variants of the selected Ctrl+Alt+function key, covering Shift, Win, both and
+neither. All four must register. A conflict releases the acquired variants and
+uses the existing shortcut-unavailable feedback. Capture and the input backend
+remain available. The binding lasts while at least one Native session enables
+control. A replacement acquires the new binding before releasing the previous
+one. The Browser saves successful changes per site.
 Viewers independently choose their page-local exit shortcut in the remote
 keyboard; it also works in a detached keyboard window and saves in that Browser.
 Both selectors offer F1–F11 with fixed Ctrl+Alt/Option modifiers;
@@ -760,11 +761,8 @@ on the local OS delivering that combination to the page. Physical system-key
 capture remains subject to the local OS and Browser; even the
 [Keyboard Lock API](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)
 only receives keys the OS permits. Browser keyboard forwarding uses those APIs;
-the protected Ctrl+Alt+Delete sequence is not simulated. The 3.0 Windows stop
-binding additionally observes its configured function key and Ctrl/Alt state,
-so held Shift or Win cannot suppress a local stop. It keeps no input history
-and follows the registered shortcut's lifetime. Closing the keyboard returns
-focus to the control surface.
+the protected Ctrl+Alt+Delete sequence is not simulated. Closing the keyboard
+returns focus to the control surface.
 The multiline text field owns IME composition and preserves a pasted draft;
 Enter edits that draft and the explicit button submits it. One submission is
 bounded to 2 KiB of UTF-8 so it fits the existing input queue without a bulk

@@ -76,6 +76,11 @@ pub struct Storage {
     connection: Connection,
 }
 impl Storage {
+    pub(crate) fn reclaim_space(&mut self) -> StoreResult<()> {
+        self.connection.execute_batch("VACUUM")?;
+        Ok(())
+    }
+
     pub(crate) fn last_message_seq(&self, room: &str) -> StoreResult<u64> {
         self.connection
             .query_row(LAST_SEQ, [room], |row| row.get(0))
@@ -396,6 +401,7 @@ impl Storage {
             | HistoryRequest::Attachment { .. }
             | HistoryRequest::Seek { .. } => TransactionBehavior::Deferred,
             HistoryRequest::Send { .. }
+            | HistoryRequest::ClearMedia { .. }
             | HistoryRequest::React { .. }
             | HistoryRequest::DeleteMessage { .. }
             | HistoryRequest::ClearHistory { .. } => TransactionBehavior::Immediate,
@@ -405,6 +411,29 @@ impl Storage {
             .transaction_with_behavior(behavior)
             .map_err(|_| "storage_failed")?;
         let result = match request {
+            HistoryRequest::ClearMedia {
+                room_id,
+                history_lineage,
+                through_seq,
+            } => {
+                let current: bool = transaction
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM checkpoint WHERE id=1 AND history_lineage=?1)",
+                        [history_lineage.to_string()],
+                        |row| row.get(0),
+                    )
+                    .map_err(|_| "storage_failed")?;
+                if !current {
+                    return Err("stale_room_host");
+                }
+                transaction.execute(
+                    "UPDATE message SET inline_images='{}' WHERE room_id=?1 AND seq<=?2 AND inline_images!='{}'",
+                    params![room_id, through_seq],
+                ).map_err(|_| "storage_failed")?;
+                HistoryResult::MediaCleared {
+                    through_seq: *through_seq,
+                }
+            }
             HistoryRequest::DeleteMessage {
                 room_id,
                 message_seq,
@@ -1046,6 +1075,66 @@ mod tests {
         assert_eq!(messages[0].inline_images, draft.inline_images);
         assert!(more);
         assert_eq!(page(&mut store, "images", Some(8)).0.last().unwrap().seq, 7);
+    }
+
+    #[test]
+    fn media_clear_preserves_messages_retries_and_newer_images() {
+        use base64ct::{Base64, Encoding};
+        let path = std::env::temp_dir().join(format!("piik-reclaim-{}.sqlite", Uuid::new_v4()));
+        let mut store = Storage::open(&path).unwrap();
+        let lineage = Uuid::new_v4();
+        let author = Uuid::new_v4();
+        let policy = crate::RoomState::new(
+            "room".into(), "Images".into(), Default::default(), author,
+            crate::wire::RoomAccess::Public, false, None,
+        ).unwrap();
+        store.create_room(&policy, lineage).unwrap();
+        let file = crate::AttachmentDescriptor {
+            name: "sample.gif".into(), media_type: "image/gif".into(),
+            ..attachment()
+        };
+        let mut bytes = vec![0; 64 * 1024];
+        bytes[..6].copy_from_slice(b"GIF89a");
+        let mut draft = MessageDraft::new(
+            author, "first".into(), "keep this".into(), vec![file.clone()],
+            std::collections::BTreeMap::from([(file.id, crate::attachment::ImageRendition {
+                data: Base64::encode_string(&bytes), media_type: "image/gif".into(),
+                original: false, width: 1, height: 1,
+            })]), vec![], None, 1,
+        ).unwrap();
+        let (first, _) = confirmed(&mut store, "room", &draft);
+        draft.nonce = "newer".into();
+        let (newer, _) = confirmed(&mut store, "room", &draft);
+        let before = std::fs::metadata(&path).unwrap().len();
+        let clear = |history_lineage| HistoryRequest::ClearMedia {
+            room_id: "room".into(), history_lineage, through_seq: first.seq,
+        };
+        assert!(matches!(store.history(&clear(Uuid::new_v4())), Err("stale_room_host")));
+        assert_eq!(page(&mut store, "room", None).0[0].inline_images, first.inline_images);
+        for _ in 0..2 {
+            assert!(matches!(store.history(&clear(lineage)), Ok(HistoryResult::MediaCleared { through_seq: 1 })));
+        }
+        // A compaction failure follows the committed clear. Retry only the compaction.
+        store.connection.execute_batch("PRAGMA query_only=ON").unwrap();
+        assert!(store.reclaim_space().is_err());
+        assert!(page(&mut store, "room", None).0[0].inline_images.is_empty());
+        store.connection.execute_batch("PRAGMA query_only=OFF").unwrap();
+        let cleared = std::fs::metadata(&path).unwrap().len();
+        store.reclaim_space().unwrap();
+        let compacted = std::fs::metadata(&path).unwrap().len();
+        assert!(compacted < cleared && compacted < before);
+        let messages = page(&mut store, "room", None).0;
+        let mut expected = first;
+        expected.inline_images.clear();
+        assert_eq!(serde_json::to_value(&messages).unwrap(), serde_json::json!([expected, newer]));
+        draft.nonce = "first".into();
+        let (retried, inserted) = confirmed(&mut store, "room", &draft);
+        assert!(!inserted);
+        assert!(retried.inline_images.is_empty());
+        assert_eq!(retried.id, expected.id);
+        assert_eq!(store.load().unwrap().unwrap(), serde_json::to_value(policy).unwrap());
+        drop(store);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

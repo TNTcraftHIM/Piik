@@ -20,6 +20,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const id = useId();
   const [nameDraft, setName] = useState<string>();
   const [iconDraft, setIcon] = useState<string>();
+  const [askNameDraft, setAskName] = useState<boolean>();
   const name = nameDraft ?? current?.name ?? "";
   const icon = iconDraft ?? current?.icon ?? "couch";
   const [open, setOpen] = useState(false), [imageBusy, setImageBusy] = useState(false);
@@ -34,6 +35,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const resetSiteDraft = () => {
     setName(undefined);
     setIcon(undefined);
+    setAskName(undefined);
   };
   const resetDraft = () => {
     resetSiteDraft();
@@ -45,8 +47,10 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const trimmedName = nameDraft?.trim();
   const changedName = trimmedName === current?.name ? undefined : trimmedName;
   const changedIcon = iconDraft === current?.icon ? undefined : iconDraft;
+  const askName = askNameDraft ?? current?.askUnnamedMemberName ?? false;
+  const changedAskName = askNameDraft === current?.askUnnamedMemberName ? undefined : askNameDraft;
   const canSaveSite = !disabled && !imageBusy && !!name.trim() &&
-    (changedName !== undefined || changedIcon !== undefined);
+    (changedName !== undefined || changedIcon !== undefined || changedAskName !== undefined);
   const canSaveRooms = !disabled && policyChanged;
   const close = () => { setOpen(false); setPolicyDraft(null); };
   const tasks = [
@@ -72,10 +76,14 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               event.preventDefault();
               if (!canSaveSite) return;
               setSubmittedForm("site");
-              void runSiteSave(() => channel.updateDomain({ name: changedName, icon: changedIcon }, false), resetSiteDraft);
+              void runSiteSave(() => channel.updateDomain({ name: changedName, icon: changedIcon, askUnnamedMemberName: changedAskName }, false), resetSiteDraft);
             }}>
               <ChannelIdentityFields name={name} icon={icon} label={t("channel.siteSettings.siteName")} disabled={disabled}
                 onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
+              <div><label className="c3-check">
+                <input type="checkbox" checked={askName} onChange={event => setAskName(event.target.checked)} disabled={disabled} />
+                {t("channel.siteSettings.askUnnamedMemberName")}
+              </label></div>
               <div className="c3-form-actions">
                 <ChannelAction icon="x" quiet label={t("channel.siteSettings.cancel")} onClick={close} />
                 <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy && submittedForm === "site"} disabled={!canSaveSite} />

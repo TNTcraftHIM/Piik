@@ -93,21 +93,25 @@ export class ChannelConversation {
         this.options.projection?.(address.roomId, output);
       }
     });
-    const { signer } = await this.ready();
-    const isCurrent = (reply: ConversationReply) => {
-      const current = this.options.context();
-      return this.options.host(reply.roomId) === host && current.connected && current.sessionId === sessionId
-        && current.state?.channel.rooms.find(room => room.id === reply.roomId)?.delivery?.bindingId === reply.bindingId;
-    };
-    const send = async (reply: ConversationReply) => {
-      if (!isCurrent(reply)) return;
-      this.options.send(JSON.parse(signer.sign(sessionId, JSON.stringify(reply))), reply.requestId);
-    };
-    await Promise.allSettled(replies.map(send));
-    if (broadcast && isCurrent(broadcast)) {
+    await this.sendHostReplies(host, replies);
+    if (broadcast && this.currentWriter(host, broadcast)) {
       const recipients = await host.broadcastRecipients(broadcast.recipient);
-      await Promise.allSettled(recipients.map(recipient => send({ ...broadcast, recipient })));
+      await this.sendHostReplies(host, recipients.map(recipient => ({ ...broadcast, recipient })));
     }
+  }
+
+  private currentWriter(host: HostedRoom, reply: ConversationReply): boolean {
+    const current = this.options.context();
+    return this.options.host(reply.roomId) === host && current.connected && current.sessionId === reply.sender
+      && current.state?.channel.rooms.find(room => room.id === reply.roomId)?.delivery?.bindingId === reply.bindingId;
+  }
+
+  async sendHostReplies(host: HostedRoom, replies: ConversationReply[]): Promise<void> {
+    const { signer } = await this.ready();
+    await Promise.allSettled(replies.map(async reply => {
+      if (this.currentWriter(host, reply))
+        this.options.send(JSON.parse(signer.sign(reply.sender, JSON.stringify(reply))), reply.requestId);
+    }));
   }
 
   close(): void {

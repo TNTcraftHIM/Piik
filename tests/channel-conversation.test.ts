@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 afterEach(() => vi.restoreAllMocks());
 
 function conversationState(host: string, sender: string, binding: string, domain: string): ChannelSnapshot {
-  return { channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, roomCreationPolicy: "ordinary", hostingMode: "lightweight", managedRoomIds: [], historyWindow: 100, userCount: 2,
+  return { channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", managedRoomIds: [], historyWindow: 100, userCount: 2,
     rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: host, access: "public", hidden: false, hasPassword: false,
       voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,

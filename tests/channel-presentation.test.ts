@@ -1,3 +1,5 @@
+import { memberName } from "../src/client/channel/member-name";
+import { historyProfileIds } from "../src/client/channel/message-history";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -6,7 +8,7 @@ import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
 import { ChannelActivityIndicators } from "../src/client/channel/components/ChannelUser";
 import type { ChannelController } from "../src/client/channel/types";
 import { firstUnreadMessageId, messageDateFormats, roomActivityPeople, roomPeople, roomSessionViewing, screenTitle, watchAudience } from "../src/client/channel/presentation";
-import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
+import { messageSchema, snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { say, t, type CopyKey } from "../src/client/ui/copy";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import type { WatchMedia } from "../src/client/channel/watch-media";
@@ -29,7 +31,7 @@ it("projects joined watch people independently of transport and deduplicates the
   const activity = watchActivitySchema.parse({ id: "watch", roomId: "room", sessionId: "owner-page", userId: "owner",
     source: { kind: "website", url: "https://video.test/watch" }, playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 },
     viewerSessionIds: ["owner-app", "viewer-web", "viewer-app", "direct-web", "retired"] });
-  const state = snapshotSchema.parse({ channel: { id: "site", name: "Site", icon: "couch", ownerId: "owner", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 4, managedRoomIds: [], rooms: [{
+  const state = snapshotSchema.parse({ channel: { id: "site", name: "Site", icon: "couch", ownerId: "owner", roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", historyWindow: 1000, userCount: 4, managedRoomIds: [], rooms: [{
     id: "room", name: "Room", icon: "couch", creatorId: "owner", access: "public", hidden: false, hasPassword: false,
     authorized: true, canManage: true, available: true, reading: true, participantSessionIds: sessions.map(([id]) => id),
     lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
@@ -130,7 +132,7 @@ describe("screen titles", () => {
 
 it("shows each person's room activity across endpoints and keeps chat presence independent", () => {
   const state = snapshotSchema.parse({
-    channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 3, managedRoomIds: [], rooms: [{
+    channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", historyWindow: 1000, userCount: 3, managedRoomIds: [], rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: "self", access: "public", hidden: false,
       hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
       participantSessionIds: ["self-page", "self-helper", "chat-page"], lastMessageSeq: 0,
@@ -226,4 +228,15 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   state.publications = [];
   state.voice = [];
   expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["chat"]);
+});
+
+it("distinguishes unnamed members, chosen names and missing profiles", () => {
+  const first = "d1291eea-8073-41ff-90fa-81a7c50f0cf4", second = "04b8f197-b6c6-44a2-aa18-8ec594ea32d1";
+  expect(memberName(first, "")).toMatch(/ #[2-9A-HJ-NP-Z]{4}$/);
+  expect(memberName(first, "")).not.toBe(memberName(second, ""));
+  expect(memberName(first, "Guest")).toBe("Guest");
+  expect(memberName(first, undefined)).toBe(say("conversation.user"));
+  const row = messageSchema.parse({ id: "copy", seq: 2, time: 10, text: "reply", attachments: [], userId: first, archivedAuthorName: "",
+    reply: { seq: 1, userId: second, text: "original", archivedAuthorName: "", notify: false } });
+  expect(historyProfileIds([row])).toEqual([]);
 });

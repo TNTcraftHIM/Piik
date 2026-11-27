@@ -1,3 +1,4 @@
+import { memberName, duplicateMemberNames } from "../member-name";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Btn } from "../../components/living/primitives";
@@ -54,6 +55,7 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
   const roomName = nameOfRoom(roomId);
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > SPEAKING_LEVEL) : [];
+  const duplicates = duplicateMemberNames(speaking);
   const overlayTools = overlay && activity && <>
     <Btn icon={overlay.mode === "editing" ? "check" : "pip"} size="compact" quiet textTooltip
       title={overlay.mode === "panel" ? { text: t("channel.voiceDock.openRoomOverlay", { name: roomName }) } : overlay.mode === "editing" ? "channel.voiceDock.pinOverlay" : "channel.voiceDock.adjustOverlay"}
@@ -78,7 +80,7 @@ export function ChannelVoiceDock(props: VoiceDockProps) {
           {speaking.slice(0, 4).map(user => <div key={user.id}>
             <PawnSvg centered color={participantColor(user.id)} identity={user.id}
               avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances?.get(user.id)} />
-            <span title={user.name}>{user.name}</span>
+            <span>{memberName(user.id, user.name, duplicates.has(user.name))}</span>
           </div>)}
         </div>
         <div className="c3-speaking-overlay-chat">

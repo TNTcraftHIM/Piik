@@ -67,6 +67,7 @@ export function useChannel(): ChannelController {
     deleteMessage: session.deleteMessage, purgeRoomHistory: session.purgeRoomHistory,
     clearLocalRoomCache: session.clearLocalRoomCache,
     roomTopology: session.roomTopology, connectionMetrics: session.connectionMetrics, appConnectionMetrics: session.appConnectionMetrics,
+    hostMediaTargets: session.hostMediaTargets, clearHostMedia: session.clearHostMedia,
     exportDomainBackup: session.exportDomainBackup, restoreDomainBackup: session.restoreDomainBackup,
     createRoom: session.createRoom, updateRoom: session.updateRoom, deleteRoom: session.deleteRoom, enterRoom: session.enterRoom,
     setRoomVoiceBitrate: session.setRoomVoiceBitrate,

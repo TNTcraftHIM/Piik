@@ -367,6 +367,7 @@ pub(super) mod tests {
             channel: ChannelInfo {
                 hosting_mode: Default::default(),
                 room_creation_policy: Default::default(),
+                ask_unnamed_member_name: false,
                 managed_room_ids: vec![],
                 user_count: 0,
                 history_window: 100,

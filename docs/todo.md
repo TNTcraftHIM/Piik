@@ -16,10 +16,6 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Manual host cleanup.** Clear the selected host's retained files and
-  image renditions while preserving text, rooms, every member, roles and settings.
-  Verify post-commit reader refresh, disk reclamation and scoped cache deletion,
-  including delayed pages, selected original files and saved-download receipts.
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
   operation feedback and the remaining capture, embed
@@ -232,14 +228,6 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Unnamed members and first-visit naming.** Set one representation for an
-  unnamed member across admission, profiles, stored records and copied authors.
-  Reuse the profile editor for the optional site prompt and one localized display
-  helper for guest labels and member tags. Distinguish copied authors from live
-  members and preserve deliberate names. The optional prompt follows the unnamed
-  member and remembers dismissal for that member; it needs no first-join wire flag.
-  Set the matched-version contract before changing the private formats.
-
 - [ ] **Concurrent App invitation entries.** Let local and public entries reach
   the same running authority. Define their startup, advertised addresses and
   stop behavior through the existing launcher and listener owners before
@@ -258,17 +246,17 @@ the feedback period; they do not delay that delivery.
   current operation ownership. Calibrate on independent networks before tuning
   candidate budgets or measured-benefit policy.
 - [ ] **The life of a message.** Decide
-  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, search on
-  the reader over the pages it reads, quote behavior and the merge rule for
+  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
+  text search, quote behavior and the merge rule for
   text and reaction changes. Set stored fields and capabilities with their
   consumers. Before publication, verify that supported archive round trips
   preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
   [ADR-0020](./adr/0020-one-vocabulary-for-extension.md). Before the first
-  release: a reader ignores an unknown addition at every depth of a history
-  record and shows its text, a writer refuses a draft that carries one with
-  its own outcome, and both are tested with unknown additions. No extension
-  interface is built. A part interface is weighed only by a bounded
+  release: settle additive message presentation fields and strict writer and
+  archive boundaries through the actual Rust, Browser and SDK consumers.
+  Editing supplies the first concrete addition; no extension interface or
+  generic capability registry is built. A part interface is weighed only by a bounded
   comparison with plain lifecycle-owner extraction.
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.

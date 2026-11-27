@@ -440,7 +440,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const [pictureOpen, setPictureOpen] = useState(false);
   useLayerHistory(picturePanel, pictureOpen);
   const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
-  const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
+  const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [remoteTouchMode, setRemoteTouchMode] = useState(() => readRoomPreferences().remoteTouchMode);
   const output = useRef<ViewerAudio | null>(null);
@@ -652,7 +652,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
         <PlaybackSettingsHeading onClose={() => picturePanel.current?.hidePopover()} />
         {pictureOpen && <PlaybackSettings buffering={!owned && !localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
-          setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
+          setPictureRotation,
         }} preview={owned ? { autoPause: previewAutoPause, onChange: autoPause => {
           setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
         } } : undefined} remoteTouch={!owned && input ? { mode: remoteTouchMode, onChange: mode => {

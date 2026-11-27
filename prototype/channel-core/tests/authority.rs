@@ -70,6 +70,86 @@ fn profiles(
 }
 
 #[test]
+fn unnamed_member_and_site_prompt_round_trip_through_the_domain_archive() {
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    let (_, _, initial) = join(&mut core, owner, true, 0);
+    assert!(!initial.channel.ask_unnamed_member_name);
+    let member = Uuid::new_v4();
+    let (session, credential, initial) = welcome(
+        apply(&mut core, member, json!({"type":"join","name":"  "}), 0),
+        member,
+    );
+    let id = initial
+        .sessions
+        .iter()
+        .find(|entry| entry.id == session)
+        .unwrap()
+        .user_id;
+    assert_eq!(profiles(&mut core, member, vec![id], 0)[0].name, "");
+    for (input, expected) in [(" Guest ", "Guest"), (" ", "")] {
+        apply(
+            &mut core,
+            member,
+            json!({"type":"set_profile","name":input}),
+            1,
+        );
+        assert_eq!(profiles(&mut core, member, vec![id], 1)[0].name, expected);
+    }
+    let setting = json!({"type":"update_domain","askUnnamedMemberName":true});
+    let rejected = apply(&mut core, member, setting.clone(), 2);
+    assert!(rejected
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+    assert!(
+        state(&apply(&mut core, owner, setting, 2), member)
+            .channel
+            .ask_unnamed_member_name
+    );
+
+    let backup = core.export_backup();
+    let header = serde_json::to_value(backup.archive_metadata().unwrap()).unwrap();
+    let users = serde_json::to_value(backup.users()).unwrap();
+    let restore = |header| {
+        let archive: piik_channel_core::backup::DomainArchiveMetadata =
+            serde_json::from_value(header).unwrap();
+        let mut restored = archive
+            .into_metadata(serde_json::from_value(users.clone()).unwrap())
+            .unwrap()
+            .into_authority(vec![])
+            .unwrap();
+        welcome(
+            apply(
+                &mut restored,
+                member,
+                json!({"type":"join","name":"Guest","credential":credential}),
+                3,
+            ),
+            member,
+        )
+        .2
+    };
+    let restored = restore(header.clone());
+    assert!(restored.channel.ask_unnamed_member_name);
+    assert_eq!(
+        restored
+            .users
+            .iter()
+            .find(|user| user.id == id)
+            .unwrap()
+            .name,
+        ""
+    );
+    let mut older = header;
+    older["state"]
+        .as_object_mut()
+        .unwrap()
+        .remove("askUnnamedMemberName");
+    assert!(!restore(older).channel.ask_unnamed_member_name);
+}
+
+#[test]
 fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_capacity() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let owner = Uuid::new_v4();

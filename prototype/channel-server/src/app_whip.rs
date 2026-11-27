@@ -397,7 +397,7 @@ mod tests {
             let binding = Uuid::new_v4();
             let state: piik_channel_core::wire::Snapshot = serde_json::from_value(json!({
                 "channel":{"id":Uuid::new_v4(),"name":"Owned fixture","icon":"couch","ownerId":null,"userCount":1,"historyWindow":100,
-                    "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
+                    "hostingMode":"lightweight","roomCreationPolicy":"ordinary","askUnnamedMemberName":false,"managedRoomIds":[],
                     "rooms":[{"id":"room","name":"Room","icon":"couch","creatorId":Uuid::new_v4(),"access":"private","hidden":false,
                         "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
                         "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},
@@ -530,7 +530,7 @@ mod tests {
         let binding = Uuid::new_v4();
         let state: piik_channel_core::wire::Snapshot = serde_json::from_value(json!({
             "channel":{"id":Uuid::new_v4(),"name":"Owned fixture","icon":"couch","ownerId":null,"userCount":1,"historyWindow":100,
-                "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
+                "hostingMode":"lightweight","roomCreationPolicy":"ordinary","askUnnamedMemberName":false,"managedRoomIds":[],
                 "rooms":[{"id":"room","name":"Room","icon":"couch","creatorId":Uuid::new_v4(),"access":"private","hidden":false,
                     "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
                     "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},

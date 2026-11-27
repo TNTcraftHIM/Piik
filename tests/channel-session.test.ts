@@ -163,7 +163,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   const socket = ChannelSocket.current;
   await socket.onopen?.();
   socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: {
-    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: window, userCount: 1, managedRoomIds: roomIds,
+    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", historyWindow: window, userCount: 1, managedRoomIds: roomIds,
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
@@ -182,6 +182,43 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   }
   return { session, socket, peer };
 }
+
+test("media cleanup reaches dormant Native rooms, merges host aliases and skips unavailable hosts", async () => {
+  const { session, socket } = await setup();
+  const result = { clearedRooms: 2, failedRooms: 1, compactionFailures: 1, cacheFailures: 0 };
+  const nativeSession = crypto.randomUUID();
+  const description = { sessionId: nativeSession, roomIds: [] };
+  let siteReady = false;
+  const fetcher = vi.fn(async (url: string) => url.endsWith("/hosting") && !siteReady
+    ? new Response(null, { status: 503 }) : Response.json(url.endsWith("/hosting") ? description : result));
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await expect(session.hostMediaTargets()).resolves.toEqual([]);
+    await expect(session.clearHostMedia("browser")).rejects.toThrow("room_host_unavailable");
+    await expect(session.clearHostMedia("app")).rejects.toThrow("room_host_unavailable");
+    await expect(session.clearHostMedia("domain")).rejects.toThrow("room_host_unavailable");
+    expect(fetcher.mock.calls.every(([url]) => url.endsWith("/hosting"))).toBe(true);
+
+    const state = session.getSnapshot().state!;
+    const app = { connected: true, describeHosting: async () => description, clearHostMedia: vi.fn(async () => result), close: vi.fn() };
+    (session as unknown as { app: typeof app }).app = app;
+    await expect(session.hostMediaTargets()).resolves.toEqual(["app"]);
+    await expect(session.clearHostMedia("app")).resolves.toEqual(result);
+    expect(app.clearHostMedia).toHaveBeenCalledOnce();
+    app.connected = false;
+    await expect(session.hostMediaTargets()).resolves.toEqual([]);
+    app.connected = true;
+    siteReady = true;
+    await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
+    await expect(session.clearHostMedia("domain")).resolves.toEqual(result);
+    (session as unknown as { app?: typeof app }).app = undefined;
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, hostingMode: "hosted" } } });
+    await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
+    await expect(session.clearHostMedia("domain")).resolves.toEqual(result);
+    expect(fetcher).toHaveBeenCalledWith("/prototype/channel/rooms/media/clear",
+      { method: "POST", headers: { Authorization: "Bearer credential" } });
+  } finally { session.close(); }
+});
 
 async function ackSourceUpdate(socket: ChannelSocket): Promise<void> {
   await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
@@ -299,6 +336,30 @@ test("a contradictory writer result rejects the pending deletion", async () => {
     peer.reply(await peer.next(), { type: "history_cleared", throughSeq: 1 });
     await expect(operation).rejects.toThrow("invalid_response");
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1]);
+  } finally { session.close(); }
+});
+
+test("media cleanup follows the writer binding and keeps room history and independent file holders", async () => {
+  const { session, peer } = await setup();
+  const remove = vi.spyOn(session.attachments, "removeMessages");
+  const inlineImages = { pic: { data: "AAAA", mediaType: "image/png" as const, original: false, width: 1, height: 1 } };
+  const photo = { ...message(1), inlineImages };
+  try {
+    await peer.history([photo], true);
+    const loading = session.loadHistory("first");
+    const older = await peer.next();
+    const event = { ...older, requestId: "writer-cleanup" };
+    peer.reply(event, { type: "room_media_cleared", throughSeq: 1 }, "retired-binding");
+    expect(session.getSnapshot().messagesByRoom.first[0].inlineImages).toEqual(inlineImages);
+    peer.reply(event, { type: "room_media_cleared", throughSeq: 1 });
+    expect(session.getSnapshot().messagesByRoom.first[0].inlineImages).toBeUndefined();
+    peer.page(older, []);
+    await loading;
+    peer.live(photo);
+    peer.live({ ...message(2), inlineImages });
+    expect(session.getSnapshot().messagesByRoom.first.map(row => [row.text, row.inlineImages]))
+      .toEqual([[photo.text, undefined], [message(2).text, inlineImages]]);
+    expect(remove).not.toHaveBeenCalled();
   } finally { session.close(); }
 });
 
@@ -903,7 +964,7 @@ test("opening the site creates identity before independently applying a room inv
   let reloaded: ChannelSession | undefined;
   try {
     const join = socket.sent.find(command => command.type === "join")!;
-    expect(join).toMatchObject({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Guest" });
+    expect(join).toMatchObject({ type: "join", protocol: CHANNEL_PROTOCOL, name: "" });
     for (const field of ["key", "password", "roomId"]) expect(join).not.toHaveProperty(field);
     const entry = socket.sent.find(command => command.type === "enter_room")!;
     expect(entry).toMatchObject({ roomId: "first", inviteKey: "room-key" });
@@ -4393,7 +4454,8 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
   } finally { session.close(); }
 });
 
-test("a rejected Browser quality rollback retires the capture and retains both errors", async () => {
+test.each(["metadata", "sender"])("a rejected Browser quality rollback after %s failure retires the capture and retains both errors", async failure => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket } = await setup();
   const video = remoteTrack("video"), stream = remoteStream("quality", [video]);
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => stream } });
@@ -4405,16 +4467,27 @@ test("a rejected Browser quality rollback retires the capture and retains both e
     socket.receive({ type: "ack", requestId });
     await starting;
     const previous = session.getSnapshot().quality;
+    const initialError = failure === "metadata" ? "room_unavailable" : "sender rejected quality";
+    if (failure === "sender") {
+      const state = structuredClone(session.getSnapshot().state!);
+      state.publications = [{ ...publication as Extract<typeof state.publications[number], { kind: "screen" }>, audience: [], title: null, paused: false, sessionId: "endpoint", userId: "self" }];
+      state.pairs = [{ id: "quality-pair", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [],
+        outgoing: [{ id: "quality-flow", publicationId: id, selected: true, inputFlowId: null }] }];
+      socket.receive({ type: "state", state });
+      vi.spyOn(ChannelTransport.prototype, "configureVideo").mockRejectedValueOnce(new Error(initialError));
+    }
     const restoreError = new Error("constraints could not be restored");
     video.applyConstraints = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(restoreError).mockResolvedValue(undefined);
     const editing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]).catch(error => error);
-    await vi.waitFor(() => expect(socket.sent.at(-1)?.requestId).not.toBe(requestId));
-    expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } });
-    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    if (failure === "metadata") {
+      await vi.waitFor(() => expect(socket.sent.at(-1)?.requestId).not.toBe(requestId));
+      expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } });
+      socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    }
     await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce());
     expect(socket.sent.at(-1)).toMatchObject({ type: "unpublish", publicationId: id });
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
-    expect(await editing).toMatchObject({ message: "room_unavailable", errors: [expect.objectContaining({ message: "room_unavailable" }), restoreError] });
+    expect(await editing).toMatchObject({ message: initialError, errors: [expect.objectContaining({ message: initialError }), restoreError] });
     expect(session.screenQuality(id)).toBeUndefined();
     expect(session.getSnapshot().streams.has(id)).toBe(false);
     expect(session.getSnapshot().quality).toEqual(previous);
@@ -11587,7 +11660,7 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(saved).not.toHaveBeenCalled();
     location.hash = "owner=restored-owner&room=other-room&invite=friend-link&other=keep";
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "restored-personal-credential", sessionId: "endpoint", state });
-    await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon });
+    await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon, askUnnamedMemberName: state.channel.askUnnamedMemberName });
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
     expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
     expect(saved.mock.calls.some(call => call[1] === metadata.ownerKey)).toBe(false);
@@ -11751,7 +11824,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     mediaType: "application/octet-stream" as const, sha256: hash.finish() };
   const quotedAuthor = crypto.randomUUID();
   vi.spyOn(session, "loadProfiles").mockImplementation(async ids => ids.includes(quotedAuthor)
-    ? [{ id: quotedAuthor, name: "Guest", avatar: null, version: "0".repeat(64) }] : []);
+    ? [{ id: quotedAuthor, name: "", avatar: null, version: "0".repeat(64) }] : []);
   Object.assign(row, { seq: 2, id: messageId, userId: author, nonce: "owned-copy-nonce", archivedAuthorName: "Archived author",
     reply: { seq: 1, userId: quotedAuthor, text: "Original message", notify: true },
     attachments: [attachment], reactions: { revision: 1, counts: { wave: 1 } } });
@@ -11765,7 +11838,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const metadata = await backupArchive.readBackup(archive, {
       metadata: () => {}, row: value => { history.push(value); }, content: (digest, value) => { content.set(digest, value); },
     });
-    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: { [quotedAuthor]: "Guest" }, retainedFiles: [{ messageSeq: row.seq, attachment }] });
+    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: { [quotedAuthor]: "" }, retainedFiles: [{ messageSeq: row.seq, attachment }] });
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
@@ -11788,7 +11861,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const copied = JSON.parse(importer.accept(JSON.stringify(history[0]))) as BackupHistoryRow;
     importer.finish();
     expect(copied).toMatchObject({ seq: row.seq, text: row.text, attachments: [attachment],
-      archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "Guest" } });
+      archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "" } });
     if (!("id" in copied)) throw new Error("expected live archive message");
     expect(copied.reply!.userId).not.toBe(quotedAuthor);
     expect(copied.id).not.toBe(messageId); expect(copied.userId).not.toBe(author); expect(copied.nonce).not.toBe(row.nonce);
@@ -17141,7 +17214,7 @@ test.each([false, true])("exports flow reports and plan retirement only with Bro
     setTimeout, clearTimeout,
   }));
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  vi.stubGlobal("document", { documentElement: { lang: "" }, body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
   vi.spyOn(console, "info").mockImplementation(() => {});
   const { ChannelSession: DebugSession } = await import("../src/client/channel/session");
   const { ChannelConversation: DebugConversation } = await import("../src/client/channel/conversation");
@@ -17206,7 +17279,7 @@ async function debugChannelSession(enabled: boolean) {
 
 test.each([false, true])("logs flow assignments, selections and link states only with Browser debug enabled (%s)", async enabled => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  vi.stubGlobal("document", { documentElement: { lang: "" }, body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
   const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
   const [pairId, incomingId, outgoingId, publicationId] = Array.from({ length: 4 }, () => crypto.randomUUID());
   const peerId = "source";
