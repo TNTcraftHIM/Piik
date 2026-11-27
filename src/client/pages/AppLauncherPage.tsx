@@ -408,7 +408,7 @@ export function AppLauncherPage() {
                 {approvalCurrent && <Glyph name="check" size={20} className="lr-client-approval-check" />}
               </div>
               <p>{t(approvalCurrent ? "client.connect.return"
-                : "client.connect.approveChannelHint")}</p>
+                : "client.sites.appHint")}</p>
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
             {siteError?.site === requestedSite && <p role="alert">{siteError.message}</p>}
