@@ -50,18 +50,18 @@ yet.
 5. **Auto capacity grows by demand.** When a demand cannot be placed, one more
    child is tried at a sender that already plays the publication, under the
    existing allocator. The trial stays only if the new child reaches proved
-   playback and the sender reports that its other outgoing flows held through
-   the same window. The sender is the judge because it alone sees all of them:
-   it compares what it already measures of each flow in the window with the
-   seconds before the trial, and only the verdict leaves the device. Overload
-   lowers the quality of every flow before any of them fails, so the absence
-   of a reported failure is not that verdict. A failure a child reports in the
-   window ends the trial as it ends any flow. Otherwise the new child alone is
-   withdrawn, by its generation, and that sender is not tried again without
-   fresh evidence. A node healthy with N children has proved N for that
-   workload, nothing more, and the room's number is where it starts. A
-   person's explicit limit, zero included, is kept, and each kind keeps its
-   own budget. Memory across days is a later stage.
+   playback and the sender's other flows are no worse through the same window
+   than in the seconds before it. A failure a child reports in the window ends
+   the trial as it ends any flow, but a flow can get worse without failing, so
+   the absence of a report does not show that. The sender is the proposed
+   judge, since it alone measures all of its flows and only a verdict would
+   leave the device; what it measures is not what each receiver presents, and
+   one recorded overload decides whether its readings follow that. Otherwise
+   the new child alone is withdrawn, by its generation, and that sender is not
+   tried again without fresh evidence. A node healthy with N children has
+   proved N for that workload, nothing more, and the room's number is where it
+   starts. A person's explicit limit, zero included, is kept, and each kind
+   keeps its own budget. Memory across days is a later stage.
 6. **Placement uses negotiated facts.** The generations a path costs depend on
    the formats and the implementation negotiated for that flow, not on a
    platform label. An unknown cost is not zero, and a pair's estimate is not
@@ -121,3 +121,6 @@ the actuator. A number that a person has to set.
   about 2.4 KiB/s per endpoint.
 - Matched stay and switch runs with different release times, counting the harm
   a trial does to the incumbent and to siblings.
+- One overloaded source-star, the newcomer attached to the source itself:
+  every reading the sender and the pool have, beside what each receiver
+  presents, recorded independently, to see which reading moves and when.

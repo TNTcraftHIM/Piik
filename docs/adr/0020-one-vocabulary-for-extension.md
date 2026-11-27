@@ -6,10 +6,11 @@
 ## Context
 
 The [canon](../canon.md#how-it-is-built) asks for a small core that is open to
-extension. The owner's direction goes further: a bot, an API client, a plugin,
-a new activity and a provider are the same kind of thing underneath, the
-built-in features should attach through the points the community would use,
-and the scaffolding should be designed now.
+extension. The owner's direction: what a later extension needs from the first
+release is decided before that release; an interface for community code is
+built only when it can be general, simple and cheap to keep; until then the
+project is the only source of new features, and its own interfaces and
+protocols are designed for the growth and change to come.
 
 The model is an agent harness built wholly from plugins on a small kernel: a
 plugin declares what it needs and provides, every registration can be undone,
@@ -19,12 +20,6 @@ one trusted person on one machine. In a room, other people are affected by
 code they never approved, stored history cannot be undone, and each
 participant may run different extensions, so the shared rules have to stay
 fixed.
-
-Three designers worked from the requirements and this evidence without
-reading the repository, one of them asked to find where a plugin boundary
-costs more than it gives. The implementer then traced the proposal against
-the present consumers, authority, layouts and record formats. This record
-holds what survived both.
 
 ## Decision
 
@@ -42,22 +37,36 @@ holds what survived both.
    | A participant process | A bot or API client | More than a person can do on the wire |
    | The operator's machine | Providers | Decide admission or order |
 
-2. **One outer form for durable room history.** Every history record the writer orders
-   carries a namespaced type, a version, typed content, and the references the
-   writer has to see: the files it carries and the record it relates to.
-   Built-in records are the types the core reserves. The writer checks their
-   content by schema, as it does today, and a short reserved name keeps their
-   cost small. A community type carries opaque content and a required
-   fallback text. Whether a writer accepts an unknown type, and how an unknown
-   type is copied into another room, must be settled before admitting those
-   writes. A shared outer form does not itself require accepting unknown types.
-   Deleting a record removes its content, fallback and derived images, retires
-   its attachment deliveries and clears automatic quotations in later replies.
-   Keep only the sequence and retry digest needed to prevent resurrection.
-   Active screens, synchronized playback and transport control retain their
-   own lifetimes. Validate deletion, purge, restore and identity-remapping copy
-   on the typed draft before changing the contract in
-   [ADR-0017](./0017-contracts-fixed-before-release.md).
+2. **The first release fixes three rules for later growth, and no interface.**
+   After a release, the readers and writers already installed decide what a
+   later version may add ([ADR-0017](./0017-contracts-fixed-before-release.md)).
+   For a room's history:
+   - *A reader shows what it understands.* A message carries its author,
+     sequence, time, text and files. Optional presentation additions belong
+     on that message. An older reader may ignore those fields and display
+     the recognized text and files, including an attachment-only message.
+     The signature covers the original payload before this projection.
+     Nested structures retain their defined shapes; they are not separate
+     extension points.
+   - *The writer is strict and says what it stores.* A writer refuses a draft
+     that carries anything it does not know at the existing signed-command
+     boundary, with a rejection correlated to that request. A new feature
+     adds its capability to the room's existing contract together with its
+     producer and consumer. No generic capability registry is needed first.
+   - *A program is a participant* (decision 5). It joins and acts through
+     the wire a person's client uses, so no second interface has to keep
+     step with the first, and joining never comes to depend on something only
+     a browser has. The tree's own text participant already reads and writes
+     this way from Node.
+
+   Tests exercise an additive message field through each actual reader,
+   preserve payload signature verification, and require unsupported drafts
+   to be rejected through the existing reply. Editing
+   ([ADR-0019](./0019-the-life-of-a-message.md)) supplies the first real
+   additional presentation field. Deleting a message removes its additions
+   with it. Archives remain strict and reject data the receiving writer
+   cannot preserve before installation. Wire and stored-format compatibility
+   remain under the existing versioning policy.
 3. **Each owner undoes its own registrations.** A lifetime owner releases its
    listeners and the leases it borrowed when it ends, as
    [ADR-0015](./0015-browser-session-lifetime-owners.md) decided. Ending one
@@ -108,6 +117,15 @@ registry run by the project, or code loaded from an address. A point with a
 definition and no second provider or consumer.
 
 ## References
+
+- [RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html): an extension
+  mechanism stays usable only while it is used, a protocol's invariants are
+  written down, and fewer extension points are safer than many.
+- [XEP-0428, Fallback Indication](https://xmpp.org/extensions/xep-0428.html):
+  a client that does not know an extension shows the message's body.
+- [IRCv3 capability negotiation](https://ircv3.net/specs/extensions/capability-negotiation.html):
+  a server lists what it supports, a client that asks for nothing gets the
+  baseline, and a name outside the project begins with a domain.
 
 - [Reference harness](https://github.com/deepseek-ai/deepseek-harness) and its
   [framework primer](https://deepseek-harness.github.io/deepseek-harness/en/reference/cordis-primer):
