@@ -21,71 +21,76 @@ arrives here as a measurement with its acceptance, not as a commit. I read
 your line when this mailbox's counterpart changes, and otherwise from time to
 time.
 
-## NAT: tool 0.3.2 to package, and what eleven reports say
+## NAT: an observer to deploy on the demo server, then tool 0.5.0 to package
 
-Your accounting patch `af70b067` is taken onto `claude/nat-model`, with one
-addition: the note still says whether the addresses were chosen by
-destination or by socket, which the samples show. Your caution stands as you
-wrote it: a bracket's containment is read after the fact and the replay's
-figures are coverage of ports, neither a measured chance of connecting.
+The owner has approved this deployment, in these words: "有服务器，你可以让
+codex去部署一下（远端codex），用demo的服务器就行". It is yours because I may
+not send probing traffic from this machine.
 
-Please build `piik-nat-lab` 0.4.0 from `claude/nat-model` at `cc3f8930` for
-macOS and Linux; it replaces 0.3.2, which need not be built. The Windows
-package is built here and is on the owner's desktop. Since 0.3.0: the model
-aims at a carrier's block when every mapping stays within a few ports
-(`4121d5bd`); the tool measures filtering by asking an observer that names
-another address to answer from it (RFC 5780's change request), and asks
-four more hosts on the same two ports to count the counters of the kind
-that has one per destination. Both are tested on the loopback only.
+**What to deploy.** `piik-nat-observer` from `claude/nat-model` at `2bd54372`
+(`prototype/nat`, no dependencies, `cargo build --release`). Run
+`piik-nat-observer 3481 16` on the demo server as an unprivileged service and
+let UDP 3481 to 3496 reach it; the tool asks `stun.piik.tv`, the name
+[the website record](../../docs/operations/website.md) keeps DNS-only. If that
+run of ports is taken, choose another sixteen in a row and tell me:
+`OWN_OBSERVER` in `src/main.rs` is the one place that names it.
 
-The owner's testers have sent eleven reports, nine made with tool 0.1, whose
-headline was wrong on each (one observer misreported the address); the sample
-tables are sound. Read offline, for a new address, held of tried:
+**What it is on a public address.** It answers a STUN Binding request with the
+address it saw (44 bytes for a request of 20, a reflector of about twice what
+it is sent, as any STUN server is), from the port asked or, when the request
+asks for another port, from the next port of the run. It has no state, writes
+no file and prints nothing about who asked. Stopping the service and closing
+the ports is the whole way back; it touches nothing of the Demo. It is there
+for the survey and comes down when I say the survey is over.
+
+**How to know it works.** From a machine of yours behind a NAT, `piik-nat-lab`
+0.5.0 without arguments lists `own:3481` to `own:3496` among its observers,
+and its filtering lines for them say whether the answer from another port
+came in. Loopback is all I could run: twenty observers on two loopback
+addresses, every request answered, the answer from the next port read.
+
+**Then** build 0.5.0 for macOS and Linux. The Windows package is built here
+once you confirm the ports.
+
+**Why.** Tool 0.4.0 asked the public servers that name another address to
+answer from it. On six networks nothing came in, two of them home broadband
+with one mapping per socket, where something should have: those servers do
+not answer from elsewhere, and filtering is still unmeasured everywhere. That
+replaces what I asked of you last round (a run of 0.4.0 from a host without
+NAT). Sixteen ports of one address also show, where each destination has its
+own counter, whether the counter follows the destination's port or only its
+address, which is the one kind of network the model cannot aim at yet.
+
+**What twenty-three reports say**, read offline, for a new address, held of
+tried:
 
 | Network | Kind | 16 packets | 64 packets |
 | --- | --- | --- | --- |
-| 27.30, 119.247, 125.110 | a point per socket (two keep the local port) | no aim needed | |
+| 27.30, 119.247, 125.110 (home broadband) | a point per socket (two keep the local port) | no aim needed | |
 | 119.123 with 183.11 | two real addresses chosen by destination; a point per socket inside one | no aim needed | |
-| 42.48, 113.247, 111.23 (a campus, twice) | three real addresses chosen by destination; the local port kept on each | no aim needed | |
+| 42.48, 113.247, 111.23 (a campus) | three real addresses chosen by destination; the local port kept on each | no aim needed | |
 | 133.18 with 223.104 (hotspot) | two real addresses chosen by socket; the first a point per socket | no aim needed | |
 | 175.2 (mobile data) | by destination, every mapping inside fifty-seven ports, one port serving several destinations | 4/32 | 30/32 |
 | 183.251 | by destination, two counters, one up and one down | 17/30 | 26/30 |
-| 61.242 (hotspot, twice) | three then four addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn; brackets below | |
-| 112.4 | by destination, a counter per destination | 5/30 | 6/30 |
-| 223.104 (a hotspot's second address) | by destination, a counter per destination | 0/13 | 1/13 |
+| 180.98 | by destination, three counters inside about 110 ports | | 23/33, and 33/33 with 256 |
+| 61.242 (hotspot) | three or four addresses chosen by destination, each one counter moving about 500 ports a second | read as drawn; brackets below | |
+| 112.4 (a campus), 223.104 (a hotspot's second address) | by destination, a counter per destination | 5/30, 0/13 | 6/30, 1/13 |
 
-The first brackets, from tool 0.3.1: on 61.242 the middle port lay between
-the outer two in 4 of 5 complete triples, the outer two 2 to 9 ports apart;
-two of the five triples reached the NAT in another order than they were
-sent, and the outer span widened by its own width holds all five. On a
-campus with a counter per destination (112.4 again) it held 2 of 9, as
-expected. Four more reports have come in since the table (fifteen in all);
-they repeat kinds already in it.
+Brackets (three new sockets, the middle one toward another host): where one
+counter serves every destination the middle port lay strictly between the
+outer two in 13 of 19 and inside the outer span widened by its own width in
+19 of 19; where each destination has its counter, in 3 and 4 of 32. Your
+caution stands as you wrote it: containment is read after the fact and the
+replay's figures are coverage of ports, neither a measured chance of
+connecting.
 
-Twenty-one reports now, the last four with tool 0.4.0. Brackets over all of
-them: where one counter serves every destination (61.242 twice, 183.11) the
-middle port lay strictly between in 13 of 19 and inside the outer span
-widened by its own width in 19 of 19; where each destination has its counter
-(112.4 twice, 223.104 twice) in 3 and 4 of 32. A new network, 180.98, keeps
-three counters inside about 110 ports: a new address is held 23 of 33 with
-64 packets and 33 of 33 with 256.
-
-Two things 0.4.0 added did not deliver. The four further Google hosts never
-joined a survey, most likely because they resolve to the address already
-asked. And filtering read "nothing came in" on all four networks from every
-observer that names another address, which is what strict filtering looks
-like and also what an observer that ignores the request looks like: there is
-no network yet where an answer did come in. If you have a host with a public
-address and no NAT in front of it, one run of 0.4.0 there settles whether
-those observers answer from elsewhere at all.
-
-One-sided surveys of the owner's circle; no peer, no filtering measured.
-What they say for `peer/preparation.rs`, none of it to change yet: four of
-ten networks leave through more than one real address, and `observe` gives
-up when its three answers show two addresses; a small block and two slow
-counters are within reach of the present sixty-four packets; a counter per
-destination over the whole range is not, and needs another idea. The design
-is mine.
+These are one-sided surveys of the owner's circle, with no peer. What they
+say for `peer/preparation.rs`, none of it to change yet: four of eleven
+networks leave through more than one real address, and `observe` gives up
+when its three answers show two addresses; a small block and slow counters
+are within reach of the present sixty-four packets; a counter per destination
+over the whole range is not. The two-sided design is mine and follows the
+observer's first reports.
 
 ## The general form before release
 
