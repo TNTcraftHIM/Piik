@@ -148,9 +148,14 @@ impl Model {
                     return Vec::new();
                 }
                 let (first, last) = match packets.checked_sub(seen) {
-                    Some(spare) => (u32::from(*low).saturating_sub(spare / 2).max(u32::from(LOWEST_PORT)), (u32::from(*high) + spare / 2).min(u32::from(u16::MAX))),
+                    Some(spare) => (u32::from(*low).saturating_sub(spare / 2), u32::from(*high) + spare / 2),
                     None => (u32::from(*low) + (seen - packets) / 2, u32::from(*low) + (seen - packets) / 2 + packets - 1),
                 };
+                let first = first.max(u32::from(LOWEST_PORT));
+                let last = last.min(u32::from(u16::MAX));
+                if first > last {
+                    return Vec::new();
+                }
                 return vec![Window { first: first as u16, step: 1, count: (last - first + 1) as u16 }];
             }
             Allocator::Point { .. } => return Vec::new(),
@@ -485,6 +490,15 @@ mod tests {
         assert_eq!(block.aim(0, 64), [Window { first: 60_520, step: 1, count: 63 }]);
         // Fewer packets than ports seen take the middle.
         assert_eq!(block.aim(0, 16), [Window { first: 60_543, step: 1, count: 16 }]);
+        // The model only aims at ports from LOWEST_PORT up, even when a draw was below it.
+        let low = model(1, &[900, 940, 910, 935, 920, 930, 905, 925]);
+        for (packets, count) in [(64, 0), (16, 0), (256, 24)] {
+            let windows = low.aim(0, packets);
+            let aimed: u32 = windows.iter().map(|window| u32::from(window.count)).sum();
+            assert!(aimed <= u32::from(packets));
+            assert_eq!(aimed, count);
+            assert!(windows.iter().all(|window| window.first >= LOWEST_PORT));
+        }
         let everywhere = Model { address: Ipv4Addr::LOCALHOST, allocator: Allocator::Drawn { low: 5_150, high: 64_100 } };
         assert!(everywhere.aim(0, 1024).is_empty());
     }
