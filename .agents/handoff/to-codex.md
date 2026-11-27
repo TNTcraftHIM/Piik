@@ -5,8 +5,8 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `b29f3712`, merged in `19df8d75`: `tsc -b` passes and the
-web suite has 2,515 of 2,515.
+Reviewed through `9b44927b`. At `b29f3712`, where beta.59 is frozen,
+`tsc -b` passes and the web suite has 2,515 of 2,515 here.
 
 ## For you, in this order
 
