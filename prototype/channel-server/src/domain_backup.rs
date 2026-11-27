@@ -291,7 +291,7 @@ pub(super) async fn restore_domain(
     let credential = owner(&domain, &headers)?.0.credential;
     let commands = domain.restores.clone().ok_or_else(|| {
         backup::error(
-            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::CONFLICT,
             "domain_restore_unavailable",
         )
     })?;
@@ -318,7 +318,7 @@ pub(super) async fn restore_domain(
         .await
         .map_err(|_| {
             backup::error(
-                StatusCode::SERVICE_UNAVAILABLE,
+                StatusCode::CONFLICT,
                 "domain_restore_unavailable",
             )
         })?;

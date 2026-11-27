@@ -48,17 +48,8 @@ export class NativeRoomHosting {
 
   async restore(archive: Blob, roomId?: string): Promise<RoomSummary> {
     const url = roomId === undefined ? `${this.roomsURL}/backup` : `${this.roomsURL}/${encodeURIComponent(roomId)}/backup`;
-    const response = await fetchHosting(url, this.authorization, archive).catch(() => null);
-    const value: unknown = await response?.json().catch(() => null);
-    if (response?.ok) {
-      const result = z.object({ room: roomSummarySchema }).safeParse(value);
-      if (result.success) return result.data.room;
-    } else if (response && response.status >= 400) {
-      const failure = failureSchema.safeParse(value);
-      if (failure.success && (response.status < 500 || (response.status === 507 && failure.data.error === "restore_scratch_limit")))
-        throw new Error(failure.data.error);
-    }
-    throw new Error("room_restore_unconfirmed");
+    const result = await restoreRequest(url, this.authorization, archive, z.object({ room: roomSummarySchema }), "room_restore_unconfirmed");
+    return result.room;
   }
 
   async importCopy(archive: Blob, creatorId: string, sessionId: string): Promise<RoomSummary> {
@@ -96,9 +87,25 @@ export class NativeDomainHosting {
   }
 
   async restore(archive: Blob): Promise<string> {
-    const value: unknown = await (await hostingRequest("/prototype/channel/backup", this.authorization, archive)).json();
-    return z.object({ domainId: z.uuid() }).parse(value).domainId;
+    const result = await restoreRequest("/prototype/channel/backup", this.authorization, archive, z.object({ domainId: z.uuid() }),
+      "domain_restore_unconfirmed");
+    return result.domainId;
   }
+}
+
+async function restoreRequest<T>(url: string, authorization: HeadersInit, archive: Blob, success: z.ZodType<T>,
+  unconfirmed: string): Promise<T> {
+  const response = await fetchHosting(url, authorization, archive).catch(() => null);
+  const value: unknown = await response?.json().catch(() => null);
+  if (response?.ok) {
+    const result = success.safeParse(value);
+    if (result.success) return result.data;
+  } else if (response && response.status >= 400) {
+    const failure = failureSchema.safeParse(value);
+    if (failure.success && (response.status < 500 || (response.status === 507 && failure.data.error === "restore_scratch_limit")))
+      throw new Error(failure.data.error);
+  }
+  throw new Error(unconfirmed);
 }
 
 async function hostingRequest(url: string, authorization: HeadersInit, archive?: Blob, signal?: AbortSignal): Promise<Response> {

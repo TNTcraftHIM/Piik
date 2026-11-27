@@ -42,6 +42,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("room.settings.roomDataRemovalUnconfirmed");
   if (error === "hosted_room_deletion_failed")
     return display("room.settings.hostedRoomDeletionFailed");
+  if (error === "domain_restore_unconfirmed")
+    return display("channel.error.domainRestoreUnconfirmed", true);
   if (error === "domain_restored_connection_failed")
     return display("channel.error.domainRestoredConnectionFailed", true);
   if (error === "room_created_connection_failed") return display("room.create.committedReconnect", true);

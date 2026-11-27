@@ -31,6 +31,21 @@ it.each(["connecting", "reconnecting"] as const)("shows the previous session tim
   expect(html).toContain(`role="status" class="visually-hidden">${t("en", "channel.siteEntry.connecting")}</span>`);
 });
 
+it.each([
+  ["domain_restore_unconfirmed", "channel.error.domainRestoreUnconfirmed"],
+  ["domain_restored_connection_failed", "channel.error.domainRestoredConnectionFailed"],
+] as const)("shows %s and offers reconnect from the site entry", (error, message) => {
+  setCopy({ lang: "zh" });
+  vi.stubGlobal("location", new URL("https://site.invalid"));
+  const html = renderToStaticMarkup(createElement(ChannelSiteEntry, {
+    channel: { connection: "closed", error, reconnect: vi.fn(), joinAsNewIdentity: vi.fn() },
+    failure: channelErrorPresentation(error, (key, vars) => t("zh", key, vars)),
+  }));
+  expect(html).toContain(`role="alert">${t("zh", message)}</p>`);
+  expect(html).toContain(`aria-label="${t("zh", "channel.siteEntry.reconnect")}"`);
+  expect(html.match(/<button\b/g)).toHaveLength(1);
+});
+
 it("checks only the current origin and recognizes the Domain response", async () => {
   vi.stubGlobal("location", new URL("https://site.invalid/invitation?room=private#owner=private"));
   const request = vi.fn()

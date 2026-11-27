@@ -604,6 +604,7 @@ export const zh = {
   "channel.error.roomLimit": "站点的房间数已达上限。站点所有者可以在房间目录中移除不用的房间。",
   "channel.error.directoryStorageFailed": "房间操作已成功，但房间目录保存失败。",
   "channel.error.expectedRoomCopy": "请选择房间副本文件。完整备份请使用“恢复房间”。",
+  "channel.error.domainRestoreUnconfirmed": "无法确认站点是否已恢复。请重新连接并检查站点，再决定是否重试。",
   "channel.error.domainRestoredConnectionFailed": "站点已恢复，但未能重新连接。请重新连接或打开恢复后的站点地址，无需再次恢复备份。",
   "channel.error.roomRestoreUnconfirmed": "Piik 无法确认房间是否已恢复。请重新连接，在房间列表核对后再决定是否重试。",
   "channel.error.roomRestoredConnectionFailed": "房间数据已恢复，但未能重新连接。请重新连接，无需再次恢复备份。",

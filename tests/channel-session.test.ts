@@ -11664,7 +11664,7 @@ test("domain backup uses its actual service owner and validates kind before reti
   } finally { session.close(); }
 });
 
-test.each(["success", "rejected", "partial"] as const)("page teardown fences late domain restore %s", async outcome => {
+test.each(["success", "rejected", "partial", "unconfirmed"] as const)("page teardown fences late domain restore %s", async outcome => {
   const { session, socket } = await setup(3, false, "");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
   const metadata = { kind: "domain" as const, version: 3 as const, state: { id: domainId, ownerId, name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "archived-key" };
@@ -11677,16 +11677,18 @@ test.each(["success", "rejected", "partial"] as const)("page teardown fences lat
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(socket.readyState).toBe(3);
     session.close();
-    answer(outcome === "success" ? new Response(JSON.stringify({ domainId })) :
-      new Response(JSON.stringify({ error: outcome === "partial" ? "domain_restored_connection_failed" : "restore_rejected" }), { status: 409 }));
+    answer(outcome === "success" ? Response.json({ domainId }) :
+      outcome === "unconfirmed" ? Response.json({ error: "domain_restore_unavailable" }, { status: 503 }) :
+      Response.json({ error: outcome === "partial" ? "domain_restored_connection_failed" : "restore_rejected" }, { status: 409 }));
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(session.getSnapshot().connection).toBe("closed");
+    expect(session.getSnapshot().error).toBeNull();
     expect(ChannelSocket.current).toBe(socket);
     expect(await completion).toBeInstanceOf(Error);
   } finally { session.close(); }
 });
 
-test("domain restore closes the old connection, admits archived keys only after HTTP commit and verifies Welcome before saving identity", async () => {
+test.each(["success", "committed with hosting failure"] as const)("domain restore waits for HTTP %s and verifies Welcome before saving identity", async outcome => {
   const { document, contexts } = stubFeedbackAudio();
   const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
@@ -11712,7 +11714,8 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(fetch.mock.calls[0][1].method).toBe("PUT"); expect(saved).not.toHaveBeenCalled();
     expect(inspect).toHaveBeenCalledWith(archive);
     expect(fetch.mock.calls[0][1].body).toBe(archive);
-    answer(new Response(JSON.stringify({ domainId })));
+    answer(outcome === "success" ? Response.json({ domainId }) :
+      Response.json({ error: "domain_restored_connection_failed" }, { status: 409 }));
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current; await admission.onopen?.();
     const join = admission.sent.find(command => command.type === "join")!;
@@ -11779,8 +11782,36 @@ test("domain admission does not save a Welcome whose current owner differs from 
     const admission = ChannelSocket.current; await admission.onopen?.();
     admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "not-verified", sessionId: "endpoint", state });
     await rejected; expect(saved).not.toHaveBeenCalled();
+    expect(session.getSnapshot().error).toBe("domain_restored_connection_failed");
     expect(session.getSnapshot().state).toBeNull(); expect(admission.readyState).toBe(3);
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each(["lost", "wrong site"] as const)("a %s site restore reply leaves the old identity available for explicit reconnect", async outcome => {
+  const { session, socket } = await setup();
+  const metadata = { kind: "domain" as const, version: 3 as const,
+    state: { id: crypto.randomUUID(), ownerId: crypto.randomUUID(), name: "Restored", icon: "couch", hostedRooms: {} },
+    ownerKey: "archived-owner" };
+  vi.spyOn(backupArchive, "readBackup").mockResolvedValue(metadata);
+  const fetch = vi.fn();
+  if (outcome === "lost") fetch.mockRejectedValue(new TypeError("network"));
+  else fetch.mockResolvedValue(Response.json({ domainId: crypto.randomUUID() }));
+  vi.stubGlobal("fetch", fetch);
+  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  try {
+    await expect(session.restoreDomainBackup(new Blob())).rejects.toThrow("domain_restore_unconfirmed");
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", error: "domain_restore_unconfirmed" });
+    expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
+    expect(ChannelSocket.current).toBe(socket);
+    expect(saved).not.toHaveBeenCalled();
+
+    session.reconnect();
+    await ChannelSocket.current.onopen?.();
+    const join = ChannelSocket.current.sent.find(command => command.type === "join");
+    expect(join).toMatchObject({ credential: "credential" });
+    expect(join).not.toHaveProperty("ownerKey");
     expect(fetch).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
