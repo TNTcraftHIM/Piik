@@ -83,7 +83,7 @@ impl Survey {
         // The mapping exists once the request has left, so asking again reads the same one.
         let answer = (0..2).find_map(|_| {
             socket.send_to(&stun::request(transaction), observer).ok()?;
-            receive(socket, Some(observer), transaction)
+            receive(socket, observer, transaction)
         });
         let Some((mapped, _)) = answer else {
             self.unanswered += 1;
@@ -94,22 +94,27 @@ impl Survey {
         Some(mapped)
     }
     /// Whether this NAT lets in a packet from somewhere a socket never sent to. A new socket asks
-    /// `observer`, which opens its mapping toward that one address and port; where the answer
-    /// names another address the observer can use, it is asked to answer from that address and
-    /// port, and then from another port of its own address. `None` when it names none.
+    /// `observer`, which opens its mapping toward that one address and port, and then asks it
+    /// to answer from the sources it names: its other address and port, where it has another
+    /// address, and its other port on the address asked (RFC 5780, section 7.2). Only an answer
+    /// from the source asked for counts, so an observer that ignores the request and answers
+    /// as usual shows nothing. `None` when it names no other port.
     fn filtering(&mut self, observer: SocketAddrV4) -> Option<(Option<bool>, bool)> {
         let (socket, _) = self.socket()?;
         let first = transaction();
         socket.send_to(&stun::request(first), observer).ok()?;
-        let (_, elsewhere) = receive(&socket, Some(observer), first)?;
-        let elsewhere = elsewhere?;
-        let answered = |address: bool| {
+        let (_, Some(SocketAddr::V4(elsewhere))) = receive(&socket, observer, first)? else { return None };
+        if elsewhere.port() == 0 || elsewhere.port() == observer.port() {
+            return None;
+        }
+        let answered = |address: bool, from: SocketAddrV4| {
             let transaction = transaction();
-            (0..2).any(|_| socket.send_to(&stun::request_from_elsewhere(transaction, address, true), observer).is_ok() && receive(&socket, None, transaction).is_some())
+            let request = stun::request_from_elsewhere(transaction, address, true);
+            (0..2).any(|_| socket.send_to(&request, observer).is_ok() && receive(&socket, from, transaction).is_some())
         };
         // An observer whose other address is its own, or none in particular, has another port only.
-        let another_address = !elsewhere.ip().is_unspecified() && elsewhere.ip() != std::net::IpAddr::V4(*observer.ip());
-        let outcome = (another_address.then(|| answered(true)), answered(false));
+        let another_address = !elsewhere.ip().is_unspecified() && elsewhere.ip() != observer.ip();
+        let outcome = (another_address.then(|| answered(true, elsewhere)), answered(false, SocketAddrV4::new(*observer.ip(), elsewhere.port())));
         self.filtering.push((observer, outcome.0, outcome.1));
         Some(outcome)
     }
@@ -130,7 +135,7 @@ impl Survey {
         }
         let mut answers = Vec::with_capacity(3);
         for (socket, number, observer, transaction) in &asked {
-            let Some((mapped, _)) = receive(socket, Some(*observer), *transaction) else {
+            let Some((mapped, _)) = receive(socket, *observer, *transaction) else {
                 self.unanswered += 1;
                 continue;
             };
@@ -152,9 +157,9 @@ fn transaction() -> [u8; 12] {
     transaction
 }
 
-/// The answer to `transaction`: the address it reports and the other address its server names.
-/// With `from`, only that source is listened to; without, any source that knows the transaction.
-fn receive(socket: &UdpSocket, from: Option<SocketAddrV4>, transaction: [u8; 12]) -> Option<(SocketAddrV4, Option<SocketAddr>)> {
+/// The answer to `transaction` that comes from `from`: the address it reports and the other
+/// address its server names. A reply from any other source does not count.
+fn receive(socket: &UdpSocket, from: SocketAddrV4, transaction: [u8; 12]) -> Option<(SocketAddrV4, Option<SocketAddr>)> {
     let deadline = Instant::now() + ANSWER;
     let mut packet = [0; 512];
     loop {
@@ -162,7 +167,7 @@ fn receive(socket: &UdpSocket, from: Option<SocketAddrV4>, transaction: [u8; 12]
         let left = deadline.checked_duration_since(Instant::now()).filter(|left| !left.is_zero())?;
         socket.set_read_timeout(Some(left)).ok()?;
         let Ok((length, source)) = socket.recv_from(&mut packet) else { return None };
-        if from.is_some_and(|from| source != SocketAddr::V4(from)) {
+        if source != SocketAddr::V4(from) {
             continue;
         }
         if let Some(stun::Answer { mapped: SocketAddr::V4(mapped), elsewhere }) = stun::answer(&packet[..length], transaction) {
@@ -192,7 +197,7 @@ fn local_address(target: &str) -> Option<IpAddr> {
     Some(socket.local_addr().ok()?.ip())
 }
 
-const USAGE: &str = "usage: piik-nat-lab [--full] [--own-only] [--observer <host>:<first port>-<last port>]\n\nAsks public STUN servers and a server of our own which address they see for this machine and\nprints what that says about the NAT in front of it. Nothing else is sent anywhere.\n\n  --full       show the whole public address in the report (it shows half by default)\n  --observer   ask this server of our own, on each port of the run, in place of the built-in\n               one; may be given more than once. The report calls each port own:<port>\n  --own-only   ask no public server\n  --help       show this text";
+const USAGE: &str = "usage: piik-nat-lab [--full] [--own-only] [--observer <host>:<first port>-<last port>]\n\nAsks public STUN servers and a server of our own which address they see for this machine and\nprints what that says about the NAT in front of it. Nothing else is sent anywhere.\n\n  --full       show the whole public address in the report (it shows half by default)\n  --observer   ask this server of our own, on each port of the run, in place of the built-in\n               one; may be given more than once. The report calls each port own1:<port>\n  --own-only   ask no public server\n  --help       show this text";
 
 fn main() {
     // Arguments are read before any name is resolved or any socket opened.
@@ -225,16 +230,17 @@ fn main() {
         return println!("Could not open a UDP socket.");
     };
     // Each observer that resolves and answers the first socket takes part. A server of our own
-    // is asked on every port of its run and named by port alone, so a report does not carry
-    // its host.
+    // is asked on every port of its run and named by its run and port, so a report does not
+    // carry its host. A run whose first port does not answer is not asked further.
     let resolve = |name: &str| {
         name.to_socket_addrs().ok()?.find_map(|address| match address {
             SocketAddr::V4(address) => Some(address),
             SocketAddr::V6(_) => None,
         })
     };
-    let mut candidates: Vec<(String, SocketAddrV4)> = OBSERVERS.iter().filter(|_| public).filter_map(|name| Some((name.to_string(), resolve(name)?))).collect();
-    for run in &own {
+    let mut candidates: Vec<(String, SocketAddrV4, Option<SocketAddrV4>)> =
+        OBSERVERS.iter().filter(|_| public).filter_map(|name| Some((name.to_string(), resolve(name)?, None))).collect();
+    for (run_number, run) in own.iter().enumerate() {
         let ports = run.rsplit_once(':').and_then(|(host, ports)| {
             let (low, high) = ports.split_once('-')?;
             Some((host, low.parse::<u16>().ok()?, high.parse::<u16>().ok()?))
@@ -244,20 +250,22 @@ fn main() {
             std::process::exit(2);
         };
         if let Some(address) = resolve(&format!("{host}:{low}")) {
-            candidates.extend((low..=high).map(|port| (format!("own:{port}"), SocketAddrV4::new(*address.ip(), port))));
+            let gate = SocketAddrV4::new(*address.ip(), low);
+            candidates.extend((low..=high).map(|port| (format!("own{}:{port}", run_number + 1), SocketAddrV4::new(*address.ip(), port), Some(gate))));
         }
     }
     let asked = candidates.len();
     let mut observers: Vec<(String, SocketAddrV4)> = Vec::new();
-    for (name, address) in candidates {
+    for (name, address, gate) in candidates {
+        if gate.is_some_and(|gate| gate != address && observers.iter().all(|(_, known)| *known != gate)) {
+            continue;
+        }
         if observers.iter().all(|(_, known)| *known != address) && survey.ask(&first, first_number, address).is_some() {
             observers.push((name, address));
         }
     }
-    let mut addresses: Vec<Ipv4Addr> = observers.iter().map(|(_, address)| *address.ip()).collect();
-    addresses.sort();
-    addresses.dedup();
-    if addresses.len() < 2 {
+    // Two observers are the least that can be compared, on one address or on two.
+    if observers.len() < 2 {
         return println!("Fewer than two STUN servers answered ({}). UDP may be blocked on this network.", observers.len());
     }
     for index in shuffled(observers.len()) {
@@ -397,24 +405,16 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], asked: usize, f
             read_address(&on_address, observers);
         }
     }
-    // What comes in: an answer from an address never sent to passed a NAT that does not filter by
-    // source; one from another port of the address sent to passed one that filters by address.
+    // What came in on this run, from which source. It is not a class of NAT: one run through one
+    // observer cannot show that.
     if survey.filtering.is_empty() {
-        println!("filtering: not measured, no observer here names another address to answer from");
+        println!("filtering: not measured, no observer here named another port to answer from");
     } else {
-        let (any_address, any_port) = (survey.filtering.iter().any(|(_, address, _)| *address == Some(true)), survey.filtering.iter().any(|(_, _, port)| *port));
-        println!(
-            "filtering: {}",
-            match (any_address, any_port) {
-                (true, _) => "a packet from an address never sent to came in (endpoint-independent)",
-                (false, true) => "a packet from another port of an address sent to came in (address-dependent, or more open where no observer has another address)",
-                (false, false) => "no packet from elsewhere came in (address-and-port-dependent, or the observers do not answer from elsewhere)",
-            }
-        );
+        println!("filtering: answers asked for from another source, on a socket that had sent only to the observer");
         for (observer, address, port) in &survey.filtering {
             let index = observers.iter().position(|(_, known)| known == observer).unwrap_or(99);
             let came = |came: bool| if came { "came in" } else { "nothing" };
-            println!("  observer {index}: from its other address and port {}; from another port of its address {}", address.map_or("not asked, it has one address", came), came(*port));
+            println!("  observer {index}: from its other address and port {}; from its other port on the same address {}", address.map_or("not asked, it has one address", came), came(*port));
         }
     }
     if survey.bracket_attempts > 0 {
@@ -507,14 +507,18 @@ mod tests {
 
     /// A STUN server on the loopback with a second address: it names it in each answer, and
     /// answers from it, or from another port of its own, when asked to.
-    fn observer_with_another_address(answers: usize) -> SocketAddrV4 {
+    fn observer_with_another_address(honours: bool) -> SocketAddrV4 {
         let bind = |host: [u8; 4]| UdpSocket::bind((Ipv4Addr::from(host), 0)).unwrap();
-        let (main, other_port, other_address) = (bind([127, 0, 0, 1]), bind([127, 0, 0, 1]), bind([127, 0, 0, 2]));
+        let (main, other_port) = (bind([127, 0, 0, 1]), bind([127, 0, 0, 1]));
+        // The other address answers on the number of the other port, as RFC 5780 has it.
+        let other_address = UdpSocket::bind((Ipv4Addr::new(127, 0, 0, 2), other_port.local_addr().unwrap().port())).unwrap();
         let SocketAddr::V4(address) = main.local_addr().unwrap() else { unreachable!() };
         let SocketAddr::V4(elsewhere) = other_address.local_addr().unwrap() else { unreachable!() };
         std::thread::spawn(move || {
             let mut packet = [0; 64];
-            for _ in 0..answers {
+            // One plain request, then two requests to answer from elsewhere, each sent twice when
+            // the answer does not come from where it was asked.
+            for _ in 0..if honours { 3 } else { 5 } {
                 let Ok((length, SocketAddr::V4(source))) = main.recv_from(&mut packet) else { return };
                 let mut answer = vec![0x01, 0x01, 0, 24];
                 answer.extend_from_slice(&packet[4..20]);
@@ -525,7 +529,7 @@ mod tests {
                 answer.extend(elsewhere.port().to_be_bytes());
                 answer.extend(elsewhere.ip().octets());
                 // The flags of a CHANGE-REQUEST, when the request carries one.
-                let from = match (length == 28).then(|| packet[27]) {
+                let from = match (length == 28 && honours).then(|| packet[27]) {
                     Some(flags) if flags & 4 != 0 => &other_address,
                     Some(_) => &other_port,
                     None => &main,
@@ -540,7 +544,7 @@ mod tests {
     fn filtering_is_read_from_answers_that_come_from_elsewhere() {
         let mut survey = Survey { answered: 0, bracket_attempts: 0, addresses: Vec::new(), started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new(), filtering: Vec::new() };
         // Nothing filters on the loopback: both answers come in.
-        let able = observer_with_another_address(3);
+        let able = observer_with_another_address(true);
         assert_eq!(survey.filtering(able), Some((Some(true), true)));
         assert_eq!(survey.filtering, [(able, Some(true), true)]);
         // An observer of our own names another port of its one address: only that is asked.
@@ -559,5 +563,7 @@ mod tests {
         // An observer that names no other address is not asked.
         assert_eq!(survey.filtering(observer(Ipv4Addr::LOCALHOST, 1)), None);
         assert_eq!(survey.filtering.len(), 2);
+        // One that names another address and answers as usual all the same shows nothing.
+        assert_eq!(survey.filtering(observer_with_another_address(false)), Some((Some(false), false)));
     }
 }
