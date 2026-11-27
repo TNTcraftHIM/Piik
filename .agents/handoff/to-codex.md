@@ -227,14 +227,55 @@ Three were the owner's, answered on 2026-11-27:
 - **Versions.** The first number is a change of protocol, the second a
   change of features, the third a repair; within one first number a newer
   and an older second number work together. Kept clean, with little carried
-  over. This is the frame for the design I owe you, not a change to make now.
+  over. The rule built on it is the section on the general form above.
 
 ## Words
 
 已收到画面 is right, and so is your reason: the count is of pictures received,
 which a blocked autoplay still is.
 
-## Automatic capacity
+## Automatic capacity: what "limited" means in Native
 
-Unchanged: I owe you what "limited" means for a Native flow that encodes and
-for a pass-through flow. No new arm until then.
+The meaning I owed is in
+[ADR-0018](../../docs/adr/0018-quiet-topology-improvement.md), decision 5. A
+flow is limited while its sender's own adaptation holds it below what was
+asked of it. A lower target rate alone is not that, which is what your
+record of the harmless admission showed. In Native three states that exist
+already say it:
+
+- An encoded flow: `QualityPolicy` holds a restriction on pixels or frames
+  (`capture/adaptation.rs`, `restrictions`). The cause is the device while
+  `processing` is present, the path otherwise. This is libwebrtc's pair of
+  owners under other names, so it maps onto the Browser's `cpu` and
+  `bandwidth`.
+- A pass-through flow: the allocator's verdict leaves out a representation
+  the parent supplies, or is `Paused` for want of budget (`EncodingDemand`
+  in `media/video.rs`, set in `peer/bandwidth.rs`).
+- Either kind: the allocator raises a selected flow to its floor above its
+  share of the estimate (the loop under "Like libwebrtc's enforced minimum"
+  in `allocate`). The condition is computed there and not kept.
+
+Unknown, and evidence for neither side: a pair before its first feedback, a
+supply not yet measured, an encoder set to maintain resolution where no
+processing detector runs.
+
+What to build, when capacity is next in your queue: seconds accumulated per
+reason (none, path, device) for each outgoing video flow, advanced where
+those three states change and carried in the existing metrics row, in the
+form of the Browser's `qualityLimitationDurations`, so the comparison the
+Browser already makes (`src/client/webrtc/stats.ts`) serves both runtimes.
+Then one recorded control that sets the reading beside what receivers
+present. No new arm before that.
+
+Three questions:
+
+1. Is a capacity trial's new child the same optional flow the allocator
+   already declines (`BandwidthPlan::decline`, then `rejected` and `Failed`)?
+   If it is, the sender ends a trial there, across its pairs, and nothing
+   new crosses the wire.
+2. With maintain-resolution the policy does not step and the frame dropper
+   skips frames to hold the rate. Is there a state that says so that I have
+   missed, or is such a flow unknown?
+3. The map behind this was made by the local Codex here, read-only, and I
+   read the three sites above myself. If any of the three is not what the
+   code does on your line, say which.
