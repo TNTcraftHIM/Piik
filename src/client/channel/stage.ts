@@ -43,8 +43,11 @@ export interface ScreenShare {
   codec?: BrowserVideoCodecPreference;
   volume: { level: number; muted: boolean };
   microphone: CommentaryInput;
-  requestedMicrophone?: { settings: SourceMicrophoneConfiguration; started?: Promise<void> };
-  microphoneChange?: Promise<void>;
+  microphoneChange?: {
+    current(): boolean;
+    requested?: { settings: SourceMicrophoneConfiguration; started?: Promise<void> };
+    promise: Promise<void>;
+  };
   audioChange?: Promise<void>;
   native?: NativeCaptureSelection;
 }

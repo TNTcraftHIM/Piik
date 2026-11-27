@@ -390,6 +390,7 @@ export class ChannelSession {
     for (const stage of this.stages.values()) {
       if (!stage.screen) continue;
       ownedScreens.add(stage.screen.id);
+      if (stage.screen.microphoneChange?.current()) pending.add(`source-microphone:${stage.screen.id}`);
       if (stage.qualityPending) pending.add(`quality:${stage.screen.id}`);
     }
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
@@ -2386,8 +2387,8 @@ export class ChannelSession {
     const selection = this.stages.get(roomId)?.sourceSelection;
     if (selection?.committing) return;
     if (selection) this.finishSourceSelection(roomId, selection);
-    if (!share || !selection && (!share.microphoneChange || this.local.has(share.id))) return;
-    if (!selection) share.requestedMicrophone = undefined;
+    if (!share || !selection && (!share.microphoneChange?.current() || this.local.has(share.id))) return;
+    if (!selection) share.microphoneChange!.requested = undefined;
     // A ready OBS input may be waiting for this independent picker to close.
     if (!selection || this.app?.externalInput(share.id)?.state !== "prepared") await this.app?.cancelCapture(share.id);
     this.patch({});
@@ -3274,7 +3275,7 @@ export class ChannelSession {
       : this.app?.sourceMicrophone(publicationId) ?? { enabled: false, deviceId: "", volume: 1 };
     return { ...actual, browser, canDisable: browser ? !!local.audio : !!this.app?.hasSourceAudioControl(publicationId),
       available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.hasSourceAudioControl(publicationId),
-      requested: share.requestedMicrophone?.settings ?? actual };
+      requested: share.microphoneChange?.current() ? share.microphoneChange.requested?.settings ?? actual : actual };
   };
 
   sourceMicrophones = (publicationId: string, signal?: AbortSignal) => this.local.get(publicationId)?.kind === "screen"
@@ -3287,54 +3288,74 @@ export class ChannelSession {
     const local = this.local.get(publicationId), app = this.app;
     const stopping = settings.enabled === false && actual?.canDisable;
     if (!share || this.stages.get(owner![0])?.sourceSelection && !stopping || !actual?.available) return Promise.reject(new Error("microphone_unavailable"));
-    if (share.microphoneChange && !share.requestedMicrophone && !stopping) return share.microphoneChange;
+    const running = share.microphoneChange?.current() ? share.microphoneChange : undefined;
+    if (running && !running.requested && !stopping) return running.promise;
     const next = { ...actual.requested, ...settings };
     if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
-    const request: NonNullable<ScreenShare["requestedMicrophone"]> = { settings: next };
-    share.requestedMicrophone = request;
+    type Edit = NonNullable<ScreenShare["microphoneChange"]>;
+    const request: NonNullable<Edit["requested"]> = { settings: next };
     const applyNative = ({ enabled, deviceId, volume }: SourceMicrophoneConfiguration) =>
       app!.setSourceMicrophone(publicationId, owner![0], { enabled, deviceId, volume });
-    if (stopping && local?.audio) void local.audio.setMicrophone(false, share.microphone);
-    else if (stopping && share.microphoneChange && app) {
-      // Start immediately to cancel Native preparation. The loop awaits this same request.
-      request.started = applyNative(next);
-      void request.started.catch(() => {});
+    if (running) {
+      running.requested = request;
+      if (stopping && local?.audio) void local.audio.setMicrophone(false, share.microphone);
+      else if (stopping && app) {
+        // Start immediately to cancel Native preparation. The loop awaits this same request.
+        request.started = applyNative(next);
+        void request.started.catch(() => {});
+      }
+      this.patch({});
+      return running.promise;
     }
-    this.patch({});
-    if (share.microphoneChange) return share.microphoneChange;
-    const current = () => this.stages.get(owner![0])?.screen === share
-      && (local ? this.local.get(publicationId) === local : this.app === app && !!app?.screens.has(publicationId));
-    share.microphoneChange = this.action(`source-microphone:${publicationId}`, async () => {
-      do {
-        const requested = share.requestedMicrophone;
-        if (!requested) throw new DOMException("Capture cancelled", "AbortError");
-        const wanted = requested.settings;
-        try {
-          if (local?.kind === "screen" && local.audio) {
-            const input = { deviceId: wanted.deviceId, volume: wanted.volume,
-              voiceProcessing: wanted.voiceProcessing ?? share.microphone.voiceProcessing };
-            if (wanted.enabled !== local.audio.microphoneEnabled || wanted.enabled && (input.deviceId !== share.microphone.deviceId
-              || input.voiceProcessing !== share.microphone.voiceProcessing)) await local.audio.setMicrophone(wanted.enabled, input);
-            else {
-              local.audio.microphoneVolume(input.volume);
-              await Promise.resolve(); // Gain edits share the same latest-wanted operation.
+    const captureId = app?.captureId(publicationId);
+    if (!local && !captureId) return Promise.reject(new Error("microphone_unavailable"));
+    const current = (): boolean => share.microphoneChange === edit && this.stages.get(owner![0])?.screen === share
+      && (local ? this.local.get(publicationId) === local : this.app === app && app?.captureId(publicationId) === captureId);
+    let settle!: (work: Promise<void>) => void;
+    const promise = new Promise<void>(resolve => { settle = resolve; });
+    const edit: Edit = share.microphoneChange = { current, requested: request, promise };
+    const failed = this.beginActionFeedback();
+    const apply = async () => {
+      try {
+        while (current()) {
+          const requested = edit.requested;
+          if (!requested) throw new DOMException("Capture cancelled", "AbortError");
+          const wanted = requested.settings;
+          try {
+            if (local?.kind === "screen" && local.audio) {
+              const input = { deviceId: wanted.deviceId, volume: wanted.volume,
+                voiceProcessing: wanted.voiceProcessing ?? share.microphone.voiceProcessing };
+              if (wanted.enabled !== local.audio.microphoneEnabled || wanted.enabled && (input.deviceId !== share.microphone.deviceId
+                || input.voiceProcessing !== share.microphone.voiceProcessing)) await local.audio.setMicrophone(wanted.enabled, input);
+              else {
+                local.audio.microphoneVolume(input.volume);
+                await Promise.resolve(); // Gain edits share the same latest-wanted operation.
+              }
+              if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+              share.microphone = input;
+            } else {
+              await (requested.started ?? applyNative(wanted));
+              if (!current()) throw new DOMException("Capture cancelled", "AbortError");
             }
+          } catch (error) {
             if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-            share.microphone = input;
-          } else {
-            await (requested.started ?? applyNative(wanted));
-            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            if (edit.requested && requested !== edit.requested) continue;
+            throw error;
           }
-        } catch (error) {
-          if (current() && share.requestedMicrophone && requested !== share.requestedMicrophone) continue;
-          throw error;
+          if (requested === edit.requested) return;
+          this.patch({});
         }
+        throw new DOMException("Capture cancelled", "AbortError");
+      } catch (error) {
+        failed(error);
+        throw error;
+      } finally {
+        if (share.microphoneChange === edit) share.microphoneChange = undefined;
         this.patch({});
-        if (requested === share.requestedMicrophone) return;
-      } while (current());
-      throw new DOMException("Capture cancelled", "AbortError");
-    }).finally(() => { share.microphoneChange = undefined; share.requestedMicrophone = undefined; this.patch({}); });
-    return share.microphoneChange;
+      }
+    };
+    settle(apply());
+    return promise;
   };
 
   screenEncodingExecution = (publicationId: string) => this.screenStage(publicationId)?.screen?.encodingExecution;

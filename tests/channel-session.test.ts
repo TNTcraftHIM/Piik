@@ -4920,12 +4920,33 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       expect(session.nativeCaptureSelection("first")).toEqual(previous);
       const audioToken = crypto.randomUUID();
       audioTokens.add(audioToken);
-      app.receive({ id: app.sent.at(-1)!.id, result: { captureId: audioToken, sessionId: nativeSessionId, codec: "h264" } });
+      const prepare = app.sent.at(-1)!;
+      // Off remains available on the incumbent while its replacement is preparing.
+      const oldOff = change === changes[0]
+        ? session.setSourceMicrophone(publicationId, { enabled: false, volume: .2 }).catch(error => error)
+        : undefined;
+      const offCommand = app.sent.at(-1)!;
+      app.receive({ id: prepare.id, result: { captureId: audioToken, sessionId: nativeSessionId, codec: "h264" } });
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
       expect(app.sent.at(-1)?.captureId).toBe(audioToken);
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: audio, microphone: disabledMicrophone } });
       await changing;
+      if (oldOff) {
+        expect(session.sourceMicrophone(publicationId)?.requested).toEqual(disabledMicrophone);
+        const enabling = session.setSourceMicrophone(publicationId, { enabled: true });
+        const enableCommand = app.sent.at(-1)!;
+        expect(enableCommand).toMatchObject({ type: "capture_microphone", captureId: audioToken,
+          settings: { ...disabledMicrophone, enabled: true } });
+        app.receive({ id: offCommand.id, result: { ...disabledMicrophone, volume: .2 } });
+        await expect(oldOff).resolves.toMatchObject({ name: "AbortError" });
+        expect(session.getSnapshot().pending.has(`source-microphone:${publicationId}`)).toBe(true);
+        app.receive({ id: enableCommand.id, result: { ...disabledMicrophone, enabled: true } });
+        await enabling;
+        const off = session.setSourceMicrophone(publicationId, { enabled: false });
+        app.receive({ id: app.sent.at(-1)!.id, result: disabledMicrophone });
+        await off;
+      }
       app.receive({ type: "input_state", publicationId, state: heldInput });
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio, excludeAudio: exclusion, renderEndpointId, showCaptureBorder: true, current: true });
       expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(heldInput);
