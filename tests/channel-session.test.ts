@@ -4868,6 +4868,8 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     patchView.mockRestore();
     const replacingBeforeOff = session.setSourceMicrophone(publicationId, { deviceId: "pending-before-off" });
     const heldMicrophone = app.sent.at(-1)!;
+    await expect(session.startExternalScreen("first", false)).rejects.toThrow("operation_pending");
+    expect(app.sent.at(-1)).toBe(heldMicrophone);
     const otherScreen = { ...published.publications[0]!, id: crypto.randomUUID(), sessionId: "other", userId: "other" };
     socket.receive({ type: "state", state: { ...published, publications: [...published.publications, otherScreen] } });
     expect(session.getSnapshot().state?.publications).toHaveLength(2);

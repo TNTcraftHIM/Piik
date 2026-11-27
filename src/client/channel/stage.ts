@@ -185,7 +185,7 @@ export class Stage {
 
   selectScreen(share: ScreenShare, defaults?: Pick<ScreenShare, "profile" | "codecMode" | "encodingExecution">):
     { share: ScreenShare; selection: SourceSelection; current(): boolean } {
-    if (share.audioChange || this.qualityPending) throw new Error("operation_pending");
+    if (share.audioChange || share.microphoneChange?.current() || this.qualityPending) throw new Error("operation_pending");
     // An armed OBS permission retains the publication ID until a new capture starts.
     if (defaults && !this.quality.local(share.id) && !this.quality.app()?.hasCapture(share.id)) {
       Object.assign(share, defaults, { codec: undefined });
