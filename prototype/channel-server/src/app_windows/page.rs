@@ -89,6 +89,7 @@ struct ReportedCandidate {
 #[derive(Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 enum MediaEvent {
+    Emptied,
     Loadedmetadata,
     Loadeddata,
     Play,

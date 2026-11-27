@@ -291,11 +291,14 @@ test("creator playing reanchors initial start and buffer recovery even at the sa
   } finally { player.close(); }
 });
 
-test("the original-page viewer refreshes readiness on buffering and recovery before the next clock tick", async () => {
+test.each([
+  { event: "waiting", recovery: "playing", paused: false, readyState: 2 },
+  { event: "emptied", recovery: "loadeddata", paused: true, readyState: 0 },
+] as const)("the original-page viewer refreshes readiness on $event and recovery before the next clock tick", async ({ event, recovery, paused, readyState: unavailable }) => {
   vi.useFakeTimers();
   const candidateId = crypto.randomUUID();
   let readyState = 4;
-  const state = () => ({ position: 0, paused: false, rate: 1, duration: 60, readyState, ended: false, buffered: [] });
+  const state = () => ({ position: 0, paused, rate: 1, duration: 60, readyState, ended: false, buffered: [] });
   const page = new AppPage(crypto.randomUUID(), "https://video.test/", async () => state(), () => {}, () => {});
   const media = new AppPageMedia(page, candidateId);
   const player = new WatchPlayer("room", false, media, vi.fn());
@@ -303,20 +306,20 @@ test("the original-page viewer refreshes readiness on buffering and recovery bef
     await player.ready();
     const now = performance.now();
     player.calibrate(now, now, now);
-    player.update({ timeline: "media", position: 0, paused: false, rate: 1, anchorTime: now });
+    player.update({ timeline: "media", position: 0, paused, rate: 1, anchorTime: now });
     await vi.advanceTimersByTimeAsync(0);
     expect(player.waitingForPicture).toBe(false);
-    readyState = 2;
-    const sample = (event: "waiting" | "playing", id = candidateId) =>
+    readyState = unavailable;
+    const sample = (event: "waiting" | "emptied" | "playing" | "loadeddata", id = candidateId) =>
       page.receive({ type: "page_sample", candidateId: id, event, pageId: page.id });
-    sample("waiting", crypto.randomUUID());
+    sample(event, crypto.randomUUID());
     await vi.advanceTimersByTimeAsync(0);
     expect(player.waitingForPicture).toBe(false);
-    sample("waiting");
+    sample(event);
     await vi.advanceTimersByTimeAsync(0);
     expect(player.waitingForPicture).toBe(true);
     readyState = 3;
-    sample("playing");
+    sample(recovery);
     await vi.advanceTimersByTimeAsync(0);
     expect(player.waitingForPicture).toBe(false);
   } finally { player.close(); }

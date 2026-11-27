@@ -82,7 +82,7 @@ export class WatchPlayer {
       }
       if (!owner) {
         // Without a local video element, picture readiness comes from the player's latest sample.
-        if (!this.video && (event === "waiting" || event === "playing" || event === "loadeddata"))
+        if (!this.video && (event === "emptied" || event === "waiting" || event === "playing" || event === "loadeddata"))
           void this.align();
         return;
       }

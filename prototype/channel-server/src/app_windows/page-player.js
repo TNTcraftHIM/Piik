@@ -121,7 +121,7 @@
       entry.lifetime = lifetime;
       byVideo.set(video, entry); elements.set(media, entry);
       for (const event of ['emptied', 'loadstart']) video.addEventListener(event, report, { signal: lifetime.signal });
-      for (const event of ['loadedmetadata', 'loadeddata', 'play', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'waiting', 'error']) {
+      for (const event of ['emptied', 'loadedmetadata', 'loadeddata', 'play', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'waiting', 'error']) {
         video.addEventListener(event, () => {
           if (!video.isConnected) return;
           send({ kind: 'sample', media, resource: resource(entry), revision: entry.revision, event });

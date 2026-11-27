@@ -21,7 +21,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 27;
+export const APP_PROTOCOL = 28;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
