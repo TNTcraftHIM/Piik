@@ -39,6 +39,9 @@ const REPLAY_PACKETS: [u16; 3] = [16, 64, 1024];
 const BRACKETS: usize = 12;
 
 struct Survey {
+    answered: u32,
+    bracket_attempts: usize,
+    addresses: Vec<Ipv4Addr>,
     started: Instant,
     samples: Vec<Sample>,
     /// Requests that got no answer.
@@ -49,6 +52,13 @@ struct Survey {
     brackets: Vec<[Sample; 3]>,
 }
 impl Survey {
+    fn record_answer(&mut self, mapped: SocketAddrV4) {
+        self.answered += 1;
+        if !self.addresses.contains(mapped.ip()) {
+            self.addresses.push(*mapped.ip());
+        }
+    }
+
     fn socket(&mut self) -> Option<(UdpSocket, u16)> {
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
         self.local_ports.push(socket.local_addr().ok()?.port());
@@ -67,6 +77,7 @@ impl Survey {
             self.unanswered += 1;
             return None;
         };
+        self.record_answer(mapped);
         self.samples.push(Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped });
         Some(mapped)
     }
@@ -75,6 +86,7 @@ impl Survey {
     /// middle mapping lies between the outer two however fast other traffic moves the counter:
     /// that is what a peer could be told in place of a guess.
     fn bracket(&mut self, outer: SocketAddrV4, middle: SocketAddrV4) -> Option<[Sample; 3]> {
+        self.bracket_attempts += 1;
         let mut asked = Vec::with_capacity(3);
         for observer in [outer, middle, outer] {
             let (socket, number) = self.socket()?;
@@ -90,6 +102,7 @@ impl Survey {
                 self.unanswered += 1;
                 continue;
             };
+            self.record_answer(mapped);
             answers.push(Sample { socket: *number, local_port: self.local_ports[usize::from(*number)], observer: *observer, sent_ms, mapped });
         }
         let bracket: [Sample; 3] = answers.try_into().ok()?;
@@ -159,7 +172,7 @@ fn main() {
     }
     let full = !arguments.is_empty();
     println!("piik-nat-lab {}: asking public STUN servers which address they see.", env!("CARGO_PKG_VERSION"));
-    let mut survey = Survey { started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new() };
+    let mut survey = Survey { answered: 0, bracket_attempts: 0, addresses: Vec::new(), started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new() };
     let (Some((first, first_number)), Some((second, second_number))) = (survey.socket(), survey.socket()) else {
         return println!("Could not open a UDP socket.");
     };
@@ -247,7 +260,7 @@ fn read_address(samples: &[Sample], observers: &[(&str, SocketAddrV4)]) {
             .iter()
             .map(|&packets| {
                 let replayed = replay(&made, REPLAY_AFTER, holdout, packets);
-                format!("{packets} packets held {} of {}", replayed.held, replayed.held + replayed.missed + replayed.no_aim)
+                format!("{packets} packets held {} of {} ({} warm-up)", replayed.held, replayed.held + replayed.missed + replayed.no_aim, replayed.too_early)
             })
             .collect();
         println!("replay reading {reading}: {}", each.join("; "));
@@ -256,13 +269,11 @@ fn read_address(samples: &[Sample], observers: &[(&str, SocketAddrV4)]) {
 
 fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full: bool) {
     // Each public address seen gets a letter, in the order seen.
-    let mut addresses: Vec<Ipv4Addr> = Vec::new();
-    for sample in &survey.samples {
-        if !addresses.contains(sample.mapped.ip()) {
-            addresses.push(*sample.mapped.ip());
-        }
-    }
-    let letter = |address: &Ipv4Addr| (b'A' + addresses.iter().position(|known| known == address).unwrap_or(25).min(25) as u8) as char;
+    let addresses = &survey.addresses;
+    let letter = |address: &Ipv4Addr| {
+        let index = addresses.iter().position(|known| known == address).expect("recorded answer");
+        if index < 26 { ((b'A' + index as u8) as char).to_string() } else { format!("A{}", index + 1) }
+    };
     let shown = |address: Ipv4Addr| match full {
         true => address.to_string(),
         false => format!("{}.{}.x.x", address.octets()[0], address.octets()[1]),
@@ -278,7 +289,7 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
     let ipv6 = matches!(local_address("[2606:4700:4700::1111]:53"), Some(IpAddr::V6(address)) if address.segments()[0] & 0xe000 == 0x2000);
     println!("\n==== report (copy from here) ====");
     println!("tool: piik-nat-lab {}", env!("CARGO_PKG_VERSION"));
-    println!("observers answered: {} of {}; requests answered {}, unanswered {}", observers.len(), OBSERVERS.len(), survey.samples.len(), survey.unanswered);
+    println!("observers answered: {} of {}; requests answered {}, unanswered {}", observers.len(), OBSERVERS.len(), survey.answered, survey.unanswered);
     println!("local: {network}; global IPv6: {}", if ipv6 { "yes" } else { "no" });
     println!("public addresses: {}", addresses.iter().map(|address| format!("{} {}", letter(address), shown(*address))).collect::<Vec<_>>().join(", "));
     // Whether the mapping follows the destination's port: the same socket, the same address, two ports.
@@ -293,16 +304,13 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
     if addresses.len() == 1 {
         read_address(&survey.samples, observers);
     } else {
-        // One socket that shows two addresses was sent out by its destination; otherwise each
-        // socket keeps to one way out.
-        let by_destination = survey.samples.iter().any(|one| survey.samples.iter().any(|other| other.socket == one.socket && other.mapped.ip() != one.mapped.ip()));
-        println!(
-            "note: this machine's traffic left through {} public addresses, chosen by the {}. A carrier or a router with several lines does this, and so does a proxy or VPN that carries part of the traffic. Each address is read by itself.",
-            addresses.len(),
-            if by_destination { "destination" } else { "socket" }
-        );
-        for address in &addresses {
+        println!("note: {} public addresses observed. Each replay assumes the target's public address is known.", addresses.len());
+        for address in addresses {
             let on_address: Vec<Sample> = survey.samples.iter().copied().filter(|sample| sample.mapped.ip() == address).collect();
+            if on_address.is_empty() {
+                println!("-- address {} {}: seen only in brackets", letter(address), shown(*address));
+                continue;
+            }
             let mut toward: Vec<usize> = on_address.iter().filter_map(|sample| observers.iter().position(|(_, observer)| *observer == sample.observer)).collect();
             toward.sort();
             toward.dedup();
@@ -310,7 +318,7 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
             read_address(&on_address, observers);
         }
     }
-    if !survey.brackets.is_empty() {
+    if survey.bracket_attempts > 0 {
         let (mut held, mut widths, mut crossed) = (0, Vec::new(), 0);
         for [first, middle, last] in &survey.brackets {
             if first.mapped.ip() != middle.mapped.ip() || last.mapped.ip() != middle.mapped.ip() {
@@ -323,13 +331,15 @@ fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u16, full:
         }
         widths.sort();
         println!(
-            "brackets (three new sockets sent to in a row, the middle one to another host): the middle port lay between the outer two in {held} of {}; the outer two were {} to {} ports apart, median {}; {crossed} more showed two addresses",
-            widths.len(),
-            widths.first().copied().unwrap_or(0),
-            widths.last().copied().unwrap_or(0),
-            widths.get(widths.len() / 2).copied().unwrap_or(0)
+            "brackets: {} attempted, {} incomplete, {crossed} crossed exits, {} complete on one exit, {held} held between the outer ports",
+            survey.bracket_attempts, survey.bracket_attempts - survey.brackets.len(), widths.len()
         );
-        println!("bracket samples (outer observer, middle observer, ms, then address and port of first, middle, last):");
+        if let (Some(low), Some(high)) = (widths.first(), widths.last()) {
+            println!("same-exit outer port separation: {low} to {high}, median {}", widths[widths.len() / 2]);
+        }
+        if !survey.brackets.is_empty() {
+            println!("bracket samples (outer observer, middle observer, ms, then address and port of first, middle, last):");
+        }
         for [first, middle, last] in &survey.brackets {
             let index = |sample: &Sample| observers.iter().position(|(_, address)| *address == sample.observer).unwrap_or(99);
             println!(
@@ -381,13 +391,18 @@ mod tests {
     #[test]
     fn a_bracket_is_three_sockets_whose_answers_are_read_after_all_three_have_sent() {
         let (outer, middle) = (observer(Ipv4Addr::new(127, 0, 0, 1), 2), observer(Ipv4Addr::new(127, 0, 0, 2), 1));
-        let mut survey = Survey { started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new() };
+        let mut survey = Survey { answered: 0, bracket_attempts: 0, addresses: Vec::new(), started: Instant::now(), samples: Vec::new(), unanswered: 0, local_ports: Vec::new(), brackets: Vec::new() };
         let [first, between, last] = survey.bracket(outer, middle).expect("three answers");
         assert_eq!([first.observer, between.observer, last.observer], [outer, middle, outer]);
         // No NAT on the loopback: each answer shows its own socket's port.
         for sample in [first, between, last] {
             assert_eq!(sample.mapped.port(), sample.local_port);
         }
-        assert_eq!((survey.brackets.len(), survey.samples.len(), survey.unanswered), (1, 0, 0));
+        assert_eq!((survey.bracket_attempts, survey.brackets.len(), survey.answered, survey.unanswered), (1, 1, 3, 0));
+
+        let silent = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let SocketAddr::V4(silent_address) = silent.local_addr().unwrap() else { unreachable!() };
+        assert!(survey.bracket(observer(Ipv4Addr::LOCALHOST, 2), silent_address).is_none());
+        assert_eq!((survey.bracket_attempts, survey.brackets.len(), survey.answered, survey.unanswered), (2, 1, 5, 1));
     }
 }
