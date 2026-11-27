@@ -69,7 +69,7 @@ export function ChannelPage() {
   const [selected, setSelected] = useState(selectedRoom);
   // Capture incoming hashes before the session's admission listener can consume them.
   const targetURL = useClientNavigationTarget(selected);
-  const [layout, setLayout] = useState(() => readRoomPreferences().roomLayout);
+  const [layout, setLayout] = useState(() => readRoomPreferences("roomLayout"));
   const changeLayout = useCallback((value: RoomLayout) => {
     setLayout(value); saveRoomPreferences({ roomLayout: value });
   }, []);
@@ -141,7 +141,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const chatInBar = phone && workspaceWidth > 370;
   const minimal = layout === "minimal";
   const bar = phone || minimal;
-  const [roomListFolded, setRoomListFolded] = useState(() => readRoomPreferences().roomListFolded);
+  const [roomListFolded, setRoomListFolded] = useState(() => readRoomPreferences("roomListFolded"));
   const [companionChoice, setCompanionChoice] = useState<Companion>();
   const [toolTriggerHome, setToolTriggerHome] = useState<HTMLDivElement | null>(null);
   const [stageLayoutHome, setStageLayoutHome] = useState<HTMLDivElement | null>(null);

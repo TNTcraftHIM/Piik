@@ -131,12 +131,17 @@ impl ByteTree {
     pub fn forwarding_available(&mut self, sender: Uuid) {
         self.refused.retain(|(from, _)| *from != sender);
     }
-    pub fn retire_pair(&mut self, first: Uuid, second: Uuid) {
+    pub fn retire_pair(&mut self, first: Uuid, second: Uuid) -> bool {
         for (child, parent) in [(first, second), (second, first)] {
             if self.parents.get(&child) == Some(&parent) {
                 self.parents.remove(&child);
+                return true;
             }
         }
+        false
+    }
+    pub fn retire_endpoint(&mut self, endpoint: Uuid) {
+        self.parents.retain(|child, parent| *child != endpoint && *parent != endpoint);
     }
     pub fn waiting(&self, receivers: &BTreeSet<Uuid>) -> bool {
         self.source.is_some_and(|source| {

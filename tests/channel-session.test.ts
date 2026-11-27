@@ -210,7 +210,11 @@ test("media cleanup reaches dormant Native rooms, merges host aliases and skips 
     app.connected = true;
     siteReady = true;
     await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
-    await expect(session.clearHostMedia("domain")).resolves.toEqual(result);
+    await expect(session.clearHostMedia("app")).rejects.toThrow("room_host_unavailable");
+    const waitingApp = vi.spyOn(app, "describeHosting").mockImplementation(() => new Promise(() => {}));
+    const clearing = session.clearHostMedia("domain");
+    expect(waitingApp).not.toHaveBeenCalled();
+    await expect(clearing).resolves.toEqual(result);
     (session as unknown as { app?: typeof app }).app = undefined;
     socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, hostingMode: "hosted" } } });
     await expect(session.hostMediaTargets()).resolves.toEqual(["domain"]);
@@ -810,6 +814,53 @@ test("the site overview does not select a room or load its history", async () =>
     expect(peer.sent).toEqual([]);
     session.browse("second");
     expect(socket.sent.filter(command => command.type === "browse" && command.active).map(command => command.roomId)).toEqual(["second"]);
+  } finally { session.close(); }
+});
+
+test("Native-only signals preserve the socket and its pending command through later state and RTC", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = await setup();
+  try {
+    let settled = false;
+    const saving = session.updateProfile({ name: "Next", avatar: null }).finally(() => { settled = true; });
+    const request = socket.sent.at(-1)!;
+    const signal = (payload: unknown) => socket.receive({ type: "signal", pairId: "pair", fromSessionId: "z", requestId: request.requestId, payload });
+    const delivered = vi.spyOn(ChannelMedia.prototype, "signal");
+    signal({ udp: { type: "ready" } });
+    signal({ udp: null });
+    signal({ udp: { type: "future", futureNativeField: true }, extension: 1 });
+    await Promise.resolve();
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    expect(ChannelSocket.current).toBe(socket);
+    expect(settled).toBe(false);
+    expect(delivered).not.toHaveBeenCalled();
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.name = "Updated";
+    state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: false, rooms: [], incoming: [], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().state?.channel.name).toBe("Updated");
+    const [pc] = RoomPeerConnection.instances;
+    const exchangeId = crypto.randomUUID();
+    signal({ exchangeId, description: { type: "offer", sdp: "test offer" }, extension: 1 });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("test offer"));
+    expect(settled).toBe(false);
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await saving;
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(ChannelSocket.current).toBe(socket);
+  } finally { session.close(); }
+});
+
+test.each([
+  { udp: null, candidate: {} }, { udp: false, resync: false }, { udp: {}, tracks: [] },
+  { udp: {}, exchangeId: crypto.randomUUID() }, { udp: {}, description: {} },
+])("mixed Native and RTC signals retain invalid-response recovery", async payload => {
+  const { session, socket } = await setup();
+  try {
+    socket.receive({ type: "signal", pairId: "pair", fromSessionId: "z", payload });
+    expect(socket.readyState).toBe(3);
+    expect(session.getSnapshot().error).toBe("invalid_response");
   } finally { session.close(); }
 });
 
@@ -11908,7 +11959,8 @@ test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file or
   Object.assign(row, { id: crypto.randomUUID(), userId: crypto.randomUUID(), archivedAuthorName: "Archived author", attachments: [attachment],
     inlineImages: { [attachment.id]: { data: btoa("GIF89a"), mediaType: "image/gif", original: true, width: 1, height: 1 } } });
   const rows = [row, { ...row, id: crypto.randomUUID(), seq: 2, nonce: "second-send", text: "Older and recent rows both remain" }];
-  Object.defineProperty(snapshot, "rows", { get: () => (async function* () { yield* rows; })() });
+  const readRows = vi.fn(() => (async function* () { yield* rows; })());
+  Object.defineProperty(snapshot, "rows", { get: readRows });
   const retained = vi.spyOn(session.attachments, "retained").mockRejectedValue(new Error("file_inventory_must_not_be_opened"));
   const content = vi.fn(), restored: BackupHistoryRow[] = [];
   try {
@@ -11916,7 +11968,10 @@ test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file or
       : await session.exportRoomCopy("first", kind === "copy-with-settings", false);
     const metadata = await backupArchive.readBackup(archive, { metadata: () => {}, row: value => { restored.push(value); }, content });
     expect(metadata).toMatchObject({ kind: kind === "backup" ? "room" : "room_copy", retainedFiles: [] });
-    if (kind === "backup") expect(metadata).toMatchObject({ domainId: state.channel.id, policy });
+    if (kind === "backup") {
+      expect(metadata).toMatchObject({ domainId: state.channel.id, policy });
+      expect(readRows).toHaveBeenCalledOnce();
+    }
     else if (kind === "copy-with-settings") expect(metadata).toMatchObject({ roomInfo: { name: policy.name, icon: "rocket", picture, voiceBitrate: policy.voiceBitrate, relayCapacity: policy.relayCapacity } });
     else expect(metadata).not.toHaveProperty("roomInfo");
     expect(restored).toEqual(rows); expect(content).not.toHaveBeenCalled(); expect(retained).not.toHaveBeenCalled();
@@ -13903,7 +13958,7 @@ test('MPD whole-track selection stays private until explicit confirmation and us
   commit.mockRestore();
   const inspect = vi.spyOn(page, 'inspectMpd').mockResolvedValue(catalog);
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'dash' as const };
-  const prepare = vi.spyOn(page, 'prepareMpdMedia').mockResolvedValue(source);
+  const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(source);
   try {
     await session.selectWatchPage('first', candidateId);
     expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate }]);
@@ -14062,7 +14117,7 @@ test('MPD manifests are inspected explicitly and replacing the current catalog r
   const first = mpdSelectionFixture(), second = mpdSelectionFixture();
   const { session, page, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [first.candidate, second.candidate], byteSource: null }));
   const inspect = vi.spyOn(page, 'inspectMpd').mockImplementation(async id => id === first.candidate.id ? first.catalog : second.catalog);
-  const prepare = vi.spyOn(page, 'prepareMpdMedia');
+  const prepare = vi.spyOn(page, 'prepareMedia');
   try {
     await session.selectWatchPage('first', candidateId);
     expect(inspect).not.toHaveBeenCalled();
@@ -14202,7 +14257,7 @@ test('late clear tracks update the current selection and settings without rechec
   const { session, page, socket, candidateId, commit } = await websiteSourceSelection(discover);
   commit.mockRestore();
   const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockImplementation(async () => {
+  const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation(async () => {
     page.receive({ type: 'page_media_changed', pageId: page.id });
     return byteSource;
   });
@@ -14367,7 +14422,7 @@ test('replaced audio metadata cancels only its obsolete inspection and prepares 
     return candidate.id === video.candidate.id ? video : candidate.id === oldAudio.candidate.id ? oldAudio : nextAudio;
   });
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(source);
+  const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(source);
   const publications: string[][] = [];
   const unlisten = session.subscribe(() => publications.push(session.watchPage('first')?.watchSources?.indexed.map(choice => choice.candidate.id) ?? []));
   try {
@@ -14412,7 +14467,7 @@ test.each([false, true])('indexed sharing explicitly prepares video with optiona
   }));
   commit.mockRestore();
   const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(byteSource);
+  const prepare = vi.spyOn(page, 'prepareMedia').mockResolvedValue(byteSource);
   const hide = vi.spyOn(page, 'hide').mockImplementation(async () => { if (audioSelected) throw new Error('hide_refused'); });
   try {
     await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
@@ -14452,7 +14507,7 @@ test('rejected indexed start retires its prepared page without a separate attach
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
   commit.mockRestore();
   const hide = vi.spyOn(page, 'hide');
-  vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
+  vi.spyOn(page, 'prepareMedia').mockResolvedValue({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
   try {
     await session.selectWatchPage('first', candidateId);
     const confirming = session.selectWatchIndexedSource('first', video.candidate.id);
@@ -14476,7 +14531,7 @@ test('local provider preparation failure releases only its reader and candidate,
   vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
   const {session,page,socket,candidateId,commit,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[video.candidate],byteSource:null}));
   const local=localProviderVideo();
-  vi.spyOn(page,'prepareIndexedMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
+  vi.spyOn(page,'prepareMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
   const stop=vi.spyOn(page,'stopMedia').mockResolvedValue();
   vi.spyOn(HTMLVideoMedia.prototype,'ready').mockRejectedValueOnce(new Error('watch_media_unavailable'));
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
@@ -14650,7 +14705,7 @@ test('cancelling indexed preparation closes its page and prevents late preparati
   const { session, page, socket, candidateId, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
   const hide = vi.spyOn(page, 'hide');
   let answer!: (value: { sessionId: string; resourceId: string; format: 'hls' }) => void;
-  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+  const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
   try {
     await session.selectWatchPage('first', candidateId);
     const confirming = session.selectWatchIndexedSource('first', video.candidate.id);
@@ -17934,8 +17989,7 @@ test.each(['indexed', 'mpd'] as const)('opaque webpage forwarding does not requi
   }));
   commit.mockRestore();
   const grant = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: kind === 'indexed' ? 'hls' as const : 'dash' as const };
-  vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(grant as typeof grant & { format: 'hls' });
-  vi.spyOn(page, 'prepareMpdMedia').mockResolvedValue(grant as typeof grant & { format: 'dash' });
+  vi.spyOn(page, 'prepareMedia').mockResolvedValue(grant);
   vi.spyOn(page, 'inspectMpd').mockResolvedValue(mpd.catalog);
   try {
     // The Native group catalog is root A; the opaque player is in an about:blank child B.

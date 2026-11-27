@@ -1,6 +1,6 @@
 import type { NativeCaptureSelection } from "../native/capture-selection";
 import type { WatchMediaSources } from "./watch-page-media";
-import type { NativePageCandidate, NativePageIndexedSelection, NativePageMpdCatalog, NativePageMpdSelection } from "../native/wire";
+import type { NativePageCandidate, NativePageMpdCatalog, NativePageMpdSelection } from "../native/wire";
 import type { WatchMedia } from "./watch-media";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
@@ -10,7 +10,7 @@ import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
 import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget, EncodingExecution } from "../native/wire";
-import type { BackgroundVoiceShortcuts, NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics, NativeRelayCapacity } from "./app-link";
+import type { AppPageMediaSelection, BackgroundVoiceShortcuts, NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics, NativeRelayCapacity } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -157,7 +157,7 @@ export interface ChannelActions {
   selectWatchMpdSource(roomId: string, selection: NativePageMpdSelection, reportError?: boolean): Promise<void>;
   selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string, reportError?: boolean): Promise<void>;
   selectWatchForwardSource(roomId: string, choiceId: string, reportError?: boolean): Promise<void>;
-  setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | NativePageMpdSelection | null, signal?: AbortSignal): Promise<void>;
+  setWatchByteSource(id: string, choice: AppPageMediaSelection | null, signal?: AbortSignal): Promise<void>;
   watchEmbedPreparation(id: string): import("./watch-media").WatchMedia | undefined;
   cancelWatchPage(id: string): void;
   leaveWatch(id: string, reportError?: ReportError): Promise<void>;

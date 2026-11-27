@@ -36,7 +36,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
   const canPrompt = askUnnamedMemberName && editable && !name;
   useEffect(() => {
     if (!canPrompt || !identityKey || prompting.current || dismissed.current ||
-      readRoomPreferences().nicknamePromptDismissedByIdentity[identityKey]) return;
+      readRoomPreferences("nicknamePromptDismissedByIdentity")[identityKey]) return;
     const popover = panel.current, button = trigger.current?.querySelector("button");
     if (!popover || !button || popover.matches(":popover-open") || popover.ownerDocument.querySelector("dialog:modal")) return;
     prompting.current = true;
@@ -46,7 +46,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, profileRea
     if (!identityKey || dismissed.current) return;
     dismissed.current = true;
     saveRoomPreferences({ nicknamePromptDismissedByIdentity: {
-      ...readRoomPreferences().nicknamePromptDismissedByIdentity, [identityKey]: true,
+      ...readRoomPreferences("nicknamePromptDismissedByIdentity"), [identityKey]: true,
     } });
   };
   const { message } = channelErrorPresentation(error, t);

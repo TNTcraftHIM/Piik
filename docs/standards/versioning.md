@@ -124,15 +124,19 @@ the reasons and the sources. The rule:
   as unsupported in that request's reply. A reply of a kind its requester does
   not know ends that request as an unknown outcome, never as success. A
   notification of an unknown kind is ignored.
-- **Unknown fields.** A field a party does not know is ignored. The bounds,
-  types and required fields it does know stay strict. A writer stores the
+- **Unknown fields.** At an extensible wire object the final recipient ignores
+  fields it does not know. A relay forwards the enclosed signed payload
+  unchanged. Known bounds, types and required fields stay strict, and nested
+  objects keep their defined contracts. A writer stores the
   fields it knows, and its confirmation carries the message as stored. Stores
   and archives are the exception, because nobody is there to be told: content
   their reader does not know is refused before anything is installed.
-- **Where an addition goes.** What an older party must not ignore is added as
-  a request, not as a field or a notification. Ignoring a field never does
-  more than was asked: wider authority, a longer life or more recipients are
-  requests of their own.
+- **Where an addition goes.** A new action an older receiver must decline uses
+  a distinct request. The same applies to a new constraint whose omission
+  would widen authority, lifetime, recipients or the operation's target.
+  Every implementation understands the constraints defined for its baseline
+  requests. Changes to state older observers already display retain their
+  baseline update semantics.
 - **New forms.** A request names the optional parts and forms it wants, and
   one that names none gets what the first release gave. A part that was not
   asked for, or that the answering party does not know, is absent. Absent is
@@ -153,10 +157,10 @@ may do it, keep their own owners: neither a number nor a description grants an
 action, and the owner of an action still checks authorization, identity,
 generation and state.
 
-The first release exercises each rule in its tests: an unknown field at every
-reader and writer, an unknown request at every owner of requests, an unknown
-reply at a waiting request, an unknown notification at every listener, and a
-peer with a higher second number. A tolerant current reader does not change a
+The first release exercises these rules at each independently implemented wire
+boundary, including a real mixed-version path: unknown fields, requests,
+replies and notifications, and a peer with a higher second number. A shared
+decoder needs one boundary test. A tolerant current reader does not change a
 released reader's contract: verify the released readers and the new producers
 in both directions before calling a change additive.
 

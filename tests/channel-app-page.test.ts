@@ -260,7 +260,7 @@ test("MPD inspection retains long display labels and propagates catalog-limit er
     socket.reply(catalog);
     await expect(inspecting).resolves.toEqual(catalog);
     const selection = { sourceId: catalog.sourceId, videoId: catalog.tracks[0]!.id, audioId: catalog.tracks[1]!.id };
-    const preparing = page.prepareMpdMedia(selection, new AbortController().signal);
+    const preparing = page.prepareMedia(selection, new AbortController().signal);
     expect(socket.sent.at(-1)).toEqual({ type: "page_media_prepare_mpd", pageId: page.id, ...selection, id: expect.any(String) });
     const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" };
     socket.reply(source);
@@ -287,13 +287,13 @@ test("MPD inspection cancellation and source replacement retain opaque catalog i
     const fresh = mpdCatalog(), reading = page.inspectMpd(choiceId, new AbortController().signal);
     socket.reply(fresh); await expect(reading).resolves.toEqual(fresh);
     const selection = { sourceId: fresh.sourceId, videoId: fresh.tracks[0].id, audioId: fresh.tracks[1].id };
-    const stale = page.prepareMpdMedia(selection, new AbortController().signal);
+    const stale = page.prepareMedia(selection, new AbortController().signal);
     socket.receive({ id: socket.sent.at(-1)!.id, error: "watch_source_changed" });
     await expect(stale).rejects.toThrow("watch_source_changed");
     expect(socket.sent.some(value => value.type === "page_media_stop" || value.type === "page_close")).toBe(false);
     const next = mpdCatalog(), nextInspect = page.inspectMpd(choiceId, new AbortController().signal);
     socket.reply(next); await nextInspect;
-    const prepare = page.prepareMpdMedia({ sourceId: next.sourceId,
+    const prepare = page.prepareMedia({ sourceId: next.sourceId,
       videoId: next.tracks[0].id }, new AbortController().signal);
     expect(socket.sent.at(-1)).toMatchObject({ type: "page_media_prepare_mpd", pageId: page.id, sourceId: next.sourceId });
     expect(socket.sent.at(-1)).not.toHaveProperty("url");
@@ -308,7 +308,7 @@ test("MPD prepare cancellation uses selection stop while closing one page preser
   try {
     const a = await openPage(app, socket), b = await openPage(app, socket), catalog = mpdCatalog();
     const selection = { sourceId: catalog.sourceId, videoId: catalog.tracks[0].id };
-    const cancel = new AbortController(), preparing = a.prepareMpdMedia(selection, cancel.signal), request = socket.sent.at(-1)!;
+    const cancel = new AbortController(), preparing = a.prepareMedia(selection, cancel.signal), request = socket.sent.at(-1)!;
     const rejected = expect(preparing).rejects.toMatchObject({ name: "AbortError" });
     cancel.abort(); await rejected;
     const stopping = a.stopMedia(); socket.reply(null); await stopping;
@@ -321,7 +321,7 @@ test("MPD prepare cancellation uses selection stop while closing one page preser
     socket.receive({ id: replyB.id, result: catalog }); await expect(pendingB).resolves.toEqual(catalog);
     expect(app.connected).toBe(true);
     expect(socket.sent.filter(value => value.type === "page_close").map(value => value.pageId)).toEqual([a.id]);
-    const wrongFormat = b.prepareMpdMedia(selection, new AbortController().signal);
+    const wrongFormat = b.prepareMedia(selection, new AbortController().signal);
     socket.reply({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" });
     await expect(wrongFormat).rejects.toThrow();
     const reading = b.read(); socket.reply(state); await expect(reading).resolves.toEqual(state);
@@ -344,7 +344,7 @@ test("MPD source and catalog schemas reject URL authority and unknown track kind
     socket.reply({ ...catalog, tracks: [{ ...catalog.tracks[0], kind: "unknown" }] });
     await expect(unknown).rejects.toThrow();
     const before = socket.sent.length;
-    await expect(page.prepareMpdMedia({ sourceId: catalog.sourceId, videoId: "not-an-opaque-id" }, new AbortController().signal)).rejects.toThrow();
+    await expect(page.prepareMedia({ sourceId: catalog.sourceId, videoId: "not-an-opaque-id" }, new AbortController().signal)).rejects.toThrow();
     expect(socket.sent).toHaveLength(before);
     const playback = page.read(); socket.reply(state); await expect(playback).resolves.toEqual(state);
     expect(app.connected).toBe(true);
@@ -606,11 +606,11 @@ test("indexed preparation keeps the page owner and returns only an HLS byte sour
     const page = await openPage(app, socket), signal = new AbortController().signal;
     const video = { choiceId: crypto.randomUUID(), totalSize: 1000, codec: "av01.0.08M.08", timescale: 16000,
       mediaOffset: 100, initBase64: "AAAA", segments: [[900, 80000] as [number, number]] };
-    const preparing = page.prepareIndexedMedia({ video }, signal);
+    const preparing = page.prepareMedia({ video }, signal);
     expect(socket.sent.at(-1)).toEqual({ id: expect.any(String), type: "page_media_prepare_indexed", pageId: page.id, video });
     const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" };
     socket.reply(source); await expect(preparing).resolves.toEqual(source);
-    const invalid = page.prepareIndexedMedia({ video }, signal);
+    const invalid = page.prepareMedia({ video }, signal);
     socket.reply({ ...source, format: "file" }); await expect(invalid).rejects.toThrow();
     const playback = page.read(); socket.reply(state); await expect(playback).resolves.toEqual(state);
   } finally { app.close(); }
@@ -623,10 +623,10 @@ test("indexed preparation measures the whole App request before sending and disc
     const video = { choiceId: crypto.randomUUID(), totalSize: 1000, codec: "av01.0.08M.08", timescale: 16000,
       mediaOffset: 100, initBase64: btoa("x".repeat(100000)), segments: [[900, 80000] as [number, number]] };
     const audio = { ...video, choiceId: crypto.randomUUID(), codec: "mp4a.40.2" }, sent = socket.sent.length;
-    await expect(page.prepareIndexedMedia({ video, audio }, signal)).rejects.toThrow("watch_resource_limit");
+    await expect(page.prepareMedia({ video, audio }, signal)).rejects.toThrow("watch_resource_limit");
     expect(socket.sent).toHaveLength(sent);
     const cancel = new AbortController();
-    const preparing = page.prepareIndexedMedia({ video: { ...video, initBase64: "AAAA" } }, cancel.signal);
+    const preparing = page.prepareMedia({ video: { ...video, initBase64: "AAAA" } }, cancel.signal);
     const command = socket.sent.at(-1)!, rejected = expect(preparing).rejects.toMatchObject({ name: "AbortError" });
     cancel.abort(); await rejected;
     socket.receive({ id: command.id, result: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" } });

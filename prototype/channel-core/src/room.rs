@@ -137,14 +137,18 @@ impl RoomRuntime {
         self.policy.allow_service_relay = allowed;
     }
 
+    fn byte_trees_mut(&mut self) -> impl Iterator<Item = &mut ByteTree> {
+        self.files.byte_trees_mut()
+            .chain(self.watch_activities.values_mut().map(|watch| &mut watch.bytes))
+    }
+
     pub(crate) fn reset_routes(&mut self) {
         self.delivery_frontiers.clear();
         self.transit = None;
         self.repair_at = None;
         self.failed_data_pairs.clear();
-        self.files.reset_routes();
-        for watch in self.watch_activities.values_mut() {
-            watch.bytes.clear_branches();
+        for tree in self.byte_trees_mut() {
+            tree.clear_branches();
         }
         for publication in self.publications.values_mut() {
             publication.reset_routes();
@@ -162,18 +166,8 @@ impl RoomRuntime {
             if let Some(previous) = self.selected_service() {
                 // Withdraw proof from the old service socket before deriving new work.
                 let session = previous.session_id;
-                let files = self
-                    .files
-                    .plans(&self.policy.id, session)
-                    .into_iter()
-                    .flat_map(|plan| plan.upstream.into_iter().chain(plan.downstream));
-                let watches = self
-                    .watch_byte_plans(session)
-                    .into_iter()
-                    .flat_map(|plan| plan.upstream.into_iter().chain(plan.downstream));
-                let peers: BTreeSet<_> = files.chain(watches).collect();
-                for peer in peers {
-                    self.retire_byte_pair(session, peer);
+                for tree in self.byte_trees_mut() {
+                    tree.retire_endpoint(session);
                 }
                 for publication in self.publications.values_mut() {
                     publication.retire_transport(session);
@@ -472,9 +466,8 @@ impl RoomRuntime {
     ) {
         use crate::forwarding::ForwardingKind;
         if kind.is_none_or(|kind| kind == ForwardingKind::File) {
-            self.files.forwarding_available(sender);
-            for watch in self.watch_activities.values_mut() {
-                watch.bytes.forwarding_available(sender);
+            for tree in self.byte_trees_mut() {
+                tree.forwarding_available(sender);
             }
         }
         for publication in self.publications.values_mut() {
@@ -1691,28 +1684,17 @@ impl RoomRuntime {
         let data = if ready {
             self.failed_data_pairs.remove(&pair)
         } else {
-            let assigned = self
-                .files
-                .plans(&self.policy.id, endpoint)
-                .iter()
-                .any(|p| p.upstream == Some(peer) || p.downstream.contains(&peer))
-                || self
-                    .watch_byte_plans(endpoint)
-                    .iter()
-                    .any(|p| p.upstream == Some(peer) || p.downstream.contains(&peer));
-            if assigned {
-                self.retire_byte_pair(endpoint, peer);
-            }
-            assigned && self.failed_data_pairs.insert(pair)
+            self.retire_byte_pair(endpoint, peer) && self.failed_data_pairs.insert(pair)
         };
         Ok(data)
     }
 
-    fn retire_byte_pair(&mut self, first: Uuid, second: Uuid) {
-        self.files.failed_pair(first, second);
-        for watch in self.watch_activities.values_mut() {
-            watch.bytes.retire_pair(first, second);
+    fn retire_byte_pair(&mut self, first: Uuid, second: Uuid) -> bool {
+        let mut assigned = false;
+        for tree in self.byte_trees_mut() {
+            assigned |= tree.retire_pair(first, second);
         }
+        assigned
     }
 
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
@@ -1876,6 +1858,7 @@ mod tests {
         );
         let waiting = room.watch_byte_plans(id(3)).pop().unwrap();
         assert!(waiting.receiving && waiting.upstream.is_none());
+        assert!(!room.room_data_state(id(3), id(4), false).unwrap());
         room.browse(owner, id(1), true).unwrap();
         let pairs = confirmed_pairs(&[(1, 4), (1, 3)]);
         room.reconcile_with_pairs(&endpoints, 2, &pairs);
@@ -1889,6 +1872,23 @@ mod tests {
         assert_eq!(viewer.upstream, Some(id(1)));
         assert!(viewer.receiving);
         assert!(room.watch_byte_plans(id(2)).is_empty());
+        let file = crate::attachment::AttachmentDescriptor {
+            id: id(12),
+            name: "sample".into(),
+            size: 3,
+            media_type: "application/octet-stream".into(),
+            sha256: crate::attachment::sha256_hex(b"abc"),
+        };
+        room.files.install(id(4), 1, owner.user_id, file.clone(), true).unwrap();
+        room.files.install(id(3), 1, owner.user_id, file, false).unwrap();
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        assert_eq!(room.files.plans("watch", id(3))[0].upstream, Some(id(1)));
+        assert!(room.room_data_state(id(3), id(1), false).unwrap());
+        assert_eq!(room.files.plans("watch", id(3))[0].upstream, None);
+        assert_eq!(room.watch_byte_plans(id(3))[0].upstream, None);
+        assert!(room.room_data_state(id(1), id(3), true).unwrap());
+        room.files.remove_messages(1, 1);
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
         let target = crate::wire::ByteBranchTarget::Watch {
             activity_id: id(10),
             source: source_plan.source,

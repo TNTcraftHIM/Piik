@@ -14,7 +14,7 @@ export function RoomChatToggle({ session, ...appearance }: ToggleProps) {
 }
 
 function ConnectedToggle({ session, ...appearance }: ToggleProps & { session: RoomInteractionSession }) {
-  const { overlayEnabled } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const overlayEnabled = useSyncExternalStore(session.subscribe, () => session.getSnapshot().overlayEnabled);
   return <span className="lr-chat-overlay-toggle"><Btn icon="danmaku" {...appearance}
     title={overlayEnabled ? "interaction.overlay.hide" : "interaction.overlay.show"}
     hint={overlayEnabled ? "hint-chat-overlay-hide" : "hint-chat-overlay-show"}
@@ -24,7 +24,7 @@ function ConnectedToggle({ session, ...appearance }: ToggleProps & { session: Ro
 }
 
 export function RoomChatOverlaySettings({ session }: { session: RoomInteractionSession }) {
-  const { overlayAppearance } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const overlayAppearance = useSyncExternalStore(session.subscribe, () => session.getSnapshot().overlayAppearance);
   const { t } = useCopy();
   const id = useId();
   return <div className="lr-chat-overlay-settings">
@@ -58,7 +58,8 @@ export function RoomChatOverlay({ session, visible }: { session: RoomInteraction
 }
 
 function ConnectedOverlay({ session, visible }: { session: RoomInteractionSession; visible: boolean }) {
-  const { overlayMessages, overlayAppearance } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const overlayMessages = useSyncExternalStore(session.subscribe, () => session.getSnapshot().overlayMessages);
+  const overlayAppearance = useSyncExternalStore(session.subscribe, () => session.getSnapshot().overlayAppearance);
   const ownerDocument = useSurfaceDocument();
   useEffect(() => {
     if (!ownerDocument) return;

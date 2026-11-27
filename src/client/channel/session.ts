@@ -31,8 +31,8 @@ import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { BrowserHosting, browserRoomStorage } from "./browser-hosting";
 import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
-import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
-import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
+import { AppPage, ChannelApp, discoverChannelAppHealth, type AppPageMediaSelection, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
+import type { NativeCaptureTarget, EncodingExecution, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
@@ -174,18 +174,18 @@ function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
 export class ChannelSession {
   private view: ChannelView = {
     watchPlayers: new Map(), pagePlayer: false, externalScreenInputAvailable: false,
-    screenBufferTargetMs: readRoomPreferences().screenBufferTargetMs,
+    screenBufferTargetMs: readRoomPreferences("screenBufferTargetMs"),
     screenBufferStatus: null,
     quality: readPreferredQuality(),
     videoCodecMode: "auto",
     encodingExecution: "auto",
     interactionsByRoom: new Map(),
     publicationReactions: new Map(),
-    voiceInput: readRoomPreferences().voiceInput,
-    voiceTransmission: readRoomPreferences().voiceTransmission,
+    voiceInput: readRoomPreferences("voiceInput"),
+    voiceTransmission: readRoomPreferences("voiceTransmission"),
     voicePlaybackByUser: new Map(),
-    listeningVolume: readRoomPreferences().voiceListeningVolume,
-    feedbackSound: readRoomPreferences().feedbackSound,
+    listeningVolume: readRoomPreferences("voiceListeningVolume"),
+    feedbackSound: readRoomPreferences("feedbackSound"),
     appConnected: false,
     forwardingLimit: -1,
     ownedScreens: new Set(),
@@ -575,7 +575,7 @@ export class ChannelSession {
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
       const identityKey = JSON.stringify([event.state.channel.id, event.selfProfile.id]);
-      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences().forwardingLimitByIdentity[identityKey] ?? -1;
+      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences("forwardingLimitByIdentity")[identityKey] ?? -1;
       this.forwardingBudget ??= this.conversation.forwardingBudget();
       if (resumed) this.forwardingBudget?.reconnected();
       if (this.historyOwner !== undefined && this.historyOwner !== identityKey) {
@@ -635,7 +635,9 @@ export class ChannelSession {
       this.retireRequest(event.requestId);
       request.result?.(event); request.resolve();
     } else if (event.type === "state") this.applyState(event.state);
-    else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
+    else if (event.type === "signal") {
+      if (event.payload !== null) this.media.signal(event.pairId, event.payload);
+    }
     else if (event.type === "ack" || event.type === "error") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : null;
@@ -1209,7 +1211,7 @@ export class ChannelSession {
   inputShortcut = async (publicationId: string, key?: number): Promise<ChannelStopShortcut> => {
     const app = this.app, state = this.view.remoteControls.get(publicationId);
     if (!app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
-    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences().remoteStopKey, available: state.stopShortcut != null,
+    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences("remoteStopKey"), available: state.stopShortcut != null,
       ...(state.stopShortcutLabel !== undefined ? { stopShortcutLabel: state.stopShortcutLabel } : {}) };
     const shortcut = await app.inputShortcut(publicationId, key);
     const current = this.view.remoteControls.get(publicationId);
@@ -1728,7 +1730,8 @@ export class ChannelSession {
       authors.clear();
     };
     const byKey = new Map(retained.map(file => [JSON.stringify([file.key.messageSeq, file.key.attachmentId]), file]));
-    for await (const row of snapshot.rows) {
+    const inventoryRows = metadata.kind === "room_copy" || retained.length > 0 ? snapshot.rows : [];
+    for await (const row of inventoryRows) {
       check();
       if (!("attachments" in row)) continue;
       if (metadata.kind === "room_copy") {
@@ -1871,13 +1874,13 @@ export class ChannelSession {
     return { current, native: new NativeDomainHosting({ Authorization: `Bearer ${this.credential}` }) };
   }
 
-  private async nativeMediaHosts(signal?: AbortSignal) {
+  private async nativeMediaHosts(target?: HostMediaTarget, signal?: AbortSignal) {
     const current = this.sessionContext(), { self, state } = this.view, credential = this.credential;
     const hosted = state!.channel.hostingMode === "hosted";
     const site = self!.id === state!.channel.ownerId && credential
       ? new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` }, "/prototype/channel/hosting")
       : undefined;
-    const app = !hosted && this.app?.connected ? this.app : undefined;
+    const app = target !== "domain" && !hosted && this.app?.connected ? this.app : undefined;
     const [siteDescription, appDescription] = await Promise.all([
       !hosted && site ? site.describe(signal).catch(() => undefined) : undefined,
       app?.describeHosting(signal).catch(() => undefined),
@@ -1895,7 +1898,7 @@ export class ChannelSession {
 
   hostMediaTargets: ChannelActions["hostMediaTargets"] = async signal => {
     if (this.view.connection !== "connected" || !this.view.state || !this.view.self) return [];
-    const { domain, app } = await this.nativeMediaHosts(signal);
+    const { domain, app } = await this.nativeMediaHosts(undefined, signal);
     const targets: HostMediaTarget[] = [];
     if (domain) targets.push("domain");
     if (app) targets.push("app");
@@ -1906,7 +1909,7 @@ export class ChannelSession {
   clearHostMedia: ChannelActions["clearHostMedia"] = target => this.action(`host-media:${target}`, async () => {
     const current = this.sessionContext();
     if (target !== "browser") {
-      const hosts = await this.nativeMediaHosts();
+      const hosts = await this.nativeMediaHosts(target);
       if (target === "domain" && hosts.domain) return hosts.domain.clearMedia();
       if (target === "app" && hosts.app) return hosts.app.clearHostMedia();
       throw new Error("room_host_unavailable");
@@ -2154,7 +2157,7 @@ export class ChannelSession {
     const { self, sessionId, connection } = this.view, state = this.roomSnapshot;
     if (!self || !sessionId || !state || !Number.isInteger(forwardingLimit) || forwardingLimit < -1 || forwardingLimit > MAX_RELAY_CAPACITY) return;
     const key = JSON.stringify([state.channel.id, self.id]);
-    saveRoomPreferences({ forwardingLimitByIdentity: { ...readRoomPreferences().forwardingLimitByIdentity, [key]: forwardingLimit } });
+    saveRoomPreferences({ forwardingLimitByIdentity: { ...readRoomPreferences("forwardingLimitByIdentity"), [key]: forwardingLimit } });
     this.patch({ forwardingLimit });
     if (connection === "connected") this.applyForwarding(sessionId, state, self.id);
   };
@@ -2775,7 +2778,7 @@ export class ChannelSession {
     const video = sources.indexed.find(value => value.candidate.id === videoId)?.inspection;
     const audio = audioId ? sources.indexed.find(value => value.candidate.id === audioId)?.inspection : undefined;
     if (!video || audioId && !audio) throw new Error("watch_indexed_unsupported");
-    const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal, selection.pendingCandidateId);
+    const byteSource = await page.prepareMedia(indexedMediaSelection(video, audio), selection.controller.signal, selection.pendingCandidateId);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
   inspectWatchMpdSource = (roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog> => this.action(activityId ? `watch-source:${activityId}` : `screen:${roomId}`, async () => {
@@ -2799,7 +2802,7 @@ export class ChannelSession {
   selectWatchMpdSource = (roomId: string, selected: NativePageMpdSelection, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.stages.get(roomId)?.sourceSelection, page = selection?.page;
     if (!selection || !page || !selection.watchSources?.mpd.some(choice => choice.catalog?.sourceId === selected.sourceId)) throw new Error("watch_page_unavailable");
-    const byteSource = await page.prepareMpdMedia(selected, selection.controller.signal, selection.pendingCandidateId);
+    const byteSource = await page.prepareMedia(selected, selection.controller.signal, selection.pendingCandidateId);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
   private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource, mediaUrl?: string): Promise<void> {
@@ -2846,18 +2849,18 @@ export class ChannelSession {
       if (actual && this.watchPlayer(id) === player && !player.media.retainedByteSource) await page.stopMedia();
     }, false);
   }
-  setWatchByteSource = (id: string, choiceId: string | NativePageIndexedSelection | NativePageMpdSelection | null, signal = new AbortController().signal): Promise<void> => this.action(`watch-source:${id}`, async () => {
+  setWatchByteSource = (id: string, selection: AppPageMediaSelection | null, signal = new AbortController().signal): Promise<void> => this.action(`watch-source:${id}`, async () => {
     const player = this.watchPlayer(id), media = player?.media;
     if (player?.owner && media?.retainedByteSource) {
       signal.throwIfAborted();
-      if (choiceId !== null && choiceId !== media.retainedByteSource.resourceId) throw new Error("watch_page_unavailable");
+      if (selection !== null && selection !== media.retainedByteSource.resourceId) throw new Error("watch_page_unavailable");
       // Remote forwarding can stop without revoking the Host's still-used local reader.
-      await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: choiceId === null ? null : media.retainedByteSource }, undefined, player.roomId);
+      await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: selection === null ? null : media.retainedByteSource }, undefined, player.roomId);
       return;
     }
     if (!player?.owner || !(media?.page instanceof AppPage)) throw new Error("watch_page_unavailable");
     const page = media.page;
-    if (choiceId === null) {
+    if (selection === null) {
       try { await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId); }
       finally { await page.stopMedia(); }
       return;
@@ -2865,7 +2868,7 @@ export class ChannelSession {
     if (this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource) throw new Error("watch_source_already_active");
     let byteSource: WatchByteSource;
     try {
-      byteSource = typeof choiceId === "string" ? await page.prepareMedia(choiceId, signal) : "sourceId" in choiceId ? await page.prepareMpdMedia(choiceId, signal) : await page.prepareIndexedMedia(choiceId, signal);
+      byteSource = await page.prepareMedia(selection, signal);
       signal.throwIfAborted();
       if (this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
       await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource }, undefined, player.roomId);

@@ -116,6 +116,8 @@ const nullResultCommands = new Set([
   "commit_capture", "transfer_source", "cancel_external_input", "cancel_capture", "stop_capture", "input_policy", "input_decide",
 ]);
 
+export type AppPageMediaSelection = string | NativePageMpdSelection | NativePageIndexedSelection;
+
 export class AppPage implements AppPagePort {
   candidates: readonly NativePageCandidate[] = [];
   private lifetime = new AbortController();
@@ -168,24 +170,31 @@ export class AppPage implements AppPagePort {
     if (bytes.length !== Math.min(length, Math.max(0, result.totalSize - offset))) throw new Error("invalid_app_response");
     return { mimeType: result.mimeType, totalSize: result.totalSize, bytes };
   }
-  async prepareMedia(choiceId: string, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
+  async prepareMedia(selection: AppPageMediaSelection, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
     const preparing = AbortSignal.any([this.lifetime.signal, signal]);
     preparing.throwIfAborted();
-    const value = await this.request({ type: "page_media_prepare", pageId: this.id, choiceId, candidateId }, preparing);
+    const page = { pageId: this.id, candidateId };
+    let command: AppCommand;
+    let result: z.ZodType<WatchByteSource> = watchByteSourceSchema;
+    if (typeof selection === "string") {
+      command = { type: "page_media_prepare", ...page, choiceId: selection };
+    } else if ("sourceId" in selection) {
+      command = { type: "page_media_prepare_mpd", ...page, ...nativePageMpdSelectionSchema.parse(selection) };
+      result = watchByteSourceSchema.extend({ format: z.literal("dash") });
+    } else {
+      command = { type: "page_media_prepare_indexed", ...page, ...nativePageIndexedSelectionSchema.parse(selection) };
+      // AppLink appends a UUID request id; measure that complete envelope before sending.
+      const bytes = new TextEncoder().encode(JSON.stringify({ ...command, id: "00000000-0000-4000-8000-000000000000" })).byteLength;
+      if (bytes > APP_REQUEST_BYTES) throw new Error("watch_resource_limit");
+      result = watchByteSourceSchema.extend({ format: z.literal("hls") });
+    }
+    const value = await this.request(command, preparing);
     preparing.throwIfAborted();
-    return watchByteSourceSchema.parse(value);
+    return result.parse(value);
   }
   async inspectMpd(choiceId: string, signal: AbortSignal, candidateId?: string): Promise<NativePageMpdCatalog> {
     const choice = z.object({ choiceId: z.uuid() }).strict().parse({ choiceId });
     return nativePageMpdCatalogSchema.parse(await this.mediaRead("inspect_mpd", { ...choice, candidateId }, signal));
-  }
-  async prepareMpdMedia(selection: NativePageMpdSelection, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
-    const preparing = AbortSignal.any([this.lifetime.signal, signal]);
-    preparing.throwIfAborted();
-    const selected = nativePageMpdSelectionSchema.parse(selection);
-    const value = await this.request({ type: "page_media_prepare_mpd", pageId: this.id, candidateId, ...selected }, preparing);
-    preparing.throwIfAborted();
-    return watchByteSourceSchema.extend({ format: z.literal("dash") }).parse(value);
   }
   async readMediaResource(sourceId: string, resourceId: string, offset: number, length: number, signal: AbortSignal): Promise<WatchByteResult> {
     const range = nativePageResourceReadSchema.parse({ sourceId, resourceId, offset, length });
@@ -210,17 +219,6 @@ export class AppPage implements AppPagePort {
       reading.throwIfAborted();
       return value;
     } finally { reading.removeEventListener("abort", cancel); }
-  }
-  async prepareIndexedMedia(selection: NativePageIndexedSelection, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
-    const preparing = AbortSignal.any([this.lifetime.signal, signal]);
-    preparing.throwIfAborted();
-    const command = { type: "page_media_prepare_indexed", pageId: this.id, candidateId, ...nativePageIndexedSelectionSchema.parse(selection) };
-    // AppLink appends a UUID request id; measure that complete envelope before sending.
-    const bytes = new TextEncoder().encode(JSON.stringify({ ...command, id: "00000000-0000-4000-8000-000000000000" })).byteLength;
-    if (bytes > APP_REQUEST_BYTES) throw new Error("watch_resource_limit");
-    const value = await this.request(command, preparing);
-    preparing.throwIfAborted();
-    return watchByteSourceSchema.extend({ format: z.literal("hls") }).parse(value);
   }
   async stopMedia(candidateId?: string): Promise<void> { await this.command("page_media_stop", { candidateId }); }
   listen(changed: (event: WatchMediaEvent) => void, candidateId?: string): () => void { this.listeners.set(changed, candidateId); return () => this.listeners.delete(changed); }

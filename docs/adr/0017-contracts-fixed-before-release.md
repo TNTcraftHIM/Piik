@@ -64,13 +64,17 @@ The private 3.0 implementation currently has these boundaries:
      kind its receiver does not know is refused as unsupported in that
      request's reply. A reply of a kind its requester does not know ends that
      request as an unknown outcome and never as success. A notification of an
-     unknown kind is ignored. So what must not be ignored is sent as a
-     request.
-   - *An unknown field is ignored.* A party uses the fields it knows;
-     bounds, types and required fields of those stay strict. A writer stores
+     unknown kind is ignored. A new action an older receiver must decline
+     uses a distinct request. Changes to state older observers already display
+     retain their baseline update semantics.
+   - *An unknown field is ignored at an extensible object by its final
+     recipient.* Relays forward enclosed signed payloads unchanged. Known
+     bounds, types and required fields stay strict, and nested objects keep
+     their defined contracts. A writer stores
      the fields it knows, and its confirmation carries the message as stored,
-     so a sender sees what was kept. So a field is never the place for
-     something that must be understood: that arrives as a kind. A writer
+     so a sender sees what was kept. A new constraint whose omission would
+     widen authority, lifetime, recipients or the target uses a distinct
+     request; baseline requests retain all their defined constraints. A writer
      keeps nothing it cannot read, because deleting a message, clearing media
      and copying a room are promises about everything stored. What is written
      to last is the exception to ignoring, since nobody is there to be told:
@@ -84,10 +88,10 @@ The private 3.0 implementation currently has these boundaries:
    What the four cannot express, which is changing or removing something
    that exists, waits for the next first number. That number also removes
    every branch written for an older peer, so such branches live for one
-   first number at most. The first release exercises each rule in its tests:
-   an unknown field through every reader and keeper, an unknown request to
-   every owner of requests, an unknown reply to a waiting request, an unknown
-   notification to every listener, and a peer with a higher second number.
+   first number at most. The first release exercises the rules at each
+   independently implemented wire boundary, including a real mixed-version
+   path. Tests cover unknown fields, requests, replies and notifications and
+   a peer with a higher second number; shared decoders share boundary tests.
    An extension mechanism that is not used stops working
    ([RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)). Until the first
    release the one private number keeps its present job of telling apart

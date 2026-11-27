@@ -53,6 +53,12 @@ const initialState = (): InteractionState => ({ reactionIds: REACTION_IDS, ready
   overlayEnabled: false, overlayAppearance: CHAT_OVERLAY_DEFAULTS, overlayMessages: [],
   pending: null, confirmed: null, coolingDown: false, error: null });
 
+// Unchanged lists keep their identity for subscribers to individual fields.
+function retainEvents<T extends RoomInteraction>(events: T[], keep: (event: T) => boolean): T[] {
+  const remaining = events.filter(keep);
+  return remaining.length === events.length ? events : remaining;
+}
+
 // One state per joined room. Media generations and route changes do not reset it.
 export class RoomInteractionSession {
   // Component state follows this room session, not reconnecting wire peer IDs.
@@ -70,8 +76,10 @@ export class RoomInteractionSession {
 
   constructor(private readonly sendMessage: (message: InteractionCommand) => boolean | { nonce: number }, readonly now = Date.now, reactionIds?: readonly string[],
     private readonly onFeedback?: (event: RoomInteraction) => void) {
-    const { overlayEnabled, overlayAppearance } = readRoomPreferences();
-    this.state = { ...this.state, overlayEnabled, overlayAppearance };
+    this.state = { ...this.state,
+      overlayEnabled: readRoomPreferences("overlayEnabled"),
+      overlayAppearance: readRoomPreferences("overlayAppearance"),
+    };
     this.setSupportedReactions(reactionIds);
   }
 
@@ -145,8 +153,8 @@ export class RoomInteractionSession {
   removeChatMessages(removed: (seq: number) => boolean): void {
     const keep = (event: RoomInteraction) => (event.messageSeq === undefined || !removed(event.messageSeq))
       && (!event.contentTarget || !("messageSeq" in event.contentTarget) || !removed(event.contentTarget.messageSeq));
-    this.update({ messages: this.state.messages.filter(keep), overlayMessages: this.state.overlayMessages.filter(keep),
-      reactions: this.state.reactions.filter(keep) });
+    this.update({ messages: retainEvents(this.state.messages, keep), overlayMessages: retainEvents(this.state.overlayMessages, keep),
+      reactions: retainEvents(this.state.reactions, keep) });
   }
 
   private accept(message: RoomInteraction): boolean {
@@ -168,7 +176,7 @@ export class RoomInteractionSession {
     if (!pending) clearTimeout(this.pendingTimer);
     if (message.payload.kind === "chat") {
       if (this.state.messages.some(item => item.id === message.id)) return true;
-      let overlayMessages = this.state.overlayMessages.filter(item => item.expiresAt > now);
+      let overlayMessages = retainEvents(this.state.overlayMessages, item => item.expiresAt > now);
       const lane = identityHash(`${message.sender.peerId}:${message.id}`) % CHAT_OVERLAY_LANES;
       const durationMs = CHAT_OVERLAY_DURATION_MS / this.state.overlayAppearance.speed;
       const expiresAt = beganAt + durationMs;
@@ -182,7 +190,7 @@ export class RoomInteractionSession {
     } else {
       if (this.state.reactions.some(item => item.id === message.id)) return true;
       const expiresAt = beganAt + REACTION_DURATION_MS;
-      const reactions = this.state.reactions.filter(item => item.expiresAt > now);
+      const reactions = retainEvents(this.state.reactions, item => item.expiresAt > now);
       this.update({ reactions: expiresAt > now ? [...reactions.slice(-7), { ...message, expiresAt }] : reactions,
         pending, confirmed, error: confirmsPending ? null : this.state.error });
     }
@@ -274,8 +282,9 @@ export class RoomInteractionSession {
     const next = Math.min(...[...this.state.reactions, ...this.state.overlayMessages].map(item => item.expiresAt));
     if (!Number.isFinite(next)) return;
     this.effectsTimer = setTimeout(() => {
-      this.update({ reactions: this.state.reactions.filter(item => item.expiresAt > this.now()),
-        overlayMessages: this.state.overlayMessages.filter(item => item.expiresAt > this.now()) });
+      const now = this.now();
+      this.update({ reactions: retainEvents(this.state.reactions, item => item.expiresAt > now),
+        overlayMessages: retainEvents(this.state.overlayMessages, item => item.expiresAt > now) });
       this.expireEffects();
     }, Math.max(1, next - this.now()));
   }

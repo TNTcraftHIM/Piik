@@ -61,15 +61,15 @@ let cached: { stored: string; preferences: RoomPreferences } | undefined;
 
 // Personal choices belong to this Browser origin, never to a room grant or
 // held input. Other preference owners (quality, language, theme) stay separate.
-export function readRoomPreferences(): RoomPreferences {
+function storedRoomPreferences(): RoomPreferences {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (cached && cached.stored === stored) return structuredClone(cached.preferences);
+    if (cached && cached.stored === stored) return cached.preferences;
     cached = undefined;
     const result = roomPreferencesSchema.safeParse(stored ? JSON.parse(stored) : {});
     if (result.success) {
       if (stored && typeof structuredClone === "function") {
-        cached = { stored, preferences: structuredClone(result.data) };
+        cached = { stored, preferences: result.data };
       }
       return result.data;
     }
@@ -79,8 +79,17 @@ export function readRoomPreferences(): RoomPreferences {
   return roomPreferencesSchema.parse({});
 }
 
+export function readRoomPreferences(): RoomPreferences;
+export function readRoomPreferences<K extends keyof RoomPreferences>(key: K): RoomPreferences[K];
+export function readRoomPreferences(key?: keyof RoomPreferences) {
+  const preferences = storedRoomPreferences();
+  const value = key === undefined ? preferences : preferences[key];
+  if (preferences === cached?.preferences && value !== null && typeof value === "object") return structuredClone(value);
+  return value;
+}
+
 export function saveRoomPreferences(patch: Partial<RoomPreferences>): boolean {
-  const result = roomPreferencesSchema.safeParse({ ...readRoomPreferences(), ...patch });
+  const result = roomPreferencesSchema.safeParse({ ...storedRoomPreferences(), ...patch });
   if (!result.success) return false;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));

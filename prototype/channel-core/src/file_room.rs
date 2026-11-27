@@ -152,20 +152,8 @@ impl FileRoom {
         }
         Ok(())
     }
-    pub fn reset_routes(&mut self) {
-        for file in self.files.values_mut() {
-            file.bytes.clear_branches();
-        }
-    }
-    pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
-        for file in self.files.values_mut() {
-            file.bytes.retire_pair(first, second);
-        }
-    }
-    pub fn forwarding_available(&mut self, sender: Uuid) {
-        for file in self.files.values_mut() {
-            file.bytes.forwarding_available(sender);
-        }
+    pub fn byte_trees_mut(&mut self) -> impl Iterator<Item = &mut ByteTree> {
+        self.files.values_mut().map(|file| &mut file.bytes)
     }
     pub fn waiting(&self) -> bool {
         self.files.values().any(|file| file.bytes.waiting(&file.receivers))
@@ -376,7 +364,9 @@ mod tests {
             matches!(budget.apply(Some(1),holder,&mut raw).as_slice(),[Command::ForwardingAvailable{room_id,kind:Some(crate::forwarding::ForwardingKind::File)}] if room_id=="waiting")
         );
         assert!(budget.apply(Some(1), holder, &mut raw).is_empty());
-        waiting.forwarding_available(holder);
+        for tree in waiting.byte_trees_mut() {
+            tree.forwarding_available(holder);
+        }
         route(&mut waiting, &[(holder, id(3))], &Default::default());
         raw.files = waiting.plans("waiting", holder);
         assert!(budget.apply(Some(1), holder, &mut raw).is_empty());
@@ -444,7 +434,9 @@ mod tests {
         limits.overrides.insert(copy, 1);
         route(&mut files, &edges, &limits);
         assert_eq!(files.plans("room", reader)[0].upstream, Some(copy));
-        files.forwarding_available(transit);
+        for tree in files.byte_trees_mut() {
+            tree.forwarding_available(transit);
+        }
         route(&mut files, &edges, &limits);
         assert_eq!(files.plans("room", reader)[0].source_id, Some(copy));
         for holder in [author, copy] {

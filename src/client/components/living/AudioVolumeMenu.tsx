@@ -1,10 +1,13 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useLayerHistory } from "../../ui/layer-history";
 import { AudioVolumeControl } from "./AudioVolumeControl";
-import { HOVER_ENTER_MS, HOVER_EXIT_GRACE_MS, LONG_PRESS_MS } from "./Tooltip";
+import { HOVER_ENTER_MS, HOVER_EXIT_GRACE_MS } from "./Tooltip";
+import { useTouchHold } from "./use-touch-hold";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { useCopy, type CopyKey } from "../../ui/copy";
+
+const TOUCH_HOLD_TOLERANCE_PX = 8;
 
 // The icon keeps its direct mute action; its attached slider never reflows the row.
 export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, children, max }: {
@@ -18,9 +21,11 @@ export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, ch
   const [explicitlyOpen, setExplicitlyOpen] = useState(false);
   useLayerHistory(panel, explicitlyOpen);
   const enter = useRef<number | null>(null), leave = useRef<number | null>(null);
-  const touch = useRef<{ x: number; y: number } | null>(null), held = useRef(false);
+  const hold = useTouchHold(view, TOUCH_HOLD_TOLERANCE_PX);
+  const held = useRef(false);
   useAnchoredPopover(anchor, panel, { side: "above", align: "center" });
   const clear = () => {
+    hold.cancel();
     if (enter.current !== null) view?.clearTimeout(enter.current);
     if (leave.current !== null) view?.clearTimeout(leave.current);
     enter.current = leave.current = null;
@@ -62,17 +67,15 @@ export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, ch
     onPointerDownCapture={event => {
       clear(); held.current = false;
       if (disabled || event.pointerType !== "touch" || panel.current?.contains(event.target as Node)) return;
-      touch.current = { x: event.clientX, y: event.clientY };
-      enter.current = view?.setTimeout(() => { held.current = true; openExplicitly(); }, LONG_PRESS_MS) ?? null;
+      hold.start(event, () => {
+        held.current = true;
+        openExplicitly();
+      });
     }}
-    onPointerMoveCapture={event => {
-      if (touch.current && Math.hypot(event.clientX - touch.current.x, event.clientY - touch.current.y) > 8) {
-        clear(); touch.current = null;
-      }
-    }}
-    onPointerCancel={() => { clear(); touch.current = null; held.current = false; }}
+    onPointerMoveCapture={hold.move}
+    onPointerCancel={() => { clear(); held.current = false; }}
     onPointerUpCapture={event => {
-      clear(); touch.current = null;
+      clear();
       if (held.current) {
         event.preventDefault();
         return;

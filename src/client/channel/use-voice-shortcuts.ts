@@ -62,7 +62,7 @@ export function useVoiceShortcuts(sessionId: string | undefined, toggle: (action
   native?: BackgroundVoiceShortcuts, talk?: (pressed: boolean) => void) {
   const surface = useSurfaceDocument();
   const mac = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
-  const [bindings, setBindings] = useState<VoiceShortcuts>(() => voiceShortcutsWithDefaults(mac, readRoomPreferences().voiceShortcuts));
+  const [bindings, setBindings] = useState<VoiceShortcuts>(() => voiceShortcutsWithDefaults(mac, readRoomPreferences("voiceShortcuts")));
   const [recording, setRecording] = useState<VoiceShortcutAction | null>(null);
   const [talking, setTalking] = useState(false);
   const held = useRef<{ binding: VoiceShortcutBinding; talk: (pressed: boolean) => void } | null>(null);
