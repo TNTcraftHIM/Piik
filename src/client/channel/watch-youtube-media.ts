@@ -101,7 +101,7 @@ export class YouTubeMedia implements WatchMedia {
     this.visible = visible;
     this.visibility.dispatchEvent(new Event("change"));
     if (!visible) {
-      if (this.suspendWhenHidden && this.apiReady && this.played && !this.paused) this.player!.pauseVideo();
+      this.pauseIfHidden();
       return;
     }
     if (!this.mounted && this.element.isConnected) {
@@ -110,6 +110,10 @@ export class YouTubeMedia implements WatchMedia {
         this.fail(error instanceof Error ? error : new Error("watch_media_failed"));
       });
     }
+  }
+
+  private pauseIfHidden(): void {
+    if (this.suspendWhenHidden && !this.visible && this.apiReady && this.played && !this.paused) this.player!.pauseVideo();
   }
 
   private fail(error: Error): void {
@@ -145,7 +149,10 @@ export class YouTubeMedia implements WatchMedia {
         },
         onStateChange: ({ data }) => {
           if (this.lifetime.signal.aborted) return;
-          if (data === 1) { this.paused = false; this.played = true; this.emit("playing"); }
+          if (data === 1) {
+            this.paused = false; this.played = true; this.emit("playing");
+            this.pauseIfHidden();
+          }
           else if (data === 2) { this.paused = true; this.emit("pause"); }
           else if (data === 3) this.emit("waiting");
           else if (data === 0) { this.paused = true; this.emit("ended"); }

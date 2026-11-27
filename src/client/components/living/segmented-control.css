@@ -14,9 +14,11 @@
   background: var(--paper);
   box-shadow: var(--control-shadow);
 }
+.lr-lang, [data-layout="living"] .c3-monitor-layout > .lr-toggle {
+  --selection-item-size: calc(var(--control-compact-size) - 12px);
+}
 .lr-lang {
   --lr-segments: 3;
-  --selection-item-size: calc(var(--control-compact-size) - 12px);
   grid-template-columns: repeat(2, var(--selection-item-size)) auto;
 }
 :is(.lr-toggle, .lr-lang)::before {

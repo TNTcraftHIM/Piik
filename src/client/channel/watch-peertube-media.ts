@@ -44,8 +44,7 @@ export class PeerTubeMedia implements WatchMedia {
         this.mounted = true;
         void this.mount().catch(() => this.fail());
       }
-      if (!visible && this.suspendWhenHidden && this.apiReady && this.state === "playing")
-        void this.call("pause").catch(() => this.fail());
+      if (!visible) this.pauseIfHidden();
       if (!wasAvailable && this.playbackAvailable()) this.emit("visibility-resumed");
     },
   };
@@ -108,12 +107,21 @@ export class PeerTubeMedia implements WatchMedia {
       const duration = typeof value.duration === "string" && value.duration.trim() ? Number(value.duration) : value.duration;
       if (Number.isFinite(duration) && duration >= 0) this.duration = duration;
       const previous = this.position; this.position = value.position;
-      this.state = value.playbackState;
+      this.setState(value.playbackState);
       if (!this.played && this.state === "playing" && this.position > previous) { this.played = true; this.emit("loadeddata"); }
     } else if (method === "playbackStatusChange" && ["playing","paused","ended"].includes(value)) {
-      this.state = value; this.emit(value === "paused" ? "pause" : value);
+      this.setState(value); this.emit(value === "paused" ? "pause" : value);
     }
   };
+  private setState(state: string) {
+    if (state === this.state) return;
+    this.state = state;
+    this.pauseIfHidden();
+  }
+  private pauseIfHidden() {
+    if (this.suspendWhenHidden && !this.visible && this.apiReady && this.state === "playing")
+      void this.call("pause").catch(() => this.fail());
+  }
   private onReady() {
     if (this.life.signal.aborted || this.apiReady) return;
     this.apiReady = true; clearTimeout(this.setupTimer);

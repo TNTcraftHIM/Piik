@@ -4,14 +4,14 @@ import { peerTubeOrigin } from "../src/client/channel/watch-peertube-source";
 
 const uuid = "3a82b2ed-b8b3-468a-a27f-d83ad37625ca";
 const metadata = () => Response.json({ uuid, privacy: { id: 1 }, isLive: false });
-function fixture() {
+function fixture(suspendWhenHidden = false) {
   vi.useFakeTimers();
   const window = Object.assign(new EventTarget(), { setTimeout });
   const frame = { contentWindow: { postMessage: vi.fn() }, setAttribute: vi.fn(), remove: vi.fn(), src: "" };
   const element = Object.assign(new EventTarget(), { isConnected: true, append: vi.fn(), remove: vi.fn() });
   vi.stubGlobal("window", window);
   vi.stubGlobal("document", { createElement: (tag: string) => tag === "div" ? element : frame });
-  const media = new PeerTubeMedia(uuid);
+  const media = new PeerTubeMedia(uuid, suspendWhenHidden);
   const packet = (body: object, source: object = frame.contentWindow, origin = peerTubeOrigin) => {
     window.dispatchEvent(Object.assign(new Event("message"), { origin, source, data: JSON.stringify(body) }));
   };
@@ -122,4 +122,23 @@ test.each(["event", "reply", "silent"] as const)("PeerTube handshake uses its st
   }
   media.close();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test.each(["playbackStatusChange", "playbackStatusUpdate"])("a hidden receiver pauses a late %s", async method => {
+  const { media, frame, packet } = fixture(true);
+  vi.stubGlobal("fetch", async () => metadata());
+  try {
+    media.presentation.setVisible(true);
+    await vi.advanceTimersByTimeAsync(0);
+    const scope = new URL(frame.src).searchParams.get("scope");
+    frame.contentWindow.postMessage.mockImplementation((raw: string) => {
+      const request = JSON.parse(raw);
+      packet({ id: request.id, result: request.method === scope + "::getPlaybackRates" ? [1] : null });
+    });
+    packet({ method: scope + "::ready", params: true });
+    media.presentation.setVisible(false);
+    packet({ method: scope + "::" + method, params: method === "playbackStatusChange" ? "playing"
+      : { playbackState: "playing", position: 1 } });
+    expect(frame.contentWindow.postMessage.mock.calls.map(([raw]) => JSON.parse(raw).method)).toContain(scope + "::pause");
+  } finally { media.close(); }
 });

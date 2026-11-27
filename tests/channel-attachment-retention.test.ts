@@ -921,6 +921,13 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
     const queuedWrite = finishWrite;
     queuedWrite();
     await vi.waitFor(() => expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" }));
+    // The newly selected upstream may already have an open room connection.
+    files.peerState("source", true);
+    files.update("endpoint", scope, [plan], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 4, state: "waiting" });
+    files.update("endpoint", scope, [alternate], [room], []);
+    files.peerState("alternate", false);
+    expect(files.progress(key)?.state).toBe("connecting");
     files.peerState("alternate", true);
     expect(files.progress(key)).toMatchObject({ received: 4, state: "waiting" });
     files.data("alternate", "control", "resumed-write");

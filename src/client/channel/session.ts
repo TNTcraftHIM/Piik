@@ -3501,7 +3501,10 @@ export class ChannelSession {
               if (this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
             } else if (!local) throw new Error("capture_unavailable");
           } catch (error) {
-            if (current() && volume !== share.volume) continue;
+            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            if (volume !== share.volume) continue;
+            // The Browser adopted this gain when it took over the publication.
+            if (!local && this.local.has(publicationId)) return;
             throw error;
           }
           if (!current()) throw new DOMException("Capture cancelled", "AbortError");

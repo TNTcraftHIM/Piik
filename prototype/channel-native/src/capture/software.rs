@@ -270,6 +270,13 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capture::{
+        decoder, output::Encoding, DegradationPreference, EncodingExecution, Runtime,
+    };
+    use futures_util::FutureExt;
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+    use windows::Win32::Graphics::Dxgi::Common::*;
 
     // A timer-driven keyframe re-sends a static screen and resets its quality.
     #[test]
@@ -360,6 +367,107 @@ mod tests {
                     assert!(unit.qp.is_some(), "{codec:?} lacks quality feedback");
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn image(device: &ID3D11Device, gray: u8) -> Result<ID3D11Texture2D> {
+        let pixels = [gray, gray, gray, 255].repeat(640 * 360);
+        let mut texture = None;
+        unsafe {
+            device.CreateTexture2D(
+                &D3D11_TEXTURE2D_DESC {
+                    Width: 640,
+                    Height: 360,
+                    MipLevels: 1,
+                    ArraySize: 1,
+                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 1,
+                        Quality: 0,
+                    },
+                    BindFlags: (D3D11_BIND_SHADER_RESOURCE.0 | D3D11_BIND_RENDER_TARGET.0) as u32,
+                    ..Default::default()
+                },
+                Some(&D3D11_SUBRESOURCE_DATA {
+                    pSysMem: pixels.as_ptr().cast(),
+                    SysMemPitch: 640 * 4,
+                    ..Default::default()
+                }),
+                Some(&mut texture),
+            )?;
+        }
+        Ok(texture.unwrap())
+    }
+
+    #[tokio::test]
+    async fn fps_change_only_seeds_cadence_for_ordinary_input() -> Result<()> {
+        let _runtime = Runtime::new()?;
+        let device = decoder::device()?;
+        let flat = image(&device, 28)?;
+        let changed = image(&device, 160)?;
+        let clock = CaptureClock::new()?;
+        let origin = clock.now()?;
+        let time = |index: i64| origin + index * 10_000_000 / 60;
+        for force in [false, true] {
+            let (requests, mut pending) = mpsc::channel(1);
+            let (mut encoding, _) = Encoding::start(
+                Settings {
+                    width: 640,
+                    height: 360,
+                    fps: 60,
+                    bitrate: 1_000,
+                    degradation_preference: DegradationPreference::Balanced,
+                },
+                VideoCodec::Vp8,
+                EncodingExecution::Software,
+                clock,
+                FrameTiming::Capture,
+                requests,
+            )?;
+            let exercise = async {
+                assert_eq!(pending.recv().await, Some(None));
+                for index in 0..=61 {
+                    // Starve the frame dropper, then clear its budget before probing cadence.
+                    if index == 46 {
+                        encoding.control().set_bitrate(30_000_000)?;
+                    }
+                    if index == 60 {
+                        // Only now are the policy's 60 samples available. Even if setup
+                        // ran slowly, the next input is the first eligible quality check.
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+                    let qpc = time(index);
+                    let texture = if index == 61 { &changed } else { &flat };
+                    encoding.shared.input(
+                        Some(RawFrame {
+                            texture: texture.clone(),
+                            color_space: DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
+                            qpc,
+                        }),
+                        index == 0 || (index == 60 && force),
+                    )?;
+                    // The synchronous worker publishes output before requesting more input.
+                    assert_eq!(pending.recv().await, Some(Some(qpc)));
+                    let output = encoding.recv().now_or_never().flatten().transpose()?;
+                    match index {
+                        60 => assert!(output.expect("FPS change restarts the encoder").keyframe),
+                        61 => assert_eq!(
+                            output.map(|frame| (
+                                clock.presentation_qpc(frame.presentation_time),
+                                frame.keyframe
+                            )),
+                            force.then_some((qpc, false)),
+                            "forced transition = {force}"
+                        ),
+                        _ => {}
+                    }
+                }
+                Ok::<_, anyhow::Error>(())
+            };
+            let result = tokio::time::timeout(Duration::from_secs(30), exercise).await;
+            encoding.stop()?;
+            result??;
         }
         Ok(())
     }

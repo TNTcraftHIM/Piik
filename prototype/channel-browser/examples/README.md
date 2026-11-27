@@ -211,11 +211,16 @@ replay it; a declined reaction does not undo the already-confirmed reply.
 
 ## Support bot example
 
-`support-bot.ts` runs a small consumer of the same Node client. A new `!help`
-message from another user receives a quoted Markdown answer with a fenced text
-template, followed by one `wave` reaction attempt on the incoming message.
-The room Host confirms both operations. A declined or rate-limited reaction
-does not resend the confirmed reply. It does not process history as commands.
+`support-bot.ts` runs Piika as an ordinary room participant. Select Piika in
+the room's mention picker, or reply to one of its messages with the reply
+notification enabled. Piika quotes your message once with screen-sharing,
+picture and sound tips and a link to the Piik 3.0 test guide. Mentions and reply
+notifications match the participant's ID. Typing `@Piika` by itself does not
+trigger the FAQ. The handler only listens to new live messages.
+
+Send `!help` for a quoted Markdown report template and one `wave` reaction
+attempt on the incoming message. The room Host confirms both operations.
+A declined or rate-limited reaction does not resend the confirmed reply.
 
 Send `!help last` to discuss your previous report. The bot reads one retained
 page before the command and quotes your latest non-command text in that page.
@@ -231,6 +236,8 @@ node --import tsx prototype/channel-browser/examples/support-bot.ts \
 
 Use only an explicitly authorized room. `PIIK_TEXT_CREDENTIAL` may supply this
 bot's own saved credential; otherwise each process starts a new identity.
+Piika is the display name for a new identity. A restored identity keeps its
+saved profile.
 Private-room access uses `PIIK_TEXT_INVITE_KEY` or `PIIK_TEXT_ROOM_PASSWORD`.
 This example does not save credentials, expose a webhook, or export messages to
 another service. It needs no media peers, room hosting, or Bot-specific role.
@@ -243,13 +250,13 @@ of the participant connection. An embedding application can keep the handler
 attached across `reconnect()`. The same listener receives new messages once
 room browsing resumes. Commands sent during the gap stay in room history.
 
-The existing tooling tsconfig checks the Node client and examples during the normal
-repository checks. Its retained test uses a loopback WebSocket fixture and the
-real Core WASM signer/verifier, without starting an App or Server:
+The tooling tsconfig checks the Node client and examples. The support handler
+test uses synthetic live messages. The Node client test uses a loopback WebSocket
+fixture and the real Core WASM signer/verifier.
 
 ```sh
 npx tsc -p scripts/tsconfig.json
-npm test -- tests/text-participant.test.ts
+npm test -- tests/support-bot.test.ts tests/text-participant.test.ts
 ```
 The Node client separates socket/signing lifecycle from CLI file I/O and business
 behavior. `chat` is send-with-confirmation; `live` carries verified new messages;

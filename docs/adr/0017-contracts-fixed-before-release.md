@@ -40,6 +40,10 @@ these boundaries:
    Extension points are explicit instead of a general tolerance
    ([RFC 9413](https://www.rfc-editor.org/rfc/rfc9413.html)). The first
    release's readers decide what later versions may add.
+   An unselected result kind is a sender protocol error. A reader that cannot
+   decode the event may end the session; one that can correlate the reply
+   rejects its unknown terminal outcome. Only the expected outcome confirms
+   the operation.
 2. **Replies.** A request ends in an explicit terminal outcome that tells
    rejected from unknown, and a copy sent to an observer is separate from the
    requester's reply. Idempotency is scoped by operation: chat already has
