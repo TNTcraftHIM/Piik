@@ -10218,17 +10218,30 @@ test("a remote data channel cannot report connectivity and a retired socket cann
   } finally { session.close(); }
 });
 
-test("file progress waits for both channels on the selected peer's room lease", async () => {
+test.each(["control", "file"] as const)("closing the %s channel during a file write retires the live progress", async closing => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket } = await setup();
+  let resolveWrite!: () => void;
+  const pendingWrite = new Promise<void>(resolve => { resolveWrite = resolve; });
+  const write = vi.fn(() => pendingWrite);
+  const peerClosed = vi.fn((key: string) => [{ type: "failed", key: JSON.parse(key), code: "data_channel_unavailable" }]);
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     ...await hosting.loadRoomHosting(),
-    FileDelivery: class { start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {} },
+    FileDelivery: class {
+      start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {}
+      chunk() { return [{ type: "write", key: keys[0], offset: 0, bytes: Uint8Array.of(1) }]; }
+      written() { return []; }
+      peer_unavailable() { return []; }
+      peer_closed = peerClosed;
+    },
   } as never);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   stubTransferStorage({
-    getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    getFileHandle: async () => ({ createWritable: async () => ({
+      write,
+      abort: async () => {},
+    }) }),
     removeEntry: async () => {},
   });
   const state = structuredClone(session.getSnapshot().state!);
@@ -10257,7 +10270,21 @@ test("file progress waits for both channels on the selected peer's room lease", 
     state.pairs[0].rooms.push("second");
     socket.receive({ type: "state", state });
     expect(progress()).toEqual(["waiting", "waiting"]);
-  } finally { abort.abort(); await Promise.all(reads); session.close(); }
+
+    bulk.onmessage?.({ data: Uint8Array.of(0, 1, 1).buffer });
+    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+    (closing === "control" ? control : bulk).close();
+    expect(progress()).toEqual(["connecting", "connecting"]);
+    resolveWrite();
+    if (closing === "control") {
+      await vi.waitFor(() => expect(session.attachments.progress(keys[0])).toMatchObject({ state: "connecting", received: 1 }));
+      socket.receive({ type: "state", state });
+      expect(session.attachments.progress(keys[0])).toMatchObject({ state: "connecting", received: 1 });
+    } else {
+      expect(await reads[0]).toMatchObject({ message: "data_channel_unavailable" });
+      expect(peerClosed).toHaveBeenCalledTimes(2);
+    }
+  } finally { resolveWrite(); abort.abort(); await Promise.all(reads); session.close(); }
 });
 
 test("physical data channels can precede room leases without admitting retired work", async () => {

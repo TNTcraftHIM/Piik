@@ -928,6 +928,7 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
     expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" });
     files.peerState("source", true);
     expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" });
+    openPeers.add("alternate");
     files.data("alternate", "control", "resumed-write");
     await vi.waitFor(() => expect(finishWrite).not.toBe(queuedWrite));
     const resumedWrite = finishWrite;
@@ -935,6 +936,7 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
     await vi.waitFor(() => expect(files.progress(key)).toMatchObject({ received: 5, state: "receiving" }));
     files.update("endpoint", scope, [alternate], [room], []);
     expect(files.progress(key)).toMatchObject({ received: 5, state: "receiving" });
+    openPeers.delete("alternate");
     files.update("endpoint", scope, [{ ...alternate, upstream: null }], [room], []);
     expect(files.progress(key)).toMatchObject({ received: 5, state: "connecting" });
     files.update("endpoint", scope, [alternate], [room], []);

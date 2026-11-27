@@ -191,10 +191,9 @@ export class ChannelAttachments {
         continue;
       }
       if (!entry.progress || entry.progress.state === "finishing") continue;
-      let state = entry.progress.state;
-      if (state !== "receiving" || !plan?.upstream || this.filePlan(entry.key, previousPlans)?.upstream !== plan.upstream) {
-        state = this.waitingState(plan);
-      }
+      const receiving = entry.progress.state === "receiving"
+        && this.filePlan(entry.key, previousPlans)?.upstream === plan?.upstream;
+      const state = this.transferState(plan, receiving);
       if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; changed = true; }
     }
     for (const [id, download] of this.downloads) {
@@ -250,9 +249,10 @@ export class ChannelAttachments {
     return plans.find(plan => plan.roomId === key.roomId && plan.messageSeq === key.messageSeq && plan.attachment.id === key.attachmentId);
   }
 
-  private waitingState(plan?: ChannelFilePlan): "waiting-source" | "waiting" | "connecting" {
+  private transferState(plan?: ChannelFilePlan, receiving = false): AttachmentProgress["state"] {
     if (!plan?.sourceId) return "waiting-source";
-    return plan.upstream && this.fileDataReady(plan.upstream, plan.roomId) ? "waiting" : "connecting";
+    if (!plan.upstream || !this.fileDataReady(plan.upstream, plan.roomId)) return "connecting";
+    return receiving ? "receiving" : "waiting";
   }
 
   private matchesPlan(source: Pick<Source, "key" | "attachment">): boolean {
@@ -511,16 +511,20 @@ export class ChannelAttachments {
       ? runtime.delivery.control(peer, data as string, BigInt(Date.now()))
       : runtime.delivery.chunk(peer, data as Uint8Array), peer)).catch(() => {});
   }
-  peerState(peer: string, available: boolean): void {
+  private refreshPeerProgress(peer: string): void {
     for (const plan of this.plans.filter(plan => plan.upstream === peer)) {
       const entry = this.sinks.get(fileKeyString({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }));
-      if (!entry?.progress || entry.progress.state === "finishing" || available && entry.progress.state !== "connecting") continue;
-      const state = available ? this.waitingState(plan) : "connecting";
+      if (!entry?.progress || entry.progress.state === "finishing") continue;
+      const state = this.transferState(plan, entry.progress.state === "receiving");
       if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; this.changed(); }
     }
+  }
+  peerState(peer: string, available: boolean): void {
+    this.refreshPeerProgress(peer);
     if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => available ? this.project(runtime) : runtime.delivery.peer_unavailable(peer))).catch(() => {});
   }
   bulkClosed(peer: string): void {
+    this.refreshPeerProgress(peer);
     if (this.runtime) void this.runtime.then(runtime => {
       for (const plan of this.plans) if (plan.upstream === peer || plan.downstream.includes(peer)) {
         const key = { roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id };
@@ -616,7 +620,7 @@ export class ChannelAttachments {
       const consumers = new Set<symbol>();
       const plan = this.filePlan(key);
       entry = { key, attachment, consumers, ready: this.createSink(runtime, key, consumers),
-        progress: { received: 0, total: attachment.size, state: plan ? this.waitingState(plan) : "waiting" } };
+        progress: { received: 0, total: attachment.size, state: plan ? this.transferState(plan) : "waiting" } };
       this.sinks.set(id, entry);
       this.requestReceive(entry);
       const creating = entry;
@@ -729,10 +733,10 @@ export class ChannelAttachments {
               await sink.writer.write({ type: "write", position: effect.offset, data: bytes }).catch(throwStorageError);
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;
-              // A completed write always counts. Only data from the selected upstream proves delivery on that route.
-              const progress = entry.progress;
-              entry.progress = { ...progress, received: effect.offset + bytes.length,
-                state: peer && this.filePlan(key)?.upstream === peer ? "receiving" : progress.state };
+              // Count the completed write even when the selected upstream is no longer live.
+              const progress = entry.progress, plan = this.filePlan(key);
+              const receiving = progress.state === "receiving" || (peer !== undefined && plan?.upstream === peer);
+              entry.progress = { ...progress, received: effect.offset + bytes.length, state: this.transferState(plan, receiving) };
               this.changed();
               this.invoke(runtime, () => runtime.delivery.written(JSON.stringify(key), BigInt(effect.offset), bytes.length));
             } else {
