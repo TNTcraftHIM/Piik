@@ -3403,8 +3403,9 @@ export class ChannelSession {
           const local = this.local.get(publicationId);
           try {
             if (local) {
-              if (!local.audio?.outputGainAvailable && (volume.level !== 1 || volume.muted)) throw new Error("source_audio_unavailable");
-              local.audio?.setVolume(volume.muted ? 0 : volume.level);
+              const gain = volume.muted ? 0 : volume.level;
+              if (local.audio?.outputGainAvailable) local.audio.setVolume(gain);
+              else if (gain !== (appliedVolume.muted ? 0 : appliedVolume.level)) throw new Error("source_audio_unavailable");
               appliedVolume = volume;
               await this.media.configureLocalAudio(publicationId, profile.maxAudioBitrate!);
               if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");

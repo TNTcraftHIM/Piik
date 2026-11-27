@@ -4324,6 +4324,11 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     }
     await replace();
     expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toEqual([]);
+    await session.setSourceAudio(publication.id, { bitrate: 96_000 });
+    expect(session.sourceAudio(publication.id)).toMatchObject({ bitrate: 96_000, level: 0 });
+    expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toEqual([]);
+    await expect(session.setSourceAudio(publication.id, { level: 1 })).rejects.toThrow("source_audio_unavailable");
+    expect(session.sourceAudio(publication.id)).toMatchObject({ bitrate: 96_000, level: 0 });
     const recovered = microphoneMixer([]);
     await replace();
     expect(rawSound.stop).toHaveBeenCalledOnce();
