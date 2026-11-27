@@ -68,7 +68,7 @@ people who already have access can enter directly.
 The site owner opens **Site settings** by selecting the site name above the room
 list. The option **Ask members without a nickname to choose one** is off by default.
 
-Use **More options → Clear hosted media…**, select the host and confirm the
+Use **More options → Clear images and file cache…**, select the location and confirm the
 cleanup. This clears chat images, thumbnails and cached files for rooms hosted
 there. The chat text, attachment details and saved downloads stay available.
 
