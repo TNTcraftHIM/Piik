@@ -74,6 +74,49 @@ passes, the web suite passes (2,486 tests), and the Native library suite
 passes on Windows 11 with `--no-default-features` (219 pass, 2 ignored) and
 its `capture::` tests with the default features (47 pass, 2 ignored).
 
+## Modules and owners: five changes, in this order
+
+A reviewer measured sizes, imports and repeated rules across the five parts;
+I checked the two I call defects. These are the ones that remove code or
+close a gap and move no behaviour. The larger ones (the App control socket's
+1,199-line `connection`, `Session::apply_event`, `ChannelSession`'s 224
+members, and `Authority` reaching into `Channel` 63 times) come after, each
+with a page from me first.
+
+1. **A protocol tie-break is decided by locale collation.** The Browser
+   computes `polite` with `sessionId.localeCompare(plan.peerId) > 0`
+   (`media.ts:195`); Native compares the identifiers' bytes
+   (`peer.rs:2081`). For lowercase UUID text the two agree today, which is
+   why nothing fails, but a rule both ends must reach alike should not pass
+   through a locale. Compare code units (`sessionId > plan.peerId`); no wire
+   change.
+2. **Rules copied by hand between Rust and TypeScript.** The Browser's
+   recovery timer is a literal 20000 (`session.ts:3771`) where Native imports
+   the core's `RECOVERY_MS`; the protocol number, the session limit, the
+   profile page size and the frame sizes are literals too, although six
+   other constants already come through WASM getters. The voice-bitrate
+   bound has four copies, two of them in Rust (`access.rs:75`,
+   `native/peer.rs:153`), and the 4000 ms screen-buffer limit three in
+   TypeScript. Give each one source, and one test that ties any literal that
+   must stay to the WASM value.
+3. **The Browser re-derives a core rule**: `is_watch_frame` at
+   `session.ts:281`. Export the core's.
+4. **Shared interface kept under `channel/` makes five directory cycles**
+   (`components/living` with `channel/components`, `channel` and
+   `room-voice`; `lib` with `channel` through `room-preferences.ts`;
+   `media` with `ui`). Moving `diagnosis.ts`, `error-presentation.ts`,
+   `ChannelDiagnosisHelp.tsx` and the `useSettingsAction` hook that lives
+   inside `ChannelSettingsDialog.tsx` down to where both sides can import
+   them removes the cycles.
+5. **Eleven components keep their own pending and error state** where the
+   action hook exists, and only two of the five watch adapters send errors
+   through the helper that keeps a source's URL out of a message. One hook
+   and one helper; the second is also a privacy gap.
+
+Left alone on purpose, because they are large and cohesive: `room.rs`,
+`routes.rs`, `transport.rs` and `wire.rs` in the core, Native's
+`peer/transport.rs`, the client's `channel/transport.ts`.
+
 ## The room sweep on screen: most of it holds, nine places do not
 
 A reviewer measured the merged head against the owner's three pictures in
