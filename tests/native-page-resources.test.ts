@@ -214,6 +214,16 @@ test.each(["URL", "stream"])("a selected empty player reports its first %s in th
   expect(last().resource).not.toBe(ready);
 });
 
+test("an original-page read reports a detached candidate before the catalog update", async () => {
+  const bridge = candidateBridge(), video = ownedVideo(0);
+  bridge.setVideos([video]);
+  const { frame, candidates: [{ media, revision }] } = JSON.parse(bridge.bodies.at(-1)!);
+  video.isConnected = false;
+  const request = webcrypto.randomUUID();
+  await bridge.message({ data: { bridge: "piik-page-command", frame, media, revision, originalPage: true, kind: "read", request } });
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "reply", request, error: "page_candidate_unavailable" });
+});
+
 test("changing the selected resource rejects old reads and seeks before the next candidate report", async () => {
   const bridge = candidateBridge(), video = ownedVideo(0);
   bridge.setVideos([video]);
@@ -222,7 +232,7 @@ test("changing the selected resource rejects old reads and seeks before the next
   for (const kind of ["read", "patch"]) {
     const request = webcrypto.randomUUID();
     await bridge.message({ data: { bridge: "piik-page-command", frame, media, revision, request, kind, patch: { position: 15 } } });
-    expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "reply", request, error: "page_player_closed" });
+    expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "reply", request, error: "page_candidate_unavailable" });
   }
   expect(video.currentTime).toBe(0);
 });

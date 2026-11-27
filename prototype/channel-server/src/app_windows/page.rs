@@ -228,12 +228,13 @@ impl Page {
         if mounted { view.window.set_visible(true); }
         self.root = view_key;
         self.selected = None;
-        self.pending.retain(|_, pending| pending.candidate_id != candidate_id);
         self.emit(json!({"type":"page_selection_lost","pageId":self.id,"candidateId":candidate_id}));
         true
     }
     fn candidates(&mut self) {
-        self.pending.retain(|_, pending| self.candidates.contains_key(&pending.candidate_id));
+        for (_, pending) in self.pending.extract_if(.., |_, pending| !self.candidates.contains_key(&pending.candidate_id)) {
+            let _ = pending.reply.send(Err("page_candidate_unavailable".into()));
+        }
         let views = self.views.borrow();
         let page_urls = views.iter().filter_map(|(id, view)| view.view.url().ok()
             .filter(|url| page::valid_url(url)).map(|url| (*id, url))).collect::<BTreeMap<_, _>>();
@@ -999,10 +1000,10 @@ impl Pages {
             } => {
                 let Some(pending) = Pending::take_reply(&mut page.pending, request, view_key, message.frame) else { return };
                 let result = if let Some(error) = error {
-                    Err(anyhow!(if error == "watch_autoplay_blocked" {
-                        "watch_autoplay_blocked"
-                    } else {
-                        "watch_media_failed"
+                    Err(anyhow!(match error.as_str() {
+                        "page_candidate_unavailable" => "page_candidate_unavailable",
+                        "watch_autoplay_blocked" => "watch_autoplay_blocked",
+                        _ => "watch_media_failed",
                     }))
                 } else {
                     state

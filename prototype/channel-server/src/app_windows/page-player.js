@@ -149,7 +149,7 @@
     const entry = elements.get(command.media), video = entry?.video;
     if (video?.isConnected) resource(entry);
     if (!video?.isConnected || !command.originalPage && entry.revision !== command.revision) {
-      send({ kind: 'reply', request: command.request, error: 'page_player_closed' });
+      send({ kind: 'reply', request: command.request, error: 'page_candidate_unavailable' });
       return;
     }
     try {
