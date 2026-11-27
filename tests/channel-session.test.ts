@@ -1248,8 +1248,10 @@ test("unread lookup advances past a row deleted between seek and history", async
 });
 
 test("history assembles early live reaction snapshots and preserves the newer projection in a historical window", async () => {
-  const { session, peer } = await setup(2);
+  const { session, socket, peer } = await setup(2, true, "room=first", false);
   try {
+    socket.receive({ type: "error", requestId: peer.interactions[0].requestId, code: "room_busy" });
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
     await peer.history([message(3), message(4)], true);
     const older = session.loadHistory("first"), request = await peer.next();
     peer.reply({ ...request, requestId: "live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { heart: 1 }) });
@@ -1274,7 +1276,7 @@ test("history assembles early live reaction snapshots and preserves the newer pr
     await refreshing;
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([2, 3]);
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.reactions?.revision)).toEqual([4, 5]);
-    expect(session.getSnapshot().interactionsByRoom.get("first")!.getSnapshot().reactions).toEqual([]);
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
   } finally { session.close(); }
 });
 
@@ -1434,8 +1436,16 @@ test("interaction readiness follows Domain read admission without waiting for a 
     await Promise.resolve();
     expect(peer.interactions).toHaveLength(1);
     const request = peer.interactions[0];
-    peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"], publicationReactions: [] });
+    state.publications = [{ audience: [], id: "picture", roomId: "first", sessionId: "host", userId: "friend",
+      kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
+    socket.receive({ type: "state", state });
+    const snapshot = { publicationId: "picture", revision: 1, counts: { wave: 1 } };
+    const ready = { type: "interaction_ready" as const, serverTime: Date.now(), reactionIds: ["wave", "future-decoration"], publicationReactions: [snapshot] };
+    peer.reply({ ...request, requestId: "other-ready" }, ready);
+    expect(session.getSnapshot().publicationReactions.size).toBe(0);
+    peer.reply(request, ready);
     expect(pending.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
+    expect(session.getSnapshot().publicationReactions.get("picture")).toEqual(snapshot);
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
