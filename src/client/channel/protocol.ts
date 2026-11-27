@@ -133,36 +133,21 @@ export const snapshotSchema = z.object({
   pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(flowBindingSchema), incoming: z.array(flowBindingSchema) })).max(CHANNEL_SESSION_LIMIT - 1),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
-const udpAddressSchema = z.ipv4().refine(address => {
-  const [a, b] = address.split(".").map(Number);
-  return address !== "0.0.0.0" && address !== "255.255.255.255" && a !== 10 && a !== 127
-    && !(a === 169 && b === 254) && !(a === 172 && b >= 16 && b <= 31) && !(a === 192 && b === 168)
-    && !(a >= 224 && a <= 239);
-});
-export const udpObservationSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("stable"), address: udpAddressSchema, port: z.number().int().min(1024).max(65535) }).strict(),
-  z.object({ kind: z.literal("sequential"), address: udpAddressSchema, port: z.number().int().min(1024).max(65535), step: z.number().int().min(-16).max(16) }).strict()
-    .refine(value => value.step !== 0 && value.port + 4 * value.step >= 1024 && value.port + 4 * value.step <= 65535),
-  z.object({ kind: z.literal("irregular"), address: udpAddressSchema }).strict(),
-]);
-export const udpSignalSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("offer"), secret: signingKey, observation: udpObservationSchema }).strict(),
-  z.object({ type: z.literal("answer"), observation: udpObservationSchema }).strict(),
-  z.object({ type: z.literal("ready") }).strict(),
-  z.object({ type: z.literal("unavailable") }).strict(),
-  z.object({ type: z.literal("complete") }).strict(),
-]);
 export const signalSchema = z.object({
-  udp: udpSignalSchema.optional(),
+  udp: z.never().optional(),
   resync: z.boolean().optional(),
   exchangeId: z.string().uuid().optional(),
   description: z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().max(150000).optional() }).optional(),
   candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional(), origin: z.literal("linear").optional() })
     .refine(value => value.origin !== "linear" || !!value.candidate?.trim() && !!value.usernameFragment?.trim()).optional(),
   tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
-}).refine(signal => signal.udp
-  ? [signal.resync, signal.exchangeId, signal.description, signal.candidate, signal.tracks].every(value => value === undefined)
-  : Boolean(signal.description) === Boolean(signal.exchangeId), { message: "UDP preparation is exclusive; SDP requires an exchange", path: ["exchangeId"] });
+}).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
+const receivedSignalSchema = z.union([
+  z.looseObject({ udp: z.unknown() })
+    .refine(payload => Object.keys(payload).every(key => key === "udp" || !Object.hasOwn(signalSchema.shape, key)))
+    .transform(() => null),
+  signalSchema,
+]);
 export const channelTopologySchema = z.object({
   serviceAvailable: z.boolean(),
   serviceEnabled: z.boolean(),
@@ -188,7 +173,7 @@ export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("room_created"), room: roomSummarySchema, requestId: id.optional() }),
   z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
   z.object({ type: z.literal("room_reply"), roomId: id, requestId: id.optional(), result: z.object({ type: z.string(), code: z.string().optional() }).passthrough() }),
-  z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: signalSchema }),
+  z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: receivedSignalSchema }),
   z.object({ type: z.literal("ack"), requestId: id }),
   z.object({ type: z.literal("error"), code: z.string(), requestId: id.optional() }),
 ]);

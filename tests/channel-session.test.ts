@@ -817,6 +817,53 @@ test("the site overview does not select a room or load its history", async () =>
   } finally { session.close(); }
 });
 
+test("Native-only signals preserve the socket and its pending command through later state and RTC", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = await setup();
+  try {
+    let settled = false;
+    const saving = session.updateProfile({ name: "Next", avatar: null }).finally(() => { settled = true; });
+    const request = socket.sent.at(-1)!;
+    const signal = (payload: unknown) => socket.receive({ type: "signal", pairId: "pair", fromSessionId: "z", requestId: request.requestId, payload });
+    const delivered = vi.spyOn(ChannelMedia.prototype, "signal");
+    signal({ udp: { type: "ready" } });
+    signal({ udp: null });
+    signal({ udp: { type: "future", futureNativeField: true }, extension: 1 });
+    await Promise.resolve();
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    expect(ChannelSocket.current).toBe(socket);
+    expect(settled).toBe(false);
+    expect(delivered).not.toHaveBeenCalled();
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.name = "Updated";
+    state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: false, rooms: [], incoming: [], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().state?.channel.name).toBe("Updated");
+    const [pc] = RoomPeerConnection.instances;
+    const exchangeId = crypto.randomUUID();
+    signal({ exchangeId, description: { type: "offer", sdp: "test offer" }, extension: 1 });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("test offer"));
+    expect(settled).toBe(false);
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await saving;
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(ChannelSocket.current).toBe(socket);
+  } finally { session.close(); }
+});
+
+test.each([
+  { udp: null, candidate: {} }, { udp: false, resync: false }, { udp: {}, tracks: [] },
+  { udp: {}, exchangeId: crypto.randomUUID() }, { udp: {}, description: {} },
+])("mixed Native and RTC signals retain invalid-response recovery", async payload => {
+  const { session, socket } = await setup();
+  try {
+    socket.receive({ type: "signal", pairId: "pair", fromSessionId: "z", payload });
+    expect(socket.readyState).toBe(3);
+    expect(session.getSnapshot().error).toBe("invalid_response");
+  } finally { session.close(); }
+});
+
 test("profile changes use the authenticated identity and only project confirmed state", async () => {
   const { session, socket } = await setup();
   const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=";

@@ -635,7 +635,9 @@ export class ChannelSession {
       this.retireRequest(event.requestId);
       request.result?.(event); request.resolve();
     } else if (event.type === "state") this.applyState(event.state);
-    else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
+    else if (event.type === "signal") {
+      if (event.payload !== null) this.media.signal(event.pairId, event.payload);
+    }
     else if (event.type === "ack" || event.type === "error") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : null;
