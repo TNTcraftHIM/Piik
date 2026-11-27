@@ -82,11 +82,10 @@ the feedback period; they do not delay that delivery.
   Browser and SDK readers. Keep API/Bot capabilities within existing actions
   and authority. [Adopted architecture](./adr/0016-shared-rust-core.md) ·
   [Design review](./research/clean-room-design-review.md)
-- [ ] **Conversation results and reads.** Return the stored message with its
-  reaction revision in the existing send confirmation. Add the text-only
-  history selection before page budgeting, preserving omitted image data in
-  complete readers. Settle unknown terminal replies without treating them as
-  rejection or retiring healthy sibling operations.
+- [ ] **Text-participant state projection.** Let a connection select the
+  conversation snapshot at Join. Construct it before full media state and
+  retain the selected form through final Leave. Compare the actual serialized
+  state and authority fields with the full projection.
 - [ ] **Remaining ownership reductions.** Preserve platform queue retirement
   semantics and the destination writer's validation when sharing their owners.
   Review SQLite single-row storage and a

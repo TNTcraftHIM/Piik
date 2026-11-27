@@ -173,10 +173,13 @@ an active share just because an unrelated product/build label changed.
 
 ### The private 3.0 code today
 
-On the Domain's wire a reply and a notification are told apart by whether an
-optional request ID is present, in several kinds. On the room's wire a record
-does not say which of the two it is. The rule for unknown kinds needs the role
-to be readable before the kind is.
+On the Domain's wire a terminal `reply` carries its request ID and, for a room
+operation, its room ID. Notifications carry no request ID. On the room's signed wire,
+`command` is a request, `record` is its requester's outcome, and `notice` is an
+observer update. The authenticated address and role are read before the kind.
+Unknown outcomes end only their matching request as unconfirmed; a notice does
+not settle a request. A history page states which optional parts it supplies;
+omitted parts do not clear a reader's existing data.
 Joins and App discovery each require one exact private identifier. Domain and
 App senders use the fields defined for each command, and most command variants
 reject unknown keys. A few parameterless commands, including Domain `leave`
