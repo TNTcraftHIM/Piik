@@ -108,22 +108,27 @@ ADR-0019 decision 7 and ADR-0020 decision 2 following it. In short:
 - An unknown kind: a request is refused as unsupported in its own reply, a
   reply ends its request as an unknown outcome, a notification is ignored.
   What must not be ignored is sent as a request.
-- An unknown field: a reader ignores it; a writer, a store and an archive
-  keep a message's top-level ones within one bound and return them. A field
-  never carries what must be understood, names nothing outside its message
-  and holds no media. Nested shapes stay closed.
+- An unknown field is ignored. A writer stores the fields it knows and its
+  confirmation carries the message as stored. A field never carries what
+  must be understood. Stores and archives are the exception and stay strict:
+  nobody is there to be told what was dropped.
 - A new form reaches a party that asked for it. A part not asked for, or not
   known, is absent, and absent is neither empty nor deleted.
 - Anything else waits for the next first number, which also deletes every
   branch written for an older peer.
 
-Why kept fields and not a strict writer with a version check: a room's
-writer is a friend's App or Browser and is as often the oldest party as the
-newest. A strict writer makes a room as old as its host for everything; a
-writer that keeps makes it so only for what the writer must act on. It is
-the rule of the networks whose servers lag their clients (RFC 6120 section
-8.4, RFC 9110 section 5.1, Protocol Buffers' unknown fields), and RFC 9170
-is why the first release has to exercise it in tests.
+Corrected the same day, before your reply: my first push had a writer, a
+store and an archive keep the fields they do not know. I took it out. No
+feature in sight needs it, a writer that stores what it cannot read cannot
+keep its promises about deleting, clearing media and copying, and it can be
+added later as one more addition. So no stored layout changes for this.
+
+Published 2.x is the measure of the other way: its server closes the
+connection over one unknown field (`internal/server/signal/session.go` on
+`main`), its handshake wants one exact identifier, and its capability object
+has fifteen entries. The rule here is the one of networks whose parties are
+of different ages (RFC 6120 section 8.4, RFC 9110 sections 2.5 and 5.1), and
+RFC 9170 is why the first release has to exercise it in tests.
 
 Your two points are in it. Leaving a part out is not deleting it (rule
 four). A reader that cannot read a signed record still knows which request
@@ -133,19 +138,14 @@ it and answers. Returning the address with the failure is what turns a wait for
 a deadline into an unknown outcome.
 
 Read in the code, the rest is yours to check: the Domain's `Command` and the
-room's `ConversationCommand` and `ConversationRecord` are decoded closed; a
-chat's text is bounded at 2,000 characters and nothing else bounds a draft
-below the frame, so the bound for kept fields is a number of that kind and
-yours to set.
+room's `ConversationCommand` and `ConversationRecord` are decoded closed.
 
 Questions for the trace, each to settle or refute from the code:
 
 1. Is there a reader that needs a writer's numbers and cannot see its host's
    session?
-2. Which stored layout holds unknown fields beside known ones at the least
-   cost in SQLite and IndexedDB? The audit's opaque `presentation` object
-   was refuted for what it did to copying and to clearing media; this rule
-   excludes both by what a field may carry.
+2. Does every confirmation a writer sends carry the message as stored, so
+   that a sender can see a field was left out?
 3. Which closed decodes guard something that must be understood, and so
    stay as kinds, and which only refuse?
 4. What does each client do today with a Domain event of a kind it does not
