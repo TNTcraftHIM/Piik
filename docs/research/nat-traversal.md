@@ -210,6 +210,17 @@ adding sockets. A survey that has already consumed three seconds can leave room
 for only about 745 checks, so the target budget is a ceiling, not a promise to
 send all of them. Parallel survey remains a separate comparison.
 
+The search now uses a random start and bit-reversed port order. A 2026-11-27
+Windows control paired both orders against four fixed continuous 256-port pools
+with the same 1,024-target budget and five-second lifetime. All eight runs
+completed mutual authentication, adopted the winning sockets into the original
+RTC and exchanged DataChannel messages in both directions. The new order first
+hit at targets 178–249, versus 192–978 for the original draws. This control
+simulates mappings and destination filtering on loopback; it does not measure
+public reachability. The static coverage guarantee applies to a contiguous
+256-port pool, not arbitrary pool sizes or moving mappings. Sequential
+preparation retains its existing eight-socket path.
+
 The frozen source archive had SHA-256
 `4371aafbe865676fe30d5cee7d21af781720a3ce664129c3d4c6cc4204ebdda2`
 and pinned str0m at `2d0d6eaaf4d19d7530588f695cd631eedf42acf5`.

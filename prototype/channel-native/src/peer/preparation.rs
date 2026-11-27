@@ -19,7 +19,7 @@ use rtc_stun::{
 };
 use sansio::Protocol;
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::VecDeque,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
 };
@@ -375,7 +375,7 @@ impl ProbePlan {
         ensure!(remote.valid(), "unsupported peer mapping address");
         match (local, remote) {
             (Observation::Stable { .. }, Observation::Irregular { address }) => Ok(Self {
-                targets: random_targets(address)?,
+                targets: search_targets(address)?,
                 random: Some(RandomRole::Search),
             }),
             (Observation::Irregular { .. }, Observation::Stable { .. }) => Ok(Self {
@@ -409,25 +409,17 @@ impl ProbePlan {
     }
 }
 
-fn random_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
-    let mut seen = HashSet::with_capacity(RANDOM_TARGETS);
-    let mut targets = Vec::with_capacity(RANDOM_TARGETS);
-    while targets.len() < RANDOM_TARGETS {
-        let mut bytes = [0; RANDOM_TARGETS * 2];
-        getrandom::fill(&mut bytes)
-            .map_err(|error| anyhow::anyhow!("preparation ports: {error}"))?;
-        for value in bytes.chunks_exact(2) {
-            let port = u16::from_ne_bytes([value[0], value[1]]);
-            // Rejection preserves uniform choice over the allowed port range.
-            if port >= 1024 && seen.insert(port) {
-                targets.push(SocketAddrV4::new(address, port));
-                if targets.len() == RANDOM_TARGETS {
-                    break;
-                }
-            }
-        }
-    }
-    Ok(targets)
+fn search_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
+    let mut bytes = [0; 2];
+    getrandom::fill(&mut bytes).map_err(|error| anyhow::anyhow!("preparation ports: {error}"))?;
+    let start = u16::from_ne_bytes(bytes);
+    // Bit reversal spreads early targets across the port range.
+    Ok((0..=u16::MAX)
+        .map(|index| index.reverse_bits().wrapping_add(start))
+        .filter(|&port| port >= 1024)
+        .take(RANDOM_TARGETS)
+        .map(|port| SocketAddrV4::new(address, port))
+        .collect())
 }
 
 impl Survey {
@@ -702,6 +694,7 @@ async fn binding(socket: &UdpSocket, remote: SocketAddr) -> Result<SocketAddrV4>
 mod tests {
     use super::*;
     use anyhow::Context;
+    use std::collections::HashSet;
 
     #[tokio::test]
     async fn preparation_dns_fallback_does_not_wait_for_failed_or_stalled_authorities() -> Result<()>
@@ -1393,6 +1386,18 @@ mod tests {
             .targets
             .iter()
             .all(|target| *target.ip() == irregular.address() && target.port() >= 1024));
+        // The first 252 targets cover any contiguous 256-port pool, including
+        // one wrapping around the allowed port range.
+        let mut prefix: Vec<_> = generated.targets[..252]
+            .iter()
+            .map(|target| usize::from(target.port()))
+            .collect();
+        prefix.sort_unstable();
+        let wrap_gap = usize::from(u16::MAX) + 1 - prefix.last().unwrap() + prefix[0] - 1024;
+        assert_eq!(wrap_gap, RANDOM_PORTS);
+        assert!(prefix
+            .windows(2)
+            .all(|ports| ports[1] - ports[0] == RANDOM_PORTS));
         assert!(
             ProbePlan::new(irregular, irregular).is_err(),
             "two irregular mappings cannot select birthday search"
