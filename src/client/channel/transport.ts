@@ -1,4 +1,4 @@
-import { data_queue_frames } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
+import { data_frame_bytes, data_queue_frames } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { LinearCandidateAdmission } from "../webrtc/linear-ice-candidate";
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
@@ -14,8 +14,6 @@ import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from 
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
 const TRANSPORT_PREPARE_MS = 20_000;
-const MAX_FILE_FRAME_BYTES = 8192;
-const MAX_CONTROL_FRAME_BYTES = 32768;
 const DATA_SEND_BUFFER_BYTES = 65536;
 
 export interface OutgoingMedia {
@@ -323,9 +321,9 @@ export class ChannelTransport {
     channel.onmessage = ({ data }) => {
       if (!current()) return;
       if (bulk && this.rooms.size && !this.dataLifetime.signal.aborted
-        && data instanceof ArrayBuffer && data.byteLength <= MAX_FILE_FRAME_BYTES) this.options.data?.("chunk", new Uint8Array(data));
+        && data instanceof ArrayBuffer && data.byteLength <= writer.maxFrameBytes) this.options.data?.("chunk", new Uint8Array(data));
       // Core may defer control from this pair until the room grant and plan arrive.
-      else if (!bulk && typeof data === "string" && new TextEncoder().encode(data).length <= MAX_CONTROL_FRAME_BYTES) this.options.data?.("control", data);
+      else if (!bulk && typeof data === "string" && new TextEncoder().encode(data).length <= writer.maxFrameBytes) this.options.data?.("control", data);
     };
     this.reportRoomDataReady();
     this.syncDeadline();
@@ -1052,9 +1050,11 @@ class ChannelWriter {
     data: string | Uint8Array; size: number; allowed?: () => boolean; request?: string;
     resolve: () => void; reject: (error: unknown) => void;
   }>();
+  readonly maxFrameBytes: number;
   private readonly maxQueuedFrames: number;
 
   constructor(private kind: "control" | "chunk") {
+    this.maxFrameBytes = data_frame_bytes(kind === "chunk");
     this.maxQueuedFrames = data_queue_frames(kind === "chunk");
   }
   install(channel: RTCDataChannel): void {
@@ -1067,7 +1067,7 @@ class ChannelWriter {
   }
   send(data: string | Uint8Array, allowed?: () => boolean, request?: string): Promise<void> {
     const size = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
-    if (size > (this.kind === "control" ? MAX_CONTROL_FRAME_BYTES : MAX_FILE_FRAME_BYTES)) return Promise.reject(new Error(this.kind === "control" ? "control_frame_too_large" : "file_frame_too_large"));
+    if (size > this.maxFrameBytes) return Promise.reject(new Error(this.kind === "control" ? "control_frame_too_large" : "file_frame_too_large"));
     if (this.closed) return Promise.reject(new Error("data_channel_unavailable"));
     if (this.pending.size >= this.maxQueuedFrames) return Promise.reject(new Error("data_channel_busy"));
     return new Promise((resolve, reject) => {

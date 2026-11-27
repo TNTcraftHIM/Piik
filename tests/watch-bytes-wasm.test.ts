@@ -179,7 +179,8 @@ test.each(["ready", "provider", "viewer"] as const)("Browser range uses real Cor
       })));
       else if (effect.type === "send_chunk") {
         const bytes = effect.frame as Uint8Array;
-        expect([...bytes.slice(0, 2)]).toEqual([0, 0]); expect(bytes.length).toBeLessThanOrEqual(8192);
+        expect(rust.is_watch_frame(bytes[0], bytes[1])).toBe(true);
+        expect(bytes.length).toBeLessThanOrEqual(rust.data_frame_bytes(true));
         frames.push(bytes.length); delivery.data(sourceId, "chunk", bytes);
       } else if (effect.type === "send_control") delivery.data(sourceId, "control", JSON.stringify(effect.control));
     }

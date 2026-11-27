@@ -1,3 +1,4 @@
+import { is_watch_frame, session_recovery_ms } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { isDocumentActive } from "../ui/document-active";
 import type { NativeCaptureSelection } from "../native/capture-selection";
 import { RoomCreationInterrupted } from "./room-creation";
@@ -279,7 +280,7 @@ export class ChannelSession {
     (peer, kind, data) => {
       if (kind === "chunk") {
         const bytes = data as Uint8Array;
-        if (bytes[0] === 0 && bytes[1] === 0) this.watchBytes.data(peer, kind, bytes);
+        if (is_watch_frame(bytes[0], bytes[1])) this.watchBytes.data(peer, kind, bytes);
         else this.attachments.data(peer, kind, data);
       }
       else void this.conversation.receiveControl(peer, data as string).catch(() => {});
@@ -3771,7 +3772,7 @@ export class ChannelSession {
       this.releaseMedia();
       this.releaseHosts();
       this.patch({ sessionId: null, state: null, self: null, error: "session_expired" });
-    }, 20000);
+    }, session_recovery_ms());
   }
 
   private endRecovery(): void {
