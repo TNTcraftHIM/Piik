@@ -106,6 +106,11 @@ operations. Android passed signing, two ABI, 16 KiB alignment, JNI/DEX and Web
 identity checks; the APK was not installed. Original WebView and stop-key CI
 remain the actual isolated desktop controls at `56092074`.
 
-The near-full-GPU investigation now has one bounded offscreen calibration under
-implementation, separate from product capture. It will not be called a game
-load or used to change encoding policy without the matching measurements.
+The bounded offscreen GPU calibration did not reach its registered near-full
+load condition. The first 6,000-batch limit ended at 0.817 s before a complete
+counter window. With the same shader, two batches in flight, 50 ms fence limit
+and six-second time limit, raising only that batch ceiling allowed four valid
+one-second own-process 3D windows: 40.67%, 40.68%, 43.60%, 42.03%. All 46,968
+batches completed and the process exited. No encoding comparison followed;
+these observations do not establish the game's near-full-GPU bottleneck or a
+software-encoding benefit. Product quality policy is unchanged.
