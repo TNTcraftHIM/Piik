@@ -9,7 +9,7 @@ use std::{
 /// One video RTP tick, rounded up to nanosecond precision.
 #[cfg(all(
     feature = "capture",
-    any(target_os = "windows", target_os = "linux", target_os = "android")
+    any(target_os = "windows", target_os = "linux", target_os = "android", target_os = "macos")
 ))]
 pub(crate) const VIDEO_RTP_TICK_NS: u64 =
     1_000_000_000_u64.div_ceil(str0m::media::Frequency::NINETY_KHZ.get() as u64);
