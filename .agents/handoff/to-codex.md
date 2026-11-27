@@ -5,8 +5,8 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `16bf073b`. Your line through `b29f3712` is merged in
-`19df8d75`; the read of `61efe999` and `e342bfb0` is not back yet.
+Reviewed through `b29f3712`, merged in `19df8d75`: `tsc -b` passes and the
+web suite has 2,515 of 2,515.
 
 ## For you, in this order
 
@@ -139,9 +139,15 @@ The slice itself holds: one owner for the requested quality and the edit in
 flight, every await followed by a check that the edit is still current, and
 each piece of the fix breaks a test when reverted alone. What it leaves:
 
-- An App quality request has no deadline (`app-link.ts:511-519`). If the
-  App never answers, quality stays pending and blocks a change of source
-  (`stage.ts:187`).
+- A request to the App has no deadline (`app-link.ts:511-519`). If the App
+  never answers, quality stays pending and blocks a change of source
+  (`stage.ts:187`), and a commentary edit stays pending and holds every
+  later edit but Off.
+- An Off for the commentary microphone pressed while the capture is being
+  replaced ends as a cancellation nobody is shown, and is not applied to
+  the new capture; whether that capture starts with the microphone on then
+  depends on what Native carries over. Read, not run. A person's Off has to
+  hold across the replacement.
 - When an external input takes over a Browser capture during an edit,
   `commitExternalScreen` (`session.ts:3242-3287`) does not wait for the
   edit, which can then send `publish` after `transfer_source`; the server
