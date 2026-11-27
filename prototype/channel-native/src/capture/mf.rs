@@ -392,6 +392,9 @@ impl Encoder {
             if next_limit != frame_limit {
                 frame_limit = next_limit;
                 cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
+                if let (Some(_), Work::Frame(frame, false)) = (frame_limit, &work) {
+                    cadence.accept(frame.qpc);
+                }
                 admission_rate = AdmissionRate::default();
             }
             match work {
