@@ -29,8 +29,7 @@ import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachm
 import { messageRemoved, type ChannelActions, type HostMediaTarget, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { BrowserHosting, browserRoomStorage } from "./browser-hosting";
-import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
-import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
+import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage } from "../../../prototype/channel-browser/src/hosting-contract";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type AppPageMediaSelection, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
 import type { NativeCaptureTarget, EncodingExecution, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -1968,21 +1967,21 @@ export class ChannelSession {
     const runtime = await loadRoomHosting();
     const policy = await runtime.createRoomPolicy({ ...settings, id: crypto.randomUUID(), creatorId: self.id });
     current();
-    let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined;
+    let stage: BrowserRoomStage | undefined;
     let cancelReservation: (() => void) | undefined;
     const contents = new Map<string, File>();
     try {
       const metadata = await readBackup(archive, {
+        copyHistory: true,
         metadata: async value => {
           current();
           if (value.kind !== "room_copy") throw new Error("expected_room_copy");
-          importer = new runtime.CopyHistoryImport(JSON.stringify(value));
           stage = await runtime.BrowserRoomHost.stage(roomDatabaseName(state.channel.id, self.id), policy);
         },
-        row: row => { current(); return stage!.append(JSON.parse(importer!.accept(JSON.stringify(row))) as BackupHistoryRow); },
+        row: row => { current(); return stage!.append(row); },
         content: (digest, file) => { current(); contents.set(digest, file); },
       });
-      current(); importer!.finish();
+      current();
       if (metadata.kind !== "room_copy" || !stage) throw new Error("expected_room_copy");
       const { room, cancel } = await this.allocateRoom(settings);
       cancelReservation = cancel;
@@ -1993,7 +1992,6 @@ export class ChannelSession {
       if (!roomRestoreRecovery(error)) cancelReservation?.();
       throw error;
     } finally {
-      importer?.free();
       await stage?.close().catch(() => {});
     }
   });

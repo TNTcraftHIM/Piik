@@ -12,6 +12,7 @@ export type BackupMetadata =
       ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] }
   | { kind: "room_copy"; version: 2; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {
+  copyHistory?: true;
   metadata(value: BackupMetadata): void | Promise<void>;
   row(value: BackupHistoryRow): void | Promise<void>;
   content(digest: string, file: File): void | Promise<void>;
@@ -96,7 +97,8 @@ async function readArchive(blob: Blob, visitor?: BackupVisitor, hosted?: HostedA
     if (!visitor) return { metadata };
     await visitor.metadata(metadata);
     if (metadata.kind !== "domain") {
-      const importer = new module.BackupHistoryImport(JSON.stringify(metadata));
+      const input = JSON.stringify(metadata);
+      const importer = visitor.copyHistory ? new module.CopyHistoryImport(input) : new module.BackupHistoryImport(input);
       try {
         await readRecords(entries.get(history)!, limit, line => visitor.row(JSON.parse(importer.accept(line)) as BackupHistoryRow));
         importer.finish();

@@ -11885,7 +11885,6 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     { key: { roomId: "first", messageSeq: row.seq, attachmentId: attachment.id }, attachment, file },
   ]);
   const history: BackupHistoryRow[] = [], content = new Map<string, File>();
-  let importer: InstanceType<typeof core.CopyHistoryImport> | undefined;
   try {
     const archive = await session.exportRoomCopy("first", false);
     const metadata = await backupArchive.readBackup(archive, {
@@ -11910,9 +11909,12 @@ test("a copy without room information round-trips real ZIP content and remaps hi
       if (settingsEntry.directory) throw new Error("invalid settings entry");
       expect(JSON.parse(await settingsEntry.getData(new zip.TextWriter()))).toEqual(hostedCopySettings);
     } finally { await reader.close(); }
-    importer = new core.CopyHistoryImport(JSON.stringify(metadata));
-    const copied = JSON.parse(importer.accept(JSON.stringify(history[0]))) as BackupHistoryRow;
-    importer.finish();
+    const copiedRows: BackupHistoryRow[] = [];
+    await backupArchive.readBackup(archive, {
+      copyHistory: true, metadata: () => {}, row: value => { copiedRows.push(value); }, content: () => {},
+    });
+    expect(copiedRows).toHaveLength(1);
+    const [copied] = copiedRows;
     expect(copied).toMatchObject({ seq: row.seq, text: row.text, attachments: [attachment],
       archivedAuthorName: "Archived author", reactions: row.reactions, reply: { seq: 1, archivedAuthorName: "" } });
     if (!("id" in copied)) throw new Error("expected live archive message");
@@ -11938,7 +11940,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     expect(stripped).toEqual({ ...result, retainedFiles: [] });
     expect(uploaded).toEqual(restored);
     expect(restored).toEqual([copied]); expect(snapshot.close).toHaveBeenCalledOnce();
-  } finally { importer?.free(); session.close(); }
+  } finally { session.close(); }
 });
 
 test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file originals preserves every history row and inline image in the real ZIP", async kind => {
@@ -12052,7 +12054,6 @@ test.each(["success", "create-failed", "registration-failed", "reconnect-during-
   }
   const runtime = await hosting.loadRoomHosting();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
-    CopyHistoryImport: class { accept(line: string) { return line; } finish() {} free() {} },
   } as unknown as typeof runtime);
   const copy = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [] } as const;
   read.mockImplementationOnce(async (_blob, visitor) => {
@@ -12102,7 +12103,7 @@ test.each(["success", "create-failed", "registration-failed", "reconnect-during-
         "reconnect-during-cache": "room_restored_connection_failed", "native-unconfirmed": "room_restore_unconfirmed" };
       await expect(importing).rejects.toThrow(expected[outcome]);
     }
-    expect(read).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.objectContaining({ copyHistory: true }));
     expect(stage.append.mock.calls).toEqual([[row]]);
     expect(stage.replace).not.toHaveBeenCalled();
     expect(write).toHaveBeenCalledTimes(native ? 1 : 0);
@@ -12130,7 +12131,6 @@ test("room copy preserves the archive conversion failure when staging cleanup re
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const runtime = await hosting.loadRoomHosting();
     vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
-      CopyHistoryImport: class { finish() {} free() {} },
     } as unknown as typeof runtime);
     const copy = { kind: "room_copy" as const, version: 2 as const, authors: {}, retainedFiles: [] };
     read.mockImplementationOnce(async (_blob, visitor) => { await visitor?.metadata(copy); return copy; });
@@ -12149,7 +12149,6 @@ test("room copy stops when its session reconnects during archive validation", as
   try {
     const runtime = await hosting.loadRoomHosting();
     vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
-      CopyHistoryImport: class { finish() {} free() {} },
     } as unknown as typeof runtime);
     const copy = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [] } as const;
     read.mockImplementationOnce(async (_blob, visitor) => {
