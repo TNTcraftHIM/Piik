@@ -4012,6 +4012,7 @@ dependencies = [
  "find-msvc-tools",
  "fs4",
  "futures-util",
+ "hyper-util",
  "if-addrs",
  "libc",
  "log",

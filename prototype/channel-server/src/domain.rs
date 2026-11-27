@@ -846,8 +846,8 @@ impl Domain {
         servers.push(http.boxed());
         let stop_https = axum_server::Handle::new();
         if let Some(https) = https {
-            let server = axum_server::from_tcp_rustls(https.listener.into_std()?, https.config)?
-                .map(|acceptor| acceptor.acceptor(axum_server::accept::NoDelayAcceptor::new()))
+            let server = crate::web::http_server(https.listener)
+                .map(|tcp| axum_server::tls_rustls::RustlsAcceptor::new(https.config).acceptor(tcp))
                 .handle(stop_https.clone())
                 .serve(app.into_make_service());
             servers.push(server.boxed());
