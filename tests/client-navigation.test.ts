@@ -1,10 +1,10 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { afterEach, expect, test, vi } from "vitest";
 import type { ComponentProps, ReactElement } from "react";
 import { OpenInClient } from "../src/client/components/living/OpenInClient";
 import { Btn } from "../src/client/components/living/primitives";
 import { clientNavigationTarget, useClientNavigationTarget } from "../src/client/channel/client-navigation";
-import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
-import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
+import { channelAppDiscovery } from "../src/client/channel/app-link";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 import type { AppDiscovery } from "../src/client/native/discovery";
 
@@ -45,7 +45,7 @@ function mount(navigation: NonNullable<AppDiscovery["navigation"]> = vi.fn(async
   const popup = { opener: {}, closed: false, close: vi.fn(), location: { replace: vi.fn() } };
   const open = vi.fn(() => popup);
   vi.stubGlobal("window", { open });
-  const discovery = { navigation, health: vi.fn(), connect: vi.fn(), isIncompatible: () => false };
+  const discovery = { navigation, health: vi.fn(), connect: vi.fn(), compatibilityIssue: () => null };
   const onIssue = vi.fn();
   const render = () => { hooks.index = 0; return OpenInClient({ discovery, targetURL: invitation, active: true, disabled: false, onIssue }); };
   const button = buttons(render())[0]!;
@@ -120,7 +120,7 @@ test.each([true, false])("navigation discovers verified capability without healt
   vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(site) });
   const fetcher = vi.fn(async (raw: string) => {
     if (raw !== `${local.replace("/client", "")}/connect-discovery`) return new Response(null, { status: 404 });
-    return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+    return Response.json({ service: "piik-channel-app", ...PRODUCT_VERSION,
       port: NATIVE_CLIENT_PORT_START, connectURL: local, windowNavigation });
   });
   vi.stubGlobal("fetch", fetcher);

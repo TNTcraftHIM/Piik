@@ -21,7 +21,7 @@ use piik_channel_core::{
         Command, Event, Kind, PublicationInput, ReplyResult, Room, RoomAccess, RoomDelivery, Snapshot,
         VideoSettings,
     },
-    RoomState, RECOVERY_MS,
+    RoomState, PRODUCT_VERSION, RECOVERY_MS,
 };
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -1047,7 +1047,7 @@ impl Session {
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
                     snapshot_form: Default::default(),
-                    protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                    version: PRODUCT_VERSION,
                     can_use_peer_transport: true,
                     can_prepare_udp: self.config.server_udp.is_none(),
                     can_receive_video_layers: true,
@@ -1277,12 +1277,25 @@ impl Session {
                             match message {
                                 Some(Incoming { text, _budget }) => {
                                     let event = images.decode(&text).map_err(anyhow::Error::msg)?;
-                                    if matches!(event, Event::Welcome { .. }) {
-                                        admitted = true;
-                                        self.recovery = None;
-                                    }
-                                    if let Event::Error { code, .. } = &event {
-                                        if !admitted { bail!("admission failed: {code}"); }
+                                    match &event {
+                                        Event::Welcome { .. } => {
+                                            admitted = true;
+                                            self.recovery = None;
+                                        }
+                                        Event::IncompatibleVersion { version } => {
+                                            let (code, update) = if version.major > PRODUCT_VERSION.major {
+                                                ("app-update", "Update the App")
+                                            } else {
+                                                ("domain_update_required", "Update the Site's Server")
+                                            };
+                                            return Err(anyhow!("{update} (App {}.{}, Server {}.{})",
+                                                PRODUCT_VERSION.major, PRODUCT_VERSION.minor, version.major, version.minor)
+                                                .context(code));
+                                        }
+                                        Event::Error { code, .. } if !admitted => {
+                                            bail!("admission failed: {code}");
+                                        }
+                                        _ => {}
                                     }
                                     pending = Some((event, _budget));
                                 },

@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import type { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { CHANNEL_PROTOCOL } from '../src/client/channel/protocol';
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 
 const boundary = vi.hoisted(() => ({ socket: undefined as unknown as EventEmitter & {
   sent: Record<string, unknown>[]; readyState: number; terminate: ReturnType<typeof vi.fn>;
@@ -21,16 +21,18 @@ vi.mock('ws', async () => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 test.each([
-  [CHANNEL_PROTOCOL - 1, { message: 'incompatible_protocol' }],
-  [CHANNEL_PROTOCOL, { name: 'ZodError' }],
-])('rejects a broken Welcome for protocol %s before issuing credentials', async (protocol, expected) => {
+  [{ type: 'incompatible_version', major: PRODUCT_VERSION.major - 1 }, { update: 'domain' }],
+  [{ type: 'incompatible_version', major: PRODUCT_VERSION.major + 1 }, { update: 'participant' }],
+  [{ type: 'welcome', major: PRODUCT_VERSION.major + 1 }, { update: 'participant' }],
+  [{ type: 'welcome', major: PRODUCT_VERSION.major }, { name: 'ZodError' }],
+])('rejects an incompatible or malformed handshake %o before issuing credentials', async (header, expected) => {
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', name: 'Fixture' });
   const credential = vi.fn();
   client.on('credential', credential);
   const connected = client.connect(), socket = boundary.socket;
   socket.readyState = 1; socket.emit('open');
-  socket.emit('message', Buffer.from(JSON.stringify({ type: 'welcome', protocol, credential: 'fixture' })));
+  socket.emit('message', Buffer.from(JSON.stringify({ ...PRODUCT_VERSION, ...header, credential: 'fixture' })));
   try {
     const rejected = expect(connected).rejects.toMatchObject(expected);
     await Promise.resolve();
@@ -75,9 +77,9 @@ test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending 
   const connected = client.connect().catch(error => error as Error), socket = boundary.socket;
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   socket.readyState = 1; socket.emit('open');
-  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
+  receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
     state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
-      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
+      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0), ...PRODUCT_VERSION }] } });
   if (phase !== 'welcome') await Promise.resolve();
   if (phase === 'browse') {
     receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
@@ -111,9 +113,9 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
   const connected = client.connect(), socket = boundary.socket;
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   const room = { id: 'room', authorized: true, available: true, reading: true, delivery: { hostSessionId: host, bindingId: binding } };
-  const state = { channel: { hostingMode: 'lightweight', rooms: [room] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] };
+  const state = { channel: { hostingMode: 'lightweight', rooms: [room] }, sessions: [{ id: host, signingKey: Array(32).fill(0), ...PRODUCT_VERSION }] };
   socket.readyState = 1; socket.emit('open');
-  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture', sessionId: local, selfProfile: { id: user }, state });
+  receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture', sessionId: local, selfProfile: { id: user }, state });
   await Promise.resolve();
   receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await connected;
@@ -184,9 +186,9 @@ test('concurrent stop callers await the same leave and socket retirement, includ
   const connected = client.connect(), socket = boundary.socket;
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   socket.readyState = 1; socket.emit('open');
-  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
+  receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
     state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
-      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
+      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0), ...PRODUCT_VERSION }] } });
   await Promise.resolve();
   receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
   await connected;
@@ -221,9 +223,9 @@ test.each(['receipt-first', 'close-first'] as const)('browse readiness follows %
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   vi.useFakeTimers();
   const [local, host, binding, user] = Array.from({ length: 4 }, () => randomUUID());
-  const welcome = { type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
+  const welcome = { type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
     state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
-      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } };
+      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0), ...PRODUCT_VERSION }] } };
   const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', roomId: 'room', name: 'Fixture' });
   const ready = vi.fn(); client.on('ready', ready);
   const first = client.connect().catch(error => error as Error), old = boundary.socket;
@@ -260,7 +262,7 @@ test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s wr
   const connected = client.connect(), socket = boundary.socket;
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   socket.readyState = 1; socket.emit('open');
-  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId, selfProfile: { id: userId },
+  receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId, selfProfile: { id: userId },
     state: { channel: { hostingMode, rooms: [] }, sessions: [] } });
   await connected;
   const settings = { name: 'Fixture room', icon: 'couch', access: 'public', hidden: false } as const;
@@ -314,7 +316,7 @@ test('failed initial browse retires the welcomed socket before connect rejects',
   const socket = boundary.socket;
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   socket.readyState = 1; socket.emit('open');
-  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture', sessionId: randomUUID(),
+  receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture', sessionId: randomUUID(),
     selfProfile: { id: randomUUID() }, state: { channel: { hostingMode: 'hosted', rooms: [] }, sessions: [] } });
   await Promise.resolve();
   receive({ type: 'reply', requestId: socket.sent.at(-1)!.requestId, result: { type: 'error', code: 'room_unavailable' } });

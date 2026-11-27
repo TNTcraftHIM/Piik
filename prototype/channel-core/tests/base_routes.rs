@@ -3958,7 +3958,7 @@ fn confirmed_business_pairs_follow_room_scope_sockets_and_flow_leases() {
     );
     let resumed = Uuid::new_v4();
     let effects = network.authority.handle(resumed, Request::parse(&json!({
-        "type":"join", "canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+        "type":"join", "canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,
         "name":"Returning viewer","credential":credential,"sessionId":b,
         "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()
     }).to_string()).unwrap(), 101);
@@ -5727,7 +5727,7 @@ fn resuming_without_peer_transport_retires_media_and_file_routes_but_keeps_room_
     let old_output = net.host_turn(&room, input);
     assert!(old_output.projection.relay_session_ids.contains(&participant));
     let sync = net.authority.handle(resumed, request(json!({"type":"join","name":"Same reader",
-        "credential":credential,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"sessionId":participant,
+        "credential":credential,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,"sessionId":participant,
         "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()})), 101);
     let pending = net.authority.handle(owner, request(json!({"type":"host_output","roomId":room,"output":old_output})), 101);
     assert!(!pending.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. } | Event::Reply { room_id: Some(_), .. })));

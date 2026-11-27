@@ -19,6 +19,8 @@ use piik_channel_core::{
     wire::{Command, Event, HostingMode, ReplyResult, Request, RoomCreationPolicy},
     Authority, Effects,
 };
+#[cfg(test)]
+use piik_channel_core::PRODUCT_VERSION;
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -482,15 +484,10 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
         Ok(Some(Ok(Message::Text(text)))) => text,
         _ => return,
     };
-    let mut request = match Request::parse(&text) {
+    let mut request = match Request::parse_first(&text) {
         Ok(request) => request,
-        Err((request_id, code)) => {
-            send(
-                &mut socket,
-                &Event::completion(request_id, None, ReplyResult::Error { code: code.into() }),
-                &mut images,
-            )
-            .await;
+        Err(event) => {
+            send(&mut socket, &event, &mut images).await;
             return;
         }
     };
@@ -906,7 +903,7 @@ mod tests {
         assert_eq!(domain.owner_key(), owner_key);
         let redeem = |ticket: &str| {
             let mut join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":ticket,
-                "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
+                "major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"signingKey":vec![0;32]}).to_string()).unwrap();
             let mut hub = domain.hub.lock().unwrap();
             hub.redeem_launch(&mut join);
             let Command::Join { owner_key, .. } = join.command else { unreachable!() };
@@ -927,7 +924,7 @@ mod tests {
         let (credential, mut backup) = {
             let mut hub = domain.hub.lock().unwrap();
             let join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":owner_key,
-                "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
+                "major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"signingKey":vec![0;32]}).to_string()).unwrap();
             let effects = hub.authority.handle(Uuid::new_v4(), join, 0);
             let credential = effects.events.into_iter().find_map(|(_, event)| match event {
                 Event::Welcome { credential, .. } => Some(credential), _ => None,
@@ -973,7 +970,8 @@ mod tests {
         };
         let request = |mut value: serde_json::Value| {
             if value["type"] == "join" {
-                value["protocol"] = serde_json::json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+                value["major"] = serde_json::json!(PRODUCT_VERSION.major);
+                value["minor"] = serde_json::json!(PRODUCT_VERSION.minor);
             }
             Request::parse(&value.to_string()).unwrap()
         };

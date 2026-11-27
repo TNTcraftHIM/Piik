@@ -1,5 +1,6 @@
 //! Physical WebSocket image transfer. Domain state remains a complete Snapshot.
 use crate::wire::{Event, Snapshot, CHANNEL_MESSAGE_BYTES};
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -145,8 +146,10 @@ impl StateImageDecoder {
         let mut value: Value = serde_json::from_str(text).map_err(|_| "invalid_channel_event")?;
         match value.get("type").and_then(Value::as_str) {
             Some("welcome") => {
-                if value["protocol"] != crate::wire::CHANNEL_PROTOCOL {
-                    return Err("incompatible_protocol");
+                let version = crate::ProductVersion::deserialize(&value)
+                    .map_err(|_| "invalid_channel_event")?;
+                if !version.is_compatible() {
+                    return Ok(Event::IncompatibleVersion { version });
                 }
                 Images::default().transform(&mut value["state"], true)?;
             }
@@ -174,14 +177,14 @@ impl StateImageDecoder {
 mod tests {
     use super::*;
     use crate::{
-        wire::{Request, CHANNEL_PROTOCOL},
+        wire::Request, PRODUCT_VERSION,
         Authority,
     };
     use serde_json::json;
 
     fn welcome() -> Event {
         let mut core = Authority::new("owner".into(), vec![]).unwrap();
-        core.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","protocol":CHANNEL_PROTOCOL,"canUsePeerTransport":false,"name":"Owner","ownerKey":"owner","signingKey":vec![1;32]}).to_string()).unwrap(), 0)
+        core.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"canUsePeerTransport":false,"name":"Owner","ownerKey":"owner","signingKey":vec![1;32]}).to_string()).unwrap(), 0)
             .events.into_iter().find_map(|(_, event)| matches!(event, Event::Welcome { .. }).then_some(event)).unwrap()
     }
 
@@ -189,18 +192,19 @@ mod tests {
     fn incompatible_welcome_is_rejected_before_reading_its_state() {
         let full = serde_json::to_value(welcome()).unwrap();
         let mut previous = full.clone();
-        previous["protocol"] = json!(CHANNEL_PROTOCOL - 1);
+        previous["major"] = json!(PRODUCT_VERSION.major ^ 1);
+        previous.as_object_mut().unwrap().remove("state");
         let mut missing = full;
-        missing.as_object_mut().unwrap().remove("protocol");
+        missing.as_object_mut().unwrap().remove("minor");
         missing.as_object_mut().unwrap().remove("state");
-        for value in [previous, missing] {
-            assert_eq!(
-                StateImageDecoder::default()
-                    .decode(&value.to_string())
-                    .err(),
-                Some("incompatible_protocol")
-            );
-        }
+        assert!(matches!(
+            StateImageDecoder::default().decode(&previous.to_string()),
+            Ok(Event::IncompatibleVersion { version }) if version.major == (PRODUCT_VERSION.major ^ 1)
+        ));
+        assert_eq!(
+            StateImageDecoder::default().decode(&missing.to_string()).err(),
+            Some("invalid_channel_event")
+        );
     }
 
     #[test]
@@ -332,7 +336,8 @@ mod tests {
         decoder.decode(&encoder.encode(&greeting).unwrap()).unwrap();
         let mut invalid_welcome: Value = serde_json::from_str(&compact).unwrap();
         invalid_welcome["type"] = json!("welcome");
-        invalid_welcome["protocol"] = json!(CHANNEL_PROTOCOL);
+        invalid_welcome["major"] = json!(PRODUCT_VERSION.major);
+        invalid_welcome["minor"] = json!(PRODUCT_VERSION.minor);
         assert_eq!(
             decoder.decode(&invalid_welcome.to_string()).err(),
             Some("missing_identity_image")

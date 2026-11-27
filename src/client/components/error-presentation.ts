@@ -1,6 +1,5 @@
 import type { CopyKey } from "../locales";
 import type { UnsupportedVideoFormat } from "../native/wire";
-import { isIncompatibleProtocol } from "../channel/protocol";
 import { diagnoseChannelFact } from "../ui/diagnosis";
 
 export interface ChannelErrorPresentation {
@@ -33,8 +32,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.webassemblyUnavailable");
   if (error === "room_runtime_unavailable")
     return display("channel.error.roomRuntimeUnavailable");
-  if (isIncompatibleProtocol(error))
-    return display("channel.error.incompatibleProtocol");
+  if (error === "page_update_required") return display("channel.error.pageUpdateRequired");
   if (error === "channel_full")
     return display("channel.error.channelFull");
   if (error === "directory_storage_failed")

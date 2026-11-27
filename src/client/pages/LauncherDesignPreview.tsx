@@ -32,7 +32,7 @@ export function LauncherDesignPreview() {
   const query = new URLSearchParams(location.search);
   const app = query.has("app") ? <AppConnectionButton connected discovery={{
     connect: async () => `${query.get("app-origin") ?? location.origin}/client?site=${encodeURIComponent(location.origin)}`,
-    health: async () => ({}), isIncompatible: () => false,
+    health: async () => ({}), compatibilityIssue: () => null,
   }} /> : null;
   const [sites, setSites] = useState<SiteBookmark[]>(query.get("state") === "empty" ? [] : samples);
   const [ready, setReady] = useState(query.get("state") === "ready");

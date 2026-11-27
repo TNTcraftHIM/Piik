@@ -42,6 +42,7 @@ use futures_util::{
     FutureExt, SinkExt, StreamExt,
 };
 use piik_channel_core::host::NewRoom;
+use piik_channel_core::PRODUCT_VERSION;
 use piik_channel_native::{
     capture::{CaptureOptions, EncodingExecution, Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
@@ -69,7 +70,6 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 28;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -407,7 +407,7 @@ fn host_task(task: JoinHandle<Result<()>>) -> HostTask {
     async move {
         match task.await {
             Ok(Ok(())) => {}
-            Ok(Err(error)) => eprintln!("App hosting ended: {error}"),
+            Ok(Err(error)) => eprintln!("App hosting ended: {error:#}"),
             Err(error) => eprintln!("App hosting task ended: {error}"),
         }
     }.boxed().shared()
@@ -822,12 +822,12 @@ async fn access(
 }
 async fn discovery(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,
+        json!({"service":SERVICE,"major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"port":app.port,
         "windowNavigation":app.config.window_navigation.is_some(),"connectURL":format!("http://127.0.0.1:{}/client",app.port)}),
     )
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
-    let mut state = json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,"token":app.token,
+    let mut state = json!({"service":SERVICE,"major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"port":app.port,"token":app.token,
         "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET,
         "windowNavigation":app.config.window_navigation.is_some(),"updateSupported":app.update.supported()});
     if app.config.page_player.is_some() {
@@ -3849,6 +3849,10 @@ mod lifecycle_tests {
         assert_eq!(discovery.status(), StatusCode::OK);
         let discovery: Value = serde_json::from_slice(&discovery.bytes().await.unwrap()).unwrap();
         assert_eq!(discovery["connectURL"], format!("{origin}/client"));
+        assert_eq!(discovery["major"], PRODUCT_VERSION.major);
+        assert_eq!(discovery["minor"], PRODUCT_VERSION.minor);
+        assert!(discovery.get("protocol").is_none());
+        assert!(discovery.get("domainProtocol").is_none());
 
         let bookmarks = "/api/client-launcher/bookmarks";
         let allowed = stale(bookmarks)

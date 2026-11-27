@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { memberName } from "../src/client/channel/member-name";
 import { historyProfileIds } from "../src/client/channel/message-history";
 import { describe, expect, it } from "vitest";
@@ -36,7 +37,7 @@ it("projects joined watch people independently of transport and deduplicates the
     authorized: true, canManage: true, available: true, reading: true, participantSessionIds: sessions.map(([id]) => id),
     lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
   }] }, users: ["owner", "viewer", "direct", "relay"].map(id => ({ id, name: id, version: "a".repeat(64) })),
-    sessions: sessions.map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
+    sessions: sessions.map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION })),
     publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   });
   expect(watchAudience(state, activity)).toEqual([{ userId: "viewer", name: "viewer", avatar: undefined }, { userId: "direct", name: "direct", avatar: undefined }]);
@@ -140,7 +141,7 @@ it("shows each person's room activity across endpoints and keeps chat presence i
       capabilities: { attachments: true },
     }] }, users: ["self", "chat", "route"].map(id => ({ id, name: id, version: "a".repeat(64) })),
     sessions: [["self-page", "self"], ["self-helper", "self"], ["chat-page", "chat"], ["route-peer", "route"]]
-      .map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
+      .map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION })),
     publications: [{ id: "screen", roomId: "room", sessionId: "self-helper", userId: "self", kind: "screen", paused: false,
       source: { kind: "screen", name: null }, title: null, audience: [{ sessionId: "self-page", state: "active" }],
       videoSettings: { ceiling: { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 4_000_000 }, degradationPreference: "balanced" },

@@ -3,12 +3,14 @@ import { once } from "node:events";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import WebSocket from "ws";
-import { CHANNEL_PROTOCOL, ChannelEventDecoder, eventSchema } from "../../src/client/channel/protocol.ts";
+import { ChannelEventDecoder, eventSchema } from "../../src/client/channel/protocol.ts";
+import { productVersion } from "../../scripts/release-version.mjs";
 
 const endpoint = process.env.CHANNEL_WS_URL ?? "ws://127.0.0.1:8791/prototype/channel";
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
 assert(["127.0.0.1", "localhost"].includes(new URL(endpoint).hostname), "Checks only target loopback");
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
+const version = productVersion(process.env.PIIK_BUILD_VERSION);
 assert(ownerKey, "Set PIIK_CHANNEL_OWNER_KEY to the local server's owner bootstrap key");
 // The protocol-only sources explicitly declare the accepted 720p30 ceiling.
 const videoSettings = { ceiling: { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 3_000_000 }, degradationPreference: 'balanced' };
@@ -66,8 +68,8 @@ async function connect(t, join = {}) {
     },
   };
   const signingKey = [...Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url")];
-  socket.send(JSON.stringify({ type: "join", canUsePeerTransport: true, protocol: CHANNEL_PROTOCOL, name: "Protocol check", signingKey, ...join }));
-  client.welcome = await wait(event => ["welcome", "error"].includes(event.type), "join result");
+  socket.send(JSON.stringify({ type: "join", canUsePeerTransport: true, ...version, name: "Protocol check", signingKey, ...join }));
+  client.welcome = await wait(event => ["welcome", "error", "incompatible_version"].includes(event.type), "join result");
   return client;
 }
 
@@ -111,8 +113,8 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
 });
 
 test("authenticated users, signed conversation and selective source ownership", { timeout: 30_000 }, async t => {
-  const previous = await connect(t, { protocol: CHANNEL_PROTOCOL - 1 });
-  assert.equal(previous.welcome.code, "incompatible_protocol");
+  const incompatible = await connect(t, { major: (version.major ^ 1) >>> 0 });
+  assert.deepEqual(incompatible.welcome, { type: "incompatible_version", ...version });
   const owner = await connect(t, { ownerKey, name: "Owner check" });
   const friend = await connect(t, { name: "Friend check" });
   const other = await connect(t, { name: "Other check" });
@@ -254,7 +256,8 @@ test("Server-owned private invitations admit new users, conceal content and revo
 test("a lightweight room cancellation round-trips on the current channel protocol", { timeout: 30_000 }, async t => {
   const owner = await connect(t, { ownerKey });
   assert.equal(owner.welcome.type, "welcome");
-  assert.equal(owner.welcome.protocol, CHANNEL_PROTOCOL);
+  assert.equal(owner.welcome.major, version.major);
+  assert.equal(owner.welcome.minor, version.minor);
   const existing = owner.welcome.state.channel.rooms.find(room => room.available)
     ?? (await owner.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.available),
       "registered fixture room")).state.channel.rooms.find(room => room.available);

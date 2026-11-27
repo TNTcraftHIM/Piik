@@ -48,7 +48,7 @@ function sampleWatch(mode: string): WatchActivity | null {
       paused: mode !== "local-seek", rate: 1, anchorTime: 0 } };
 }
 const previewAppDiscovery: AppDiscovery = {
-  health: async () => null, connect: async () => null, isIncompatible: () => false,
+  health: async () => null, connect: async () => null, compatibilityIssue: () => null,
 };
 
 /** The production room view with local samples. No Session, device access or App discovery. */

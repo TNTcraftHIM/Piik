@@ -114,7 +114,7 @@ async fn participant() -> Result<()> {
         &mut socket,
         Command::Join {
             snapshot_form: Default::default(),
-            protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+            version: piik_channel_core::PRODUCT_VERSION,
             name: "Kernel Native reader".into(),
             credential: None,
             owner_key: None,

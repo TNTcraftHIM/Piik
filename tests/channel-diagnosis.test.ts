@@ -20,12 +20,20 @@ describe("diagnosis using the current operation", () => {
       message: "channel.error.peerTransportUnavailable", connectionHelp: false,
     });
   });
+  it.each([
+    ["app-update", "client.connect.appUpdateRequired"],
+    ["site-update", "client.connect.siteUpdateRequired"],
+    ["domain_update_required", "channel.error.domainUpdateRequired"],
+  ] as const)("shows which side to update for the source picker's %s error", (code, key) => {
+    expect(channelErrorPresentation(code, value => value, "host.sourcePicker.failed").message).toBe(key);
+  });
+
   it("offers the local approval page when discovery succeeds, and asserts denied access only on an explicit refusal", () => {
     expect(diagnoseChannelFact({ area: "app", state: "approval" })).toMatchObject({ message: "client.connect.found", next: "client.connect.open" });
     expect(diagnoseChannelFact({ area: "app", state: "approving" })).toBeNull();
     expect(channelErrorPresentation("site_not_approved", key => key).message).toBe("client.sites.notAllowed");
     expect(diagnoseChannelFact({ area: "app", state: "unavailable" })).toMatchObject({ message: "client.connect.unavailable", topic: "appConnection" });
-    expect(diagnoseChannelFact({ area: "app", state: "incompatible" })).toMatchObject({ message: "client.connect.incompatible", topic: "appVersion" });
+    expect(diagnoseChannelFact({ area: "app", state: "app-update" })).toMatchObject({ message: "client.connect.appUpdateRequired", topic: "appVersion" });
   });
 
   it("keeps admission and the selected picture's retry separate", () => {

@@ -17,7 +17,7 @@ vi.mock("node:child_process", () => ({
   spawnSync: (_command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => {
     expect(options.env).toMatchObject({
       PIIK_BUILD_VERSION: identity.version, PIIK_BUILD_REVISION: identity.revision,
-      VITE_PIIK_VERSION: identity.version, VITE_PIIK_REVISION: identity.revision,
+      VITE_PIIK_REVISION: identity.revision,
     });
     build.calls.push(args);
     if (args.includes("build")) webFixture(join(options.cwd, "build/channel-web"), options.env.VITE_PIIK_REVISION!);

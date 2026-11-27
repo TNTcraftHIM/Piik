@@ -3,12 +3,29 @@ use super::*;
 #[tokio::test]
 async fn reader_preserves_rejection_and_malformed_frame_before_close() {
     use tokio_tungstenite::tungstenite::protocol::Role;
-    for (text, expected) in [
+    let (major, minor) = (PRODUCT_VERSION.major, PRODUCT_VERSION.minor);
+    for (text, expected, direction) in [
         (
-            r#"{"type":"error","code":"forbidden"}"#,
+            r#"{"type":"error","code":"forbidden"}"#.to_owned(),
             "admission failed: forbidden",
+            None,
         ),
-        ("not-json", "invalid_channel_event"),
+        (
+            serde_json::json!({"type":"incompatible_version","major":major+1,"minor":minor}).to_string(),
+            "Update the App",
+            Some("app-update"),
+        ),
+        (
+            serde_json::json!({"type":"incompatible_version","major":major-1,"minor":minor}).to_string(),
+            "Update the Site's Server",
+            Some("domain_update_required"),
+        ),
+        (
+            serde_json::json!({"type":"welcome","major":major+1,"minor":minor}).to_string(),
+            "Update the App",
+            Some("app-update"),
+        ),
+        ("not-json".to_owned(), "invalid_channel_event", None),
     ] {
         let (local, remote) = tokio::io::duplex(4096);
         let mut socket = WebSocketStream::from_raw_socket(local, Role::Client, None).await;
@@ -16,7 +33,7 @@ async fn reader_preserves_rejection_and_malformed_frame_before_close() {
         let mut session = connection_session("ws://memory.invalid".into());
         let join = Command::Join {
             snapshot_form: Default::default(),
-            protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+            version: piik_channel_core::PRODUCT_VERSION,
             name: "Memory client".into(),
             credential: None,
             owner_key: None,
@@ -33,7 +50,10 @@ async fn reader_preserves_rejection_and_malformed_frame_before_close() {
             .connected(&mut socket, join, &mut stop)
             .await
             .unwrap_err();
-        assert!(error.to_string().contains(expected), "{error:#}");
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+        if let Some(code) = direction {
+            assert_eq!(error.to_string(), code);
+        }
     }
 }
 
@@ -90,7 +110,7 @@ async fn reader_keeps_invalid_utf8_on_carrier_recovery_path() {
     let mut session = connection_session("ws://memory.invalid".into());
     let join = Command::Join {
         snapshot_form: Default::default(),
-        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        version: piik_channel_core::PRODUCT_VERSION,
         name: "Memory client".into(),
         credential: None,
         owner_key: None,

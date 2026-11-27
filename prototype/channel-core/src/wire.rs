@@ -4,7 +4,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 55;
+use crate::{ProductVersion, PRODUCT_VERSION};
+
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -17,8 +18,8 @@ pub enum Command {
     Join {
         #[serde(default, skip_serializing_if = "SnapshotForm::is_full")]
         snapshot_form: SnapshotForm,
-        #[serde(default)]
-        protocol: u8,
+        #[serde(flatten)]
+        version: ProductVersion,
         name: String,
         credential: Option<String>,
         owner_key: Option<String>,
@@ -285,7 +286,25 @@ pub struct Request {
 
 impl Request {
     pub fn parse(text: &str) -> Result<Self, (Option<String>, &'static str)> {
-        let mut input: Value = serde_json::from_str(text).map_err(|_| (None, "invalid_request"))?;
+        let input = serde_json::from_str(text).map_err(|_| (None, "invalid_request"))?;
+        Self::from_value(input)
+    }
+
+    /// Check the Join header before decoding fields owned by its major version.
+    pub fn parse_first(text: &str) -> Result<Self, Box<Event>> {
+        fn error((id, code): (Option<String>, &'static str)) -> Box<Event> {
+            Box::new(Event::completion(id, None, ReplyResult::Error { code: code.into() }))
+        }
+        let input: Value = serde_json::from_str(text).map_err(|_| error((None, "invalid_request")))?;
+        if input["type"] == "join"
+            && ProductVersion::deserialize(&input).is_ok_and(|version| !version.is_compatible())
+        {
+            return Err(Box::new(Event::IncompatibleVersion { version: PRODUCT_VERSION }));
+        }
+        Self::from_value(input).map_err(error)
+    }
+
+    fn from_value(mut input: Value) -> Result<Self, (Option<String>, &'static str)> {
         let object = input.as_object_mut().ok_or((None, "invalid_request"))?;
         let request_id = match object.remove("requestId") {
             Some(Value::String(id)) if valid_id(&id) => Some(id),
@@ -967,6 +986,8 @@ pub struct SessionInfo {
     pub user_id: Uuid,
     pub online: bool,
     pub signing_key: [u8; 32],
+    #[serde(flatten)]
+    pub version: ProductVersion,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1104,6 +1125,8 @@ pub struct ConversationRoomInfo {
 pub struct SigningSession {
     pub id: Uuid,
     pub signing_key: [u8; 32],
+    #[serde(flatten)]
+    pub version: ProductVersion,
 }
 
 #[derive(Clone, Serialize)]
@@ -1161,8 +1184,13 @@ pub enum Event {
         room_id: String,
         input: crate::host::HostInput,
     },
+    IncompatibleVersion {
+        #[serde(flatten)]
+        version: ProductVersion,
+    },
     Welcome {
-        protocol: u8,
+        #[serde(flatten)]
+        version: ProductVersion,
         credential: String,
         self_profile: UserInfo,
         session_id: Uuid,
@@ -1176,7 +1204,8 @@ pub enum Event {
     },
     #[serde(rename(serialize = "welcome"), skip_deserializing)]
     ConversationWelcome {
-        protocol: u8,
+        #[serde(flatten)]
+        version: ProductVersion,
         credential: String,
         self_profile: ProfileId,
         session_id: Uuid,

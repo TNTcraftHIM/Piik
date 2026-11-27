@@ -99,6 +99,7 @@ pub struct Session {
     pub user_id: Uuid,
     pub connection: Option<Uuid>,
     pub snapshot_form: SnapshotForm,
+    pub version: crate::ProductVersion,
     pub disconnected_at: Option<u64>,
     pub signing_key: [u8; 32],
     pub capabilities: PeerCapabilities,
@@ -114,6 +115,7 @@ pub struct Identity {
 
 pub struct Admission<'a> {
     pub snapshot_form: SnapshotForm,
+    pub version: crate::ProductVersion,
     pub signing_key: [u8; 32],
     pub capabilities: PeerCapabilities,
     pub credential: Option<&'a str>,
@@ -338,9 +340,11 @@ impl Identity {
             snapshot_form: input.snapshot_form,
             disconnected_at: None,
             signing_key: input.signing_key,
+            version: input.version,
             capabilities: input.capabilities,
         });
         session.signing_key = input.signing_key;
+        session.version = input.version;
         let peer_transport_withdrawn = session.capabilities.can_use_peer_transport
             && !input.capabilities.can_use_peer_transport;
         session.capabilities = input.capabilities;
@@ -464,6 +468,7 @@ mod tests {
         resume: Option<&'a str>,
     ) -> Admission<'a> {
         Admission {
+            version: crate::PRODUCT_VERSION,
             snapshot_form: Default::default(),
             signing_key: [1; 32],
             capabilities: PeerCapabilities {

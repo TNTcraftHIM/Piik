@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import * as hosting from "../src/client/channel/hosting";
@@ -97,8 +98,8 @@ test("signed conversation uses Domain delivery without peers and still fences si
     host: () => undefined, file: vi.fn(), reply: received, send: packet => { requests.push(packet); } });
   const owner = new ChannelConversation({ context: () => ({ sessionId: host, state, connected: true }),
     host: () => roomHost, file: vi.fn(), reply: vi.fn(), send: packet => { replies.push(packet); } });
-  state.sessions = [{ id: host, userId: host, online: true, signingKey: await owner.initialize() },
-    { id: sender, userId: sender, online: true, signingKey: await reader.initialize() }];
+  state.sessions = [{ id: host, userId: host, online: true, signingKey: await owner.initialize(), ...PRODUCT_VERSION },
+    { id: sender, userId: sender, online: true, signingKey: await reader.initialize(), ...PRODUCT_VERSION }];
   try {
     await reader.send({ type: "history", roomId: "room" }, "request");
     expect(requests).toHaveLength(1);

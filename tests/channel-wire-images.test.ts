@@ -1,7 +1,8 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { INPUT_FRAME_BYTES, REMOTE_INPUT_COMMAND_BYTES, REMOTE_TEXT_BYTES } from "../src/client/remote-control/protocol";
-import { CHANNEL_EVENT_BYTES, CHANNEL_PROTOCOL, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, IDENTITY_IMAGE_URL_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder } from "../src/client/channel/protocol";
+import { CHANNEL_EVENT_BYTES, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, IDENTITY_IMAGE_URL_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder } from "../src/client/channel/protocol";
 
 const picture = "data:image/png;base64,YWJj";
 const version = "a".repeat(64);
@@ -14,7 +15,7 @@ const snapshot = () => ({
   users: [{ id: "user", name: "Friend", version }], sessions: [], publications: [], voice: [],
   subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
 });
-const welcome = (state = snapshot()) => ({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint",
+const welcome = (state = snapshot()) => ({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint",
   selfProfile: { id: "user", name: "Friend", avatar: picture, version }, state });
 const omitted = (state = snapshot()) => {
   const { icon, rooms, ...channel } = state.channel;
@@ -31,7 +32,7 @@ it("matches the compiled Core wire contract for schemas built before WASM initia
   const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
   expect(JSON.parse(core.channel_wire_limits())).toEqual({
-    protocol: CHANNEL_PROTOCOL, sessions: CHANNEL_SESSION_LIMIT, rooms: CHANNEL_ROOM_LIMIT,
+    ...PRODUCT_VERSION, sessions: CHANNEL_SESSION_LIMIT, rooms: CHANNEL_ROOM_LIMIT,
     inputFrameBytes: INPUT_FRAME_BYTES, inputCommandBytes: REMOTE_INPUT_COMMAND_BYTES, inputTextBytes: REMOTE_TEXT_BYTES,
     profilePage: PROFILE_PAGE_SIZE, eventBytes: CHANNEL_EVENT_BYTES, identityImageBytes: IDENTITY_IMAGE_URL_BYTES,
   });
@@ -56,7 +57,7 @@ it("WASM reports unknown host input before its first projection and completes th
 
 it("accepts the Core session budget and rejects one extra session", () => {
   const state = { ...snapshot(), sessions: Array.from({ length: CHANNEL_SESSION_LIMIT }, (_, index) => ({
-    id: `endpoint-${index}`, userId: "user", online: true, signingKey: Array(32).fill(0),
+    id: `endpoint-${index}`, userId: "user", online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION,
   })) };
   expect(() => decode(new ChannelEventDecoder(), { ...welcome(), state })).not.toThrow();
   state.sessions.push({ ...state.sessions[0]!, id: "extra" });

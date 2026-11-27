@@ -1690,7 +1690,7 @@ fn conversation_snapshot_follows_current_connection_and_room_authority() {
             fields
           }).collect::<Vec<_>>()},
         "sessions":state.sessions.iter().map(|session| json!({
-            "id":session.id,"signingKey":session.signing_key
+            "id":session.id,"signingKey":session.signing_key,"major":session.version.major,"minor":session.version.minor
         })).collect::<Vec<_>>(),
     });
     let effects = command(&mut network, text, reopen("conversation"));

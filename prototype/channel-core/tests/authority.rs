@@ -8,8 +8,9 @@ use uuid::Uuid;
 
 fn apply(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
     if command["type"] == "join" {
-        if command.get("protocol").is_none() {
-            command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+        if command.get("major").is_none() {
+            command["major"] = json!(piik_channel_core::PRODUCT_VERSION.major);
+            command["minor"] = json!(piik_channel_core::PRODUCT_VERSION.minor);
         }
         command["signingKey"] =
             json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());
@@ -323,43 +324,44 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
 }
 
 #[test]
-fn domain_protocol_rejects_old_clients_before_admission() {
+fn join_version_is_checked_before_admission_and_tracks_the_resumed_signer() {
+    use piik_channel_core::PRODUCT_VERSION;
+
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
-    let before = serde_json::to_value(core.export_backup()).unwrap();
-    for protocol in [
-        None,
-        Some(0),
-        Some(1),
-        Some(2),
-        Some(3),
-        Some(4),
-        Some(5),
-        Some(6),
-        Some(piik_channel_core::wire::CHANNEL_PROTOCOL - 1),
-    ] {
-        let connection = Uuid::new_v4();
-        let mut join = json!({"type":"join","name":"Old","requestId":"join",
-            "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()});
-        if let Some(protocol) = protocol {
-            join["protocol"] = json!(protocol);
-        }
-        let effects = core.handle(connection, Request::parse(&join.to_string()).unwrap(), 0);
-        assert!(effects.close.contains(&connection));
-        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "incompatible_protocol")));
-        assert!(!effects
-            .events
-            .iter()
-            .any(|(_, event)| matches!(event, Event::Welcome { .. } | Event::HostInput { .. })));
-        assert_eq!(serde_json::to_value(core.export_backup()).unwrap(), before);
-    }
     let connection = Uuid::new_v4();
-    let effects = apply(
-        &mut core,
-        connection,
-        json!({"type":"join","name":"Current"}),
-        0,
-    );
-    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Welcome { protocol, .. } if *protocol == piik_channel_core::wire::CHANNEL_PROTOCOL)));
+    let incompatible = PRODUCT_VERSION.major ^ 1;
+    let refusal = json!({"type":"incompatible_version","major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor});
+    let mut command = json!({"type":"join","major":incompatible,"minor":0,"name":false});
+    let event = Request::parse_first(&command.to_string()).err().unwrap();
+    assert_eq!(serde_json::to_value(event).unwrap(), refusal);
+
+    command["major"] = json!(PRODUCT_VERSION.major);
+    command["requestId"] = json!("join");
+    let invalid = Request::parse_first(&command.to_string()).err().unwrap();
+    assert!(matches!(*invalid, Event::Reply { request_id, result: ReplyResult::Error { code }, .. } if request_id == "join" && code == "invalid_request"));
+    let effects = apply(&mut core, connection, json!({"type":"join","major":incompatible,"minor":0,"name":"Friend"}), 0);
+    assert_eq!(effects.close, [connection]);
+    assert_eq!(effects.events.len(), 1);
+    assert_eq!(serde_json::to_value(&effects.events[0].1).unwrap(), refusal);
+
+    let minor = PRODUCT_VERSION.minor ^ 1;
+    let join = json!({"type":"join","name":"Friend","major":PRODUCT_VERSION.major,"minor":minor});
+    let effects = apply(&mut core, connection, join, 0);
+    let Event::Welcome { version, state, session_id, credential, .. } = &effects.events[0].1 else { panic!("expected welcome") };
+    assert_eq!(*version, PRODUCT_VERSION);
+    assert_eq!(state.sessions.len(), 1);
+    assert_eq!(state.sessions[0].version.minor, minor);
+    let resume = json!({"type":"join","major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,
+        "snapshotForm":"conversation","name":"Friend","sessionId":session_id,"credential":credential,
+        "signingKey":vec![2; 32]});
+    let resumed = core.handle(Uuid::new_v4(), Request::parse_first(&resume.to_string()).ok().unwrap(), 1);
+    assert_eq!(resumed.close, [connection]);
+    let Event::ConversationWelcome { version, state, .. } = &resumed.events[0].1 else { panic!("expected resumed welcome") };
+    assert_eq!(*version, PRODUCT_VERSION);
+    assert_eq!(state.sessions.len(), 1);
+    assert_eq!(state.sessions[0].id, *session_id);
+    assert_eq!(state.sessions[0].version, PRODUCT_VERSION);
+    assert_eq!(state.sessions[0].signing_key, [2; 32]);
 }
 
 #[test]

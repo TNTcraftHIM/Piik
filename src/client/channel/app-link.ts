@@ -1,5 +1,6 @@
 import type { NativeCaptureSelection } from "../native/capture-selection";
-import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, roomSummarySchema, watchByteSourceSchema, type WatchByteSource, type RoomSettings, type RoomSummary } from "./protocol";
+import { MAX_RELAY_CAPACITY, roomSummarySchema, watchByteSourceSchema, type WatchByteSource, type RoomSettings, type RoomSummary } from "./protocol";
+import { PRODUCT_VERSION, productVersionSchema } from "./product-version";
 import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
   nativePageResourceReadSchema, nativePageResourceResultSchema,
@@ -9,7 +10,7 @@ import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEv
 import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
 import type { WatchByteResult } from "./watch-resource";
 import { z } from "zod";
-import { discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
+import { discoverLocalApp, type AppCompatibilityIssue, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type EncodingExecution } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
@@ -27,12 +28,13 @@ const openRoomResultSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings_rejected"), reason: z.string().min(1) }),
 ]);
 
-export const APP_PROTOCOL = 28;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
-const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
-const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
+const endpointSchema = z.object({ service: z.enum(["piik-channel-app", "piik-client"]), port: z.number().int().min(1).max(65535) });
+const identitySchema = endpointSchema.extend({ service: z.literal("piik-channel-app"), ...productVersionSchema.shape });
+const legacyIdentitySchema = z.object({ protocol: z.number().int().positive() });
+const healthSchema = identitySchema.extend({ token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.boolean().optional(),
   externalScreenInputAvailable: z.boolean().optional(), backgroundVoiceShortcuts: z.boolean().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
@@ -111,8 +113,13 @@ const stopShortcutSchema = remoteStopShortcutSchema.extend({ stopShortcutLabel: 
 export type ChannelStopShortcut = z.infer<typeof stopShortcutSchema>;
 export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
 const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema });
-function isIncompatible(error: unknown): boolean {
-  return error instanceof Error && isIncompatibleProtocol(error.message);
+function compatibilityIssue(error: unknown): AppCompatibilityIssue | null {
+  const code = error instanceof Error ? error.message : null;
+  return code === "app-update" || code === "site-update" || code === "domain_update_required" ? code : null;
+}
+
+function checkAppVersion(major: number): void {
+  if (major !== PRODUCT_VERSION.major) throw new Error(major < PRODUCT_VERSION.major ? "app-update" : "site-update");
 }
 type AppCommand = { type: string; publicationId?: string; roomId?: string; [key: string]: unknown };
 
@@ -278,17 +285,20 @@ export class AppPage implements AppPagePort {
 }
 
 function identity(body: unknown, port: number): void {
-  const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
-  if (value.port !== port) throw new Error("invalid_app_response");
-  if (value.service !== "piik-channel-app" || value.protocol !== APP_PROTOCOL || value.domainProtocol !== CHANNEL_PROTOCOL)
-    throw new Error("incompatible_protocol");
+  const endpoint = endpointSchema.parse(body);
+  if (endpoint.port !== port) throw new Error("invalid_app_response");
+  if (endpoint.service === "piik-client") {
+    legacyIdentitySchema.parse(body);
+    throw new Error("app-update");
+  }
+  checkAppVersion(productVersionSchema.parse(body).major);
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<(AppHealth & { managementURL?: string }) | null> {
   return discoverLocalApp("health", (body, port) => {
     identity(body, port);
     return { ...healthSchema.parse(body), managementURL: `http://127.0.0.1:${port}/client` };
-  }, options, isIncompatible);
+  }, options, compatibilityIssue);
 }
 
 const launcherAddressSchema = z.object({ connectURL: z.string().max(256) });
@@ -310,13 +320,13 @@ export const channelAppDiscovery: AppDiscovery = {
     const url = readLauncherAddress(body, port);
     const { windowNavigation } = windowNavigationSchema.parse(body);
     return { url: url.href, windowNavigation };
-  }, { signal }, isIncompatible),
+  }, { signal }, compatibilityIssue),
   connect: (options = {}) => discoverLocalApp("connect-discovery", (body, port) => {
     const url = readLauncherAddress(body, port);
     url.searchParams.set("site", window.location.origin);
     return url.href;
-  }, options, isIncompatible),
-  isIncompatible,
+  }, options, compatibilityIssue),
+  compatibilityIssue,
 };
 
 export interface BackgroundVoiceShortcuts {
@@ -386,6 +396,8 @@ export class ChannelApp {
     private readonly onCaptureControlsChanged: (publicationId: string) => void = () => {},
     onExternalInput: (event: NativeExternalInputState) => void = () => {},
     canReceiveVoiceShortcut: () => boolean = () => false) {
+    const identity = identitySchema.parse(verifiedHealth);
+    checkAppVersion(identity.major);
     const health = healthSchema.parse(verifiedHealth);
     this.port = health.port;
     this.pagePlayer = health.pagePlayer === true;

@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { createElement } from "react";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
@@ -119,7 +120,7 @@ describe("channel connection presentation", () => {
     const { state } = channelConnectionPreview("app");
     const publication = state.publications.find(value => value.kind === "screen")!;
     state.users.push({ id: "third-user", name: "Third", version: "a".repeat(64) });
-    state.sessions.push({ id: "third", userId: "third-user", online: true, signingKey: Array(32).fill(0) });
+    state.sessions.push({ id: "third", userId: "third-user", online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION });
     state.sessions.find(value => value.id === "app")!.online = false;
     publication.audience = [
       { sessionId: "self", state: "failed" }, { sessionId: "app", state: "active" },
@@ -144,7 +145,7 @@ describe("channel connection presentation", () => {
   it("shows only projected, undirected room links and keeps an isolated endpoint visible", () => {
     const fixture = channelConnectionPreview("room-links");
     fixture.state.users.push({ id: "outside-user", name: "Outside", version: "a".repeat(64) });
-    fixture.state.sessions.push({ id: "outside", userId: "outside-user", online: true, signingKey: Array(32).fill(0) });
+    fixture.state.sessions.push({ id: "outside", userId: "outside-user", online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION });
     fixture.topology.sessionIds.push("unknown");
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(graph.rootId).toBeNull();

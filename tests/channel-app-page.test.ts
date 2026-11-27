@@ -1,9 +1,9 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { useVoiceShortcuts } from "../src/client/channel/use-voice-shortcuts";
-import { APP_PROTOCOL, ChannelApp, channelAppDiscovery } from "../src/client/channel/app-link";
-import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
+import { ChannelApp, channelAppDiscovery } from "../src/client/channel/app-link";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
 import { AppPageMedia, waitForWatchMedia } from "../src/client/channel/watch-media";
 import { AppPage } from "../src/client/channel/app-link";
@@ -27,7 +27,7 @@ class Socket {
 afterEach(() => vi.unstubAllGlobals());
 async function setup(backgroundVoiceShortcuts = false, receiveVoiceShortcuts = false) {
   vi.stubGlobal("WebSocket", Socket);
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793, pagePlayer: true, backgroundVoiceShortcuts }, "site", "user", "credential", "Me", () => {}, () => {}, undefined, undefined, undefined, () => receiveVoiceShortcuts);
   const socket = Socket.current;
   socket.onopen?.(); socket.reply(null); await app.ready;
@@ -42,7 +42,7 @@ const state = { position: 12, paused: false, rate: 1, duration: null, readyState
 
 test("background voice shortcuts accept small clock differences and discard delayed or far-future events", async () => {
   vi.stubGlobal("WebSocket", Socket);
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793, backgroundVoiceShortcuts: true }, "site", "user", "credential", "Me",
   () => {}, () => {}, undefined, undefined, undefined, () => true);
   const socket = Socket.current;
@@ -703,14 +703,14 @@ test("opening a Native room confirms the reserved room summary", async () => {
   } finally { app.close(); }
 });
 
-test.each(["incompatible_protocol", "admission failed: incompatible_protocol"])("Native hello rejection %s retires App control and preserves upgrade guidance", async error => {
+test.each(["app-update", "domain_update_required"])("Native hello rejection %s retires App control and preserves upgrade guidance", async error => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
   Socket.current.onopen?.();
   Socket.current.receive({ id: Socket.current.sent[0].id, error });
-  await expect(app.ready.catch(channelAppDiscovery.isIncompatible)).resolves.toBe(true);
+  await expect(app.waitReady().catch(channelAppDiscovery.compatibilityIssue)).resolves.toBe(error);
   expect(closed).toHaveBeenCalledOnce();
   expect(app.connected).toBe(false);
   expect(Socket.current.readyState).toBe(3);
@@ -760,7 +760,7 @@ test.each([
   { name: "a non-null result", reply: { result: {} } },
 ])("hello with $name leaves App control disconnected", async ({ reply }) => {
   vi.stubGlobal("WebSocket", Socket);
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", () => {}, () => {});
   Socket.current.onopen?.();
   Socket.current.receive({ id: Socket.current.sent[0].id, ...reply });
@@ -772,7 +772,7 @@ test.each([
 test("socket close and its pending hello rejection retire the App link once", async () => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
   const failed = expect(app.ready).rejects.toThrow("app_disconnected");
   Socket.current.onopen?.();
@@ -784,7 +784,7 @@ test("socket close and its pending hello rejection retire the App link once", as
 test("cancelling the only pending readiness caller retires admission but preserves ready control", async () => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
   const attempt = new AbortController();
   const cancelled = expect(app.waitReady(attempt.signal)).rejects.toMatchObject({ name: "AbortError" });

@@ -143,7 +143,7 @@ fn review_admit(core: &mut piik_channel_core::Authority, connection: Uuid, key: 
     core.handle(
         connection,
         piik_channel_core::wire::Request::parse(
-            &serde_json::json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","ownerKey":(key=="owner").then_some(key)}).to_string(),
+            &serde_json::json!({"type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","ownerKey":(key=="owner").then_some(key)}).to_string(),
         )
         .unwrap(),
         0,
@@ -279,7 +279,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         let reader = Uuid::new_v4();
         review_admit(&mut core, owner, "owner");
         let joined = core.handle(reader, Request::parse(&serde_json::json!({
-            "type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name":"Reader", "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
+            "type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor, "name":"Reader", "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
         }).to_string()).unwrap(), 0);
         let (reader_session, credential) = joined
             .events
@@ -393,7 +393,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         let replacement = Uuid::new_v4();
         if case == "requester-replaced" {
             core.handle(replacement, Request::parse(&serde_json::json!({
-                "type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name":"Reader", "credential":credential, "sessionId":reader_session,
+                "type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor, "name":"Reader", "credential":credential, "sessionId":reader_session,
                 "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
             }).to_string()).unwrap(), 2);
         }
@@ -1664,7 +1664,7 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
         let effects = core.handle(
             socket,
             Request::parse(
-                &json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+                &json!({"type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,
             "name":"Viewer","signingKey":signer,"credential":credential,"sessionId":resume})
                 .to_string(),
             )

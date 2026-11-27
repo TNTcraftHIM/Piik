@@ -111,7 +111,7 @@ async fn welcome_restores_stored_rooms_for_the_admitted_creator_or_hosted_servic
             .event(
                 Event::Welcome {
                     connection_id: Uuid::new_v4(),
-                    protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                    version: piik_channel_core::PRODUCT_VERSION,
                     self_profile: self_profile(&state, session_id),
                     credential: "fixture".into(),
                     session_id,
@@ -306,7 +306,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
         .event(
             Event::Welcome {
                 connection_id: Uuid::new_v4(),
-                protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                version: piik_channel_core::PRODUCT_VERSION,
                 self_profile: self_profile(&state, native),
                 credential: "fixture".into(),
                 session_id: native,
@@ -638,7 +638,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
     });
     session.event(Event::Welcome {
         connection_id: Uuid::new_v4(),
-        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        version: piik_channel_core::PRODUCT_VERSION,
         self_profile: self_profile(&state, native),
         credential: "fixture".into(),
         session_id: native,
@@ -776,7 +776,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             std::fs::write(&path, &original).unwrap();
             session.event(Event::Welcome {
                 connection_id: Uuid::new_v4(),
-                protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                version: piik_channel_core::PRODUCT_VERSION,
                 self_profile: self_profile(&state, native),
                 credential: "fixture".into(),
                 session_id: native,
@@ -1042,7 +1042,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         .event(
             Event::Welcome {
                 connection_id: Uuid::new_v4(),
-                protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                version: piik_channel_core::PRODUCT_VERSION,
                 self_profile: self_profile(&welcome, session_id),
                 credential: "fixture".into(),
                 session_id,
@@ -1078,7 +1078,7 @@ async fn resumed_session_releases_stopped_driver_and_accepts_fresh_generation() 
 
     let welcome = |session_id, state: Snapshot| Event::Welcome {
         connection_id: Uuid::new_v4(),
-        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        version: piik_channel_core::PRODUCT_VERSION,
         self_profile: self_profile(&state, session_id),
         credential: "resumed-fixture".into(),
         session_id,
@@ -1542,7 +1542,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 .event(
                     Event::Welcome {
                         connection_id: Uuid::new_v4(),
-                        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                        version: piik_channel_core::PRODUCT_VERSION,
                         self_profile: self_profile(&state, session_id),
                         credential: "fixture".into(),
                         session_id,
@@ -1703,7 +1703,7 @@ async fn room_file_failures_keep_the_sibling_on_the_same_session() -> Result<()>
         id: "pending".into(), name: "New room".into(), bootstrap: false,
     });
     session.event(Event::Welcome {
-        connection_id: Uuid::new_v4(), protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        connection_id: Uuid::new_v4(), version: piik_channel_core::PRODUCT_VERSION,
         self_profile: profile, credential: "fixture".into(), session_id, state,
         invitation_origin: None,
     }, &mut socket).await?;
@@ -1801,7 +1801,7 @@ async fn check_hosting_description_file_failures(hosted_service: bool) -> Result
     state.channel.rooms[1].creator_id = profile.id;
     std::fs::write(directory.path().join("unreadable.sqlite"), b"invalid database")?;
     session.event(Event::Welcome {
-        connection_id: Uuid::new_v4(), protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        connection_id: Uuid::new_v4(), version: piik_channel_core::PRODUCT_VERSION,
         self_profile: profile, credential: "fixture".into(), session_id, state: state.clone(),
         invitation_origin: None,
     }, &mut socket).await?;

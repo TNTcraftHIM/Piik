@@ -48,7 +48,7 @@ try {
   const initialCount = await sample(`${gate}.snapshot().state.channel.userCount`);
   const expectedCount = initialCount + 75;
   const identities = await sample(`(async () => {
-    const { CHANNEL_PROTOCOL } = await import('/src/client/channel/protocol.ts');
+    const { PRODUCT_VERSION } = await import('/src/client/channel/product-version.ts');
     const self = window.__channelGate.snapshot().self.id;
     const room = window.__channelGate.snapshot().state.channel.rooms[0];
     const credential = localStorage.getItem('piik.channel.prototype.credential');
@@ -65,7 +65,7 @@ try {
           const timer = setTimeout(() => { socket.removeEventListener('message', receive); reject(new Error(command.type)); }, 5000);
           function receive({ data }) {
             const event = JSON.parse(data);
-            if (joining ? !['welcome', 'error'].includes(event.type)
+            if (joining ? !['welcome', 'error', 'incompatible_version'].includes(event.type)
               : event.type !== 'reply' || event.requestId !== requestId) return;
             clearTimeout(timer); socket.removeEventListener('message', receive);
             const result = joining ? event : event.result;
@@ -78,7 +78,7 @@ try {
         });
       }
       const signingKey = Array.from(new Uint8Array(await crypto.subtle.exportKey('raw', (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])).publicKey)));
-      const welcome = await request({ type: 'join', canUsePeerTransport: false, name, credential, signingKey, protocol: CHANNEL_PROTOCOL }, 'welcome');
+      const welcome = await request({ type: 'join', canUsePeerTransport: false, name, credential, signingKey, ...PRODUCT_VERSION }, 'welcome');
       return { socket, request, welcome };
     }
     const offline = [];

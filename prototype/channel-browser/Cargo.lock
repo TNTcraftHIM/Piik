@@ -420,6 +420,7 @@ dependencies = [
  "base64ct",
  "ed25519-dalek",
  "hmac",
+ "semver",
  "serde",
  "serde_ignored",
  "serde_json",

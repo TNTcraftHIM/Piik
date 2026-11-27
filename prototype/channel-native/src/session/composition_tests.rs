@@ -453,7 +453,7 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
     });
     let join = Command::Join {
         snapshot_form: Default::default(),
-        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        version: piik_channel_core::PRODUCT_VERSION,
         name: "Owned".into(),
         credential: None,
         owner_key: None,

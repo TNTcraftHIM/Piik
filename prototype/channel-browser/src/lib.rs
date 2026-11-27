@@ -419,9 +419,10 @@ pub fn attachment_media_type(bytes: &[u8]) -> String {
 /// Static Browser and Node schemas are constructed before the WASM runtime starts.
 #[wasm_bindgen]
 pub fn channel_wire_limits() -> Result<String, JsValue> {
-    use piik_channel_core::{wire, MAX_ROOMS, MAX_SESSIONS, PROFILE_PAGE_SIZE};
+    use piik_channel_core::{wire, MAX_ROOMS, MAX_SESSIONS, PRODUCT_VERSION, PROFILE_PAGE_SIZE};
     encode(&serde_json::json!({
-        "protocol": wire::CHANNEL_PROTOCOL,
+        "major": PRODUCT_VERSION.major,
+        "minor": PRODUCT_VERSION.minor,
         "sessions": MAX_SESSIONS,
         "rooms": MAX_ROOMS,
         "profilePage": PROFILE_PAGE_SIZE,

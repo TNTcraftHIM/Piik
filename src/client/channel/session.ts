@@ -15,6 +15,7 @@ import { WatchPlayer } from "./watch-playback";
 import { Stage, type SourceSelection, type ScreenShare } from "./stage";
 import { HTMLVideoMedia, AppPageMedia, createResourceWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
 import { watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource, type WatchFormat } from "./protocol";
+import { PRODUCT_VERSION } from "./product-version";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
@@ -23,7 +24,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { HISTORY_INLINE_IMAGES, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type ReceivedRecord, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { HISTORY_INLINE_IMAGES, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, DomainVersionMismatch, checkDomainVersion, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type ReceivedRecord, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type HostMediaTarget, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
@@ -506,7 +507,7 @@ export class ChannelSession {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
         sentBootstrap = newIdentity ? undefined : this.ownerBootstrap;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
+        this.write({ type: "join", ...PRODUCT_VERSION, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.closeConnection();
@@ -520,9 +521,7 @@ export class ChannelSession {
         const text = String(data), wireBytes = new TextEncoder().encode(text).byteLength;
         if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
         const raw = JSON.parse(text);
-        if (raw.type === "welcome" && raw.protocol !== CHANNEL_PROTOCOL) {
-          this.closeConnection(); this.patch({ error: "incompatible_protocol" }); return;
-        }
+        checkDomainVersion(raw, PRODUCT_VERSION);
         const event = decoder.decode(raw, wireBytes);
         if (!event) return;
         if (event.type === "welcome") {
@@ -532,7 +531,12 @@ export class ChannelSession {
           sentBootstrap = undefined;
           this.receive(event, skipRoom, bootstrap);
         } else this.receive(event);
-      } catch {
+      } catch (error) {
+        if (error instanceof DomainVersionMismatch) {
+          this.closeConnection();
+          this.patch({ error: error.update === "participant" ? "page_update_required" : "domain_update_required" });
+          return;
+        }
         this.patch({ error: "invalid_response" });
         // Later frames may omit pictures; recovery must start with a complete Welcome.
         socket.close();
@@ -651,7 +655,7 @@ export class ChannelSession {
       if (event.payload !== null) this.media.signal(event.pairId, event.payload);
     } else if (event.type === "error") {
       if (event.roomId !== undefined && event.roomId !== this.roomId) return;
-      if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
+      if (!this.view.sessionId || event.code === "invalid_credential") {
         this.closeConnection();
       }
       this.patch({ error: event.code });

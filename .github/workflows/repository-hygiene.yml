@@ -370,7 +370,6 @@ jobs:
         env:
           PIIK_BUILD_VERSION: ${{ steps.release.outputs.version }}
           PIIK_BUILD_REVISION: ${{ github.sha }}
-          VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}
           VITE_PIIK_REVISION: ${{ github.sha }}
 
   release-server:

@@ -5,9 +5,11 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
-import init, { SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, HISTORY_INLINE_IMAGES, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ReceivedConversation, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
+import init, { SessionSigner, channel_wire_limits, verify_conversation } from '../pkg/piik_channel_browser.js';
+import { checkDomainVersion, HISTORY_INLINE_IMAGES, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ReceivedConversation, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
+import { productVersionSchema } from '../../../src/client/channel/product-version';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
+const productVersion = productVersionSchema.parse(JSON.parse(channel_wire_limits()));
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
 }>;
@@ -27,21 +29,20 @@ const conversationRoomSchema = roomSchema.pick({ id: true, authorized: true, ava
 const conversationStateSchema = z.object({
   channel: snapshotSchema.shape.channel.pick({ hostingMode: true })
     .extend({ rooms: z.array(conversationRoomSchema).max(CHANNEL_ROOM_LIMIT) }),
-  sessions: z.array(snapshotSchema.shape.sessions.element.pick({ id: true, signingKey: true })).max(CHANNEL_SESSION_LIMIT),
+  sessions: z.array(snapshotSchema.shape.sessions.element.pick({ id: true, signingKey: true, major: true, minor: true })).max(CHANNEL_SESSION_LIMIT),
 });
 const textWelcomeSchema = channelWelcomeSchema.extend({ state: conversationStateSchema,
   selfProfile: channelWelcomeSchema.shape.selfProfile.pick({ id: true }) });
 const textStateSchema = z.object({ type: z.literal('state'), state: conversationStateSchema });
-const eventHeaderSchema = z.object({ type: z.string(), protocol: z.unknown().optional() });
+const eventHeaderSchema = z.object({ type: z.string() });
 type TextEvent = ChannelEvent | z.infer<typeof textWelcomeSchema> | z.infer<typeof textStateSchema>;
 
 function decodeTextEvent(raw: unknown, wireBytes: number): TextEvent | undefined {
   if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error('Channel event exceeds frame limit');
-  const header = eventHeaderSchema.parse(raw);
-  switch (header.type) {
-    case 'welcome':
-      if (header.protocol !== CHANNEL_PROTOCOL) throw new Error('incompatible_protocol');
-      return textWelcomeSchema.parse(raw);
+  const { type } = eventHeaderSchema.parse(raw);
+  checkDomainVersion(raw, productVersion);
+  switch (type) {
+    case 'welcome': return textWelcomeSchema.parse(raw);
     case 'state': return textStateSchema.parse(raw);
     case 'conversation': case 'reply': case 'error': return eventSchema.parse(raw);
     // This participant neither installs media nor hosts rooms.
@@ -125,7 +126,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         };
         const join = () => {
           try {
-            this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, snapshotForm: 'conversation', canUsePeerTransport: false, name: this.options.name ?? '', credential: this.credential,
+            this.write({ type: 'join', ...productVersion, snapshotForm: 'conversation', canUsePeerTransport: false, name: this.options.name ?? '', credential: this.credential,
               sessionId: this.sessionId, signingKey: Array.from(this.signer.signing_key()) });
           }
           catch (error) {

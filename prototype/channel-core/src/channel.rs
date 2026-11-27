@@ -2300,6 +2300,7 @@ impl Channel {
             sessions: self.identity.sessions.values().map(|session| SigningSession {
                 id: session.id,
                 signing_key: session.signing_key,
+                version: session.version,
             }).collect(),
         }
     }
@@ -2428,6 +2429,7 @@ impl Channel {
                     user_id: session.user_id,
                     online: session.connection.is_some(),
                     signing_key: session.signing_key,
+                    version: session.version,
                 })
                 .collect(),
             publications,

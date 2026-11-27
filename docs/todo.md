@@ -72,17 +72,19 @@ the feedback period; they do not delay that delivery.
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
   writers and release storage fixtures. The
   [rule for extending interfaces](./standards/versioning.md#extending-interfaces)
-  is set: trace it through each connection, bring the private code to it and
-  exercise it in tests, then install the product-version handshake and verify
-  mixed-version artifacts before publication. Check compatibility before
-  redeeming a one-use local launch ticket. Do not add exact-version steps,
-  closed wire boundaries or individual feature flags meanwhile.
+  is set. Complete Browser/App mixed-version artifact acceptance before
+  publication alongside the SDK/Server controls.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,
   Browser and SDK readers. Keep API/Bot capabilities within existing actions
   and authority. [Adopted architecture](./adr/0016-shared-rust-core.md) ·
   [Design review](./research/clean-room-design-review.md)
+- [ ] **Peer control outcomes.** Give File and Watch controls explicit request,
+  reply and notice roles. Answer unknown requests without reading a source,
+  settle unknown replies only for the matching supplier, key and request, and
+  preserve other file ranges and Watch relay error codes. Verify the complete
+  Browser/WASM and Native paths under the same interface extension rule.
 - [ ] **Remaining ownership reductions.** Preserve platform queue retirement
   semantics and the destination writer's validation when sharing their owners.
   Review SQLite single-row storage and a

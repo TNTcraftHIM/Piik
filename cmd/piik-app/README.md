@@ -148,9 +148,8 @@ explains backup scope and restore behavior.
 
 ## Upgrading
 
-Use the next matching package supplied for this 3.0 test, including its Web UI.
-A public 2.x release is not an update for the test App. When versions are
-incompatible, update the domain's Server and connected Apps together, then refresh its pages.
+Use the next package supplied for this 3.0 test, including its bundled Web UI.
+If prompted to update, follow the [version troubleshooting guide](../../docs/guide/troubleshooting.md#app-and-page-versions-are-incompatible).
 
 1. Save needed backups, finish transfers and stop personal activities.
 2. Stop App normally. Extract the full desktop update into a new directory,

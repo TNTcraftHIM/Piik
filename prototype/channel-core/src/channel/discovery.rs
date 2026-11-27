@@ -823,6 +823,7 @@ mod tests {
             identity
                 .admit(
                     Admission {
+                        version: crate::PRODUCT_VERSION,
                         snapshot_form: Default::default(),
                         name,
                         signing_key: [0; 32],

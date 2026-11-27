@@ -3912,6 +3912,7 @@ dependencies = [
  "ed25519-dalek",
  "hmac 0.12.1",
  "rusqlite",
+ "semver",
  "serde",
  "serde_ignored",
  "serde_json",

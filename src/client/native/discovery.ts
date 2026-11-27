@@ -9,11 +9,13 @@ export interface AppDiscoveryOptions {
   signal?: AbortSignal;
 }
 
+export type AppCompatibilityIssue = "app-update" | "site-update" | "domain_update_required";
+
 export interface AppDiscovery {
   health(options?: AppDiscoveryOptions): Promise<(Partial<AppReleaseIdentity> & { updateSupported?: boolean; managementURL?: string }) | null>;
   connect(options?: AppDiscoveryOptions): Promise<string | null>;
   navigation?(signal?: AbortSignal): Promise<{ url: string; windowNavigation: boolean } | null>;
-  isIncompatible(error: unknown): boolean;
+  compatibilityIssue(error: unknown): AppCompatibilityIssue | null;
 }
 
 export function isLoopbackPage(): boolean {
@@ -34,7 +36,7 @@ async function localPermission(): Promise<PermissionStatus | null> {
 export async function discoverLocalApp<T>(
   path: "health" | "connect-discovery", read: (body: unknown, port: number) => T,
   { waitForPermission = true, signal, port }: AppDiscoveryOptions,
-  isIncompatible: (error: unknown) => boolean,
+  compatibilityIssue: AppDiscovery["compatibilityIssue"],
 ): Promise<T | null> {
   if (signal?.aborted) return null;
   const permission = await localPermission();
@@ -67,7 +69,7 @@ export async function discoverLocalApp<T>(
       return read(await response.json(), port);
     }));
   } catch (error) {
-    const incompatible = error instanceof AggregateError ? error.errors.find(isIncompatible) : undefined;
+    const incompatible = error instanceof AggregateError ? error.errors.find(compatibilityIssue) : undefined;
     if (incompatible) throw incompatible;
     debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
     return null;

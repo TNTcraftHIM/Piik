@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { productVersionSchema, type ProductVersion } from "./product-version";
 import { watchFormatSchema } from "../../shared/watch-format";
 export type { WatchFormat } from "../../shared/watch-format";
 import { MAX_AUDIO_SEND_BITRATE, MIN_AUDIO_BITRATE, videoSettingsSchema, type VideoSettings } from "../../shared/protocol";
@@ -17,10 +18,6 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 55;
-export function isIncompatibleProtocol(code: string): boolean {
-  return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
-}
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
@@ -122,7 +119,7 @@ export const snapshotSchema = z.object({
     managedRoomIds: z.array(id).max(CHANNEL_ROOM_LIMIT),
   }),
   users: z.array(userSummarySchema),
-  sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(CHANNEL_SESSION_LIMIT),
+  sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey, ...productVersionSchema.shape })).max(CHANNEL_SESSION_LIMIT),
   publications: z.array(publicationSchema),
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
@@ -162,9 +159,24 @@ export const channelTopologySchema = z.object({
   })) }).nullable(),
 });
 export type ChannelTopology = z.infer<typeof channelTopologySchema>;
-export const channelWelcomeSchema = z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() });
+export const channelWelcomeSchema = z.object({ type: z.literal("welcome"), ...productVersionSchema.shape, credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() });
 
 const typeHeaderSchema = z.object({ type: z.string() });
+
+export class DomainVersionMismatch extends Error {
+  constructor(readonly update: "participant" | "domain") {
+    super(update === "participant" ? "Update this Piik client." : "Update the Piik App or Server that hosts this site.");
+  }
+}
+
+// Check the handshake header before reading the body owned by its major version.
+export function checkDomainVersion(raw: unknown, localVersion: ProductVersion): void {
+  if (!record(raw) || (raw.type !== "welcome" && raw.type !== "incompatible_version")) return;
+  const { major } = productVersionSchema.parse(raw);
+  if (major !== localVersion.major)
+    throw new DomainVersionMismatch(major > localVersion.major ? "participant" : "domain");
+  if (raw.type === "incompatible_version") throw new Error("invalid_response");
+}
 const replyResultSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("done") }),
   z.object({ type: z.literal("error"), code: z.string() }),
@@ -324,7 +336,7 @@ export type ChannelCommand =
   | { type: "join_watch"; roomId: string; id: string; mode: WatchMode | null }
   | { type: "set_watch_byte_source"; roomId: string; id: string; byteSource: WatchByteSource | null }
   | { type: "stop_watch"; successorScreenId?: string; roomId: string; id: string }
-  | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; snapshotForm?: "conversation"; canUsePeerTransport?: boolean; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
+  | (ProductVersion & { type: "join"; snapshotForm?: "conversation"; canUsePeerTransport?: boolean; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string })
   | { type: "conversation"; packet: SignedConversationPacket }
   | { type: "set_profile"; name?: string; avatar?: string | null }
   | ({ type: "update_domain" } & Partial<DomainSettings>)

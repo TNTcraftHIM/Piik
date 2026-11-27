@@ -1,5 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
-use piik_channel_core::{conversation::SessionSigner, wire::CHANNEL_PROTOCOL};
+use piik_channel_core::{conversation::SessionSigner, PRODUCT_VERSION};
 use piik_channel_prototype::domain::Domain;
 use serde_json::{json, Value};
 use std::{net::UdpSocket, path::Path, process::Stdio, time::Duration};
@@ -99,7 +99,8 @@ async fn join(origin: &str, owner: bool) -> (Socket, Value) {
         .unwrap();
     let mut join = json!({
         "type": "join",
-        "protocol": CHANNEL_PROTOCOL,
+        "major": PRODUCT_VERSION.major,
+        "minor": PRODUCT_VERSION.minor,
         "canUsePeerTransport": false,
         "name": "Room policy check",
         "signingKey": SessionSigner::from_seed([if owner { 1 } else { 2 }; 32]).signing_key()

@@ -53,7 +53,8 @@ impl Endpoint {
     fn request(&self, hub: &mut Hub, mut command: Value) {
         if command["type"] == "join" {
             command["canUsePeerTransport"] = json!(true);
-            command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+            command["major"] = json!(PRODUCT_VERSION.major);
+            command["minor"] = json!(PRODUCT_VERSION.minor);
             command["signingKey"] = json!(
                 piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
             );
@@ -328,7 +329,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     assert_eq!(saved["icon"], icon);
     assert!(saved.get("access").is_none());
     assert!(saved.get("passwordHash").is_none());
-    let join=Request::parse(&json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+    let join=Request::parse(&json!({"type":"join","canUsePeerTransport":true,"major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,
         "name":"Visitor","signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap();
     assert!(restored
         .handle(Uuid::new_v4(), join, 1)
@@ -1002,7 +1003,8 @@ async fn state_when(socket: &mut Socket, predicate: impl Fn(&Snapshot) -> bool) 
 async fn send_request(socket: &mut Socket, mut value: Value) {
     if value["type"] == "join" {
         value["canUsePeerTransport"] = json!(true);
-        value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+        value["major"] = json!(PRODUCT_VERSION.major);
+        value["minor"] = json!(PRODUCT_VERSION.minor);
         value["signingKey"] =
             json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());
     } else if value.get("requestId").is_none() {
@@ -1321,6 +1323,61 @@ async fn http_and_https_share_a_domain_and_release_both_listeners_on_stop() {
     let _http = TcpListener::bind(http_address).await.unwrap();
     let _https = TcpListener::bind(https_address).await.unwrap();
     std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[tokio::test]
+async fn incompatible_major_leaves_launch_ticket_for_one_compatible_join() {
+    let directory = tempfile::tempdir().unwrap();
+    let origin = "http://localhost";
+    let domain = Domain::open(directory.path(), None, origin.into(), None, vec![]).unwrap();
+    let ticket = domain.launch_ticket().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let task = tokio::spawn(domain.serve(listener, Router::new(), async {
+        let _ = stopped.await;
+    }));
+
+    let join = |version: piik_channel_core::ProductVersion| {
+        let ticket = ticket.clone();
+        async move {
+            let mut request = format!("ws://{address}/prototype/channel")
+                .into_client_request().unwrap();
+            request.headers_mut().insert("Origin", origin.parse().unwrap());
+            let (mut socket, _) = connect_async(request).await.unwrap();
+            socket.send(Message::Text(json!({
+                "type": "join",
+                "major": version.major,
+                "minor": version.minor,
+                "name": "Owner",
+                "ownerKey": ticket,
+                "signingKey": piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),
+            }).to_string().into())).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(5), event(&mut socket)).await.unwrap()
+        }
+    };
+    let newer_major = piik_channel_core::ProductVersion {
+        major: PRODUCT_VERSION.major + 1,
+        minor: 0,
+    };
+    assert!(matches!(join(newer_major).await, Event::IncompatibleVersion { version } if version == PRODUCT_VERSION));
+
+    let mixed_minor = piik_channel_core::ProductVersion {
+        major: PRODUCT_VERSION.major,
+        minor: PRODUCT_VERSION.minor + 1,
+    };
+    let Event::Welcome { version, state, session_id, self_profile, .. } = join(mixed_minor).await else {
+        panic!("a matching major must redeem the original launch ticket");
+    };
+    assert_eq!(version, PRODUCT_VERSION);
+    assert_eq!(state.channel.owner_id, Some(self_profile.id));
+    assert_eq!(
+        state.sessions.iter().find(|session| session.id == session_id).unwrap().version,
+        mixed_minor,
+    );
+    assert!(matches!(join(PRODUCT_VERSION).await, Event::Error { code, .. } if code == "invalid_owner_key"));
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
 }
 
 #[tokio::test]

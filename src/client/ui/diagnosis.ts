@@ -1,3 +1,4 @@
+import type { AppCompatibilityIssue } from "../native/discovery";
 import type { CopyKey } from "../locales";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
 import type { NativeRoomOpenReason } from "../channel/hosting-api";
@@ -39,7 +40,12 @@ export interface ChannelDiagnosis {
   topic: ChannelHelpTopic;
 }
 
-export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible";
+export type AppConnectionIssue = "unavailable" | AppCompatibilityIssue;
+export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "approving" | "ready" | AppConnectionIssue;
+
+export function isAppConnectionIssue(state: string | null): state is AppConnectionIssue {
+  return state === "unavailable" || state === "domain_update_required" || state === "app-update" || state === "site-update";
+}
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
   | { area: "screen"; paused: boolean; deliveryFailed?: boolean; waitingForInput?: boolean; playbackError?: ScreenPlaybackError }
@@ -52,7 +58,9 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     switch (fact.state) {
       case "approval": return { message: "client.connect.found", next: "client.connect.open", topic: "app" };
       case "unavailable": return { message: "client.connect.unavailable", topic: "appConnection" };
-      case "incompatible": return { message: "client.connect.incompatible", topic: "appVersion" };
+      case "domain_update_required": return { message: "channel.error.domainUpdateRequired", topic: "appVersion" };
+      case "app-update": return { message: "client.connect.appUpdateRequired", topic: "appVersion" };
+      case "site-update": return { message: "client.connect.siteUpdateRequired", topic: "appVersion" };
       default: return null;
     }
   }
@@ -74,6 +82,9 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
   }
 
   switch (fact.code) {
+    case "domain_update_required":
+    case "app-update":
+    case "site-update": return diagnoseChannelFact({ area: "app", state: fact.code });
     case "app_disconnected":
     case "app_context_changed": return { message: "channel.error.appDisconnected", topic: "appConnection" };
     case "app_request_timeout": return { message: "native.fail.requestTimeout", topic: "appConnection" };

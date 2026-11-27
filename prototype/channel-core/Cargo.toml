@@ -9,6 +9,10 @@ publish = false
 default = []
 sqlite = ["dep:rusqlite"]
 
+[build-dependencies]
+semver = "1"
+serde_json = "1"
+
 [dependencies]
 rusqlite = { version = "0.41", features = ["bundled", "backup", "fallible_uint"], optional = true }
 serde = { version = "1", features = ["derive"] }

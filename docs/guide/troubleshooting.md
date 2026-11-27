@@ -221,8 +221,8 @@ its public rooms. Use the same
 browser profile to retain your existing identity; private/incognito profiles
 have separate saved credentials.
 
-If Piik asks you to update, use matching 3.0 App, Web and Server versions, then
-reload. A 2.x App or site is not a replacement for the test endpoint.
+If Piik asks you to refresh, reload the page. If it asks you to update the
+site, contact the administrator who runs its Piik App or Server.
 
 ### The page opens but the site will not connect
 
@@ -247,8 +247,13 @@ does not open the approval page, allow popups for this site and try again.
 
 ### App and page versions are incompatible
 
-Ask the site administrator for the 3.0 test package that matches this site.
-Install it, restart Piik App and reload the page. Then select **App** again.
+If Piik asks you to update the App, install the latest package supplied for
+your 3.0 test and restart it. If it asks you to refresh, reload the page. If
+the page still needs an update, contact the site administrator. Then select
+**App** again.
+
+If you are using an earlier beta with the old handshake, ask
+the site administrator for the App package from that candidate.
 
 ## Chat and files
 
@@ -326,7 +331,7 @@ The source picker distinguishes these outcomes:
 | Message | Next step |
 | --- | --- |
 | Cannot connect to Piik App | Confirm the App is running and this site is approved. Close idle pages using the App if it reports a busy request, then retry. |
-| App and page versions are incompatible | [Update Piik App and reload the page](#app-and-page-versions-are-incompatible). |
+| App and page versions are incompatible | [Follow the update prompt](#app-and-page-versions-are-incompatible). |
 | Piik App capture is currently unavailable | Check the App diagnostics for capture or encoder availability. Review your encoding setting or use browser capture. |
 | Piik App timed out | Wait a moment, then select **Refresh sharing sources** in the source picker. |
 | Could not read the screen and window list | Refresh to retry. If it keeps failing, collect both the App and browser reports. |

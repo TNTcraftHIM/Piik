@@ -883,6 +883,7 @@ mod tests {
             identity.sessions.insert(
                 id,
                 crate::identity::Session {
+                    version: crate::PRODUCT_VERSION,
                     id,
                     user_id: id,
                     connection: Some(socket),
@@ -1352,6 +1353,7 @@ mod tests {
             identity.sessions.insert(
                 id,
                 crate::identity::Session {
+                    version: crate::PRODUCT_VERSION,
                     id,
                     user_id: id,
                     connection: Some(socket),

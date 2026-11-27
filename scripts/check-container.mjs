@@ -8,16 +8,15 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
-import { tsImport } from "tsx/esm/api";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
 import { checkWebSourceIdentity } from "./container-web-identity.mjs";
+import { productVersion } from "./release-version.mjs";
 
 const [image, revision] = process.argv.slice(2);
 if (process.argv.length !== 4 || !image || !/^[0-9a-f]{40}$/.test(revision ?? "")) {
   throw new Error("Usage: node scripts/check-container.mjs <local-image> <full-source-sha>");
 }
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { CHANNEL_PROTOCOL } = await tsImport("../src/client/channel/protocol.ts", import.meta.url);
 const project = `piik-check-${randomUUID()}`;
 const workspace = resetBuildWorkspace(root, "container-check", project);
 const origin = "https://share.example.com";
@@ -48,7 +47,7 @@ async function request(path) {
   assert.ok(response.ok, `${path}: HTTP ${response.status}`);
   return response;
 }
-async function rooms() {
+async function rooms(version) {
   const socket = new WebSocket("ws://127.0.0.1:8787/prototype/channel", { origin });
   let timer;
   try {
@@ -57,14 +56,18 @@ async function rooms() {
       socket.once("error", reject);
       socket.once("open", () => {
         const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" });
-        socket.send(JSON.stringify({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: "Container check", ownerKey,
+        socket.send(JSON.stringify({ type: "join", ...version, canUsePeerTransport: false, name: "Container check", ownerKey,
           signingKey: [...Buffer.from(publicKey.x, "base64url")] }));
       });
       socket.on("message", bytes => {
         try {
           const event = JSON.parse(bytes.toString());
           assert.notEqual(event.type, "error", event.code);
-          if (event.type === "welcome") credential = event.credential;
+          assert.notEqual(event.type, "incompatible_version", "Server major must match the image label");
+          if (event.type === "welcome") {
+            assert.deepEqual({ major: event.major, minor: event.minor }, version);
+            credential = event.credential;
+          }
           if (!["welcome", "state"].includes(event.type)) return;
           const { channel } = event.state;
           if (channel.rooms.length === 3 && channel.rooms.every(room => room.available)) {
@@ -85,6 +88,9 @@ try {
   const metadata = JSON.parse(docker("image", "inspect", image))[0];
   assert.equal(metadata.Config.User, "65532:65532");
   assert.equal(metadata.Config.Labels["org.opencontainers.image.revision"], revision);
+  const label = metadata.Config.Labels["org.opencontainers.image.version"];
+  assert.equal(typeof label, "string");
+  const version = productVersion(label);
   assert.equal(metadata.Os, "linux");
   assert.equal(metadata.Architecture, process.arch === "x64" ? "amd64" : process.arch);
   assert.ok(["amd64", "arm64"].includes(metadata.Architecture));
@@ -93,7 +99,7 @@ try {
   await until(async () => assert.equal(await (await request("/healthz")).text(), "piik-channel-prototype"), "ready");
   const html = await (await request("/")).text();
   await checkWebSourceIdentity(html, revision, async asset => (await request(asset)).text());
-  const initial = await rooms();
+  const initial = await rooms(version);
   const backupURL = "http://127.0.0.1:8787/prototype/channel/rooms/living/backup";
   const headers = { Origin: origin, Authorization: `Bearer ${credential}` };
   const backup = await fetch(backupURL, { headers, signal: AbortSignal.timeout(10_000) });
@@ -107,7 +113,7 @@ try {
   const invalid = await fetch(restoreURL, { method: "PUT", headers: { ...headers, "Content-Type": "application/zip" }, body: "invalid owned archive", signal: AbortSignal.timeout(10_000) });
   assert.equal(invalid.status, 400, "invalid archives fail without replacing the room");
   await invalid.body?.cancel();
-  assert.deepEqual(await rooms(), initial);
+  assert.deepEqual(await rooms(version), initial);
   const container = JSON.parse(docker("inspect", compose("ps", "-q", "piik")))[0];
   assert.equal(container.HostConfig.ReadonlyRootfs, true);
   assert.ok(container.HostConfig.CapDrop.includes("ALL"));
@@ -115,7 +121,7 @@ try {
 
   compose("up", "-d", "--force-recreate", "--pull", "never");
   await until(async () => assert.equal(await (await request("/healthz")).text(), "piik-channel-prototype"), "restart");
-  assert.deepEqual(await rooms(), initial, "Recreated Server must reopen its persistent rooms");
+  assert.deepEqual(await rooms(version), initial, "Recreated Server must reopen its persistent rooms");
   compose("stop");
   const stopped = JSON.parse(docker("inspect", compose("ps", "-aq", "piik")))[0];
   assert.equal(stopped.State.ExitCode, 0, "SIGTERM must shut down cleanly");

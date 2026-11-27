@@ -9,6 +9,14 @@ have separate records. [3.0 status](./status.md#isolated-30-prototype) ·
 
 ## Current Evidence
 
+Same-source SDK and Linux Server artifacts with product versions 3.0 and 3.1
+completed both pairing directions. Their compiled versions appeared in the real
+Join and Welcome. Each pair created a private room, confirmed signed chat,
+retained it after the sender left and served it to another admitted reader.
+All four sessions received Leave confirmation. The standalone Server control
+also rejected a different major before consuming the launch ticket, then
+admitted a compatible client with that ticket exactly once.
+
 An isolated Windows runner at `56092074` exercised the actual WebView2 window
 lifecycle and local stop shortcut. It verified candidate retirement, window and
 browser-process exit, profile cleanup, and all four combinations of extra Shift

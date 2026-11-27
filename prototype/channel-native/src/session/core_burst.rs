@@ -2,8 +2,8 @@
 use crate::hosted_room::HostedRoom;
 use anyhow::{anyhow, ensure, Result};
 use piik_channel_core::{
-    wire::{Command, Event, ReplyResult, Request, RoomAccess, CHANNEL_PROTOCOL},
-    Authority, Effects, RoomState,
+    wire::{Command, Event, ReplyResult, Request, RoomAccess},
+    Authority, Effects, RoomState, PRODUCT_VERSION,
 };
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -70,7 +70,7 @@ impl CoreBurst {
                     request_id: None,
                     command: Command::Join {
                         snapshot_form: Default::default(),
-                        protocol: CHANNEL_PROTOCOL,
+                        version: PRODUCT_VERSION,
                         name: format!("Owned participant {i}"),
                         credential: None,
                         owner_key: None,
@@ -277,7 +277,7 @@ impl CoreBurst {
 fn join(credential: Option<String>, session_id: Option<String>, owner: bool) -> Command {
     Command::Join {
         snapshot_form: Default::default(),
-        protocol: CHANNEL_PROTOCOL,
+        version: PRODUCT_VERSION,
         name: "Owned Native host".into(),
         credential,
         owner_key: owner.then(|| "owned-composition-owner".into()),

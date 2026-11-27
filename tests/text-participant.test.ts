@@ -1,9 +1,10 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { WebSocketServer } from 'ws';
-import { CHANNEL_PROTOCOL, snapshotSchema, type ChannelMessage, type StoredMessage } from '../src/client/channel/protocol';
+import { snapshotSchema, type ChannelMessage, type StoredMessage } from '../src/client/channel/protocol';
 
 test('Node text conversation ignores unrelated media descriptions and retains signed delivery checks', async () => {
   const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
@@ -27,7 +28,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     try {
       const command = JSON.parse(raw.toString()); commands.push(command.type);
       if (command.type === 'join') {
-        expect(command.protocol).toBe(CHANNEL_PROTOCOL);
+        expect(command).toMatchObject(PRODUCT_VERSION);
         expect(command).not.toHaveProperty('ownerKey');
         const state = snapshotSchema.parse({
           channel: { id: randomUUID(), name: 'Fixture', icon: 'couch', ownerId: owner, roomCreationPolicy: 'ordinary', askUnnamedMemberName: false, hostingMode: 'lightweight', historyWindow: 100, userCount: 2, managedRoomIds: [],
@@ -36,8 +37,8 @@ test('Node text conversation ignores unrelated media descriptions and retains si
               participantSessionIds: [local], lastMessageSeq: 1, fileActivity: [], capabilities: { attachments: true },
               delivery: { hostSessionId: host, bindingId: binding } }] },
           users: [{ id: user, name: 'Text fixture', version: '0'.repeat(64) }],
-          sessions: [{ id: local, userId: user, online: true, signingKey: command.signingKey },
-            { id: host, userId: owner, online: true, signingKey: [...signer.signing_key()] }],
+          sessions: [{ id: local, userId: user, online: true, signingKey: command.signingKey, ...PRODUCT_VERSION },
+            { id: host, userId: owner, online: true, signingKey: [...signer.signing_key()], ...PRODUCT_VERSION }],
           publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [],
           files: [], pairs: [], iceServers: [],
         });
@@ -46,7 +47,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
         })) }, watchActivities: [{ id: randomUUID(), roomId: 'room', userId: user,
           sessionId: host, source: { kind: 'media', url: 'https://example.invalid/owned.mp4' },
           playback: { timeline: 'future-timeline', position: 0, paused: true, rate: 1, anchorTime: 0 }, viewerSessionIds: [] }] };
-        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential',
+        socket.send(JSON.stringify({ type: 'welcome', ...PRODUCT_VERSION, minor: PRODUCT_VERSION.minor + 1, credential: 'fixture-credential',
           sessionId: local, selfProfile: { ...state.users[0], avatar: null }, state: textState }));
         socket.send(JSON.stringify({ type: 'state', state: textState }));
         socket.send(JSON.stringify({ type: 'signal', payload: { futureMediaSignal: true } }));
@@ -146,7 +147,7 @@ test('a rejected room selection can be retried without exposing or mixing unconf
   server.on('connection', socket => socket.on('message', raw => {
     const command = JSON.parse(raw.toString());
     if (command.type === 'join') {
-      socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential',
+      socket.send(JSON.stringify({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential',
         sessionId, selfProfile: { id: userId }, state: state(false) }));
     } else if (command.type === 'browse' && command.roomId === 'missing') {
       socket.send(JSON.stringify({ type: 'reply', requestId: command.requestId, result: { type: 'error', code: 'room_unavailable' } }));
@@ -187,7 +188,7 @@ test('narrow conversation verification keeps authority required and signed recor
   const other = new rust.SessionSigner(randomBytes(32));
   const address = { roomId: 'room', bindingId: binding, sender: host, recipient: local, requestId: 'reply' };
   const state = { channel: { rooms: [{ id: 'room', authorized: true, available: true,
-    delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] };
+    delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()], ...PRODUCT_VERSION }] };
   const record = { type: 'history_page', messages: [], hasMore: false, oldestSeq: null, before: null };
   const packet = (change = {}) => signer.sign(host, JSON.stringify({ ...address, ...change, record }));
   const verify = (value: string, view: unknown = state) => rust.verify_conversation(value, local, JSON.stringify(view));
@@ -199,7 +200,7 @@ test('narrow conversation verification keeps authority required and signed recor
     expect(() => verify(packet(), hostedHere)).toThrow();
     const nullRecord = signer.sign(host, JSON.stringify({ ...address, record: null }));
     expect(() => verify(nullRecord)).toThrow();
-    expect(() => verify(packet(), { ...state, sessions: [{ id: host, signingKey: [...other.signing_key()] }] })).toThrow();
+    expect(() => verify(packet(), { ...state, sessions: [{ id: host, signingKey: [...other.signing_key()], ...PRODUCT_VERSION }] })).toThrow();
     expect(() => verify(packet({ bindingId: randomUUID() }))).toThrow();
     expect(() => verify(packet({ recipient: randomUUID() }))).toThrow();
     for (const authorized of [false, undefined, 'true']) {
@@ -242,9 +243,9 @@ test('text pagination, replies and mentions use signed Core commands and host co
         room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
-        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
+        socket.send(JSON.stringify({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId: local,
           selfProfile: { id: user }, state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
-            delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] } }));
+            delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()], ...PRODUCT_VERSION }] } }));
       } else if (command.type === 'conversation') {
         const request = JSON.parse(command.packet.payload);
         received.push(request.command);
@@ -347,9 +348,9 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
         room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
-        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
+        socket.send(JSON.stringify({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId: local,
           selfProfile: { id: user }, state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
-            delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] } }));
+            delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()], ...PRODUCT_VERSION }] } }));
       } else if (command.type === 'conversation') {
         const request = JSON.parse(command.packet.payload);
         attempts.push({ requestId: request.requestId, bindingId: request.bindingId, nonce: request.command.nonce });
@@ -421,7 +422,7 @@ test('text message reactions use advertised support and Core counted-history non
   let now = 1000, advertise = true;
   let transition: 'binding' | 'revoked' | undefined;
   const state = () => ({ channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
-    delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] });
+    delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()], ...PRODUCT_VERSION }] });
   const received: Record<string, unknown>[] = [], errors: unknown[] = [];
   const reactPackets: unknown[] = [];
   const process = (packet: unknown) => {
@@ -453,7 +454,7 @@ test('text message reactions use advertised support and Core counted-history non
         room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: ++revision,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
-        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
+        socket.send(JSON.stringify({ type: 'welcome', ...PRODUCT_VERSION, credential: 'fixture-credential', sessionId: local,
           selfProfile: { id: user }, state: state() }));
       } else if (command.type === 'conversation') {
         const request = JSON.parse(command.packet.payload);

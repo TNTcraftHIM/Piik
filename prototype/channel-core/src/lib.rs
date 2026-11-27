@@ -18,6 +18,7 @@ pub mod history;
 pub mod host;
 mod identity;
 pub mod input;
+mod product_version;
 mod publication;
 mod remote;
 mod room;
@@ -38,6 +39,7 @@ pub use access::{
 };
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::{DomainStateHeader, DurableState, MAX_ROOMS};
+pub use product_version::{ProductVersion, PRODUCT_VERSION};
 pub use identity::{Endpoint, Member, User, MAX_SESSIONS, PROFILE_PAGE_SIZE, RECOVERY_MS};
 pub use room::{RoomRecipient, RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
@@ -48,7 +50,7 @@ use host::{RequestContext, RoomReply, RoomResult};
 use identity::{Admission, PeerCapabilities};
 use serde_json::Value;
 use uuid::Uuid;
-use wire::{Command, Event, ProfileId, ReplyResult, Request, SnapshotForm, CHANNEL_PROTOCOL};
+use wire::{Command, Event, ProfileId, ReplyResult, Request, SnapshotForm};
 
 /// Events are addressed to physical connections, not reusable endpoint sessions.
 /// Deliver events before closing the listed connections so leave can acknowledge.
@@ -618,14 +620,8 @@ impl Authority {
     }
 
     fn join(&mut self, connection: Uuid, request: Request, now: u64, effects: &mut Effects) {
-        if matches!(&request.command, Command::Join { protocol, .. } if *protocol != CHANNEL_PROTOCOL)
-        {
-            Self::error(connection, None, "incompatible_protocol", effects);
-            effects.close.push(connection);
-            return;
-        }
         let Command::Join {
-            protocol: _,
+            version,
             snapshot_form,
             name,
             credential,
@@ -647,8 +643,14 @@ impl Authority {
             effects.close.push(connection);
             return;
         };
+        if !version.is_compatible() {
+            effects.events.push((connection, Event::IncompatibleVersion { version: PRODUCT_VERSION }));
+            effects.close.push(connection);
+            return;
+        }
         match self.channel.join(
             Admission {
+                version,
                 snapshot_form,
                 name: &name,
                 credential: credential.as_deref(),
@@ -675,7 +677,7 @@ impl Authority {
                 let user_id = self.channel.identity.sessions[&session_id].user_id;
                 let welcome = match snapshot_form {
                     SnapshotForm::Full => Event::Welcome {
-                        protocol: CHANNEL_PROTOCOL,
+                        version: PRODUCT_VERSION,
                         self_profile: self.channel.identity.users[&user_id].profile(),
                         credential: admitted.credential,
                         session_id,
@@ -684,7 +686,7 @@ impl Authority {
                         invitation_origin: None,
                     },
                     SnapshotForm::Conversation => Event::ConversationWelcome {
-                        protocol: CHANNEL_PROTOCOL,
+                        version: PRODUCT_VERSION,
                         self_profile: ProfileId { id: user_id },
                         credential: admitted.credential,
                         session_id,

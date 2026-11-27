@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { stubTransferStorage } from "./fixtures/transfer-storage";
 import { act, createElement, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
@@ -34,7 +35,7 @@ import { QUALITY_PROFILES, screenVideoSettings, type VideoSettings } from "../sr
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { WatchBytes } from "../src/client/channel/watch-bytes";
 import { FileStore } from "../src/client/channel/file-store";
-import { CHANNEL_PROTOCOL, identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ReceivedRecord, type RoomSettings, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
+import { identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ReceivedRecord, type RoomSettings, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
@@ -168,7 +169,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   session.start();
   const socket = ChannelSocket.current;
   await socket.onopen?.();
-  socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: {
+  socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state: {
     channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", roomCreationPolicy: "ordinary", askUnnamedMemberName: false, hostingMode: "lightweight", historyWindow: window, userCount: 1, managedRoomIds: roomIds,
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
@@ -176,7 +177,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         historyLineage: crypto.randomUUID(), lastMessageSeq: 0, fileActivity: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding" } })) },
-    users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
+    users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }],
     publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
@@ -591,7 +592,7 @@ test("profile versions refresh names and clear avatars while a new Welcome reset
     socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "profiles", profiles: [{ ...next.users[1], avatar: null }], total: 1, nextCursor: null } });
     expect(session.getSnapshot().profiles.get("friend")).toEqual({ ...next.users[1], avatar: null });
     const resumed = structuredClone(next); resumed.users = [resumed.users[0]];
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: resumed });
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state: resumed });
     expect(session.getSnapshot().self).toEqual({ ...resumed.users[0], avatar: null });
     expect(session.getSnapshot().profiles.has("friend")).toBe(false);
     const reload = session.loadProfiles(["friend"]);
@@ -665,7 +666,7 @@ test("confirmed room events own personal feedback across text, attachments and t
     state.channel.ownerId = "self-user-1234";
     state.channel.rooms.forEach(room => { room.creatorId = "self-user-1234"; });
     state.users.push({ id: "friend-user-1234", name: "Friend", version: profileVersion }, { id: "bystander", name: "Other", version: profileVersion });
-    state.sessions.push({ id: "native-endpoint", userId: "self-user-1234", online: true, signingKey: testSigningKey });
+    state.sessions.push({ id: "native-endpoint", userId: "self-user-1234", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
     state.publications.push({ id: "own-screen", roomId: "first", sessionId: "native-endpoint", userId: "self-user-1234", kind: "screen",
       paused: false, audience: [], source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) });
     socket.receive({ type: "state", state });
@@ -772,8 +773,8 @@ test.each(["new identity", "closed session retry"])("personal feedback reactivat
       socket.receive({ type: "error", code: "invalid_credential" });
       session.joinAsNewIdentity();
     } else {
-      socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL + 1 });
-      expect(session.getSnapshot().error).toBe("incompatible_protocol");
+      socket.receive({ type: "incompatible_version", ...PRODUCT_VERSION, major: PRODUCT_VERSION.major + 1 });
+      expect(session.getSnapshot().error).toBe("page_update_required");
       session.reconnect();
     }
     expect(session.getSnapshot().feedbackSound).toMatchObject({ enabled: true, volume: .4 });
@@ -916,7 +917,7 @@ test("restoring the viewed room does not turn its navigation state into an invit
   history.replaceState({ piikChannelRoom: "second" }, "");
   const { session, socket } = await setup(1000, false, "room=first&invite=room-link");
   try {
-    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: CHANNEL_PROTOCOL });
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ...PRODUCT_VERSION });
     expect(socket.sent.filter(command => command.type === "browse" && command.active).map(command => command.roomId)).toEqual(["second"]);
     const entering = socket.sent.find(command => command.type === "enter_room")!;
     expect(entering).toMatchObject({ roomId: "first", inviteKey: "room-link" });
@@ -944,7 +945,7 @@ test("a saved owner credential retires only the consumed owner URL parameter and
     session.start();
     const socket = ChannelSocket.current; await socket.onopen?.();
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "personal-owner-credential", sessionId: "endpoint", state });
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "personal-owner-credential", sessionId: "endpoint", state });
     expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/?theme=dark#room=first&invite=friend-link&other=keep");
     await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe("https://channel.test/"));
     expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
@@ -1005,7 +1006,7 @@ test("an ordinary Welcome does not consume an owner bootstrap", async () => {
     session.start();
     const socket = ChannelSocket.current; await socket.onopen?.();
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "ordinary-credential", sessionId: "endpoint", state });
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "ordinary-credential", sessionId: "endpoint", state });
     expect(location.hash).toBe("#owner=owner-secret");
     session.reconnect(); await ChannelSocket.current.onopen?.();
     expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret" });
@@ -1021,7 +1022,7 @@ test("opening the site creates identity before independently applying a room inv
   let reloaded: ChannelSession | undefined;
   try {
     const join = socket.sent.find(command => command.type === "join")!;
-    expect(join).toMatchObject({ type: "join", protocol: CHANNEL_PROTOCOL, name: "" });
+    expect(join).toMatchObject({ type: "join", ...PRODUCT_VERSION, name: "" });
     for (const field of ["key", "password", "roomId"]) expect(join).not.toHaveProperty(field);
     const entry = socket.sent.find(command => command.type === "enter_room")!;
     expect(entry).toMatchObject({ roomId: "first", inviteKey: "room-key" });
@@ -1043,7 +1044,7 @@ test("opening the site creates identity before independently applying a room inv
     const nextSocket = ChannelSocket.current;
     await nextSocket.onopen?.();
     expect(nextSocket.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
-    nextSocket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    nextSocket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(nextSocket.sent.some(command => command.type === "enter_room")).toBe(false);
     expect(nextSocket.sent.find(command => command.type === "browse" && command.active)).toMatchObject({ roomId: "second" });
   } finally { session.close(); reloaded?.close(); }
@@ -1064,7 +1065,7 @@ test.each(["throws", "ignores-write"] as const)("room invitation survives reload
     const nextSocket = ChannelSocket.current;
     await nextSocket.onopen?.();
     expect(nextSocket.sent.find(command => command.type === "join")).not.toHaveProperty("credential");
-    nextSocket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "new-credential", sessionId: "endpoint", state });
+    nextSocket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "new-credential", sessionId: "endpoint", state });
     expect(nextSocket.sent.find(command => command.type === "enter_room")).toMatchObject({ roomId: "first", inviteKey: "room-key" });
   } finally { session.close(); reloaded?.close(); }
 });
@@ -1214,9 +1215,9 @@ test.each(["rejection", "disconnect"])("new identity %s retains the saved identi
     ChannelSocket.current.receive({ type: "error", code: "invalid_credential" });
     session.joinAsNewIdentity(); await ChannelSocket.current.onopen?.();
     state.users = [{ id: "new-user", name: "New user", version: profileVersion }];
-    state.sessions = [{ id: "new-session", userId: "new-user", online: true, signingKey: testSigningKey }];
+    state.sessions = [{ id: "new-session", userId: "new-user", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }];
     state.channel.rooms = [];
-    ChannelSocket.current.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "new-credential", sessionId: "new-session", state });
+    ChannelSocket.current.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "new-credential", sessionId: "new-session", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", self: { id: "new-user" } });
     expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("new-credential");
   } finally { session.close(); }
@@ -1466,7 +1467,7 @@ test("room interactions reuse their original acknowledgement and user identity w
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "reply", requestId: browse.requestId, result: { type: "done" } });
     peer.page(await peer.next(), [], false, null);
@@ -1523,7 +1524,7 @@ test.each(["unavailable", "rejected"])("%s peer construction keeps the site and 
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
     expect(resumed.sent.filter(command => command.type === "link_state" && command.pairId === "failed"))
       .toEqual([{ type: "link_state", pairId: "failed", state: "failed" }]);
@@ -1558,7 +1559,7 @@ test("a resumed site closes the selected room's interaction when admission was r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot().state?.channel.rooms[0].authorized).toBe(false);
     expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
     expect(interaction.getSnapshot()).toMatchObject({ peerId: null, messages: [] });
@@ -1674,7 +1675,7 @@ test("a reconnect keeps the interaction and retires the previous socket's ready 
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(peer.interactions).toHaveLength(1);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "reply", requestId: browse.requestId, result: { type: "done" } });
@@ -1699,7 +1700,7 @@ test("a subscription waiting for its signer stays off replacement sockets for th
   const sessionId = crypto.randomUUID();
   state.sessions[0].id = sessionId;
   state.channel.rooms[0].participantSessionIds = [sessionId];
-  const welcome = { type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state };
+  const welcome = { type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId, state };
   const session = new ChannelSession();
   let release!: () => void;
   const signerWait = new Promise<void>(resolve => { release = resolve; });
@@ -1831,7 +1832,7 @@ test("site addresses and room invitations use the current Welcome origin without
       session.reconnect();
       const socket = ChannelSocket.current;
       await socket.onopen?.();
-      socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state,
+      socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state,
         ...(invitationOrigin ? { invitationOrigin } : {}) });
       const origin = invitationOrigin ?? "https://channel.test";
       await vi.waitFor(() => expect(session.getSnapshot().siteURL).toBe(`${origin}/`));
@@ -1847,7 +1848,7 @@ test("site addresses and room invitations use the current Welcome origin without
 });
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
-  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -1979,7 +1980,7 @@ test("authority delivery results follow this page's watch intent and clear on cu
 });
 
 test.each([false, true])("App viewing assistance withdraws without ending the watch (Domain recovery: %s)", async recovering => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -2007,7 +2008,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
       session.reconnect();
       current = ChannelSocket.current;
       await current.onopen?.();
-      current.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+      current.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     }
     const ordinary = current.sent.findLast(command => command.type === "subscribe")!;
     expect(ordinary).toMatchObject({ publicationId: "screen", enabled: true });
@@ -2020,7 +2021,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
 });
 
 test.each(["friend", "self"])("remote App rewatch subscribes before attaching its helper (source user: %s)", async userId => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -2066,14 +2067,13 @@ test.each(["friend", "self"])("Browser watching stays available while the connec
   const state = structuredClone(session.getSnapshot().state!);
   const nativeSessionId = crypto.randomUUID();
   state.users.push({ id: "friend", name: "Friend", version: profileVersion });
-  state.sessions.push({ id: "source", userId, online: true, signingKey: testSigningKey },
-    { id: nativeSessionId, userId: "self", online: false, signingKey: testSigningKey });
+  state.sessions.push({ id: "source", userId, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION },
+    { id: nativeSessionId, userId: "self", online: false, signingKey: testSigningKey, ...PRODUCT_VERSION });
   state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId, kind: "screen",
     source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
   socket.receive({ type: "state", state });
   try {
-    const connecting = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    const connecting = session.activateApp({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
@@ -2097,12 +2097,12 @@ test.each(["friend", "self"])("Browser watching stays available while the connec
 });
 
 test("a retained watch re-associates an App endpoint after its current admission becomes ready", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const previous = crypto.randomUUID(), current = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: previous, roomIds: [] });
   const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
-  state.sessions.push({ id: previous, userId: "self", online: true, signingKey: testSigningKey });
+  state.sessions.push({ id: previous, userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
   state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen",
     source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
   state.subscriptions = ["screen"];
@@ -2123,7 +2123,7 @@ test("a retained watch re-associates an App endpoint after its current admission
     socket.receive({ type: "state", state });
     let ready!: (value: { sessionId: string; roomIds: string[] }) => void;
     description.mockImplementationOnce(() => new Promise(resolve => { ready = resolve; }));
-    state.sessions.push({ id: current, userId: "self", online: true, signingKey: testSigningKey });
+    state.sessions.push({ id: current, userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(description).toHaveBeenCalledTimes(2));
     // Native's independent Welcome may follow this page's endpoint State.
@@ -2146,7 +2146,7 @@ test("a retained watch re-associates an App endpoint after its current admission
 });
 
 test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (endpoint absent: %s)", async absent => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const applyBufferTarget = vi.spyOn(ChannelMedia.prototype, "setScreenBufferTarget");
   const native = crypto.randomUUID(), remote = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("hosting_unavailable"));
@@ -2157,7 +2157,7 @@ test.each([false, true])("local Native playback provenance follows endpoint life
     kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null,
     videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }));
   const state = { ...original, publications, sessions: [...original.sessions,
-    ...[native, remote].map(id => ({ id, userId, online: true, signingKey: testSigningKey }))] };
+    ...[native, remote].map(id => ({ id, userId, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }))] };
   socket.receive({ type: "state", state });
   try {
     const connecting = session.activateApp();
@@ -2195,8 +2195,7 @@ test.each([{ error: "hosting_unavailable" }, { result: { sessionId: "invalid" } 
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ] } });
   try {
-    const connecting = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    const connecting = session.activateApp({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
@@ -2212,7 +2211,7 @@ test.each([{ error: "hosting_unavailable" }, { result: { sessionId: "invalid" } 
 });
 
 test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local-source lookup follows %s cancellation without trapping the watch", async ending => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
     { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "self", kind: "screen", source: { kind: "screen", name: null }, title: null,
@@ -2257,7 +2256,7 @@ test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local
 });
 
 test("temporary helper unavailability cannot retire a retained watch on Domain recovery", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -2284,7 +2283,7 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     for (const command of resumed.sent.filter(command => command.type === "subscribe")) {
       resumed.receive(command.helperSessionId === helperSessionId
         ? { type: "reply", requestId: command.requestId, result: { type: "error", code: "helper_unavailable" } }
@@ -2300,7 +2299,7 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
 });
 
 test("an App description completing after unwatch cannot recreate a subscription", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting")
     .mockImplementation(() => new Promise(resolve => { describe = resolve; }));
@@ -2341,8 +2340,7 @@ test("verified App approval connects while loopback permission stays prompt and 
   let token = "first-approval";
   const fetcher = vi.fn(async (input: string) => {
     if (Number(new URL(input).port) !== port) throw new TypeError("No fixture App");
-    return Response.json({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port, token });
+    return Response.json({ service: "piik-channel-app", ...PRODUCT_VERSION, port, token });
   });
   vi.stubGlobal("fetch", fetcher);
   try {
@@ -2390,7 +2388,7 @@ test("personal voice playback follows user identity without sending room command
     const initial = session.getSnapshot().state!;
     const friend = { id: "friend", name: "Friend", version: profileVersion };
     const state = { ...initial, users: [...initial.users, friend],
-      sessions: [...initial.sessions, { id: "friend-first", userId: friend.id, online: true, signingKey: testSigningKey }] };
+      sessions: [...initial.sessions, { id: "friend-first", userId: friend.id, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }] };
     socket.receive({ type: "state", state });
     const sent = socket.sent.length;
     session.setVoiceVolume(friend.id, 1.7);
@@ -2398,7 +2396,7 @@ test("personal voice playback follows user identity without sending room command
     expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)).toEqual({ volume: 1.7, muted: true });
     expect(socket.sent).toHaveLength(sent);
     socket.receive({ type: "state", state: { ...state,
-      sessions: [...initial.sessions, { id: "friend-reconnected", userId: friend.id, online: true, signingKey: testSigningKey }] } });
+      sessions: [...initial.sessions, { id: "friend-reconnected", userId: friend.id, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }] } });
     expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)).toEqual({ volume: 1.7, muted: true });
     session.setVoiceMuted(friend.id, false);
     expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)).toEqual({ volume: 1.7, muted: false });
@@ -2569,14 +2567,14 @@ test("recovery mute stops only this room's retained voice immediately", async ()
     expect(contexts[0].close).not.toHaveBeenCalled();
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
     expect(first.enabled).toBe(false); expect(second.enabled).toBe(true);
     expect(listening()).toEqual(["heard-second"]);
     resumed.receive({ type: "state", state });
     expect(first.enabled).toBe(false);
     expect(session.getSnapshot().state?.voice.find(value => value.roomId === "first")).toMatchObject({ muted: true, deafened: true });
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
     expect(session.canUnmute("first")).toBe(false);
     expect(session.getSnapshot().state?.voice.some(value => value.sessionId === "new-endpoint")).toBe(false);
   } finally { session.close(); }
@@ -3069,7 +3067,7 @@ test("an expired resume cannot reclaim the screen publisher on a fresh connectio
     expect(pending.sent[0]).toMatchObject({ type: "join", sessionId: "endpoint" });
     await vi.advanceTimersByTimeAsync(19_000);
     expect(oldTrack.stop).toHaveBeenCalledOnce();
-    const welcome = { type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state };
+    const welcome = { type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state };
     pending.receive(welcome);
     expect(session.getSnapshot().sessionId).toBeNull();
     const fresh = ChannelSocket.current;
@@ -3108,7 +3106,7 @@ test("a new admitted session can request a microphone while retired permission i
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.sessions = state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value);
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "new-endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "new-endpoint", state });
     nextJoin = session.joinVoice("first").catch(error => error);
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     grants.shift()!(remoteStream("late-source", [late]));
@@ -3234,7 +3232,7 @@ test("ending a Browser microphone retires its publication while room listening r
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.channel.rooms[0].available = true;
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent.filter(command => command.type === "unpublish" || command.type === "voice")).toEqual([
       { type: "unpublish", publicationId: nextPublication.id },
       { type: "voice", roomId: "first", joined: true, muted: true, deafened: true },
@@ -3401,7 +3399,7 @@ test.each([
   vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [receivingH264
     ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
     : { mimeType: "video/VP8", clockRate: 90000 }] }) });
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   session.setVideoCodecMode(mode);
@@ -3431,8 +3429,7 @@ test.each([
 });
 
 test("Native capability catalog retains known choices without echoing future descriptions", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session } = await setup();
   const app = await startFixtureApp(session);
   const target = { kind: "window" as const, sourceId: "1", title: "Owned fixture", pid: 42, creationTime: "10" };
@@ -3480,8 +3477,7 @@ test("Native capability catalog retains known choices without echoing future des
 });
 
 test("a reopened source list survives the retired reader's deadline", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -3518,8 +3514,7 @@ test("a reopened source list survives the retired reader's deadline", async () =
 
 test("cancelling one native source picker during App admission leaves the other reader connected", async () => {
   const { session } = await setup();
-  const approval = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" };
+  const approval = { service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" };
   const firstReader = new AbortController(), nextReader = new AbortController();
   const connecting = session.activateApp(approval).catch(error => error);
   const app = ChannelSocket.current;
@@ -3551,8 +3546,7 @@ test("cancelling one native source picker during App admission leaves the other 
 test("a silent source request times out and a late reply cannot replace its refresh", async () => {
   const completed = vi.fn();
   const operation = vi.spyOn(browserDiagnostics, "debugOperation").mockReturnValue(completed);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -3615,7 +3609,7 @@ test("Browser screen pause stops the retained picture and source sound before re
     expect(session.getSnapshot().state?.publications[0].paused).toBe(true);
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "set_paused", publicationId: publication.id, paused: true });
     resumed.receive({ type: "state", state });
     expect(video.enabled).toBe(false); expect(sound.enabled).toBe(false);
@@ -4136,7 +4130,7 @@ test("stopping the publication releases both Browser replacement streams before 
 
 test.each(["transfer", "commit", "stop"] as const)("Native selection retains its commit boundary during %s", async stage => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   const old = remoteTrack("video"), original = remoteStream("native-incumbent", [old]);
@@ -4152,7 +4146,7 @@ test.each(["transfer", "commit", "stop"] as const)("Native selection retains its
     const description = publish.publication as { id: string; roomId: string; kind: "screen"; source: ScreenSource; videoSettings: VideoSettings };
     const nativeSessionId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const state = { ...session.getSnapshot().state!,
-      sessions: [...session.getSnapshot().state!.sessions, { id: nativeSessionId, userId: "self", online: true, signingKey: testSigningKey }],
+      sessions: [...session.getSnapshot().state!.sessions, { id: nativeSessionId, userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }],
       publications: [{ audience: [], title: null, ...description, paused: false, sessionId: "endpoint", userId: "self" }] };
     socket.receive({ type: "state", state });
     let prepared!: (command: Record<string, unknown>) => void;
@@ -4209,7 +4203,7 @@ test.each(["transfer", "commit", "stop"] as const)("Native selection retains its
 });
 
 test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "browser-inherits-pending-mute", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   const old = remoteTrack("video"), next = remoteTrack("video");
@@ -4790,7 +4784,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
 
 test("a catalog reply cannot publish sources after its App connection retires", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
-    service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved",
+    service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved",
   });
   const { session } = await setup();
   try {
@@ -4808,7 +4802,7 @@ test("a catalog reply cannot publish sources after its App connection retires", 
 });
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -5214,7 +5208,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
 });
 
 test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committed Native preview resumes its watch intent after Domain recovery (%s)", async interrupted => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const nativeSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: nativeSessionId, roomIds: ["first"] });
   const { session, socket } = await setup();
@@ -5251,7 +5245,7 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent).toContainEqual(expect.objectContaining({
       type: "subscribe", publicationId, enabled: true,
       ...(interrupted === "helper-awaiting-ack" ? { helperSessionId: nativeSessionId } : {}),
@@ -5271,7 +5265,7 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
 test.each([
   ["domain-first", false], ["domain-first", true], ["app-first", false], ["app-first", true],
 ] as const)("Native completion preserves replacement ownership and reports only current failures (%s, failed=%s)", async (order, failed) => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("Assistance unavailable"));
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
@@ -5388,8 +5382,7 @@ test.each(["track ended", "explicit stop"] as const)("a synchronized video loadi
 });
 
 test.each(["native", "obs", "refused"] as const)("committed %s capture retires only its room video when automatic preview fails", async source => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup(1000, false);
   const app = await startFixtureApp(session);
   vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
@@ -5453,7 +5446,7 @@ test.each(["native", "obs", "refused"] as const)("committed %s capture retires o
 });
 
 test.each(["accepted", "rejected", "replaced"] as const)("successor stop follows the captured Native lease when %s", async outcome => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   const target = { kind: "display" as const, sourceId: "1", title: "Monitor" };
@@ -5494,7 +5487,7 @@ test.each(["accepted", "rejected", "replaced"] as const)("successor stop follows
 });
 test("a rejected Native retirement rolls back the newly announced forwarding watch", async () => {
   localProviderVideo();
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID(), captureId = crypto.randomUUID();
@@ -5540,7 +5533,7 @@ test("a rejected Native retirement rolls back the newly announced forwarding wat
   } finally { session.close(); }
 });
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -5574,7 +5567,7 @@ test("stopping committed Native capture retires its pending automatic preview er
 });
 
 test("pending Native capture stays page-owned through same-page stop and close", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -5653,8 +5646,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
 });
 
 test.each(["h264", "av1"])("external input handles prepared codec %s within its own capture", async codec => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   const watch = vi.spyOn(session, "watch").mockResolvedValue();
@@ -5700,8 +5692,7 @@ test.each(["h264", "av1"])("external input handles prepared codec %s within its 
 });
 
 test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %s without transferring an absent producer", async source => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   const watch = vi.spyOn(session, "watch").mockResolvedValue();
@@ -5793,8 +5784,7 @@ test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %
 });
 
 test("closing the App connection preserves a pending Browser source selection", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session), video = remoteTrack("video");
   let grant!: (stream: MediaStream) => void;
@@ -5817,8 +5807,7 @@ test("closing the App connection preserves a pending Browser source selection", 
 });
 
 test.each([false, true])("next capture uses current preferences with an OBS permission armed=%s", async armed => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session } = await setup();
   const app = await startFixtureApp(session);
   const first = { ...QUALITY_PROFILES["720p30"], maxAudioBitrate: 64_000 };
@@ -5852,8 +5841,7 @@ test.each([false, true])("next capture uses current preferences with an OBS perm
 });
 
 test("arming OBS preserves the current capture controls until the external source commits", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session } = await setup();
   const app = await startFixtureApp(session);
   vi.spyOn(session, "watch").mockResolvedValue();
@@ -5947,7 +5935,7 @@ test("Browser room writers survive a socket replacement and retire together on l
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await bindRooms(resumed, true);
     expect(open).toHaveBeenCalledTimes(2);
     expect(withdrawals(socket)).toEqual([]);
@@ -6032,7 +6020,7 @@ test("a Browser room that could not open is named until it opens or leaves the c
     failure = undefined;
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.find(command => command.type === "host_register")?.room).toMatchObject({ id: "first" }));
     expect(session.getSnapshot().roomOpenFailures).toEqual(new Map([["second", "unreadable"]]));
     state.channel.rooms = state.channel.rooms.filter(room => room.id !== "second");
@@ -6084,7 +6072,7 @@ test("a delayed Browser room open from the previous socket closes after same-ses
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_register")).toBe(true));
     const registration = resumed.sent.find(command => command.type === "host_register")!;
     resumed.receive({ type: "host_bound", roomId: "first", bindingId: "new-binding" });
@@ -6114,7 +6102,7 @@ test("same-session recovery retires its own host binding when the committed room
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: retained });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state: retained });
     await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_stop" && command.roomId === "first" && command.bindingId === "owned-binding")).toBe(true));
     expect(host.close).toHaveBeenCalledOnce();
     expect(resumed.sent.some(command => command.type === "host_register")).toBe(false);
@@ -6154,7 +6142,7 @@ test.each(["room_already_hosted", "room_creation_restricted", "storage_failed"])
     ids = ["first", "second"];
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_register")).toBe(true));
     const conflict = resumed.sent.find(command => command.type === "host_register")!;
     expect(conflict.room).toMatchObject({ id: "first" });
@@ -6209,7 +6197,7 @@ test.each(["registered", "retry-registration"])("Browser hosting does not depend
       const resumed = ChannelSocket.current;
       await resumed.onopen?.();
       expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
-      resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+      resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
       await vi.waitFor(() => expect(resumed.sent).toContainEqual(expect.objectContaining({ type: "host_register", room: host.summary() })));
       const retry = resumed.sent.find(command => command.type === "host_register")!;
       resumed.receive({ type: "host_bound", roomId: host.roomId, bindingId: "retry-binding" });
@@ -6248,7 +6236,7 @@ test.each(["policy", "open"])("Browser room creation cancels its reservation aft
 });
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const browserOpen = vi.fn();
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     BrowserRoomHost: { open: browserOpen },
@@ -6271,7 +6259,7 @@ test("an App failure during creation does not turn that request into a Browser r
 });
 
 test.each(["settings", "registration", "disconnect", "unknown_tag", "malformed_rejection"])("App room creation handles a %s outcome after reservation", async outcome => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -7357,7 +7345,7 @@ test.each(["binding", "replacement"])("a deliberate retry after reconnect scopes
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.channel.rooms[0].delivery!.bindingId = binding;
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     resumed.receive({ type: "reply", requestId: resumed.sent.findLast(command => command.type === "browse" && command.active)!.requestId, result: { type: "done" } });
     peer.page(await peer.next(), [], false, null, binding);
 
@@ -7712,9 +7700,9 @@ test("stopping a watch during signaling recovery closes its input before retirin
       channel: { ...base.channel, id: domainId, ownerId: userId, rooms: base.channel.rooms.map(room => ({ ...room, creatorId: userId,
         participantSessionIds: [viewer], delivery: { hostSessionId: source, bindingId } })) },
       users: [{ id: userId, name: "Viewer", version: profileVersion }, { id: sourceUser, name: "Source", version: profileVersion }],
-      sessions: [{ id: viewer, userId, online: true, signingKey: testSigningKey }, { id: source, userId: sourceUser, online: true, signingKey: testSigningKey }],
+      sessions: [{ id: viewer, userId, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }, { id: source, userId: sourceUser, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }],
     };
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: viewer, state: initial });
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: viewer, state: initial });
     const flow = { id: flowId, publicationId, selected: true, inputFlowId: null };
     const state = { ...initial, subscriptions: [publicationId],
       publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: source, userId: sourceUser, kind: "screen" as const,
@@ -7774,7 +7762,7 @@ test("relayed input uses the current snapshot across rerouting, revocation and r
   const downstream = (inputFlowId: string, selected = true) => ({ id: pairId, peerId: viewer, canReceiveVideoLayers: false,
     rooms: ["first"], incoming: [], outgoing: [{ id: routeId, publicationId, selected, inputFlowId }] });
   let state = { ...base, channel, users: [{ id: userId, name: "Viewer", version: profileVersion }],
-    sessions: [local, viewer, source, alternate].map(id => ({ id, userId, online: true, signingKey: testSigningKey })),
+    sessions: [local, viewer, source, alternate].map(id => ({ id, userId, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION })),
     publications: [{ id: publicationId, roomId: "first", sessionId: source, userId, kind: "screen" as const,
       source: { kind: "screen" as const, name: null }, title: null, audience: [], paused: false,
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) }],
@@ -10519,7 +10507,7 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.pairs.pop();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual(failed ? [] : [
       { type: "signal", pairId: "kept", payload: { resync: true } },
     ]));
@@ -10638,7 +10626,7 @@ test("a remote data channel cannot report connectivity and a retired socket cann
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([]);
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([
       expect.objectContaining({ pairId: "pair", state: "disconnected" }),
     ]);
@@ -10922,7 +10910,7 @@ test.each([
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "room_data_state")).toEqual([failure]));
     expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([{ type: "link_state", pairId: "pair", state: "connected" }]);
     expect(RoomPeerConnection.instances).toEqual([pc]);
@@ -11089,7 +11077,7 @@ test("browsing keeps watched-room reading and resumes the offline selection with
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.channel.rooms.forEach(room => { room.reading = room.id === "second"; });
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     const first = resumed.sent.findLast(command => command.type === "browse" && command.roomId === "first" && command.active)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
@@ -11231,7 +11219,7 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     ];
     state.files = [{ roomId: "second", messageSeq: 1, authorId: crypto.randomUUID(), sourceId: sessionId, upstream: null,
       downstream: [otherPeer], receiving: false, attachment: { id: crypto.randomUUID(), name: "fixture", size: 1, mediaType: "application/octet-stream", sha256: "0".repeat(64) } }];
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state });
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId, state });
     expect(budget).toHaveBeenCalledOnce();
     session.setForwardingLimit(1);
     const updates = () => socket.sent.filter(command => command.type === "relay_capacity");
@@ -11265,7 +11253,7 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     state.channel.rooms[1].delivery = undefined;
     socket.receive({ type: "state", state });
     expect(updates().slice(prior)).toEqual([capacities(2)[0]]);
-    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state });
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId, state });
     expect(updates().slice(prior)).toEqual([capacities(2)[0], capacities(2)[0]]);
     const currentWrite = updates().at(-1)!;
     socket.receive({ type: "reply", requestId: currentWrite.requestId, result: { type: "error", code: "room_busy" } });
@@ -11284,8 +11272,7 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
 });
 
 test("App forwarding settings target the connected endpoint independently of rooms and the webpage", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
   try {
@@ -11319,8 +11306,8 @@ test.each(["watch", "voice", "voice and watch"])("live room interactions follow 
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.users.push({ id: "friend-user-1234", name: "Friend", version: profileVersion });
-    state.sessions.push({ id: "other", userId: "friend-user-1234", online: true, signingKey: testSigningKey },
-      { id: "another-page", userId: "self", online: true, signingKey: testSigningKey });
+    state.sessions.push({ id: "other", userId: "friend-user-1234", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION },
+      { id: "another-page", userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
     state.voice = ["other", "another-page"].map(sessionId => ({ roomId: "third", sessionId, muted: true, deafened: false }));
     state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "other", userId: "friend-user-1234", kind: "screen", source: { kind: "screen", name: null }, title: null,
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
@@ -11498,7 +11485,7 @@ test("reconnect retires unprojected old read intents only after the selected rea
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     const first = resumed.sent.at(-1)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
@@ -11659,7 +11646,7 @@ test("browse admission gates Domain history and reconnect cancels the old socket
     session.reconnect();
     await canceled;
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(peer.sent).toHaveLength(3);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "reply", requestId: browse.requestId, result: { type: "done" } });
@@ -11833,7 +11820,7 @@ test.each(["success", "committed with hosting failure"] as const)("domain restor
     for (const field of ["credential", "sessionId", "roomId"]) expect(join).not.toHaveProperty(field);
     expect(saved).not.toHaveBeenCalled();
     location.hash = "owner=restored-owner&room=other-room&invite=friend-link&other=keep";
-    admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "restored-personal-credential", sessionId: "endpoint", state });
+    admission.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "restored-personal-credential", sessionId: "endpoint", state });
     await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon, askUnnamedMemberName: state.channel.askUnnamedMemberName });
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
     expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
@@ -11872,7 +11859,7 @@ test("a rejected domain replacement restarts the unchanged personal identity wit
     const resumed = ChannelSocket.current; expect(resumed).not.toBe(socket); await resumed.onopen?.();
     expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
     expect(resumed.sent.some(command => command.ownerKey === metadata.ownerKey)).toBe(false);
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot().self?.id).toBe("self");
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
   } finally { session.close(); }
@@ -11890,7 +11877,7 @@ test("domain admission does not save a Welcome whose current owner differs from 
     const restoring = session.restoreDomainBackup(new Blob()), rejected = expect(restoring).rejects.toThrow("domain_restored_connection_failed");
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current; await admission.onopen?.();
-    admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "not-verified", sessionId: "endpoint", state });
+    admission.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "not-verified", sessionId: "endpoint", state });
     await rejected; expect(saved).not.toHaveBeenCalled();
     expect(session.getSnapshot().error).toBe("domain_restored_connection_failed");
     expect(session.getSnapshot().state).toBeNull(); expect(admission.readyState).toBe(3);
@@ -11943,7 +11930,7 @@ test("a committed domain restore with unavailable hosting keeps the restored ide
     const admission = ChannelSocket.current; await admission.onopen?.();
     expect(admission.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: metadata.ownerKey });
     expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("credential");
-    admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "old-authority", sessionId: "endpoint", state: oldState });
+    admission.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "old-authority", sessionId: "endpoint", state: oldState });
     await failed;
     expect(saved).not.toHaveBeenCalled();
     session.reconnect();
@@ -12169,7 +12156,7 @@ test("room restore releases staging when its session reconnects during append", 
     await vi.waitFor(() => expect(stage.append).toHaveBeenCalledOnce());
     socket.close(); session.reconnect();
     const next = ChannelSocket.current; await next.onopen?.();
-    next.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    next.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     resume();
     await expect(restore).rejects.toThrow("disconnected");
     expect(stage.append).toHaveBeenCalledOnce();
@@ -12186,8 +12173,7 @@ test.each(["success", "create-failed", "registration-failed", "reconnect-during-
   const native = outcome === "native-unconfirmed" || outcome === "native-success";
   const encoded = new Blob(["encoded"]);
   if (native) {
-    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
     const app = await startFixtureApp(session);
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -12272,8 +12258,7 @@ test.each(["success", "create-failed", "registration-failed", "reconnect-during-
 test("room copy preserves the archive conversion failure when staging cleanup rejects", async () => {
   const { session, socket, stage, read, metadata } = await setupRoomBackup();
   try {
-    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
     const app = await startFixtureApp(session);
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -12304,7 +12289,7 @@ test("room copy stops when its session reconnects during archive validation", as
       await visitor?.metadata({ ...copy, retainedFiles: [] });
       socket.close(); session.reconnect();
       const next = ChannelSocket.current; await next.onopen?.();
-      next.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+      next.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
       return { ...copy, retainedFiles: [] };
     });
     await expect(session.importRoomCopy(new Blob(), metadata.policy)).rejects.toThrow("disconnected");
@@ -12518,14 +12503,14 @@ test.each(["close during handshake", "close during admission", "rejected handsha
   const state = structuredClone(session.getSnapshot().state!);
   state.channel.ownerId = null; state.channel.rooms = [];
   state.users = [{ id: "archived-user", name: "Archived", version: profileVersion }];
-  state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
+  state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }];
   try {
     const completion = session.restoreRoomBackup(new Blob()).catch(error => error);
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current;
     if (phase === "close during admission") {
       await admission.onopen?.();
-      admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint", state });
+      admission.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "accepted-credential", sessionId: "new-endpoint", state });
       await vi.waitFor(() => expect(admission.sent.some(command => command.type === "admit_room")).toBe(true));
     }
     if (phase === "rejected handshake") {
@@ -12568,7 +12553,7 @@ test("portable import validates the full archive before switching accounts and r
     const admission = ChannelSocket.current; await admission.onopen?.();
     expect(admission.sent.find(command => command.type === "join")).toMatchObject({ credential: "archived-credential" });
     expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("sessionId");
-    admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "wrong-credential", sessionId: "endpoint", state: original });
+    admission.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "wrong-credential", sessionId: "endpoint", state: original });
     await failed;
     expect(persist.mock.calls.some(call => call[1] === "wrong-credential")).toBe(false);
     const restored = ChannelSocket.current; expect(restored).not.toBe(admission); await restored.onopen?.();
@@ -12578,7 +12563,7 @@ test("portable import validates the full archive before switching accounts and r
 });
 
 test("an approved App exports only rooms positively matched to its Native session", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
   const { session, socket } = await setup(); const appSocket = await startFixtureApp(session);
   const nativeId = crypto.randomUUID();
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))
@@ -12619,7 +12604,7 @@ test.each(["registered", "registration-failed", "account-storage-failed"])("port
   const offline = { ...state.channel.rooms[0], available: false, delivery: undefined, reading: false, participantSessionIds: [] };
   const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
   state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", version: profileVersion }];
-  state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
+  state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }];
   try {
     const importing = session.restoreRoomBackup(new Blob());
     const failed = outcome === "registration-failed" ? expect(importing).rejects.toThrow("room_restored_connection_failed") : null;
@@ -12630,7 +12615,7 @@ test.each(["registered", "registration-failed", "account-storage-failed"])("port
     expect(join).toMatchObject({ credential: "archived-credential" });
     for (const field of ["ownerKey", "roomId", "sessionId"]) expect(join).not.toHaveProperty(field);
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
-    admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint",
+    admission.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "accepted-credential", sessionId: "new-endpoint",
       state: { ...state, channel: { ...state.channel, rooms: [offline] } } });
     expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("credential");
     expect.soft(session.getSnapshot().messagesByRoom.first).toBeUndefined();
@@ -12817,7 +12802,7 @@ test("socket ingress hydrates room pictures and rejection drops them until a ful
     await vi.advanceTimersByTimeAsync(1000);
     const replacement = ChannelSocket.current;
     expect(replacement).not.toBe(socket); await replacement.onopen?.();
-    replacement.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    replacement.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
     replacement.receive({ type: "state", state: compact });
     expect(session.getSnapshot().state?.channel.icon).toBe(icon);
@@ -12826,15 +12811,31 @@ test("socket ingress hydrates room pictures and rejection drops them until a ful
   } finally { session.close(); }
 });
 
-test.each([undefined, CHANNEL_PROTOCOL - 1, CHANNEL_PROTOCOL + 1])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
+test.each([
+  { type: "welcome", major: PRODUCT_VERSION.major - 1, error: "domain_update_required" },
+  { type: "welcome", major: PRODUCT_VERSION.major + 1, error: "page_update_required" },
+  { type: "incompatible_version", major: PRODUCT_VERSION.major - 1, error: "domain_update_required" },
+  { type: "incompatible_version", major: PRODUCT_VERSION.major + 1, error: "page_update_required" },
+])("a Domain $type with major $major closes the connection with $error", async ({ type, major, error }) => {
+  const { session, socket } = await setup(1000, false);
+  try {
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject(PRODUCT_VERSION);
+    socket.receive({ type, ...PRODUCT_VERSION, major });
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", sessionId: null, state: null, error });
+    expect(socket.readyState).toBe(3);
+  } finally { session.close(); }
+});
+
+test("the browser accepts a newer Domain minor and retains peer version facts", async () => {
   const { session, socket } = await setup(1000, false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.channel.name = "Must not be accepted";
-    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: CHANNEL_PROTOCOL });
-    socket.receive({ type: "welcome", protocol, credential: "other-credential", sessionId: "other-endpoint", state });
-    expect(session.getSnapshot()).toMatchObject({ connection: "closed", sessionId: null, state: null, error: "incompatible_protocol" });
-    expect(socket.readyState).toBe(3);
+    state.sessions[0].minor += 1;
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, minor: PRODUCT_VERSION.minor + 1,
+      credential: "credential", sessionId: "endpoint", state });
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null, state: {
+      sessions: [{ major: PRODUCT_VERSION.major, minor: PRODUCT_VERSION.minor + 1 }],
+    } });
   } finally { session.close(); }
 });
 
@@ -12967,7 +12968,7 @@ test("same-binding recovery confirms every page of the historical window and rem
     state.channel.rooms[0].lastMessageSeq = 1200;
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "reply", requestId: browse.requestId, result: { type: "done" } });
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
@@ -13541,7 +13542,7 @@ test.each([
       session.reconnect();
       current = ChannelSocket.current;
       await current.onopen?.();
-      current.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint",
+      current.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint",
         state: final });
     } else {
       current.receive({ type: "state", state: final });
@@ -13702,7 +13703,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     state = { ...state, watchActivities: [{ ...activity, playback: { ...activity.playback, position: 24 } }] };
-    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
+    resumed.receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'credential', sessionId: 'endpoint', state });
     const rejoin = resumed.sent.findLast(command => command.type === 'join_watch')!;
     expect(rejoin).toMatchObject({ id: activity.id, mode: 'direct' });
     resumed.receive({ type: 'reply', roomId: 'first', requestId: rejoin.requestId, result: { type: 'watch_ready', serverTime: 2000 } });
@@ -13712,7 +13713,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
     await session.leaveWatch(activity.id);
     session.reconnect();
     const returned = ChannelSocket.current; await returned.onopen?.();
-    returned.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
+    returned.receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'credential', sessionId: 'endpoint', state });
     expect(returned.sent).toContainEqual({ type: 'join_watch', roomId: 'first', id: activity.id, mode: null });
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
     expect(video.src).toBe('');
@@ -13725,8 +13726,8 @@ test("local unwatch removes only this endpoint's audience entry through recovery
   const state = structuredClone(session.getSnapshot().state!);
   const viewing = (snapshot: typeof state, roomId: string) => roomActivityPeople(snapshot, roomId).find(person => person.id === "self")?.viewing;
   state.users.push({ id: "source-user", name: "Source", version: profileVersion });
-  state.sessions.push({ id: "source", userId: "source-user", online: true, signingKey: testSigningKey },
-    { id: "self-other", userId: "self", online: true, signingKey: testSigningKey });
+  state.sessions.push({ id: "source", userId: "source-user", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION },
+    { id: "self-other", userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
   state.channel.rooms.forEach(room => {
     room.participantSessionIds = ["endpoint", "self-other", "source"];
   });
@@ -13755,7 +13756,7 @@ test("local unwatch removes only this endpoint's audience entry through recovery
     expect(state.publications[0].audience).toHaveLength(2);
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     const recovered = session.getSnapshot().state!;
     expect(recovered.publications[0].audience).toEqual([{ sessionId: "self-other", state: "preparing" }]);
     expect(viewing(recovered, "second")).toBe("active");
@@ -13770,8 +13771,8 @@ test.each(["channel", "writer"])("local video leave clears its audience membersh
   vi.stubGlobal("document", { createElement: () => video });
   const state = structuredClone(session.getSnapshot().state!);
   state.users.push({ id: "owner", name: "Owner", version: profileVersion }, { id: "other-viewer", name: "Other", version: profileVersion });
-  state.sessions.push({ id: "owner-endpoint", userId: "owner", online: true, signingKey: testSigningKey },
-    { id: "other-endpoint", userId: "other-viewer", online: true, signingKey: testSigningKey });
+  state.sessions.push({ id: "owner-endpoint", userId: "owner", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION },
+    { id: "other-endpoint", userId: "other-viewer", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
   state.channel.rooms[0].participantSessionIds = ["endpoint", "owner-endpoint", "other-endpoint"];
   const activity = { id: "owned-watch", roomId: "first", sessionId: "owner-endpoint", userId: "owner",
     viewerSessionIds: ["endpoint", "other-endpoint"], source: { kind: "media" as const, url: "https://media.test/owned.mp4" },
@@ -13806,7 +13807,7 @@ test.each(["channel", "writer"])("local video leave clears its audience membersh
       socket.receive({ type: "state", state });
     } else {
       session.reconnect(); resumed = ChannelSocket.current; await resumed.onopen?.();
-      resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+      resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     }
     expect(session.getSnapshot().state!.watchActivities[0].viewerSessionIds).toEqual(["other-endpoint"]);
     expect(resumed.sent.filter(command => command.type === "join_watch" && !command.requestId)).toEqual([{ type: "join_watch", roomId: "first", id: activity.id, mode: null }]);
@@ -14202,8 +14203,7 @@ test('MPD preparation failure preserves the selected page and incumbent; cancell
   localProviderVideo();
   const { candidate, catalog, selected } = mpdSelectionFixture();
   const { session, socket } = await setup(1000, false);
-  const connecting = session.activateApp({ service: 'piik-channel-app', protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: 'approved', pagePlayer: true });
+  const connecting = session.activateApp({ service: 'piik-channel-app', ...PRODUCT_VERSION, port: 8793, token: 'approved', pagePlayer: true });
   const app = ChannelSocket.current;
   await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://fixture.test/old.mp4', 'file'), () => {});
@@ -14236,8 +14236,7 @@ test('MPD preparation failure preserves the selected page and incumbent; cancell
 test('a late MPD inspection cannot replace a newer page selection catalog', async () => {
   const { candidate, catalog } = mpdSelectionFixture();
   const { session, socket } = await setup(1000, false);
-  const connecting = session.activateApp({ service: 'piik-channel-app', protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: 'approved', pagePlayer: true });
+  const connecting = session.activateApp({ service: 'piik-channel-app', ...PRODUCT_VERSION, port: 8793, token: 'approved', pagePlayer: true });
   const app = ChannelSocket.current;
   await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
   try {
@@ -15074,7 +15073,7 @@ test.each([true, false])("App to browser embed handoff with moveBefore support %
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId: "endpoint", state });
     expect(player.signal.aborted).toBe(false);
     expect(session.getSnapshot().watchPlayers.get(id)).toBe(player);
     const rejoin = resumed.sent.findLast(c => c.type === "join_watch");
@@ -15181,7 +15180,7 @@ test.each(['select', 'select-ack-first', 'cancel'] as const)('an unselected view
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
+    resumed.receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'credential', sessionId: 'endpoint', state });
     expect(resumed.sent.filter(command => command.type === 'join_watch')).toEqual([]);
     if (outcome !== 'cancel') {
       const selected = session.selectWatchPage('first', candidateId, id);
@@ -15353,7 +15352,7 @@ test('recovery cancels a disconnected watch candidate once using its Welcome act
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint',
+    resumed.receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'credential', sessionId: 'endpoint',
       state: { ...state, watchActivities: [{ id: start.id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint',
         userId: 'self', source: start.source, playback: start.playback }] } });
     expect(socket.sent.filter(command => command.type === 'stop_watch')).toEqual([]);
@@ -15662,8 +15661,7 @@ test('shared live seek controls select available content while pause keeps its o
 });
 
 test("review capability downgrade retains active Native source and resets a different App catalog", async () => {
-  const health = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "strong", pagePlayer: true, externalScreenInputAvailable: true });
+  const health = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "strong", pagePlayer: true, externalScreenInputAvailable: true });
   const { session } = await setup(); const app = await startFixtureApp(session);
   vi.spyOn(session, "watch").mockResolvedValue();
   const target = { kind: "display" as const, sourceId: "1", title: "Owned display" };
@@ -15699,7 +15697,7 @@ test("review capability downgrade retains active Native source and resets a diff
     expect(session.getSnapshot().appConnected).toBe(true); expect(session.getSnapshot().error).toBeNull();
     app.close(); expect(session.getSnapshot().appConnected).toBe(false); expect(session.getSnapshot().pagePlayer).toBe(false);
     expect(session.getSnapshot().externalScreenInputAvailable).toBe(false);
-    health.mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8794, token: "weak" });
+    health.mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8794, token: "weak" });
     const connecting=session.activateApp(); await vi.waitFor(()=>expect(ChannelSocket.current).not.toBe(app)); const next=ChannelSocket.current;
     await next.onopen?.(); next.receive({id:next.sent.at(-1)!.id,result:null}); await connecting;
     expect(session.getSnapshot().pagePlayer).toBe(false); expect(session.getSnapshot().externalScreenInputAvailable).toBe(false);
@@ -15715,7 +15713,7 @@ test("review capability downgrade retains active Native source and resets a diff
 });
 
 test("review pending Native picker disconnect retires only that attempt and a new App can retry", async () => {
-  vi.spyOn(appLink,"discoverChannelAppHealth").mockResolvedValue({service:"piik-channel-app",protocol:appLink.APP_PROTOCOL,domainProtocol:CHANNEL_PROTOCOL,port:8793,token:"approved"});
+  vi.spyOn(appLink,"discoverChannelAppHealth").mockResolvedValue({service:"piik-channel-app",...PRODUCT_VERSION,port:8793,token:"approved"});
   const {session}=await setup();const app = await startFixtureApp(session);vi.spyOn(session,"watch").mockResolvedValue();
   const target={kind:"picker" as const,sourceId:"0",title:"System picker"};
   const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"intent://media#Intent;scheme=piik;package=tv.piik.android.test;end"};
@@ -15814,13 +15812,12 @@ test("discovering the App clears a watched publication's remote playback error w
   const localEndpoint = "z";
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: localEndpoint, roomIds: [] });
   try {
-    state.sessions.push({ id: localEndpoint, userId: session.getSnapshot().self!.id, online: true, signingKey: testSigningKey });
+    state.sessions.push({ id: localEndpoint, userId: session.getSnapshot().self!.id, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
     socket.receive({ type: "state", state });
     session.screenPresentation("one-flow", streams[0], "failed", 3);
     expect(session.screenPlaybackError("one")).toBe(3);
 
-    const activation = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    const activation = session.activateApp({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await activation;
@@ -15836,10 +15833,9 @@ test.each([false, true])("manual picture retry restores Browser viewing before A
   const helper = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helper, roomIds: [] });
   try {
-    state.sessions.push({ id: helper, userId: session.getSnapshot().self!.id, online: true, signingKey: testSigningKey });
+    state.sessions.push({ id: helper, userId: session.getSnapshot().self!.id, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
     socket.receive({ type: "state", state });
-    const activation = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    const activation = session.activateApp({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await activation;
@@ -16049,8 +16045,7 @@ test.each(["leave", "revoke"])("%s ends one pending room's join before its sibli
 
 test("App admission waits for Native readiness and cancelling the last intent permits retry", async () => {
   const { session, socket } = await setup();
-  const approved = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, token: "owned", port: 8793 };
+  const approved = { service: "piik-channel-app", ...PRODUCT_VERSION, token: "owned", port: 8793 };
   const attempt = new AbortController();
   try {
     vi.useFakeTimers();
@@ -16084,8 +16079,7 @@ test("App admission waits for Native readiness and cancelling the last intent pe
 
 test.each(["sources", "share-page", "watch-page", "external", "capture"] as const)("cancelling %s during App admission releases the caller and permits retry", async kind => {
   const { session, socket } = await setup(1000, false);
-  const approved = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, token: "owned", port: 8793, pagePlayer: true, externalScreenInputAvailable: true } as const;
+  const approved = { service: "piik-channel-app", ...PRODUCT_VERSION, token: "owned", port: 8793, pagePlayer: true, externalScreenInputAvailable: true } as const;
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(approved);
   const reader = new AbortController();
   const activity = { id: "website-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
@@ -16389,8 +16383,7 @@ test.each([
 ])("OBS pending candidate $kind error remains local while incumbent Browser sharing stays live", async (value) => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16451,8 +16444,7 @@ test.each([
 test("cancelled pending OBS prepare ignores its late acknowledgement and Native events while incumbent remains", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16506,8 +16498,7 @@ test("cancelled pending OBS prepare ignores its late acknowledgement and Native 
 test("stopping an uncommitted OBS permit must leave its incumbent Browser picture intact", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16569,8 +16560,7 @@ test("stopping an uncommitted OBS permit must leave its incumbent Browser pictur
 test("cancelling an armed OBS B retains the exact active Native capture A", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16628,8 +16618,7 @@ test("cancelling an armed OBS B retains the exact active Native capture A", asyn
 test("committing OBS B rejects user cancellation and a failed Native commit retains active OBS A", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16714,7 +16703,7 @@ test("committing OBS B rejects user cancellation and a failed Native commit reta
 test.each(["dismiss", "cancel picker", "use browser", "retire OBS"] as const)(
   "OBS becomes ready while the Browser screen picker is open: %s", async outcome => {
     vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
-      service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+      service: "piik-channel-app", ...PRODUCT_VERSION,
       port: 8793, token: "owned-approved",
     });
     const { session, socket } = await setup();
@@ -16771,8 +16760,7 @@ test.each(["cancel screen", "reject then OBS ready", "OBS ready then reject"] as
   "an armed OBS input survives a different Native screen preparation: %s", async order => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16827,8 +16815,7 @@ test.each(["cancel screen", "reject then OBS ready", "OBS ready then reject"] as
 test("explicit OBS input cancellation leaves a different Native screen preparation owned and committable", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16874,8 +16861,7 @@ test("explicit OBS input cancellation leaves a different Native screen preparati
 test("OBS commit blocks candidate cancellation across both source-transfer confirmations", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -16932,7 +16918,7 @@ test("OBS commit blocks candidate cancellation across both source-transfer confi
       type: "state",
       state: {
         ...before,
-        sessions: [...before.sessions, { id: native, userId: user, online: true, signingKey: testSigningKey }],
+        sessions: [...before.sessions, { id: native, userId: user, online: true, signingKey: testSigningKey, ...PRODUCT_VERSION }],
         publications: [
           {
             ...publication,
@@ -17010,8 +16996,7 @@ test("OBS commit blocks candidate cancellation across both source-transfer confi
 test("external commit failure retires its committing selection while preserving the incumbent source", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
-    protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL,
+    ...PRODUCT_VERSION,
     port: 8793,
     token: "owned-approved",
   });
@@ -18319,7 +18304,7 @@ test.each(['while disconnected', 'before withdrawal confirmation'] as const)('or
     now = 10500;
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state: stale });
+    resumed.receive({ type: 'welcome', ...PRODUCT_VERSION, credential: 'credential', sessionId: 'endpoint', state: stale });
     const rejoin = resumed.sent.findLast(command => command.type === 'join_watch')!;
     expect(rejoin).toMatchObject({ id: activity.id, mode: 'direct' });
     ack(resumed, rejoin, { type: 'watch_ready', serverTime: 6000 });

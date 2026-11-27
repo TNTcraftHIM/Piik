@@ -382,6 +382,7 @@ pub(super) mod tests {
                 user_id: id(3),
                 online: true,
                 signing_key: [0; 32],
+                version: piik_channel_core::PRODUCT_VERSION,
             }],
             publications: vec![PublicationInfo {
                 screen: Some(piik_channel_core::wire::ScreenInfo {

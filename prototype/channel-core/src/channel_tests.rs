@@ -106,6 +106,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             channel
                 .join(
                     Admission {
+                        version: crate::PRODUCT_VERSION,
                         snapshot_form: Default::default(),
                         capabilities: PeerCapabilities {
                             can_use_peer_transport: true,
@@ -429,6 +430,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
     let owner = channel
         .join(
             Admission {
+                version: crate::PRODUCT_VERSION,
                 snapshot_form: Default::default(),
                 capabilities: PeerCapabilities {
                     can_use_peer_transport: true,
@@ -527,6 +529,7 @@ fn consecutive_profile_and_domain_patches_merge_before_projection() {
     let owner = channel
         .join(
             Admission {
+                version: crate::PRODUCT_VERSION,
                 snapshot_form: Default::default(),
                 capabilities: PeerCapabilities {
                     can_use_peer_transport: true,
