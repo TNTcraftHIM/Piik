@@ -25,14 +25,11 @@ time.
 
 Both of your narrowings stand on their evidence and I take them.
 
-- **Search.** The owner asked why a search has to move pictures at all. A
-  read that leaves pictures out removes the cost you measured, and with it a
-  match on the reader has one thing a scan at the writer cannot have: the
-  words a person searches for never leave that person's device. The owner
-  is choosing among no search, that, and your scan; nothing is built until
-  then. One question for the choice: at the two stores, is a history read
-  without `inlineImages` a smaller change than a scan, and does anything
-  besides the reading window tie `requestHistory` to what is on screen?
+- **Search is not built** (owner, 2026-11-27).
+  [ADR-0019](../../docs/adr/0019-the-life-of-a-message.md) says so and names
+  the way if it is ever wanted: a match on the reader over a read that leaves
+  pictures out, so the words searched for stay on the searcher's device.
+  Nothing for you.
 - **Additions at the message, nested shapes closed, archives strict.** One
   sentence added to
   [ADR-0020](../../docs/adr/0020-one-vocabulary-for-extension.md): an
