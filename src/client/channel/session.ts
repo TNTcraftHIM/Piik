@@ -2869,7 +2869,7 @@ export class ChannelSession {
       catch { /* The next welcome reconciles the actual reader with room authority. */ }
       throw error;
     }
-  });
+  }, false);
   private retirePendingWatchPlayer(id: string): WatchPlayer | undefined { return this.watchStage(id)?.retireCandidate(id); }
   cancelWatchPage = (id: string): void => {
     if (this.watchPlayer(id) === this.pendingWatchPlayer(id)) return;

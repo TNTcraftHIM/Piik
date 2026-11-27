@@ -14229,7 +14229,10 @@ test('turning off remote forwarding preserves the Host local provider and reuses
     }
     expect(stop).not.toHaveBeenCalled();expect(dispose).not.toHaveBeenCalled();
     expect(socket.sent.some(x=>x.type==='join_watch')).toBe(false);
+    socket.receive({ type: "error", code: "room_host_offline" });
     await expect(session.setWatchByteSource('owned',crypto.randomUUID())).rejects.toThrow('watch_page_unavailable');
+    expect(session.getSnapshot().error).toBe("room_host_offline");
+    expect(session.getSnapshot().pending.has("watch-source:owned")).toBe(false);
   }finally{session.close();}
 });
 
