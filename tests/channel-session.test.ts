@@ -5514,6 +5514,50 @@ function acceptCreatedRoom(socket: ChannelSocket): void {
     room: { ...(request.room as object), id: "domain-created-room" } });
 }
 
+test("Browser room writers survive a socket replacement and retire together on leave", async () => {
+  const hosts = new Map(["first", "second"].map(id => [id, {
+    bind: vi.fn(async (_binding: string) => {}),
+    close: vi.fn(async () => {}),
+    summary: () => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false }),
+  }]));
+  const open = vi.fn(async (_database: string, id: string) => hosts.get(id));
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedRoomIds: async () => [...hosts.keys()], openExisting: open,
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  async function bindRooms(connection: ChannelSocket, resuming: boolean) {
+    for (const [id, host] of hosts) {
+      const registration = () => connection.sent.find(command =>
+        command.type === "host_register" && (command.room as { id: string }).id === id);
+      await vi.waitFor(() => expect(registration()).toBeDefined());
+      const bindingId = `${id}-binding`;
+      expect(registration()!.resumeBinding).toBe(resuming ? bindingId : undefined);
+      connection.receive({ type: "host_bound", roomId: id, bindingId });
+      connection.receive({ type: "ack", requestId: registration()!.requestId });
+      expect(host.bind).toHaveBeenLastCalledWith(bindingId);
+    }
+  }
+  const withdrawals = (connection: ChannelSocket) => connection.sent.filter(({ type }) => type === "host_stop" || type === "leave");
+  try {
+    await bindRooms(socket, false);
+    const state = session.getSnapshot().state!;
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    await bindRooms(resumed, true);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(withdrawals(socket)).toEqual([]);
+    expect(withdrawals(resumed)).toEqual([]);
+    for (const host of hosts.values()) expect(host.close).not.toHaveBeenCalled();
+
+    session.close();
+    expect(withdrawals(resumed)).toEqual([{ type: "leave" }]);
+    for (const host of hosts.values()) expect(host.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("fresh Welcome restores only rooms still listed in the channel directory", async () => {
   const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false, hasPassword: false });
   const revoked = "revoked";
@@ -17058,7 +17102,7 @@ test("stopping a borrowed-page replacement before confirmation keeps it retired"
   } finally { session.close(); }
 });
 
-test.each(["catalog", "app-reply"] as const)("a borrowed original page survives a confirmed replacement losing its video (%s)", async failure => {
+test.each(["catalog", "app-reply", "page-closed"] as const)("a confirmed borrowed original page replacement handles %s", async failure => {
   const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   commit.mockRestore();
   const roomId = "first";
@@ -17098,6 +17142,8 @@ test.each(["catalog", "app-reply"] as const)("a borrowed original page survives 
     ] });
 
     let finishSelection!: (succeeds: boolean) => void;
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
     const respond = request.getMockImplementation()!;
     request.mockImplementation(command => command.type === "page_select" && (command as { candidateId?: string }).candidateId === nextId
       ? new Promise((resolve, reject) => {
@@ -17105,16 +17151,34 @@ test.each(["catalog", "app-reply"] as const)("a borrowed original page survives 
           if (succeeds) void respond(command).then(resolve, reject);
           else reject(new Error("page_candidate_unavailable"));
         };
-      }) : respond(command));
+      }) : command.type === "page_read" && (command as { candidateId?: string }).candidateId === nextId
+        ? Promise.resolve({ position: 12, paused: false, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] })
+        : respond(command));
 
     openPicker();
-    const lost = expect(select(nextId)).rejects.toThrow("watch_source_unavailable");
+    const selecting = select(nextId);
+    const lost = failure === "page-closed" ? expect(selecting).rejects.toMatchObject({ name: "AbortError" })
+      : expect(selecting).rejects.toThrow("watch_source_unavailable");
     const failed = await waitForStart(2);
     expect(failed.replaceId).toBe(old.id);
     confirm(failed);
     await vi.waitFor(() => expect(finishSelection).toBeTypeOf("function"));
     snapshot(failed);
+    now += 3000;
     expect(session.getSnapshot().watchPlayers.has(String(old.id))).toBe(false);
+    if (failure === "page-closed") {
+      page.receive({ type: "page_closed", pageId: page.id });
+      const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
+      expect(stop.id).toBe(failed.id);
+      socket.receive({ type: "room_reply", roomId, requestId: stop.requestId, result: { type: "done" } });
+      finishSelection(false);
+      await lost;
+      expect(session.getSnapshot().watchPlayers.has(String(failed.id))).toBe(false);
+      expect(session.watchPage(roomId)).toBeUndefined();
+      expect(dispose).toHaveBeenCalledOnce();
+      expect(socket.sent.filter(command => command.type === "stop_watch")).toHaveLength(1);
+      return;
+    }
     if (failure === "catalog") page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [original] });
     finishSelection(failure === "catalog");
     await lost;
@@ -17122,6 +17186,7 @@ test.each(["catalog", "app-reply"] as const)("a borrowed original page survives 
     const paused = session.getSnapshot().watchPlayers.get(String(failed.id));
     expect(paused?.error).toBe("watch_source_unavailable");
     expect(paused?.mediaState?.paused).toBe(true);
+    expect(paused?.mediaState?.position).toBe((failed.playback as { position: number }).position);
     expect(paused?.mode).toBe("direct");
     expect(paused?.signal.aborted).toBe(false);
     expect(paused?.media.page).toBe(page);

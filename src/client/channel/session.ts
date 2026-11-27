@@ -1112,8 +1112,8 @@ export class ChannelSession {
     return undefined;
   }
 
-  private releaseHosts(stop = false): void {
-    this.hosting.release(stop);
+  private releaseHosts(): void {
+    this.hosting.release();
     const app = this.app;
     this.app = undefined;
     app?.close();
@@ -2623,9 +2623,10 @@ export class ChannelSession {
       catch { /* Session recovery owns disconnection and authority retirement. */ }
     }));
   };
-  private makeWatchPlayer(id: string, roomId: string, owner: boolean, media: WatchMedia): WatchPlayer {
+  private makeWatchPlayer(id: string, roomId: string, owner: boolean, media: WatchMedia,
+    closeWatch = () => owner ? this.stopWatchResource(id, "media-closed") : this.leaveWatchResource(id)): WatchPlayer {
     const player = new WatchPlayer(roomId, owner, media, () => this.patch({}), () => {
-      if (this.watchPlayer(id) === player) void (owner ? this.stopWatchResource(id, "media-closed") : this.leaveWatchResource(id)).catch(() => {});
+      if (this.watchPlayer(id) === player) void closeWatch().catch(() => {});
       else if (this.pendingWatchPlayer(id) === player) this.cancelWatchPage(id);
     });
     return player;
@@ -2931,7 +2932,8 @@ export class ChannelSession {
   private async commitWatch(roomId: string, source: WatchSource, media: WatchMedia, selection: SourceSelection, byteSource?: WatchByteSource, confirmPage?: () => Promise<void>): Promise<void> {
     const current = () => this.stages.get(roomId)?.sourceSelection === selection;
     const id = crypto.randomUUID();
-    const player = this.makeWatchPlayer(id, roomId, true, media);
+    // Closing an App page can finish the selection before the player hears it close.
+    const player = this.makeWatchPlayer(id, roomId, true, media, () => this.stopWatchResource(id, "media-closed", candidate));
     const candidate = { player, stopping: false };
     selection.watchCandidate = candidate;
     let committed = false;
@@ -2966,7 +2968,7 @@ export class ChannelSession {
         if (!replaceId || !selection.borrowed || !(media instanceof AppPageMedia) || this.socket !== startSocket
           || (code !== "page_candidate_unavailable" && code !== "watch_source_unavailable" && player.error !== "watch_source_unavailable")) throw error;
         // The Room already committed this paused activity. Keep the page for another selection.
-        player.sourceUnavailable();
+        player.sourceUnavailable({ ...initial, paused: true });
         sourceUnavailable = true;
       }
       if (!current() || this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
@@ -3113,7 +3115,8 @@ export class ChannelSession {
   }
   stopWatch = (id: string, reportError: ReportError = true): Promise<void> =>
     this.action(`stop:${id}`, () => this.stopWatchResource(id, "stop-requested"), reportError);
-  private async stopWatchResource(id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement"): Promise<void> {
+  private async stopWatchResource(id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement",
+    closingCandidate?: SourceSelection["watchCandidate"]): Promise<void> {
     const player = this.watchPlayer(id);
     if (!player?.owner) {
       if (player || reason !== "stop-requested" || this.view.connection !== "connected") return;
@@ -3121,7 +3124,7 @@ export class ChannelSession {
       if (activity) await this.request({ type: "stop_watch", roomId: activity.roomId, id }, undefined, activity.roomId);
       return;
     }
-    const candidate = this.stages.get(player.roomId)?.sourceSelection?.watchCandidate;
+    const candidate = closingCandidate ?? this.stages.get(player.roomId)?.sourceSelection?.watchCandidate;
     if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
     this.retireWatchPlayer(id, reason);
     this.refreshActivity();
@@ -3786,7 +3789,7 @@ export class ChannelSession {
     this.endRecovery();
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;
-    this.releaseHosts(true);
+    this.releaseHosts();
     this.write({ type: "leave" });
     const socket = this.socket;
     this.socket = null;

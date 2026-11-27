@@ -178,9 +178,8 @@ export class BrowserHosting {
     }
   }
 
-  /** Ends hosting for this session. `stop` first withdraws each bound room, for a session that leaves on a live connection. */
-  release(stop = false): void {
-    if (stop) for (const [roomId, hosted] of this.rooms) if (hosted.bindingId) this.session.write({ type: "host_stop", roomId, bindingId: hosted.bindingId });
+  /** Releases this session's local writers. The channel retires its bindings on leave or expiry. */
+  release(): void {
     const hosts = [...this.rooms.values()];
     this.rooms.clear();
     if (this.failed.size) {

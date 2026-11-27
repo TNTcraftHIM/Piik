@@ -111,9 +111,9 @@ export class WatchPlayer {
     this.error = failure;
     this.changed();
   }
-  sourceUnavailable(): void {
-    if (this.signal.aborted || this.failure === retiredSource) return;
-    const state = this.localState;
+  sourceUnavailable(committedPause?: WatchMediaState): void {
+    if (this.signal.aborted || (!committedPause && this.failure === retiredSource)) return;
+    const state = committedPause ?? this.localState;
     if (state) {
       const elapsed = state.paused || state.ended || this.ownerWaiting ? 0 : (performance.now() - this.observedAt) / 1000 * state.rate;
       this.observe({ ...state, position: Math.min(state.position + elapsed, state.duration ?? Infinity), paused: true, readyState: 0, buffered: [] });
