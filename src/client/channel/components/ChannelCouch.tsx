@@ -39,9 +39,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
 }) {
   const copy = useCopy();
   const { t } = copy;
-  const state = useSyncExternalStore<ReturnType<RoomInteractionSession["getSnapshot"]> | null>(
-    session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot, noSnapshot,
-  );
+  const state = useSyncExternalStore(session?.subscribe ?? noSubscription, session?.getReactionSnapshot ?? noSnapshot, noSnapshot);
   const surfaceDocument = useSurfaceDocument();
   const [container, availableWidth] = useElementWidth();
   const guests = useRef<HTMLDivElement>(null);
@@ -151,7 +149,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
       </div>}
       person={{ peerId: selected.userId, displayName: memberName(selected.userId, selected.name) }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}
-      canSend={state.ready && !state.pending && !state.coolingDown}
+      canSend={state.canSend}
       onSend={(reaction, targetUserId) => session.send({ kind: "reaction", reaction, ...(targetUserId ? { targetPeerId: targetUserId } : {}) })}
       onClose={() => setTarget(null)} />}
     {avatarPreview && previewPerson?.avatar && <ChannelImageDialog src={previewPerson.avatar}
