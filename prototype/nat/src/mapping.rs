@@ -467,32 +467,42 @@ pub struct Replay {
     pub in_bursts: u16,
 }
 
+/// A new mapping of a survey, with how it was sent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Made {
+    /// The group it was sent in: the requests of one group were all sent before any of their
+    /// answers was read.
+    pub group: u32,
+    /// How many requests that group sent, whether or not they were answered.
+    pub sent: u16,
+    pub sample: Sample,
+}
+
 /// Replays a survey: for each new mapping, would the windows aimed from the mappings before it
-/// have held its port? `made` are the new mappings in the order made, each with the number of the
-/// group it was sent in. The mappings of one group were all sent before any of their answers was
-/// read, so a target reads only groups before its own. Only a mapping made alone is judged: one
+/// have held its port? `made` are the new mappings in the order made. A target reads only groups
+/// before its own. Only a mapping made alone is judged: one
 /// of a burst lands behind the others of its burst, which no aim made before the burst could know,
 /// and a NAT takes a burst in the order it arrives. A target with fewer than `least` readable
 /// mappings before it is counted apart, and so is one whose history gives no windows: neither is a
 /// miss, and leaving them out would change what the rest is a share of.
-pub fn replay(made: &[(u32, Sample)], least: usize, holdout: Holdout, budget: Budget) -> Replay {
+pub fn replay(made: &[Made], least: usize, holdout: Holdout, budget: Budget) -> Replay {
     let mut replay = Replay::default();
-    for (group, target) in made {
-        if made.iter().filter(|(other, _)| other == group).count() > 1 {
+    for Made { group, sent, sample: target } in made {
+        if *sent > 1 {
             replay.in_bursts += 1;
             continue;
         }
         let known: Vec<(u32, u16)> = made
             .iter()
-            .filter(|(earlier, sample)| {
-                earlier < group
+            .filter(|earlier| {
+                earlier.group < *group
                     && match holdout {
                         Holdout::Nothing => true,
-                        Holdout::Destination => sample.observer != target.observer,
-                        Holdout::Address => sample.observer.ip() != target.observer.ip(),
+                        Holdout::Destination => earlier.sample.observer != target.observer,
+                        Holdout::Address => earlier.sample.observer.ip() != target.observer.ip(),
                     }
             })
-            .map(|(_, sample)| (sample.sent_ms, sample.mapped.port()))
+            .map(|earlier| (earlier.sample.sent_ms, earlier.sample.mapped.port()))
             .collect();
         let aim = Model { address: *target.mapped.ip(), allocator: Allocator::of(&known) }.aim(target.sent_ms, budget);
         let outcome = match aim {
@@ -979,11 +989,12 @@ mod tests {
         let observer = |index: u8| SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1 + index / 2), 3478 + u16::from(index % 2));
         let sample = |index: u32, observer: SocketAddrV4, port: u16| Sample { socket: index as u16, local_port: 50_000, observer, sent_ms: index * 100, mapped: SocketAddrV4::new(WAN, port) };
         // One counter read eight times, one group each, toward four destinations on two addresses.
-        let mut made: Vec<(u32, Sample)> = (0..8).map(|index| (index, sample(index, observer(index as u8 % 4), 40_000 + index as u16))).collect();
+        let alone = |group: u32, sample: Sample| Made { group, sent: 1, sample };
+        let mut made: Vec<Made> = (0..8).map(|index| alone(index, sample(index, observer(index as u8 % 4), 40_000 + index as u16))).collect();
         // The first eight have too little before them; none is a miss.
         assert_eq!(replay(&made, 8, Holdout::Nothing, BUDGET), Replay { too_early: 8, ..Replay::default() });
         // A ninth is held by the aim from the eight, whichever of them the aim may read.
-        made.push((8, sample(8, observer(0), 40_008)));
+        made.push(alone(8, sample(8, observer(0), 40_008)));
         assert_eq!(replay(&made, 8, Holdout::Nothing, BUDGET), Replay { held: 1, too_early: 8, ..Replay::default() });
         // Asked for four before it, more are judged, and none is missed whichever the aim may read:
         // toward other destinations, or toward other addresses, which leaves fewer.
@@ -997,11 +1008,14 @@ mod tests {
         // Four mappings sent as one group are not judged: each lands behind the others of its
         // group, which nothing made before the group could tell. Given a group each, the first
         // lands on a counter nothing showed and is missed, and the window past it holds the rest.
-        let mut burst: Vec<(u32, Sample)> = made[..8].to_vec();
-        burst.extend((8..12).map(|index| (8, sample(index, observer(index as u8 % 4), 45_000 + index as u16))));
+        let mut burst: Vec<Made> = made[..8].to_vec();
+        burst.extend((8..12).map(|index| Made { group: 8, sent: 4, sample: sample(index, observer(index as u8 % 4), 45_000 + index as u16) }));
         assert_eq!(replay(&burst, 8, Holdout::Nothing, BUDGET), Replay { in_bursts: 4, too_early: 8, ..Replay::default() });
-        let apart: Vec<(u32, Sample)> = burst.iter().enumerate().map(|(index, (_, sample))| (index as u32, *sample)).collect();
+        let apart: Vec<Made> = burst.iter().enumerate().map(|(index, made)| alone(index as u32, made.sample)).collect();
         assert_eq!(replay(&apart, 8, Holdout::Nothing, BUDGET), Replay { held: 3, missed: 1, too_early: 8, ..Replay::default() });
+        // The one answer of a group that sent two is still a mapping made in a burst.
+        let survivor: Vec<Made> = made[..8].iter().copied().chain([Made { group: 8, sent: 2, sample: sample(8, observer(0), 40_009) }]).collect();
+        assert_eq!(replay(&survivor, 8, Holdout::Nothing, BUDGET), Replay { in_bursts: 1, too_early: 8, ..Replay::default() });
     }
 
     #[test]

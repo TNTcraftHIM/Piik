@@ -7,7 +7,7 @@
 //! Where new mappings follow cursors it also tries the two things a pair of such networks needs,
 //! with an observer standing in for the peer, because the observer says where the mapping really
 //! landed: finding a mapping after it was made, and taking the ports next past a reading.
-use piik_nat::mapping::{located, measured, replay, walk, Allocator, Budget, Cursor, Holdout, Model, PortSet, Sample};
+use piik_nat::mapping::{located, measured, replay, walk, Allocator, Budget, Cursor, Holdout, Made, Model, PortSet, Sample};
 use piik_nat::stun;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
@@ -49,9 +49,10 @@ const CLIMB_SOCKETS: usize = 8;
 struct Survey {
     started: Instant,
     samples: Vec<Sample>,
-    /// For each sample, the group it was sent in. The requests of one group were all sent before
-    /// any of their answers was read, so none of them knew another's answer.
-    groups: Vec<u32>,
+    /// For each sample, the group it was sent in and how many requests that group sent. The
+    /// requests of one group were all sent before any of their answers was read, so none of them
+    /// knew another's answer.
+    groups: Vec<(u32, u16)>,
     /// Requests that left and got no answer; their mappings were made all the same.
     unanswered: u32,
     /// Requests that could not be sent: no socket, or the send failed. No mapping was made.
@@ -75,13 +76,13 @@ impl Survey {
             self.unanswered += 1;
             return None;
         };
-        self.record(&[Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped }]);
+        self.record(&[Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped }], 1);
         Some(mapped)
     }
-    /// Records the answers of one group of requests.
-    fn record(&mut self, answers: &[Sample]) {
-        let group = self.groups.last().map_or(0, |last| last + 1);
-        self.groups.extend(answers.iter().map(|_| group));
+    /// Records the answers of one group of `sent` requests.
+    fn record(&mut self, answers: &[Sample], sent: u16) {
+        let group = self.groups.last().map_or(0, |(last, _)| last + 1);
+        self.groups.extend(answers.iter().map(|_| (group, sent)));
         self.samples.extend(answers);
     }
     fn socket(&mut self) -> Option<(UdpSocket, u16)> {
@@ -118,7 +119,7 @@ impl Survey {
             .collect();
         self.unsent += left.iter().filter(|left| !**left).count() as u32;
         self.unanswered += answers.iter().zip(&left).filter(|(answer, left)| **left && answer.is_none()).count() as u32;
-        self.record(&answers.iter().flatten().copied().collect::<Vec<_>>());
+        self.record(&answers.iter().flatten().copied().collect::<Vec<_>>(), left.iter().filter(|left| **left).count() as u16);
         answers
     }
     /// The new mappings seen on `address` so far, in the order they were made.
@@ -241,9 +242,15 @@ fn allocations_on(samples: &[Sample], address: &Ipv4Addr) -> Vec<(u32, u16)> {
 }
 
 /// The new mappings on one public address, each with the group it was sent in.
-fn grouped(survey: &Survey, address: &Ipv4Addr) -> Vec<(u32, Sample)> {
+fn grouped(survey: &Survey, address: &Ipv4Addr) -> Vec<Made> {
     let made = made_on(&survey.samples, address);
-    survey.samples.iter().zip(&survey.groups).filter(|(sample, _)| made.iter().any(|made| std::ptr::eq(*made, *sample))).map(|(sample, group)| (*group, *sample)).collect()
+    survey
+        .samples
+        .iter()
+        .zip(&survey.groups)
+        .filter(|(sample, _)| made.iter().any(|made| std::ptr::eq(*made, *sample)))
+        .map(|(sample, &(group, sent))| Made { group, sent, sample: *sample })
+        .collect()
 }
 
 /// The address this machine would send from toward `target`; no packet is sent to learn it.
