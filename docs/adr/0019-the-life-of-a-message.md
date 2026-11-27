@@ -37,10 +37,12 @@ signed, so a change to a row breaks no signature.
    reactions must never hide an earlier change of text.
 5. **Search is not built.** Nothing in a release depends on it. A page of
    history carries each message's pictures with its text, so a reader cannot
-   search a long history cheaply through the read that exists. When search is
-   wanted, the reader matches text over a read that leaves the pictures out,
-   which keeps the words a person searches for on that person's device; or a
-   participant program offers it to a room that admits one.
+   search a long history cheaply through the read as it is. When search is
+   wanted, the one read serves it: its request names the optional parts of a
+   message it wants, pictures among them, and the fixed part (author, time,
+   text, file descriptions) always comes. The reader matches the text, so the
+   words a person searches for stay on that person's device. A participant
+   program can also offer search to a room that admits one.
 6. **Edit is a capability** a writer announces, under the compatibility rule
    of [ADR-0017](./0017-contracts-fixed-before-release.md), so it can ship
    after the first release. Its fields and events are set with the feature.
