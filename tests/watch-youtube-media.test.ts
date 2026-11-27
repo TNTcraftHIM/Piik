@@ -188,3 +188,15 @@ test('closing between SDK resolution and mount does not create a player', async 
   await mounting;
   expect(players).toHaveLength(0);
 });
+
+test('a receiver pauses a provider that first reports playing after the stage hides', async () => {
+  const { media, mount } = await setup(false, undefined, true);
+  try {
+    await mount();
+    const player = players[0];
+    player.fire("onReady");
+    media.presentation.setVisible(false);
+    player.playVideo();
+    expect((await media.read()).paused).toBe(true);
+  } finally { media.close(); }
+});
