@@ -41,7 +41,7 @@ If you can enter the room and chat but media or files cannot connect, use the [n
    running, copy its displayed address into your browser.
 2. If Local mode lists several addresses, choose the adapter and IP that friends
    can reach. See [Local invitation checks](#local-invitation-will-not-open).
-3. If startup still fails, enable **Help → Debug** on the App launcher, retry and save the complete
+3. If startup still fails, enable **More options → Debug** on the App launcher, retry and save the complete
    error and an [App report](#reporting-a-problem).
 
 If startup opens an expired temporary site address, return to the App launcher,
@@ -99,7 +99,7 @@ connecting` or `exit status 1`, read the following error details to choose a che
    after the App restarts; the old address may no longer work.
 2. **On the computer running the site, read the failure details.** Check that the complete App package was
    extracted. Save the full error from the launch page or terminal, including
-   any detail after the exit code, then enable **Help → Debug** on the launcher and try again.
+   any detail after the exit code, then enable **More options → Debug** on the launcher and try again.
 3. **Compare networks.** Try a phone hotspot. Check whether DNS, a proxy or a
    firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the
    administrator about a school or workplace network.
@@ -588,8 +588,8 @@ Include the Piik version, OS/browser, time, expected result and reproduction ste
 For capture problems, add the source type, codec, GPU/driver and whether another
 source or VP8 works. For network problems, add the network type.
 
-- **Web:** open **Help** in the header and enable **Debug**. This reloads the page and interrupts current activities. Reproduce once, then return to **Help → Web report** before another refresh.
-- **App capture, hosting or remote control:** enable **Help → Debug** on the local App launcher before reproducing. Return there and select **Help → App report**. On narrow screens, use **More options** to find these controls.
+- **Web:** select **More options → Debug** in the header. This reloads the page and interrupts current activities. Reproduce once, then select **More options → Web report** before another refresh.
+- **App capture, hosting or remote control:** enable **More options → Debug** on the local App launcher before reproducing. Return there and select **More options → App report**.
 - **Room or connection failure:** include the room host's report and the affected participant's report from the same attempt. For Server-hosted rooms, ask its operator for the corresponding service error.
 
 Reports stay on your device. Review private information before sharing them;
