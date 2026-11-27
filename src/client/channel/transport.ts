@@ -159,7 +159,8 @@ export class ChannelTransport {
           if (this.input) options.input?.(this.input);
           else this.reopenInput();
         }
-        options.dataState?.(this.rooms.size > 0 && !this.dataLifetime.signal.aborted);
+        if (!this.rooms.size || this.dataLifetime.signal.aborted) options.dataState?.(false);
+        else this.reportFileDataReady();
         options.connected();
         this.reportRoomDataReady();
         this.syncDeadline();
@@ -280,6 +281,14 @@ export class ChannelTransport {
       && this.channel?.readyState === "open" && this.pc.connectionState === "connected";
   }
 
+  isFileDataReady(roomId?: string): boolean {
+    return (roomId === undefined || this.rooms.has(roomId)) && this.isRoomDataReady() && this.bulk?.readyState === "open";
+  }
+
+  private reportFileDataReady(): void {
+    if (this.isFileDataReady()) this.options.dataState?.(true);
+  }
+
   private ensureBulkChannel(): void {
     if (!this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
   }
@@ -300,7 +309,12 @@ export class ChannelTransport {
     const writer = this.writer(kind);
     writer.install(channel);
     const current = () => !this.closed && (bulk ? this.bulk : this.channel) === channel;
-    channel.onopen = () => { if (current()) { this.reportRoomDataReady(); this.syncDeadline(); } };
+    channel.onopen = () => {
+      if (!current()) return;
+      this.reportRoomDataReady();
+      this.reportFileDataReady();
+      this.syncDeadline();
+    };
     const failed = () => {
       if (!current()) return;
       writer.close();

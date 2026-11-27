@@ -306,6 +306,10 @@ export class ChannelMedia {
     }
   }
 
+  fileDataReady(peerId: string, roomId: string): boolean {
+    return [...this.peerRuntimes()].some(peer => peer.plan.peerId === peerId && peer.transport.isFileDataReady(roomId));
+  }
+
   sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean, request?: string): Promise<void> {
     const peer = [...this.peerRuntimes()].find(peer => peer.plan.peerId === peerId && peer.plan.rooms.length);
     if (!peer) return Promise.reject(new Error("peer_data_unavailable"));

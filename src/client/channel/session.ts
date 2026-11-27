@@ -293,7 +293,8 @@ export class ChannelSession {
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed, request),
     key => messageRemoved(this.histories.get(key.roomId)?.changes, key.messageSeq),
     (peer, request) => this.media.cancelChunks(peer, request), () => this.conversation.fileAvailabilityLimit(),
-    key => this.histories.get(key.roomId)?.messages?.find(message => message.seq === key.messageSeq));
+    key => this.histories.get(key.roomId)?.messages?.find(message => message.seq === key.messageSeq),
+    (peer, roomId) => this.media.fileDataReady(peer, roomId));
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };

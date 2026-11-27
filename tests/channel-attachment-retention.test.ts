@@ -36,12 +36,13 @@ test("retention cancels the source when permission is withdrawn while reading", 
   expect(result).toEqual({ file: null, evicted: [] });
 });
 
-function setup(command = async (_command: ChannelCommand) => {}, confirmedMessage?: () => ChannelMessage | undefined) {
+function setup(command = async (_command: ChannelCommand) => {}, confirmedMessage?: () => ChannelMessage | undefined,
+  fileDataReady?: (peer: string, roomId: string) => boolean) {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
-  const files = new ChannelAttachments(command, async () => {}, undefined, undefined, () => 2, confirmedMessage);
+  const files = new ChannelAttachments(command, async () => {}, undefined, undefined, () => 2, confirmedMessage, fileDataReady);
   files.update("endpoint", { domainId: "domain", userId: "self" }, [],
     [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
   return files;
@@ -860,7 +861,8 @@ test("cancel while waiting for a source permits retry before the old receive com
 });
 
 test.each(["cancel", "revoke", "identity switch"])("shared file progress survives leaving the view and a retired writer cannot affect a retry after %s", async retirement => {
-  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const openPeers = new Set(["source"]);
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command, undefined, peer => openPeers.has(peer));
   const file = new File(["GIF89a"], attachment.name);
   const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
   let finishWrite!: () => void;
@@ -915,21 +917,17 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
     expect(files.progress(key)).toMatchObject({ received: 3, state: "waiting-source" });
     const alternate = { ...plan, sourceId: "alternate", upstream: "alternate" };
     files.update("endpoint", scope, [alternate], [{ ...room, reading: true }, { ...otherRoom, reading: false }], []);
-    expect(files.progress(key)).toMatchObject({ received: 3, state: "waiting" });
-    files.peerState("alternate", false);
     expect(files.progress(key)).toMatchObject({ received: 3, state: "connecting" });
     const queuedWrite = finishWrite;
     queuedWrite();
     await vi.waitFor(() => expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" }));
     // The newly selected upstream may already have an open room connection.
-    files.peerState("source", true);
     files.update("endpoint", scope, [plan], [room], []);
     expect(files.progress(key)).toMatchObject({ received: 4, state: "waiting" });
     files.update("endpoint", scope, [alternate], [room], []);
-    files.peerState("alternate", false);
-    expect(files.progress(key)?.state).toBe("connecting");
-    files.peerState("alternate", true);
-    expect(files.progress(key)).toMatchObject({ received: 4, state: "waiting" });
+    expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" });
+    files.peerState("source", true);
+    expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" });
     files.data("alternate", "control", "resumed-write");
     await vi.waitFor(() => expect(finishWrite).not.toBe(queuedWrite));
     const resumedWrite = finishWrite;
@@ -940,6 +938,9 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
     files.update("endpoint", scope, [{ ...alternate, upstream: null }], [room], []);
     expect(files.progress(key)).toMatchObject({ received: 5, state: "connecting" });
     files.update("endpoint", scope, [alternate], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 5, state: "connecting" });
+    openPeers.add("alternate");
+    files.peerState("alternate", true);
     expect(files.progress(key)).toMatchObject({ received: 5, state: "waiting" });
     files.data("alternate", "control", "old-write");
     await vi.waitFor(() => expect(finishWrite).not.toBe(resumedWrite));

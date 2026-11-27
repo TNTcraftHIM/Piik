@@ -10188,6 +10188,48 @@ test("a remote data channel cannot report connectivity and a retired socket cann
   } finally { session.close(); }
 });
 
+test("file progress waits for both channels on the selected peer's room lease", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = await setup();
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    ...await hosting.loadRoomHosting(),
+    FileDelivery: class { start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {} },
+  } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  stubTransferStorage({
+    getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    removeEntry: async () => {},
+  });
+  const state = structuredClone(session.getSnapshot().state!);
+  const peer = "z", authorId = crypto.randomUUID(), attachmentId = crypto.randomUUID();
+  const attachment = { id: attachmentId, name: "example.bin", size: 3, mediaType: "application/octet-stream" as const, sha256: "0".repeat(64) };
+  const keys = ["first", "second"].map(roomId => ({ roomId, messageSeq: 1, attachmentId }));
+  state.pairs = [{ id: "pair", peerId: peer, canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
+  state.files = keys.map(key => ({ ...key, attachment, authorId, sourceId: peer, upstream: peer, downstream: [], receiving: true }));
+  socket.receive({ type: "state", state });
+  const [pc] = RoomPeerConnection.instances;
+  const [control, bulk] = pc.channels;
+  const abort = new AbortController();
+  const reads = keys.map(key => session.attachments.content(key, attachment, abort.signal).catch(error => error));
+  const progress = () => keys.map(key => session.attachments.progress(key)?.state);
+  const roomReady = () => socket.sent.filter(command => command.type === "room_data_state" && command.ready);
+  try {
+    await vi.waitFor(() => expect(progress()).toEqual(["connecting", "connecting"]));
+    pc.connected();
+    expect(progress()).toEqual(["connecting", "connecting"]);
+    control.open();
+    expect(progress()).toEqual(["connecting", "connecting"]);
+    expect(roomReady()).toEqual([{ type: "room_data_state", pairId: "pair", roomId: "first", ready: true }]);
+    bulk.open();
+    expect(progress()).toEqual(["waiting", "connecting"]);
+    expect(roomReady()).toHaveLength(1);
+    state.pairs[0].rooms.push("second");
+    socket.receive({ type: "state", state });
+    expect(progress()).toEqual(["waiting", "waiting"]);
+  } finally { abort.abort(); await Promise.all(reads); session.close(); }
+});
+
 test("physical data channels can precede room leases without admitting retired work", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const roomData = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
