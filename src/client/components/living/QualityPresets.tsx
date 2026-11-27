@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
+import { MAX_AUDIO_SEND_BITRATE, MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, DEGRADATION_PREFERENCE_KEYS, qualityResolutionEqual,
   captureFramerateCeiling, supportsCaptureProfile, MIN_VIDEO_FRAMERATE, MIN_VIDEO_BITRATE,
@@ -266,9 +266,8 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
   </div>;
 }
 
-export function AudioBitrateControl({ value, max, disabled, onChange, purpose = "screen" }: {
+export function AudioBitrateControl({ value, disabled, onChange, purpose = "screen" }: {
   value: number;
-  max: number;
   disabled: boolean;
   onChange: (bitrate: number) => void;
   purpose?: "screen" | "voice";
@@ -277,20 +276,20 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
   const title = purpose === "voice" ? "voice.bitrate" : "host.advanced.audio";
   const presets = purpose === "voice" ? { saver: 32_000, music: 64_000, "very-high": 96_000 } : SCREEN_AUDIO_BITRATES;
   const captions = purpose === "voice" ? VOICE_QUALITY_CAPTIONS : AUDIO_QUALITY_CAPTIONS;
-  return <NumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
+  return <NumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={MAX_AUDIO_SEND_BITRATE / 1_000} step={1}
     name="audioBitrate" unit="kbps" label={t(purpose === "voice" ? "voice.bitrate" : "host.advanced.audioBitrate")} className="lr-door-group lr-audio-quality"
     disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
     {(input, select) => <>
       <div className="lr-quality-heading">
         <span className="lr-door-glyph"><Glyph name={purpose === "voice" ? "microphone" : "speaker"} size={19} /><Cap k={title} /></span>
         <Tooltip kind="hint-audio-quality" text={t(purpose === "voice" ? "voice.bitrateHint" : "host.audio.bitrateHint", {
-          min: String(MIN_AUDIO_BITRATE / 1_000), max: String(max / 1_000),
+          min: String(MIN_AUDIO_BITRATE / 1_000), max: String(MAX_AUDIO_SEND_BITRATE / 1_000),
         })}>{input}</Tooltip>
       </div>
       <div className="lr-row-group" role="group" aria-label={t(title)}>
         {(Object.keys(SCREEN_AUDIO_BITRATES) as ScreenAudioPreset[]).map(preset => {
           const bitrate = presets[preset];
-          return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > max}
+          return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > MAX_AUDIO_SEND_BITRATE}
             title={t("host.audio.title", { label: t(captions[preset]), kbps: String(bitrate / 1_000) })}
             hint="hint-audio-quality" onClick={() => select(bitrate / 1_000)}>
             <Cap k={captions[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>

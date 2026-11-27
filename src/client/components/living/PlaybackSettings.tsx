@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from "react";
 import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
+import { SCREEN_BUFFER_TARGET_MAX_MS } from "../../media/viewer-playback";
 import type { RoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -125,7 +126,7 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
       <RowGroup><SwitchItem checked={buffering.target !== null} onChange={enabled => buffering.onChange(enabled ? INITIAL_PLAYBACK_BUFFER_TARGET_MS : null)}
         disabled={buffering.status === "unsupported" && buffering.target === null}
          label={t("playback.increaseBuffer")} /></RowGroup>
-      {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={4000} step={1} unit="ms"
+      {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={SCREEN_BUFFER_TARGET_MAX_MS} step={1} unit="ms"
         name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
         onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
           <FieldCap k="playback.bufferTarget" />

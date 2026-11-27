@@ -14,7 +14,7 @@ import { useCopy } from "../../ui/copy";
 import { SharingSettings } from "../../components/living/SharingSettings";
 import { AudioBitrateControl, QualityPresets, PicturePreferenceControl, PictureSettingsSummary, ResolutionControl, VideoRateControls, VideoCodecControl, EncodingExecutionControl } from "../../components/living/QualityPresets";
 import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophoneSettings";
-import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
+import { QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
 import type { NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
@@ -368,7 +368,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             onVolume={volume => { void channel.setSourceMicrophone(sharing.id, { volume }).catch(() => {}); }}
             onDevice={deviceId => { void channel.setSourceMicrophone(sharing.id, { deviceId }).catch(() => {}); }}
             onVoiceProcessing={voiceProcessing => { void channel.setSourceMicrophone(sharing.id, { voiceProcessing }).catch(() => {}); }} />}
-          <AudioBitrateControl value={sourceAudio?.bitrate ?? quality.maxAudioBitrate ?? 128_000} max={MAX_AUDIO_SEND_BITRATE}
+          <AudioBitrateControl value={sourceAudio?.bitrate ?? quality.maxAudioBitrate ?? 128_000}
           disabled={busy || qualityPending}
           onChange={bitrate => {
             if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});

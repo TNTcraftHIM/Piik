@@ -71,7 +71,8 @@ pub(crate) fn default_relay_capacity() -> u8 {
     2
 }
 
-pub(crate) fn valid_audio_bitrate(bitrate: u32) -> bool {
+/// Current Opus send range for room voice and screen source audio.
+pub fn supports_audio_send_bitrate(bitrate: u32) -> bool {
     (6_000..=320_000).contains(&bitrate)
 }
 
@@ -102,7 +103,7 @@ impl RoomState {
         self.appearance.validate()?;
         if !crate::wire::valid_id(&self.id)
             || !(1..=MAX_RELAY_CAPACITY).contains(&self.relay_capacity)
-            || !valid_audio_bitrate(self.voice_bitrate)
+            || !supports_audio_send_bitrate(self.voice_bitrate)
             || self.creator_id.is_nil()
             || crate::wire::title(&self.name).as_deref() != Some(self.name.as_str())
             || self.grants.iter().any(Uuid::is_nil)

@@ -1,3 +1,5 @@
+export const SCREEN_BUFFER_TARGET_MAX_MS = 4_000;
+
 export type ScreenPlaybackError = 3 | 4;
 
 export function elementPlaybackError(error: MediaError | null): ScreenPlaybackError | undefined {

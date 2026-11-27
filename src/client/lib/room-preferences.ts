@@ -3,6 +3,7 @@ import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 import { feedbackClipSchema } from "../channel/feedback-clip";
 import { voiceShortcutBindingSchema } from "../channel/voice-shortcut-binding";
+import { SCREEN_BUFFER_TARGET_MAX_MS } from "../media/viewer-playback";
 import { microphoneModes, SPEAKING_LEVEL_DBFS, VOICE_ACTIVATION_RANGE_DBFS } from "../media/voice-gate";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
@@ -21,7 +22,7 @@ const roomPreferencesSchema = z.object({
   }).default({ enabled: false, volume: 1 }),
   roomListFolded: z.boolean().catch(false).default(false),
   roomLayout: roomLayoutSchema.optional(),
-  screenBufferTargetMs: z.number().min(0).max(4000).nullable().default(null),
+  screenBufferTargetMs: z.number().min(0).max(SCREEN_BUFFER_TARGET_MAX_MS).nullable().default(null),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),

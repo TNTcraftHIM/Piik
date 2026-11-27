@@ -41,7 +41,7 @@ import { VoiceParticipation } from "./voice-participation";
 import { browserDebugEnabled, debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
 import { HostAudio } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenContentHint, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
-import type { ScreenPlaybackError } from "../media/viewer-playback";
+import { SCREEN_BUFFER_TARGET_MAX_MS, type ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
@@ -299,7 +299,7 @@ export class ChannelSession {
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   stats = () => this.media.stats();
   setScreenBufferTarget = (target: number | null): void => {
-    if (target !== null && (!Number.isFinite(target) || target < 0 || target > 4000)) return;
+    if (target !== null && (!Number.isFinite(target) || target < 0 || target > SCREEN_BUFFER_TARGET_MAX_MS)) return;
     saveRoomPreferences({ screenBufferTargetMs: target });
     this.patch({ screenBufferTargetMs: target });
     this.media.setScreenBufferTarget(target);

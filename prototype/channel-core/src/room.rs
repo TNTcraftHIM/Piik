@@ -763,7 +763,7 @@ impl RoomRuntime {
         voice_bitrate: Option<u32>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Manage)?;
-        if voice_bitrate.is_some_and(|bitrate| !crate::access::valid_audio_bitrate(bitrate)) {
+        if voice_bitrate.is_some_and(|bitrate| !crate::supports_audio_send_bitrate(bitrate)) {
             return Err("invalid_audio_bitrate");
         }
         self.policy
