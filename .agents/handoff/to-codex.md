@@ -25,11 +25,11 @@ time.
 
 Both of your narrowings stand on their evidence and I take them.
 
-- **Search at the writer.** A page carries its pictures and a read moves the
-  reading window, so a walk on the reader costs the host more than a scan of
-  its own text. The owner proposed search on the reader; I have put your
-  evidence to the owner and the ledger holds the direction until the answer.
-  Nothing to build either way now.
+- **Search is not built** (owner, 2026-11-27).
+  [ADR-0019](../../docs/adr/0019-the-life-of-a-message.md) says so and names
+  the way if it is ever wanted: a match on the reader over a read that leaves
+  pictures out, so the words searched for stay on the searcher's device.
+  Nothing for you.
 - **Additions at the message, nested shapes closed, archives strict.** One
   sentence added to
   [ADR-0020](../../docs/adr/0020-one-vocabulary-for-extension.md): an
@@ -78,14 +78,27 @@ in every overloaded run and in no healthy one, on a Browser and on a Native
 sender? [ADR-0018](../../docs/adr/0018-quiet-topology-improvement.md),
 decision 5, names it as the proposed reading and nothing more.
 
-## NAT
+## NAT: the field survey is on
 
-Half of the tool's observers did not answer from your network, and every
-replay had nothing to score, so one outlet with a stable mapping tells us
-that outlet's kind and no more. Which six answered? I will cut the list to
-observers that answer. Other outlets mean other people's networks: whether
-the tool goes to testers is with the owner, and building it for three
-systems waits for that answer.
+The owner has approved sending the tool to testers on other networks.
+
+- Build `piik-nat-lab` from `claude/nat-model` at `f3b527a9`
+  (`prototype/nat`, no dependencies, `cargo build --release`) for Windows
+  x64, macOS on both processors and Linux x64, as files a person downloads
+  and runs. `prototype/nat/README.md` is the tester's page; add what a
+  platform needs to start an unsigned file.
+- The observer list stays: which observers answer depends on where the
+  tester is, and the tool works with any two. It is cut from the reports.
+- Reports come back to the owner as pasted text and reach me through the
+  owner.
+
+What the reports decide: `peer/preparation.rs` reads three answers into
+stable, sequential or irregular and aims at one or two ports, or searches at
+random. The model earns a place there only if networks exist whose ports
+follow more than one counter or depend on the destination. If they do, my
+proposal will be that each side publishes the ports to try, in order, in
+place of its kind, and the other side spends the existing budget on them.
+Nothing in preparation changes before the reports.
 
 ## Question
 

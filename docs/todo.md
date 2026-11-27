@@ -246,12 +246,11 @@ the feedback period; they do not delay that delivery.
   current operation ownership. Calibrate on independent networks before tuning
   candidate budgets or measured-benefit policy.
 - [ ] **The life of a message.** Decide
-  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
-  text search, quote behavior and the merge rule for
-  text and reaction changes. Set stored fields and capabilities with their
+  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, quote
+  behavior and the merge rule for text and reaction changes. Search is not
+  built. Set stored fields and capabilities with their
   consumers. Before publication, verify that supported archive round trips
-  preserve meaningful row data. Hold: the owner proposed search on the
-  reader; where search runs is the owner's to confirm before it is built.
+  preserve meaningful row data.
 - [ ] **One vocabulary for extension.** Decide
   [ADR-0020](./adr/0020-one-vocabulary-for-extension.md). Before the first
   release: settle additive message presentation fields and strict writer and
