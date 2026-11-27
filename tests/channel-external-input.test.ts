@@ -70,6 +70,23 @@ test.each(["waiting", "closed"] as const)("OBS %s retires its preparation withou
   } finally { app.close(); }
 });
 
+test("an unknown commit outcome leaves the capture unconfirmed", async () => {
+  const { app, socket } = await setup();
+  try {
+    const publicationId = crypto.randomUUID();
+    await arm(app, socket, publicationId);
+    const captureId = prepared(socket, publicationId);
+    const commit = app.commitCapture(publicationId, captureId);
+    socket.reply({ type: "deferred" });
+    await expect(commit).rejects.toThrow("invalid_app_response");
+    expect(app.hasCapture(publicationId)).toBe(false);
+    const cancel = app.cancelCapture(publicationId);
+    expect(socket.sent.at(-1)?.type).toBe("cancel_external_input");
+    socket.reply(null);
+    await cancel;
+  } finally { app.close(); }
+});
+
 test("retiring OBS permission preserves a replacement Native capture preparation", async () => {
   const { app, socket } = await setup();
   try {

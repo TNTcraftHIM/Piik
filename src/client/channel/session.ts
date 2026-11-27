@@ -1573,7 +1573,7 @@ export class ChannelSession {
       if (app) {
         if (this.app !== app || !app.connected) throw new Error("app_disconnected");
         creation = "dispatched";
-        const opened = await app.open(policy);
+        const opened = await app.open(policy, room.id);
         creation = "committed";
         current();
         await this.request({ type: "browse", roomId: opened.id, active: true });

@@ -655,6 +655,21 @@ test("hiding and refocusing a source page preserves its requests and lifetime", 
 });
 
 
+test("opening a Native room confirms the reserved room summary", async () => {
+  const { app, socket } = await setup();
+  const room = { id: "room", creatorId: "user", icon: "couch", name: "Room", access: "private",
+    hidden: false, hasPassword: false, voiceBitrate: 64000, relayCapacity: 1 };
+  try {
+    for (const result of [{ id: room.id }, { ...room, id: "other" }, room]) {
+      const opening = app.open(JSON.stringify(room), room.id);
+      await Promise.resolve();
+      socket.reply(result);
+      if (result === room) await expect(opening).resolves.toEqual(room);
+      else await expect(opening).rejects.toThrow("invalid_app_response");
+    }
+  } finally { app.close(); }
+});
+
 test.each(["incompatible_protocol", "admission failed: incompatible_protocol"])("Native hello rejection %s retires App control and preserves upgrade guidance", async error => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();
@@ -671,6 +686,7 @@ test.each(["incompatible_protocol", "admission failed: incompatible_protocol"])(
 test.each([
   { name: "no outcome", reply: {} },
   { name: "both outcomes", reply: { result: null, error: "app_failed" } },
+  { name: "non-null acknowledgement", reply: { result: { type: "deferred" } } },
   { name: "empty error", reply: { error: "" } },
   { name: "non-string error", reply: { error: 42 } },
   { name: "stray type", reply: { type: "unexpected", result: null } },
