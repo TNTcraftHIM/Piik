@@ -11,8 +11,7 @@ pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum Command {
     Join {
@@ -441,7 +440,7 @@ pub enum Kind {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct PublicationInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<ScreenSource>,
@@ -453,14 +452,14 @@ pub struct PublicationInput {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoResolution {
     pub width: u32,
     pub height: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoCeiling {
     pub resolution: VideoResolution,
     pub max_framerate: f64,
@@ -476,7 +475,7 @@ pub enum DegradationPreference {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoSettings {
     pub ceiling: VideoCeiling,
     pub degradation_preference: DegradationPreference,
@@ -585,7 +584,10 @@ fn video_settings_preserves_fractional_fps_and_rejects_invalid_source_facts() {
         .unwrap()
         .remove("degradationPreference");
     assert!(serde_json::from_value::<VideoSettings>(aggregate).is_err());
-    assert!(serde_json::from_value::<PublicationInput>(serde_json::json!({"id":Uuid::new_v4(),"roomId":"room","kind":"screen","videoCeiling":valid})).is_err());
+    let publication: PublicationInput = serde_json::from_value(serde_json::json!({
+        "id": Uuid::new_v4(), "roomId": "room", "kind": "screen", "videoCeiling": valid
+    })).unwrap();
+    assert!(publication.video_settings.is_none());
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -597,7 +599,7 @@ pub enum LinkState {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Signal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub udp: Option<UdpSignal>,
@@ -673,7 +675,7 @@ pub enum UdpPreparation {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum UdpSignal {
     Offer {
         secret: [u8; 32],
@@ -688,7 +690,7 @@ pub enum UdpSignal {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum UdpObservation {
     Stable {
         address: std::net::Ipv4Addr,
@@ -747,7 +749,6 @@ impl UdpObservation {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct Description {
     #[serde(rename = "type")]
     pub kind: String,
@@ -756,7 +757,7 @@ pub struct Description {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Candidate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<CandidateOrigin>,
@@ -777,7 +778,7 @@ pub enum CandidateOrigin {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Track {
     pub flow_id: Uuid,
     pub stream_id: String,
@@ -1278,7 +1279,7 @@ pub struct ScreenInfo {
     pub title: Option<String>,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ScreenSource {
     pub kind: ScreenSourceKind,
     pub name: Option<String>,
@@ -1292,7 +1293,7 @@ pub enum ScreenSourceKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchPlayback {
     pub timeline: WatchTimeline,
     pub position: f64,
@@ -1342,13 +1343,13 @@ pub enum WatchMode {
     Peer,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchSubscription {
     pub id: Uuid,
     pub mode: WatchMode,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase")]
 pub enum ByteBranchTarget {
     File { message_seq: u64, attachment_id: Uuid, source_id: Uuid },
     Watch { activity_id: Uuid, source: WatchByteSource },
@@ -1362,7 +1363,7 @@ pub enum WatchFormat {
     Dash,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchByteSource {
     pub session_id: Uuid,
     pub resource_id: Uuid,
@@ -1394,7 +1395,7 @@ fn watch_formats_keep_the_opaque_source_contract() {
         );
         let mut expanded = wire;
         expanded["url"] = serde_json::json!("https://owned.test/private");
-        assert!(serde_json::from_value::<WatchByteSource>(expanded).is_err());
+        assert_eq!(serde_json::from_value::<WatchByteSource>(expanded).unwrap(), source);
     }
     assert!(serde_json::from_str::<WatchFormat>("\"future\"").is_err());
 }
@@ -1402,8 +1403,7 @@ fn watch_formats_keep_the_opaque_source_contract() {
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum WatchSource {
     Media {

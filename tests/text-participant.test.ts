@@ -41,7 +41,9 @@ test('Node text conversation ignores unrelated media descriptions and retains si
           publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [],
           files: [], pairs: [], iceServers: [],
         });
-        const textState = { ...state, watchActivities: [{ id: randomUUID(), roomId: 'room', userId: user,
+        const textState = { ...state, channel: { ...state.channel, futureTitle: 'Fixture', rooms: state.channel.rooms.map(room => ({
+          ...room, delivery: { ...room.delivery, futureTransport: 'extra' },
+        })) }, watchActivities: [{ id: randomUUID(), roomId: 'room', userId: user,
           sessionId: host, source: { kind: 'media', url: 'https://example.invalid/owned.mp4' },
           playback: { timeline: 'future-timeline', position: 0, paused: true, rate: 1, anchorTime: 0 }, viewerSessionIds: [] }] };
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential',
@@ -55,8 +57,11 @@ test('Node text conversation ignores unrelated media descriptions and retains si
             const { role, ...address } = JSON.parse(rust.verify_conversation(JSON.stringify(event.packet), host, JSON.stringify(textState)));
             expect(role).toBe("command");
             const request = JSON.parse(event.packet.payload);
-            const reply = (record: object, field = "record") => socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host,
-              JSON.stringify({ ...address, sender: host, recipient: local, [field]: record }))) }));
+            const reply = (record: object, field = "record") => {
+              const payload = JSON.stringify({ ...address, sender: host, recipient: local, [field]: record }, null, 2);
+              const packet = { ...JSON.parse(signer.sign(host, payload)), futurePacketHint: true };
+              socket.send(JSON.stringify({ type: 'conversation', packet }));
+            };
             if (request.command.type === 'history') {
               reply({ type: 'history_page', parts: ['inlineImages'], messages: [{ ...message, reactions: { revision: 0, counts: {} } }], hasMore: false, oldestSeq: 1, before: null });
             } else if (request.command.type === 'delete_message') {

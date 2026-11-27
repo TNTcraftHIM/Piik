@@ -2172,6 +2172,13 @@ fn new_host_action_uses_the_pending_revision_and_a_later_projection_remains_usab
     };
     let first = enter(&mut core, "first");
     let next = enter(&mut core, "next");
+    let baseline = serde_json::to_value(&first).unwrap();
+    let mut extended = baseline.clone();
+    for path in ["", "/action", "/action/context", "/action/command"] {
+        extended.pointer_mut(path).unwrap()["extension"] = json!(true);
+    }
+    let input: HostInput = serde_json::from_value(extended).unwrap();
+    assert_eq!(serde_json::to_value(input).unwrap(), baseline);
     for nested in [false, true] {
         let mut wire = serde_json::to_value(&first).unwrap();
         if nested {

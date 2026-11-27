@@ -71,20 +71,33 @@ it("accepts the Core room budget and rejects one extra room", () => {
   expect(() => decode(new ChannelEventDecoder(), welcome(state))).toThrow();
 });
 
-it("ignores extra watch activity metadata while validating playback and source", () => {
+it("ignores extra members in watch state while validating known values", () => {
+  const next = { displayLabel: "Evening" };
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" };
   const activity = {
     id: "watch", roomId: "room", userId: "user", sessionId: "endpoint",
+    predecessor: { kind: "screen", id: "screen" },
     source: { kind: "media", url: "https://video.test/watch" },
     playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 0 },
-    viewerSessionIds: [],
+    viewerSessionIds: [], byteSource: source,
   };
-  const read = (watch: unknown) => decode(new ChannelEventDecoder(), {
-    type: "state", state: { ...snapshot(), watchActivities: [watch] },
+  const subscription = { id: activity.id, mode: "peer" };
+  const plan = { roomId: "room", activityId: crypto.randomUUID(), source, upstream: null, downstream: [], receiving: false };
+  const read = (watch: unknown, binding: unknown = subscription, bytes: unknown = plan) => decode(new ChannelEventDecoder(), {
+    type: "state", state: { ...snapshot(), watchActivities: [watch], watchSubscriptions: [binding], watchBytes: [bytes] },
   });
-  expect(read({ ...activity, displayLabel: "Evening" })).toHaveProperty("state.watchActivities", [activity]);
+  const event = read({ ...activity, ...next, predecessor: { ...activity.predecessor, ...next },
+    source: { ...activity.source, ...next }, byteSource: { ...source, ...next } },
+  { ...subscription, ...next }, { ...plan, ...next, source: { ...source, ...next } });
+  expect(event).toHaveProperty("state.watchActivities", [activity]);
+  expect(event).toHaveProperty("state.watchSubscriptions", [subscription]);
+  expect(event).toHaveProperty("state.watchBytes", [plan]);
   expect(() => read({ ...activity, playback: { ...activity.playback, rate: "fast" } })).toThrow();
   expect(() => read({ ...activity, source: { ...activity.source, kind: "playlist" } })).toThrow();
-  expect(() => read({ ...activity, source: { ...activity.source, displayLabel: "Evening" } })).toThrow();
+  expect(() => read({ ...activity, predecessor: { ...activity.predecessor, kind: "playlist" } })).toThrow();
+  expect(() => read(activity, { ...subscription, mode: "automatic" })).toThrow();
+  expect(() => read(activity, subscription, { ...plan, source: { ...source, format: "playlist" } })).toThrow();
+  expect(() => read(activity, subscription, { ...plan, receiving: "yes" })).toThrow();
 });
 
 it("only a reply can carry a result, with a validated request ID and known payload", () => {

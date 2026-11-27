@@ -73,8 +73,9 @@ the feedback period; they do not delay that delivery.
   writers and release storage fixtures. The
   [rule for extending interfaces](./standards/versioning.md#extending-interfaces)
   is set: trace it through each connection, bring the private code to it and
-  exercise it in tests, then settle explicit reply outcomes and history and
-  storage boundaries before publication. Do not add exact-version steps,
+  exercise it in tests, then install the product-version handshake and verify
+  mixed-version artifacts before publication. Check compatibility before
+  redeeming a one-use local launch ticket. Do not add exact-version steps,
   closed wire boundaries or individual feature flags meanwhile.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).

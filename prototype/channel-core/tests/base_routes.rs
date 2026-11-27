@@ -5060,20 +5060,28 @@ fn udp_observation_preserves_port_bounds_in_both_directions() {
         }
         .valid());
     }
-    for observation in [
-        json!({"address":"203.0.113.5","port":42000,"step":2}),
-        json!({"kind":"irregular","address":"203.0.113.5","port":42000}),
-        json!({"kind":"stable","address":"203.0.113.5","port":42000,"step":0}),
+    assert!(serde_json::from_value::<UdpObservation>(
+        json!({"address":"203.0.113.5","port":42000,"step":2})
+    ).is_err());
+    for (wire, discarded) in [
+        (json!({"kind":"irregular","address":"203.0.113.5","port":42000}), "port"),
+        (json!({"kind":"stable","address":"203.0.113.5","port":42000,"step":0}), "step"),
     ] {
-        assert!(serde_json::from_value::<UdpObservation>(observation).is_err());
+        let mut baseline = wire.clone();
+        baseline.as_object_mut().unwrap().remove(discarded);
+        let parsed: UdpObservation = serde_json::from_value(wire).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), baseline);
     }
-    for signal in [
-        json!({"type":"unavailable","reason":"private source details"}),
-        json!({"type":"ready","strategy":"birthday"}),
-        json!({"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":2}}),
+    for (signal, kind) in [
+        (json!({"type":"unavailable","reason":"private source details"}), "unavailable"),
+        (json!({"type":"ready","strategy":"birthday"}), "ready"),
     ] {
-        assert!(serde_json::from_value::<piik_channel_core::wire::UdpSignal>(signal).is_err());
+        let parsed: piik_channel_core::wire::UdpSignal = serde_json::from_value(signal).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), json!({"type":kind}));
     }
+    assert!(serde_json::from_value::<piik_channel_core::wire::UdpSignal>(
+        json!({"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":2}})
+    ).is_err());
 }
 
 fn screen_input(

@@ -59,7 +59,7 @@ export const roomSchema = z.object({
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
 export const screenSourceSchema = z.object({ kind: z.enum(["screen", "camera"]), name: identityNameSchema.nullable() });
 export type ScreenSource = z.infer<typeof screenSourceSchema>;
-const viewSourceSchema = z.object({ kind: z.enum(["screen", "watch"]), id }).strict();
+const viewSourceSchema = z.object({ kind: z.enum(["screen", "watch"]), id });
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
@@ -103,14 +103,14 @@ const watchURLSchema = z.string().url().max(MAX_WATCH_URL_LENGTH).refine(value =
   } catch { return false; }
 });
 export const watchSourceSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("media"), url: watchURLSchema }).strict(),
-  z.object({ kind: z.literal("website"), url: watchURLSchema.optional(), mediaUrl: watchURLSchema.optional() }).strict(),
+  z.object({ kind: z.literal("media"), url: watchURLSchema }),
+  z.object({ kind: z.literal("website"), url: watchURLSchema.optional(), mediaUrl: watchURLSchema.optional() }),
 ]);
 export type WatchSource = z.infer<typeof watchSourceSchema>;
 export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: watchFormatSchema });
 export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
 export type WatchMode = "direct" | "peer";
-export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();
+export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() });
 export type WatchBytePlan = z.infer<typeof watchBytePlanSchema>;
 export const watchActivitySchema = z.object({ id, predecessor: viewSourceSchema.optional(), roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() });
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
@@ -127,7 +127,7 @@ export const snapshotSchema = z.object({
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
   watchActivities: z.array(watchActivitySchema),
-  watchSubscriptions: z.array(z.object({ id, mode: z.enum(["direct", "peer"]) }).strict()),
+  watchSubscriptions: z.array(z.object({ id, mode: z.enum(["direct", "peer"]) })),
   watchBytes: z.array(watchBytePlanSchema),
   files: z.array(filePlanSchema),
   pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(flowBindingSchema), incoming: z.array(flowBindingSchema) })).max(CHANNEL_SESSION_LIMIT - 1),
@@ -154,13 +154,13 @@ export const channelTopologySchema = z.object({
   bindingId: id,
   transitSession: id.nullable(),
   sessionIds: z.array(id),
-  pairs: z.array(z.object({ first: id, second: id, confirmed: z.boolean() }).strict()
+  pairs: z.array(z.object({ first: id, second: id, confirmed: z.boolean() })
     .refine(pair => pair.first < pair.second)),
   screen: z.object({ publicationId: id, sourceSessionId: id, edges: z.array(z.object({
     sender: id, receiver: id, selected: z.boolean(), proof: z.enum(["forwardable", "decoded"]).nullable(),
     presented: z.boolean().nullable(), presentation: z.boolean(),
-  }).strict()) }).strict().nullable(),
-}).strict();
+  })) }).nullable(),
+});
 export type ChannelTopology = z.infer<typeof channelTopologySchema>;
 export const channelWelcomeSchema = z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() });
 

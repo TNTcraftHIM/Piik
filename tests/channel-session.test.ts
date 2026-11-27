@@ -6365,7 +6365,9 @@ test("publication metadata keeps the video ceiling and source preference togethe
   expect(publicationSchema.parse({ ...base, kind: "screen", source: { kind: "screen" as const, name: null }, title: null }).videoSettings).toBeUndefined();
   expect(publicationSchema.safeParse({ ...base, kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: { ceiling: videoSettings.ceiling } }).success).toBe(false);
   expect(publicationSchema.safeParse({ ...base, kind: "voice", videoSettings }).success).toBe(false);
-  expect(publicationSchema.safeParse({ ...base, kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: { ...videoSettings, maxAudioBitrate: 128_000 } }).success).toBe(false);
+  expect(publicationSchema.parse({ ...base, kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: { ...videoSettings, maxAudioBitrate: 128_000 } }).videoSettings).toEqual(videoSettings);
+  expect(publicationSchema.safeParse({ ...base, kind: "screen", source: { kind: "screen", name: null }, title: null,
+    videoSettings: { ...videoSettings, ceiling: { ...videoSettings.ceiling, resolution: { width: 0, height: 1080 } } } }).success).toBe(false);
   expect(publicationSchema.parse({ ...base, kind: "voice" }).videoSettings).toBeUndefined();
   const { audience: _audience, ...missingAudience } = base;
   expect(publicationSchema.safeParse({ ...missingAudience, kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings }).success).toBe(false);
@@ -6602,6 +6604,47 @@ const topologyResponse = () => ({ serviceAvailable: false, serviceEnabled: false
     { sender: "source", receiver: "endpoint", selected: true, proof: null, presented: null, presentation: false },
     { sender: "helper", receiver: "endpoint", selected: false, proof: "decoded", presented: false, presentation: true },
   ] },
+});
+
+test("Domain extensions keep the active screen and settle only the matching topology reply", async () => {
+  const { session, socket } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const videoSettings = screenVideoSettings(QUALITY_PROFILES["1080p30"]);
+    const screen = { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings, paused: false };
+    state.publications.push(screen);
+    socket.receive({ type: "state", state });
+    const before = session.getSnapshot().state;
+    const extension = { futureDisplayHint: true };
+    socket.receive({ type: "state", ...extension, state: { ...state, ...extension, publications: [{
+      ...screen, ...extension, source: { ...screen.source, ...extension }, videoSettings: {
+        ...videoSettings, ...extension, ceiling: { ...videoSettings.ceiling, ...extension,
+          resolution: { ...videoSettings.ceiling.resolution, ...extension } },
+      },
+    }] } });
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null, state: before });
+    expect(session.getSnapshot().state).toEqual(before);
+
+    const response = topologyResponse();
+    const reading = session.roomTopology("first", "screen");
+    const requestId = socket.sent.at(-1)!.requestId;
+    socket.receive({ type: "future_topology_notice", requestId });
+    socket.receive({ type: "reply", roomId: "first", requestId, ...extension, result: {
+      type: "topology", ...extension, topology: {
+        ...response, ...extension, pairs: response.pairs.map(pair => ({ ...pair, ...extension })),
+        screen: { ...response.screen, ...extension, edges: response.screen.edges.map(edge => ({ ...edge, ...extension })) },
+      },
+    } });
+    await expect(reading).resolves.toEqual(response);
+
+    const nextRead = session.roomTopology("first", "screen");
+    socket.receive({ type: "reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
+      result: { type: "future_topology_result", topology: response } });
+    await expect(nextRead).rejects.toThrow("unknown_outcome");
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    expect(session.getSnapshot().state).toEqual(before);
+  } finally { session.close(); }
 });
 
 test("topology reads use the Domain reply owner without room activities or media commands", async () => {

@@ -153,9 +153,12 @@ fn watch_validation_and_source_retirement_are_bounded() {
     legacy.as_object_mut().unwrap().remove("source");
     legacy["url"] = json!("https://example.com/movie.mp4");
     assert!(piik_channel_core::wire::Request::parse(&legacy.to_string()).is_err());
-    let mut invalid_kind = start(&room, id);
-    invalid_kind["source"]["mediaUrl"] = json!("https://example.com/other.mp4");
-    assert!(piik_channel_core::wire::Request::parse(&invalid_kind.to_string()).is_err());
+    let baseline = start(&room, id);
+    let mut extended = baseline.clone();
+    extended["source"]["mediaUrl"] = json!("https://example.com/other.mp4");
+    extended["playback"]["extension"] = json!(true);
+    let parsed = piik_channel_core::wire::Request::parse(&extended.to_string()).unwrap();
+    assert_eq!(serde_json::to_value(parsed).unwrap(), baseline);
     let webpage = json!({"kind":"website","url":"https://example.com/watch"});
     let source: piik_channel_core::wire::WatchSource =
         serde_json::from_value(webpage.clone()).unwrap();
@@ -620,10 +623,10 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
     );
     assert!(delivery.update(vec![], peers(net.state(viewer))).iter().any(|effect|
         matches!(effect, piik_channel_core::watch_delivery::WatchEffect::Failed { request_id, .. } if *request_id == request)));
-    assert!(piik_channel_core::wire::Request::parse(
+    let request = piik_channel_core::wire::Request::parse(
         &json!({"type":"join_watch","roomId":room,"id":activity,"enabled":true}).to_string()
-    )
-    .is_err());
+    ).unwrap();
+    assert!(matches!(request.command, piik_channel_core::wire::Command::JoinWatch { mode: None, .. }));
 }
 
 #[test]

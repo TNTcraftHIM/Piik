@@ -146,6 +146,29 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     let error = network.conversation(&room, &delivered).replies().unwrap().remove(0);
     assert!(matches!(&error.body, piik_channel_core::conversation::WriterBody::Record(ConversationRecord::Error { code }) if code == "unsupported"));
     let reader_view: ConversationView = serde_json::from_value(serde_json::to_value(network.state(reader)).unwrap()).unwrap();
+    future["command"] = json!({
+        "type":"react", "nonce":1, "reaction":"heart", "futureCommand":true,
+        "target":{"type":"person","userId":network.policy(&room).creator_id,"futureTarget":true}
+    });
+    let signed = signer.sign(reader_session, &future).unwrap();
+    let delivered = relay(&mut network, reader, owner, &signed);
+    let replies = network.conversation(&room, &delivered).replies().unwrap();
+    assert!(matches!(replies[0].content(), ConversationRecord::Reaction { event: Some(_), .. }));
+    for field in ["record", "notice"] {
+        let mut reply = serde_json::to_value(address.reply()).unwrap();
+        reply[field] = serde_json::to_value(replies[0].content()).unwrap();
+        reply[field]["futureRecord"] = json!(true);
+        reply[field]["event"]["target"]["futureTarget"] = json!(true);
+        let signed = signer.sign(owner_session, &reply).unwrap();
+        let mut envelope = serde_json::to_value(&signed).unwrap();
+        envelope["futurePacket"] = json!(true);
+        let packet = serde_json::from_value(envelope).unwrap();
+        let delivered = relay(&mut network, owner, reader, &packet);
+        assert_eq!(delivered.payload, signed.payload);
+        let result = serde_json::to_value(reader_view.verify(&delivered, reader_session).unwrap()).unwrap();
+        assert_eq!(result["role"], field);
+        assert_eq!(result[field]["event"]["reaction"], "heart");
+    }
     for field in ["record", "notice"] {
         let mut reply = serde_json::to_value(address.reply()).unwrap();
         reply[field] = json!({"type":"future_result","detail":2});

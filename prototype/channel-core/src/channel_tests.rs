@@ -72,12 +72,16 @@ fn decorative_icon_keys_are_bounded_but_not_a_preset_enum() {
     for invalid in [
         serde_json::json!({"type":"set_name", "name":"Friend"}),
         serde_json::json!({"type":"set_profile", "name":"Friend", "avatar":"couch"}),
-        serde_json::json!({"type":"set_profile", "name":"Friend", "avatar":null, "userId":Uuid::new_v4()}),
     ] {
         assert!(Request::parse(&invalid.to_string()).is_err());
     }
     assert!(Request::parse(r#"{"type":"set_profile","name":"Friend"}"#).is_ok());
-    assert!(Request::parse(r#"{"type":"set_profile","name":"Friend","avatar":null}"#).is_ok());
+    let personal = Request::parse(&serde_json::json!({
+        "type": "set_profile", "name": "Friend", "avatar": null, "userId": Uuid::new_v4()
+    }).to_string()).unwrap();
+    assert_eq!(serde_json::to_value(personal).unwrap(), serde_json::json!({
+        "type": "set_profile", "name": "Friend", "avatar": null
+    }));
 }
 
 #[test]

@@ -379,7 +379,7 @@ fn open_site_preserves_personal_identity_and_reserves_metadata_for_its_operator(
     for removed in ["access", "hasPassword", "inviteHash"] {
         assert!(channel.get(removed).is_none());
     }
-    let change = json!({"type":"update_domain","name":"Friends","icon":"couch"});
+    let change = json!({"type":"update_domain","name":"Friends","icon":"couch","access":"private"});
     assert!(apply(&mut core, visitor, change.clone(), 1)
         .events
         .iter()
@@ -415,10 +415,6 @@ fn open_site_preserves_personal_identity_and_reserves_metadata_for_its_operator(
         user
     );
     assert!(Request::parse(r#"{"type":"domain_invite"}"#).is_err());
-    assert!(Request::parse(
-        r#"{"type":"update_domain","name":"Locked","icon":"couch","access":"private"}"#
-    )
-    .is_err());
 }
 
 fn state(effects: &Effects, connection: Uuid) -> &Snapshot {

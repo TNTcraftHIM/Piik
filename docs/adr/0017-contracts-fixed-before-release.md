@@ -26,22 +26,12 @@ requires one exact identifier, and its capability object has grown to
 fifteen entries, one per feature, which its promise to older peers keeps.
 The private 3.0 implementation currently has these boundaries:
 
-- Channel joins and local App discovery each require their current wire
-  identifier (`prototype/channel-core/src/lib.rs`,
-  `src/client/channel/app-link.ts`). Capture descriptions accept additions;
-  selected capture results remain strict. Most Domain commands and the
-  signed room commands and records are decoded closed: one field they do not
-  know fails the whole of it (`prototype/channel-core/src/wire.rs`,
-  `conversation.rs`).
-- A room's writer verifies who asks before it reads what is asked, so a
-  command it cannot read is refused in that request's reply
-  (`prototype/channel-core/src/host.rs`). A reader loses that with a record
-  it cannot read: the request it answers is read first and then dropped with
-  the failure (`conversation.rs`).
-- The Browser's pending request validates its terminal result
-  (`src/client/channel/session.ts`). Unknown or mismatched outcomes reject that
-  operation. The first published reader must retain this boundary when an
-  extension is selected.
+- Channel joins and local App discovery still require their private wire
+  identifiers. The public product-version handshake remains to be installed.
+- Domain and signed room replies identify their waiting operation separately
+  from observer notifications. Unknown outcomes end that operation without
+  confirming success. Wire objects accept ordinary extensions; typed store
+  readers reject content they cannot preserve.
 - A room store opens only at one exact `user_version`
   (`prototype/channel-core/src/storage.rs`), and the Browser store aborts any
   upgrade (`prototype/channel-browser/src/room-host.ts`). This protects data;

@@ -33,7 +33,7 @@ export const positiveUint32Schema = z.number().int().positive().max(0xffff_ffff)
 export const qualityResolutionSchema = z.object({
   width: positiveUint32Schema,
   height: positiveUint32Schema,
-}).strict();
+});
 export type QualityResolution = z.infer<typeof qualityResolutionSchema>;
 
 export const degradationPreferenceSchema = z.enum([
@@ -51,20 +51,21 @@ export const MAX_AUDIO_BITRATE = 510_000;
 export const MAX_AUDIO_SEND_BITRATE = 320_000;
 export const maxAudioBitrateSchema = z.number().int().min(MIN_AUDIO_BITRATE).max(MAX_AUDIO_BITRATE);
 
-export const qualitySettingsSchema = z
-  .object({
-    resolution: qualityResolutionSchema,
-    maxFramerate: z.number().positive().max(Number.MAX_SAFE_INTEGER),
-    maxBitrate: positiveUint32Schema,
-    degradationPreference: degradationPreferenceSchema,
-    maxAudioBitrate: maxAudioBitrateSchema.optional(),
-  })
-  .strict();
-export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
-export const videoCeilingSchema = qualitySettingsSchema.pick({ resolution: true, maxFramerate: true, maxBitrate: true });
+export const videoCeilingSchema = z.object({
+  resolution: qualityResolutionSchema,
+  maxFramerate: z.number().positive().max(Number.MAX_SAFE_INTEGER),
+  maxBitrate: positiveUint32Schema,
+});
 export type VideoCeiling = z.infer<typeof videoCeilingSchema>;
-export const videoSettingsSchema = z.object({ ceiling: videoCeilingSchema, degradationPreference: degradationPreferenceSchema }).strict();
+export const videoSettingsSchema = z.object({ ceiling: videoCeilingSchema, degradationPreference: degradationPreferenceSchema });
 export type VideoSettings = z.infer<typeof videoSettingsSchema>;
+// Stored quality preferences use a closed shape.
+export const qualitySettingsSchema = videoCeilingSchema.extend({
+  resolution: qualityResolutionSchema.strict(),
+  degradationPreference: degradationPreferenceSchema,
+  maxAudioBitrate: maxAudioBitrateSchema.optional(),
+}).strict();
+export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
 export const DEFAULT_QUALITY_SETTINGS = {
   resolution: { width: 1920, height: 1080 },
   maxFramerate: 30,

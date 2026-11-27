@@ -76,7 +76,7 @@ impl SessionSigner {
     }
 }
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct SignedPacket {
     pub sender: Uuid,
     pub payload: String,
@@ -100,12 +100,7 @@ pub fn verify<T: DeserializeOwned>(
     serde_json::from_str(&packet.payload).map_err(|_| "invalid_conversation")
 }
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(
-    tag = "kind",
-    content = "body",
-    rename_all = "snake_case",
-    deny_unknown_fields
-)]
+#[serde(tag = "kind", content = "body", rename_all = "snake_case")]
 pub enum ControlFrame {
     File(FileControl),
     Watch(crate::watch_delivery::WatchControl),
@@ -374,8 +369,7 @@ pub const HISTORY_INLINE_IMAGES: &str = "inlineImages";
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum ConversationCommand {
     DeleteMessage {
@@ -418,8 +412,7 @@ pub enum ConversationCommand {
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum ReactionTarget {
     Message { message_seq: u64, message_id: Uuid },
@@ -461,8 +454,7 @@ pub struct ConversationRequest {
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum ConversationRecord {
     RoomMediaCleared {

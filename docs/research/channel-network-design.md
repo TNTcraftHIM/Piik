@@ -177,7 +177,6 @@ The [forwarding plan](./channel-forwarding-plan.md) defines peer transport eligi
 
 ## Routing Foundation
 
-The following sections describe the current planners within that architecture.
 The room projects source and receiver demand before a path exists. The channel
 admits the first pair on an empty graph and returns confirmed edges to the room.
 TransportBook owns physical attempts
@@ -442,11 +441,9 @@ does not create another probing or reconnection subsystem; one picture's ICE
 timeout must not block another picture or chat. The sharer owns capture and
 demand; the controller selects distribution.
 
-Every authorized, capable participant with capacity may relay without receiving
-every publication. [LiveKit's publication/subscription model](https://docs.livekit.io/transport/media/subscribe/)
-illustrates metadata without bytes. On A-B-C-D, a picture watched only by B needs
-only A-B; a viewer at D also needs non-viewing C. A file distribution chooses its own path to interested recipients. A shorter screen candidate must prove reachability,
-source supply and actual capacity; a control link alone is insufficient.
+Any admitted, capable participant with capacity may relay without watching
+that publication. A shorter screen candidate must prove reachability, source
+supply and actual capacity.
 Different publications can share a physical pair. Stopping one removes only its
 work, preserving unrelated calls, transfers and connection leases.
 
@@ -1189,5 +1186,3 @@ work; the [Native reference](../../prototype/channel-native/README.md) and
   [WebRTC API](https://www.w3.org/TR/webrtc/) own transport capabilities.
 - [Jami file transfer](https://jami.net/swarm-file-transfers/) informs separating
   a file announcement from on-demand bytes and available copies.
-
-These references support the transport and routing boundaries described above.

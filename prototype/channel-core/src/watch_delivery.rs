@@ -19,7 +19,7 @@ pub const WATCH_MAX_RANGE_FRAMES: usize = WATCH_WINDOW_BYTES.div_ceil(WATCH_FRAM
 const PREFIX: [u8; 2] = [0, 0];
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchBytePlan {
     pub room_id: String,
     pub activity_id: Uuid,
@@ -29,7 +29,7 @@ pub struct WatchBytePlan {
     pub receiving: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchKey {
     pub room_id: String,
     pub activity_id: Uuid,
@@ -39,8 +39,7 @@ pub struct WatchKey {
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum WatchControl {
     Pull {
@@ -117,7 +116,7 @@ pub enum WatchEffect {
     },
 }
 #[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Header {
     request_id: Uuid,
     offset: u64,
@@ -739,6 +738,43 @@ mod tests {
             })
             .unwrap()
     }
+    #[test]
+    fn watch_controls_and_chunk_headers_accept_extra_members() {
+        use crate::conversation::{decode_control, ControlFrame};
+        let request = id(20);
+        let mut packet = serde_json::json!({
+            "kind": "watch", "extra": true, "body": {
+                "type": "pull", "key": key(), "requestId": request,
+                "offset": 0, "length": 1, "extra": 2
+            }
+        });
+        packet["body"]["key"]["extra"] = true.into();
+        let decode =
+            |packet: &serde_json::Value| decode_control(&serde_json::to_vec(packet).unwrap());
+        assert!(
+            matches!(decode(&packet), Ok(ControlFrame::Watch(WatchControl::Pull { request_id, .. })) if request_id == request)
+        );
+        packet["body"]["length"] = "one".into();
+        assert!(decode(&packet).is_err());
+
+        let mut viewer = WatchDelivery::new(id(3));
+        viewer.update(vec![plan(Some(id(2)), vec![], true)], peers());
+        viewer.read(key(), request, 0, 1);
+        let header = serde_json::to_vec(&serde_json::json!({
+            "requestId": request, "offset": 0, "mimeType": "video/mp4",
+            "totalSize": 1, "length": 1, "eof": true, "extra": true
+        }))
+        .unwrap();
+        let mut frame = PREFIX.to_vec();
+        frame.extend_from_slice(&(header.len() as u16).to_be_bytes());
+        frame.extend_from_slice(&header);
+        frame.push(7);
+        assert!(viewer.chunk(id(2), &frame[..3]).is_err());
+        assert!(
+            matches!(viewer.chunk(id(2), &frame).unwrap().as_slice(), [WatchEffect::Received { request_id, result }] if *request_id == request && result.bytes == [7])
+        );
+    }
+
     #[test]
     fn unaligned_window_crosses_transit_and_keeps_frames_bounded() {
         let mut source = WatchDelivery::new(id(1));

@@ -283,8 +283,7 @@ the source; there is no second changelog store. A newer major adds a short, visi
 breaking-change notice. The Server logs the same distinction while preserving its
 checker JSON and exit codes. This is release guidance, not a replacement for wire
 checks. Keep the major warning inline, without a mandatory website detour.
-The manual mirror link opens AtomGit releases directly. Older published binaries
-retain the download provider and warning UI they shipped with.
+The manual mirror link opens AtomGit releases directly.
 
 Older installed Apps cannot acquire new warning UI from release metadata.
 Their historical download behavior is accepted; do not split release feeds or
@@ -412,9 +411,7 @@ their version labels artifacts and never enables publication. The PR body remain
 the review surface until integration preserves it in the squash commit.
 
 Supply multiline PR/release copy through a UTF-8 file and read back the stored
-body before integration. A terminal preview alone does not prove that Chinese
-text survived the shell/API boundary. Do not repair published history by
-rewriting main.
+body before integration. Do not repair published history by rewriting main.
 
 The publisher appends generated build identity and package checksums to the
 reviewed text, passes it through a temporary notes file to GitHub, then removes
@@ -476,10 +473,6 @@ editorial summary from a version number. Keep provenance and the full changelog
 link after the user-facing explanation.
 
 Piik's release scope and upgrade instructions come from its own accepted changes.
-Editorial references reviewed on 2026-10-19: [Discord's update](https://discord.com/blog/discord-update-september-25-2026)
-combines a friendly voice with concrete changes; [VS Code's version notes](https://code.visualstudio.com/updates/v1_95)
-keep feature highlights alongside subsequent patch fixes. These inform the
-presentation, not Piik's version selection or feature claims.
 
 ## Release Sources
 
