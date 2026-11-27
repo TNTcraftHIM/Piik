@@ -1153,7 +1153,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                                 request_id: None,
                                 command: Command::SetProfile {
                                     avatar: Some(None),
-                                    name: Some("Source".into()),
+                                    name: Some("Renamed source".into()),
                                 },
                             },
                             2,
@@ -1247,7 +1247,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                 request_id: None,
                 command: Command::SetProfile {
                     avatar: Some(None),
-                    name: Some("Review".into()),
+                    name: Some(Uuid::new_v4().to_string()),
                 },
             },
             1,
