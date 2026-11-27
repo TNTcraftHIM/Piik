@@ -43,7 +43,8 @@ import { HostAudio } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenContentHint, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { SCREEN_BUFFER_TARGET_MAX_MS, type ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
-import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
+import type { RoomInteractionSession, RoomInteraction } from "../lib/room-interactions";
+import { RoomReader } from "./room-reader";
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
 import { FeedbackAudio, type FeedbackCue } from "./feedback-audio";
 import { validateCustomFeedbackClip } from "./feedback-clip";
@@ -59,14 +60,11 @@ const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
 
 interface RoomReading {
-  roomId: string;
-  bindingId: string;
+  reader: RoomReader;
   socket: WebSocket | null;
   ready: Promise<void>;
   history?: Promise<void>;
   followLatest?: symbol;
-  interaction?: RoomInteractionSession;
-  interactionReadyRequestId?: string;
 }
 
 type RoomBackupMetadata = Extract<BackupMetadata, { kind: "room" }>;
@@ -253,7 +251,8 @@ export class ChannelSession {
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hosting.host(roomId),
-    pending: (requestId, bindingId) => this.requests.get(requestId)?.bindingId === bindingId,
+    pending: (requestId, bindingId) => this.requests.get(requestId)?.bindingId === bindingId
+      || [...this.readings.values()].some(({ reader }) => reader.bindingId === bindingId && reader.hasPendingInteraction(requestId)),
     send: (packet, requestId) => {
       if (this.view.connection !== "connected" || this.socket?.readyState !== WebSocket.OPEN) throw new Error("disconnected");
       this.write({ type: "conversation", packet, requestId });
@@ -590,7 +589,7 @@ export class ChannelSession {
     else if (event.type === "room_reply") {
       if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
-      if (!request && event.requestId && event.result.type === "error") this.settleInteraction(event.roomId, event.requestId);
+      if (!request && event.requestId && event.result.type === "error") this.readings.get(event.roomId)?.reader.settle(event.requestId);
       if (!request || request.roomId !== event.roomId || !event.requestId) return;
       this.retireRequest(event.requestId);
       if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
@@ -620,11 +619,10 @@ export class ChannelSession {
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
       } else if (event.type === "error" && event.requestId) {
-        for (const reading of this.readings.values()) {
-          if (reading.interactionReadyRequestId === event.requestId || reading.interaction?.getSnapshot().pending?.requestId === event.requestId) {
-            this.settleInteraction(reading.roomId, event.requestId);
-            break;
-          }
+        for (const { reader } of this.readings.values()) {
+          if (!reader.hasPendingInteraction(event.requestId)) continue;
+          reader.settle(event.requestId);
+          break;
         }
       } else if (event.type === "error" && !event.requestId) {
         if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
@@ -728,12 +726,12 @@ export class ChannelSession {
       id => { void this.stopWatchResource(id, "provider-session-ended").catch(() => {}); });
     const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
-    if (!sameChannel) { this.closeInteractions(); this.readings.clear(); }
+    if (!sameChannel) this.clearReadings();
     this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
     const freshBindings = new Set(state.channel.rooms.filter(room => room.delivery
       && previousRooms?.find(previous => previous.id === room.id)?.delivery?.bindingId !== room.delivery.bindingId).map(room => room.id));
-    for (const id of freshBindings) this.closeInteraction(id);
+    for (const id of freshBindings) this.readings.get(id)?.reader.close();
     for (const [id, request] of this.requests) if (request.bindingId
       && !state.channel.rooms.some(room => room.id === request.roomId && room.authorized
         && room.available && room.delivery?.bindingId === request.bindingId)) {
@@ -881,7 +879,7 @@ export class ChannelSession {
     const reading = roomId ? this.readings.get(roomId) : undefined, socket = this.socket;
     const conversation = signedConversationRequest(command);
     const expectedBinding = conversation ? bindingId ?? this.conversationBinding(roomId) : undefined;
-    if (conversation && reading && reading.roomId === roomId) await reading.ready;
+    if (conversation && reading) await reading.ready;
     signal?.throwIfAborted();
     if (bindingId && command.type !== "chat" && reading !== this.readings.get(roomId!)) throw new DOMException("Read cancelled", "AbortError");
     if (this.view.connection !== "connected" || this.socket !== socket) throw new Error("disconnected");
@@ -960,14 +958,11 @@ export class ChannelSession {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
       return;
     }
-    const reading = this.readings.get(reply.roomId);
-    const interaction = reading?.interaction;
-    if (interaction && reading.bindingId === reply.bindingId) {
+    const reader = this.readings.get(reply.roomId)?.reader;
+    const interaction = reader?.interaction;
+    if (reader?.bindingId === reply.bindingId && interaction) {
       if (record.type === "interaction_ready") {
-        if (reading.interactionReadyRequestId !== reply.requestId) return;
-        delete reading.interactionReadyRequestId;
-        interaction.setSupportedReactions(record.reactionIds);
-        interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
+        if (!reader.subscribed(reply.requestId, record)) return;
         for (const snapshot of record.publicationReactions) this.applyPublicationReactionSnapshot(reply.roomId, snapshot);
         return;
       }
@@ -986,7 +981,7 @@ export class ChannelSession {
         return;
       }
       if (record.type === "error" && !this.requests.has(reply.requestId)) {
-        this.settleInteraction(reply.roomId, reply.requestId,
+        reader.settle(reply.requestId,
           record.code === "rate_limited" ? "rate-limited" : record.code === "target_unavailable" ? "target-unavailable" : "busy");
         return;
       }
@@ -1032,7 +1027,7 @@ export class ChannelSession {
     const removed = this.roomHistory(roomId).remove(throughSeq, messageSeqs, this.view.state?.channel.historyWindow ?? 1000);
     this.patch(this.historyView([roomId]));
     this.attachments.removeMessages(roomId, removed);
-    this.readings.get(roomId)?.interaction?.removeChatMessages(removed);
+    this.readings.get(roomId)?.reader.interaction?.removeChatMessages(removed);
     if (throughSeq) this.markRead(roomId, throughSeq);
   }
 
@@ -1073,7 +1068,7 @@ export class ChannelSession {
       const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
       const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
       const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
-      this.readings.get(roomId)?.interaction?.receiveConfirmedChat({
+      this.readings.get(roomId)?.reader.interaction?.receiveConfirmedChat({
         type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
         sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
       });
@@ -1259,7 +1254,7 @@ export class ChannelSession {
   browse = (roomId: string): void => {
     this.roomId = roomId;
     const wanted = this.wantedReadings();
-    for (const id of this.readings.keys()) if (!wanted.has(id)) this.closeInteraction(id);
+    for (const [id, { reader }] of this.readings) if (!wanted.has(id)) reader.close();
     this.browseRooms();
   };
 
@@ -1287,8 +1282,8 @@ export class ChannelSession {
     const wanted = this.wantedReadings();
     for (const [id, reading] of this.readings) {
       const room = this.view.state?.channel.rooms.find(room => room.id === id);
-      if (!room?.authorized || !room.available || room.delivery?.bindingId !== reading.bindingId || reading.socket !== this.socket && !wanted.has(id)) {
-        this.closeInteraction(id); this.readings.delete(id);
+      if (!room?.authorized || !room.available || room.delivery?.bindingId !== reading.reader.bindingId || reading.socket !== this.socket && !wanted.has(id)) {
+        reading.reader.close(); this.readings.delete(id);
       }
     }
     for (const id of wanted) {
@@ -1296,16 +1291,21 @@ export class ChannelSession {
       if (!room?.delivery) continue;
       let reading = this.readings.get(id);
       if (!reading || reading.socket !== this.socket) {
-        // Re-admit this binding on the new socket before resuming its interaction.
-        reading = { roomId: id, bindingId: room.delivery.bindingId, socket: this.socket, interaction: reading?.interaction,
-          ready: this.request({ type: "browse", roomId: id, active: true }) };
+        const bindingId = room.delivery.bindingId;
+        const reader = reading?.reader ?? new RoomReader(id, bindingId, {
+          send: (command, requestId) => this.conversation.send(command, requestId, bindingId),
+          nextReactionNonce: () => ++this.reactionNonce,
+          interactionChanged: () => this.publishInteractions(),
+          feedback: event => this.playFeedback(id, event),
+        });
+        reading = { reader, socket: this.socket, ready: this.request({ type: "browse", roomId: id, active: true }) };
         this.readings.set(id, reading);
       }
       const current = reading;
       void current.ready.then(() => {
         if (this.readings.get(id) !== current || this.socket !== current.socket || !this.wantedReadings().has(id)) return;
         this.retireReadings();
-        this.syncRoomReading(current);
+        if (this.view.self && this.conversationBinding(id) === current.reader.bindingId) current.reader.admit(this.view.self.id);
         if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)) return;
         const history = this.histories.get(id), rows = history?.messages;
         const latest = history?.paging?.atLatest !== false;
@@ -1316,7 +1316,7 @@ export class ChannelSession {
           try {
             do {
               await this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id,
-                { replaceHistory: before !== undefined, refresh, bindingId: current.bindingId });
+                { replaceHistory: before !== undefined, refresh, bindingId: current.reader.bindingId });
               before = refresh?.before;
             } while (before !== undefined && this.roomId === id && this.readings.get(id) === current);
             // An overlay can keep a reader alive after selection leaves this room.
@@ -1328,7 +1328,7 @@ export class ChannelSession {
         void current.history.catch(() => {});
       }, error => {
         if (this.readings.get(id) === current && this.socket === current.socket && this.view.connection === "connected") {
-          this.closeInteraction(id); this.readings.delete(id);
+          current.reader.close(); this.readings.delete(id);
           this.retireReadings();
           this.patch({ error: error instanceof Error ? error.message : "operation_failed" });
         }
@@ -1339,8 +1339,8 @@ export class ChannelSession {
 
   private retireReadings(): void {
     const keep = this.wantedReadings();
-    for (const [id] of this.readings) if (!keep.has(id)) {
-      this.closeInteraction(id); this.readings.delete(id);
+    for (const [id, { reader }] of this.readings) if (!keep.has(id)) {
+      reader.close(); this.readings.delete(id);
       for (const [requestId, request] of this.requests) if (request.roomId === id && (request.kind === "browse" || this.histories.get(id)?.hasPage(requestId) || request.seekAfter !== undefined)) {
         this.retireRequest(requestId);
         request.reject(new DOMException("Read cancelled", "AbortError"));
@@ -1356,65 +1356,20 @@ export class ChannelSession {
       this.readingRooms.delete(id);
     }
   }
-  private closeInteraction(roomId: string): void {
-    const reading = this.readings.get(roomId);
-    if (!reading?.interaction) return;
-    const interaction = reading.interaction;
-    delete reading.interaction;
-    delete reading.interactionReadyRequestId;
-    interaction.close();
-    this.publishInteractions();
-  }
-  private publishInteractions(): void {
-    const interactionsByRoom = new Map<string, RoomInteractionSession>();
-    for (const reading of this.readings.values()) if (reading.interaction) interactionsByRoom.set(reading.roomId, reading.interaction);
-    this.patch({ interactionsByRoom });
-  }
-  /** A writer's rejection ends an interaction request; an undelivered reply leaves its outcome unknown. */
-  private settleInteraction(roomId: string, requestId: string, rejected?: Rejection): void {
-    const reading = this.readings.get(roomId), interaction = reading?.interaction;
-    if (!interaction) return;
-    // The next readings sync subscribes a replacement for a refused subscription.
-    if (reading.interactionReadyRequestId === requestId) this.closeInteraction(roomId);
-    else if (rejected) interaction.receive({ type: "room-interaction-rejected", requestId, reason: rejected });
-    else interaction.undelivered(requestId);
-  }
-  private closeInteractions(): void {
-    for (const id of this.readings.keys()) this.closeInteraction(id);
+  private clearReadings(): void {
+    for (const { reader } of this.readings.values()) reader.close();
+    this.readings.clear();
   }
 
-  private syncRoomReading(reading: RoomReading): void {
-    void reading.ready.then(() => {
-      if (this.readings.get(reading.roomId) !== reading || this.socket !== reading.socket || this.view.connection !== "connected" || !this.view.self) return;
-      const room = this.view.state?.channel.rooms.find(room => room.id === reading.roomId && room.authorized && room.available);
-      const delivery = room?.delivery;
-      if (!delivery) return;
-      if (reading.interactionReadyRequestId || reading.interaction?.getSnapshot().ready) return;
-      const roomId = reading.roomId;
-      const interaction = reading.interaction ?? new RoomInteractionSession(message => {
-        const current = this.readings.get(roomId);
-        if (current?.interaction !== interaction || this.view.connection !== "connected") return false;
-        const nonce = message.type === "send-room-interaction" ? message.nonce ?? ++this.reactionNonce : undefined;
-        const command = message.type === "subscribe-room-interactions" ? { type: "interaction_ready" as const, roomId: current.roomId }
-          : message.payload.kind === "reaction" ? { type: "react" as const, roomId: current.roomId, reaction: message.payload.reaction, nonce: nonce!,
-            target: message.contentTarget ? ("messageSeq" in message.contentTarget
-              ? { type: "message" as const, messageSeq: message.contentTarget.messageSeq, messageId: message.contentTarget.messageId }
-              : { type: "publication" as const, publicationId: message.contentTarget.publicationId })
-              : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
-        if (!command) return false;
-        const requestId = message.type === "send-room-interaction" ? message.requestId : crypto.randomUUID();
-        if (command.type === "interaction_ready") current.interactionReadyRequestId = requestId;
-        void this.conversation.send(command, requestId).catch(() => {
-          if (this.readings.get(roomId) !== current || current.interaction !== interaction) return;
-          this.settleInteraction(roomId, requestId);
-        });
-        return nonce === undefined ? true : { nonce };
-      }, Date.now, undefined, event => this.playFeedback(roomId, event));
-      reading.interaction = interaction;
-      this.publishInteractions();
-      interaction.authenticated(this.view.self.id);
-    }).catch(() => {});
+  private publishInteractions(): void {
+    const interactionsByRoom = new Map<string, RoomInteractionSession>();
+    for (const [id, { reader }] of this.readings) {
+      const interaction = reader.interaction;
+      if (interaction) interactionsByRoom.set(id, interaction);
+    }
+    this.patch({ interactionsByRoom });
   }
+
   acceptInvitation = async (): Promise<string | null> => {
     const params = new URLSearchParams(location.hash.slice(1));
     const roomId = params.get("room"), key = params.get("invite");
@@ -3694,8 +3649,7 @@ export class ChannelSession {
     this.forwardingBudget?.free();
     this.forwardingBudget = undefined;
     this.roomSnapshot = undefined;
-    this.closeInteractions();
-    this.readings.clear();
+    this.clearReadings();
     this.readingRooms.clear();
     this.captureLifetime.abort();
     this.captureLifetime = new AbortController();
@@ -3762,7 +3716,7 @@ export class ChannelSession {
   }
 
   private beginRecovery(): void {
-    for (const reading of this.readings.values()) reading.interaction?.disconnected();
+    for (const { reader } of this.readings.values()) reader.disconnect();
     if (!this.view.sessionId || this.recoveryDeadline !== null) return;
     this.recoveryDeadline = setTimeout(() => {
       this.recoveryDeadline = null;
