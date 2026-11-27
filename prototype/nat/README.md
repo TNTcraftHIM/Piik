@@ -4,7 +4,8 @@
 
 ## 它做什么，不做什么
 
-- 向十一个公共 STUN 服务器各发几个很小的 UDP 询问包，问“你看到我从哪个地址和端口来”，然后把结果打印出来。通常十几秒，网络不通时最多一两分钟。
+- 向十几个公共 STUN 服务器各发几个很小的 UDP 询问包，问“你看到我从哪个地址和端口来”，然后把结果打印出来。通常二三十秒，网络不通时最多两分钟。
+- 其中能做到的服务器，还会被请求“从你的另一个地址回我一个包”，用来判断你的网络会不会放行陌生来源的包。
 - 除了这些询问包，不发送任何东西；不扫描，不上传，不改动任何设置。
 - 报告里你的公网地址只显示一半，本机地址只显示类别（私有地址、运营商地址等）。
 
@@ -23,7 +24,7 @@
 
 ## In English
 
-`piik-nat-lab` asks eleven public STUN servers which address and port they see for this machine and prints what that says about the NAT in front of it. It sends nothing else, uploads nothing and changes no setting. The report shows half of the public address. Run it without arguments (on Windows, `运行.bat` also keeps a copy in `report.txt`), and send the report with one line saying what kind of network it was. Do not pass `--full`.
+`piik-nat-lab` asks public STUN servers which address and port they see for this machine, asks those that can to answer once from their other address, and prints what that says about the NAT in front of it. It sends nothing else, uploads nothing and changes no setting. The report shows half of the public address. Run it without arguments (on Windows, `运行.bat` also keeps a copy in `report.txt`), and send the report with one line saying what kind of network it was. Do not pass `--full`.
 
 ## For whoever reads the reports
 

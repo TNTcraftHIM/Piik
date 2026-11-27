@@ -1,4 +1,5 @@
-//! The Binding request and the mapped address of its answer (RFC 8489, sections 5, 14.1 and 14.2).
+//! The Binding request and the mapped address of its answer (RFC 8489, sections 5, 14.1 and 14.2),
+//! and the request that asks a server to answer from elsewhere (RFC 5780, sections 7.2 and 7.4).
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 const BINDING_REQUEST: u16 = 0x0001;
@@ -6,6 +7,10 @@ const BINDING_SUCCESS: u16 = 0x0101;
 const MAGIC_COOKIE: [u8; 4] = [0x21, 0x12, 0xa4, 0x42];
 const MAPPED_ADDRESS: u16 = 0x0001;
 const XOR_MAPPED_ADDRESS: u16 = 0x0020;
+const CHANGE_REQUEST: u16 = 0x0003;
+/// The server's other address and port: CHANGED-ADDRESS in RFC 3489, OTHER-ADDRESS in RFC 5780.
+const CHANGED_ADDRESS: u16 = 0x0005;
+const OTHER_ADDRESS: u16 = 0x802c;
 
 /// A Binding request without attributes.
 pub fn request(transaction: [u8; 12]) -> [u8; 20] {
@@ -16,8 +21,32 @@ pub fn request(transaction: [u8; 12]) -> [u8; 20] {
     packet
 }
 
+/// A Binding request that asks the server to answer from its other address, its other port, or
+/// both. A NAT that lets such an answer in does not filter by where a packet comes from.
+pub fn request_from_elsewhere(transaction: [u8; 12], address: bool, port: bool) -> [u8; 28] {
+    let mut packet = [0; 28];
+    packet[..20].copy_from_slice(&request(transaction));
+    packet[3] = 8;
+    packet[20..24].copy_from_slice(&[(CHANGE_REQUEST >> 8) as u8, CHANGE_REQUEST as u8, 0, 4]);
+    packet[27] = u8::from(address) << 2 | u8::from(port) << 1;
+    packet
+}
+
+/// What a Binding success says: the address it saw, and the other address the server can answer
+/// from when it names one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Answer {
+    pub mapped: SocketAddr,
+    pub elsewhere: Option<SocketAddr>,
+}
+
 /// The address a Binding success reports for `transaction`, or `None` for any other packet.
 pub fn mapped(packet: &[u8], transaction: [u8; 12]) -> Option<SocketAddr> {
+    Some(answer(packet, transaction)?.mapped)
+}
+
+/// A Binding success for `transaction`, or `None` for any other packet.
+pub fn answer(packet: &[u8], transaction: [u8; 12]) -> Option<Answer> {
     let header = packet.get(..20)?;
     if header[..2] != BINDING_SUCCESS.to_be_bytes() || header[4..8] != MAGIC_COOKIE || header[8..] != transaction {
         return None;
@@ -28,7 +57,7 @@ pub fn mapped(packet: &[u8], transaction: [u8; 12]) -> Option<SocketAddr> {
     if attributes.len() != usize::from(u16::from_be_bytes([header[2], header[3]])) {
         return None;
     }
-    let (mut masked, mut plain) = (None, None);
+    let (mut masked, mut plain, mut elsewhere) = (None, None, None);
     while !attributes.is_empty() {
         let [kind_high, kind_low, length_high, length_low, rest @ ..] = attributes else { return None };
         let length = usize::from(u16::from_be_bytes([*length_high, *length_low]));
@@ -36,11 +65,12 @@ pub fn mapped(packet: &[u8], transaction: [u8; 12]) -> Option<SocketAddr> {
         match u16::from_be_bytes([*kind_high, *kind_low]) {
             XOR_MAPPED_ADDRESS => masked = Some(address(value, Some(&header[4..20]))?),
             MAPPED_ADDRESS => plain = Some(address(value, None)?),
+            CHANGED_ADDRESS | OTHER_ADDRESS => elsewhere = address(value, None).or(elsewhere),
             _ => {}
         }
         attributes = rest.get(length.div_ceil(4) * 4..)?;
     }
-    masked.or(plain)
+    Some(Answer { mapped: masked.or(plain)?, elsewhere })
 }
 
 /// A MAPPED-ADDRESS value, or an XOR-MAPPED-ADDRESS value with the cookie and transaction that mask it.
@@ -83,6 +113,24 @@ mod tests {
         let packet = request(TRANSACTION);
         assert_eq!(packet[..8], [0, 1, 0, 0, 0x21, 0x12, 0xa4, 0x42]);
         assert_eq!(packet[8..], TRANSACTION);
+    }
+
+    #[test]
+    fn a_request_to_answer_from_elsewhere_carries_one_attribute_with_the_two_flags() {
+        let packet = request_from_elsewhere(TRANSACTION, true, true);
+        assert_eq!(packet[..8], [0, 1, 0, 8, 0x21, 0x12, 0xa4, 0x42]);
+        assert_eq!(packet[20..], [0, 3, 0, 4, 0, 0, 0, 6]);
+        assert_eq!(request_from_elsewhere(TRANSACTION, false, true)[27], 2);
+    }
+
+    #[test]
+    fn reads_the_other_address_a_server_names() {
+        // MAPPED-ADDRESS 192.0.2.1:32853 and CHANGED-ADDRESS 198.51.100.7:3479, as an RFC 3489 server sends them.
+        let attributes = [0, 1, 0, 8, 0, 1, 0x80, 0x55, 192, 0, 2, 1, 0, 5, 0, 8, 0, 1, 0x0d, 0x97, 198, 51, 100, 7];
+        assert_eq!(
+            answer(&success(&attributes), TRANSACTION),
+            Some(Answer { mapped: "192.0.2.1:32853".parse().unwrap(), elsewhere: Some("198.51.100.7:3479".parse().unwrap()) })
+        );
     }
 
     #[test]
