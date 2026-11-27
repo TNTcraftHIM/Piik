@@ -176,9 +176,10 @@ export class YouTubeMedia implements WatchMedia {
     if (!this.apiReady) return { position: 0, paused: true, rate: 1, duration: null, readyState: 0, buffered: null, ended: false };
     const p = this.player!, state = p.getPlayerState(), duration = p.getDuration();
     if (youtubeVideoId(p.getVideoUrl()) !== this.id) throw new Error("watch_source_changed");
+    const readyState = !this.played || state === 3 ? 1 : state === 1 ? 3 : 2;
     return { position: p.getCurrentTime(), paused: state === 3 ? this.paused : state !== 1,
       rate: p.getPlaybackRate(), duration: duration > 0 ? duration : null,
-      readyState: this.played ? state === 1 ? 3 : 2 : 1, buffered: null, ended: state === 0 };
+      readyState, buffered: null, ended: state === 0 };
   }
 
   async patch(value: WatchMediaPatch): Promise<void> {

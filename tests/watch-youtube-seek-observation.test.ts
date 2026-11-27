@@ -97,7 +97,7 @@ test("a shared YouTube seek can buffer beyond ten seconds without blocking a new
   expect(sdk.seeks.at(-1)).toBe(60);
   await vi.advanceTimersByTimeAsync(11000);
   expect(player.error).toBeNull();
-  expect(player.mediaState).toMatchObject({ position: 0, readyState: 2 });
+  expect(player.mediaState).toMatchObject({ position: 0, readyState: 1 });
   sdk.position = 60;
   sdk.playVideo();
   await vi.advanceTimersByTimeAsync(1000);
@@ -132,9 +132,14 @@ test("a paused shared seek observed on a later tick still follows the sharer's n
     player.update({ timeline: "media", position: 30, paused: true, rate: 1, anchorTime: 1000 });
     await player.serialize(async () => {});
     expect(sdk.seeks).toEqual([30]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sdk.state).toBe(3);
+    expect(player.mediaState?.paused).toBe(true);
+    expect(player.waitingForPicture).toBe(true);
     sdk.position = 30;
     sdk.pauseVideo();
     await vi.advanceTimersByTimeAsync(1000);
+    expect(player.waitingForPicture).toBe(false);
     expect(player.blocked).toBe(false);
     player.update({ timeline: "media", position: 30, paused: false, rate: 1, anchorTime: 2000 });
     await player.serialize(async () => {});
