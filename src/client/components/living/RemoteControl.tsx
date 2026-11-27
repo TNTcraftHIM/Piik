@@ -367,7 +367,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onBlur={reset}
         onKeyDown={event => {
           event.preventDefault(); event.stopPropagation();
-          if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
+          if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true, repeat: event.repeat });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}

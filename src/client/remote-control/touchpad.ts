@@ -45,6 +45,7 @@ export class RemoteTouchpad {
   }
 
   private directionKeys = new Set<string>();
+  private readonly directionSource = Symbol();
 
   direction(x: number, y: number): void {
     const keys = new Set<string>();
@@ -57,10 +58,10 @@ export class RemoteTouchpad {
       if (Math.abs(y) > threshold) keys.add(y < 0 ? "KeyW" : "KeyS");
     }
     for (const code of this.directionKeys) {
-      if (!keys.has(code)) this.input({ type: "key", code, down: false });
+      if (!keys.has(code)) this.input({ type: "key", code, down: false, source: this.directionSource });
     }
     for (const code of keys) {
-      if (!this.directionKeys.has(code)) this.input({ type: "key", code, down: true });
+      if (!this.directionKeys.has(code)) this.input({ type: "key", code, down: true, source: this.directionSource });
     }
     this.directionKeys = keys;
   }
