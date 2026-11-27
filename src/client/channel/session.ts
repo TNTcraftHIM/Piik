@@ -1112,8 +1112,8 @@ export class ChannelSession {
     return undefined;
   }
 
-  private releaseHosts(stop = false): void {
-    this.hosting.release(stop);
+  private releaseHosts(): void {
+    this.hosting.release();
     const app = this.app;
     this.app = undefined;
     app?.close();
@@ -3789,7 +3789,7 @@ export class ChannelSession {
     this.endRecovery();
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;
-    this.releaseHosts(true);
+    this.releaseHosts();
     this.write({ type: "leave" });
     const socket = this.socket;
     this.socket = null;

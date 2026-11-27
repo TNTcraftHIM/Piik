@@ -5514,6 +5514,50 @@ function acceptCreatedRoom(socket: ChannelSocket): void {
     room: { ...(request.room as object), id: "domain-created-room" } });
 }
 
+test("Browser room writers survive a socket replacement and retire together on leave", async () => {
+  const hosts = new Map(["first", "second"].map(id => [id, {
+    bind: vi.fn(async (_binding: string) => {}),
+    close: vi.fn(async () => {}),
+    summary: () => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false }),
+  }]));
+  const open = vi.fn(async (_database: string, id: string) => hosts.get(id));
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedRoomIds: async () => [...hosts.keys()], openExisting: open,
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  async function bindRooms(connection: ChannelSocket, resuming: boolean) {
+    for (const [id, host] of hosts) {
+      const registration = () => connection.sent.find(command =>
+        command.type === "host_register" && (command.room as { id: string }).id === id);
+      await vi.waitFor(() => expect(registration()).toBeDefined());
+      const bindingId = `${id}-binding`;
+      expect(registration()!.resumeBinding).toBe(resuming ? bindingId : undefined);
+      connection.receive({ type: "host_bound", roomId: id, bindingId });
+      connection.receive({ type: "ack", requestId: registration()!.requestId });
+      expect(host.bind).toHaveBeenLastCalledWith(bindingId);
+    }
+  }
+  const withdrawals = (connection: ChannelSocket) => connection.sent.filter(({ type }) => type === "host_stop" || type === "leave");
+  try {
+    await bindRooms(socket, false);
+    const state = session.getSnapshot().state!;
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    await bindRooms(resumed, true);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(withdrawals(socket)).toEqual([]);
+    expect(withdrawals(resumed)).toEqual([]);
+    for (const host of hosts.values()) expect(host.close).not.toHaveBeenCalled();
+
+    session.close();
+    expect(withdrawals(resumed)).toEqual([{ type: "leave" }]);
+    for (const host of hosts.values()) expect(host.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("fresh Welcome restores only rooms still listed in the channel directory", async () => {
   const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false, hasPassword: false });
   const revoked = "revoked";
