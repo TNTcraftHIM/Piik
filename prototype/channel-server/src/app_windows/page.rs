@@ -1346,6 +1346,7 @@ fn whole_webview_process_exits_retire_the_view() {
 #[tokio::test]
 #[ignore = "opens a WebView2 window on an interactive Windows desktop"]
 async fn cancelled_prepare_and_queued_close_release_native_windows() {
+    use axum::{response::Html, routing::get, Router};
     use futures_util::FutureExt;
     use std::{
         collections::HashSet,
@@ -1358,9 +1359,49 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
         platform::{run_return::EventLoopExtRunReturn, windows::EventLoopBuilderExtWindows},
     };
     use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
     use webview2_com::{
         BrowserProcessExitedEventHandler,
         Microsoft::Web::WebView2::Win32::ICoreWebView2Environment5,
+    };
+
+    struct FixtureServer {
+        stop: CancellationToken,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+    impl Drop for FixtureServer {
+        fn drop(&mut self) {
+            self.stop.cancel();
+            let result = self.thread.take().unwrap().join();
+            if !std::thread::panicking() {
+                result.unwrap();
+            }
+        }
+    }
+    // Tao blocks this test's Tokio thread while it pumps WebView2 callbacks.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let fixture_url = format!("http://{}/", listener.local_addr().unwrap());
+    let stop = CancellationToken::new();
+    let shutdown = stop.clone();
+    let fixture = FixtureServer {
+        stop,
+        thread: Some(std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async move {
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let router = Router::new().route("/", get(|| async {
+                        Html(include_str!("test-original-page.html"))
+                    }));
+                    tokio::select! {
+                        result = axum::serve(listener, router) => result.unwrap(),
+                        _ = shutdown.cancelled() => {}
+                    }
+                });
+        })),
     };
 
     let profile = tempfile::Builder::new()
@@ -1489,19 +1530,37 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     let child_window = view.window.id();
     windows.insert(child_window);
     view.window.set_visible(true);
-    view.view.load_html(include_str!("test-original-page.html")).unwrap();
     reopened.views.borrow_mut().insert(child, view);
+    reopened.views.borrow()[&child].view.load_url(&fixture_url).unwrap();
 
     // Dispatch the same WebView2 callbacks as the App while waiting for media
     // and command replies. Retain the destruction notifications for cleanup.
     let mut pump = |pages: &mut Pages, stage: &str, done: &mut dyn FnMut(&Pages, Option<&Value>) -> bool| {
         let deadline = Instant::now() + Duration::from_secs(8);
         let mut complete = false;
+        let mut discovery = Vec::new();
         let proxy = target.create_proxy();
         target.run_return(|event, target, flow| {
             match event {
-                Event::UserEvent(ServiceEvent::PageMessage(id, body)) => pages.message(id, &body),
-                Event::UserEvent(ServiceEvent::PageNavigate(id)) => pages.navigate(id),
+                Event::UserEvent(ServiceEvent::PageMessage(id, body)) => {
+                    pages.message(id, &body);
+                    if stage == "video discovery" && id == child && discovery.len() < 16 {
+                        let packet: Value = serde_json::from_str(&body).unwrap_or_default();
+                        let page = pages.pages.values().next().unwrap();
+                        let document = page.views.borrow()[&child].document;
+                        let same_document = document.is_some_and(|id| packet["document"] == json!(id));
+                        let candidates = page.candidates.values().filter(|c| c.view == child).count();
+                        discovery.push(format!(
+                            "{} matched_document={same_document} candidates={candidates}", packet["kind"],
+                        ));
+                    }
+                }
+                Event::UserEvent(ServiceEvent::PageNavigate(id)) => {
+                    if stage == "video discovery" && id == child && discovery.len() < 16 {
+                        discovery.push("navigate".into());
+                    }
+                    pages.navigate(id);
+                }
                 Event::UserEvent(ServiceEvent::PageProcessExited(id)) => pages.process_exited(id),
                 Event::WindowEvent { event: WindowEvent::Destroyed, window_id, .. } => {
                     windows.remove(&window_id);
@@ -1525,7 +1584,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
                 ControlFlow::WaitUntil(deadline)
             };
         });
-        assert!(complete, "timed out during {stage}");
+        assert!(complete, "timed out during {stage}, child discovery events {discovery:?}");
     };
     let mut candidate = None;
     pump(&mut pages, "video discovery", &mut |pages, _| {
@@ -1686,6 +1745,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     );
     drop(environment);
     profile.close().unwrap();
+    drop(fixture);
     assert_eq!(frame_error, "page_candidate_unavailable");
     assert_eq!(catalog_error, "page_candidate_unavailable");
     assert_eq!(selection_lost["type"], "page_selection_lost");
