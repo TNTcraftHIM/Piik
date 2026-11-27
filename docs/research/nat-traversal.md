@@ -242,6 +242,83 @@ candidates. Distinct STUN URLs or ports also
 do not guarantee distinct destination IPs; same-IP observations can conceal
 address-dependent mapping. [TODO](../todo.md) retains physical-network work.
 
+### Field Survey And Search Order
+
+On 2026-11-27 the owner's circle ran the standalone survey tool
+(`prototype/nat` on `claude/nat-model`, versions 0.1 to 0.5.3) on thirteen
+access networks in thirty-five runs: home lines, campus networks, phone
+hotspots and mobile data. From 0.5.2 it also asks an observer of our own on
+sixteen ports of one address
+([runbook](../operations/website.md#nat-survey-observer)). Every run is
+one-sided: no peer took part, and nothing here is a rate of connecting.
+
+| What a network did | Networks |
+| --- | --- |
+| One mapping per socket whatever the destination, five of them keeping the local port | 8 |
+| A counter for each destination, counting up by one | 2 (a campus, a carrier's hotspot) |
+| One counter per public address for every destination, moving 300 to 550 ports a second | 1 (a hotspot with three addresses) |
+| A few slow counters, or one block of some tens of ports, shared by all destinations | 3 |
+
+Four of the thirteen left through more than one public address, chosen by
+destination or by socket. One hotspot is counted in two rows: its two
+addresses behaved differently.
+
+Filtering was measured on nine of them by asking the observer to answer from
+its next port on a socket that had sent only to the first: on all nine,
+nothing came in. No network has yet let such an answer in, so the test still
+lacks a positive control from a host without filtering.
+
+Where each destination has its counter, the observer's sixteen ports showed
+what the public servers could not. Each even port and the odd one above it
+shared a counter, 14 of 14 pairs on the two networks. Of the mappings made
+toward one pair, 100 of 106 took the port after the last, across sockets and
+over twenty seconds, with no other traffic on those counters; the rest were
+jumps of a few ports or of one fixed size per network. On the campus a second
+run half an hour later continued most counters where the first had left them.
+Where a counter starts cannot be read from other destinations' counters: the
+held-out replay reached 1 to 4 of about 65. Counters of popular destinations
+move in bursts, since every subscriber's traffic to them shares one.
+
+Two results follow, both counted in memory with filtering by address and
+port and no packet sent.
+
+**The order of a search.** A pool of sockets that all send to one endpoint is
+a run of neighbouring ports on such a NAT. Sending to ports in the order of
+the 16-bit count with its bits reversed, from a chosen start, combs the range
+evenly at every length: a run of n is reached within 65,536 / n packets
+wherever it began. With 256 sockets and 1,024 packets:
+
+| Pool's ports | Distinct ports drawn at random | Bit-reversed order |
+| --- | --- | --- |
+| Drawn at random | 98.0% | 98.4% |
+| One quiet counter | 98.1% | 100%, last at packet 252 |
+| One counter, 1 port in 10 taken by others | 98.2% | 100% |
+| One counter, 1 port in 2 taken by others | 98.0% | 99.7% |
+
+Against ports drawn at random any distinct ports cover the same, so the order
+costs nothing there. `piik_nat::search::order` holds it with its tests.
+
+**A pool between two observations.** Where one counter serves every
+destination, an observation just before the pool is made and one just after
+bound the pool's ports. With others taking 800 ports a second from the
+counter, twice what the hotspot showed, a pool of eight sockets was reached
+within 52 packets in 95 of 100 trials and within 123 in all; a pool of 64
+within 28 in all.
+
+Together they suggest one form in place of separate paths for sequential and
+irregular mappings: the side that cannot name its port pools toward the
+other's endpoint between two observations and publishes, for each public
+address it has seen, the window they bound when there is one; the other side
+sends to the windows first and then to the whole range, each in bit-reversed
+order. Two sides that both cannot name a port remain out of reach.
+
+One reading of the present product path rests on the same data. Its three
+default STUN servers share a port. On the campus they read three neighbouring
+ports from one socket in one run, which the survey classifies as sequential,
+while a peer's destination would take another counter; in an earlier run on
+the same network they read far apart. Physical two-sided runs are what would
+settle either change; [TODO](../todo.md) retains them.
+
 ### External Forwarding And Participant Relays
 
 The October 2026 [frp v0.71.1](https://github.com/fatedier/frp/releases/tag/v0.71.1)

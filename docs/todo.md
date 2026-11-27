@@ -344,6 +344,12 @@ the feedback period; they do not delay that delivery.
   Evaluate the isolated allocator proposal against held-out per-destination
   mappings, including burst allocations and missing observations; then verify a
   bounded schedule through authenticated preparation and ICE transfer.
+  The [field survey](./research/nat-traversal.md#field-survey-and-search-order)
+  proposes a bit-reversed search order in place of the random draw and a pool
+  made between two observations; it also shows the three default STUN servers
+  reading as sequential on a network with a counter per destination. Compare
+  each under the present deadline, then run a physical pair across such a
+  network.
   [Allocator controls](./research/nat-traversal.md#allocator-prediction-controls)
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before
