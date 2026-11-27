@@ -396,7 +396,7 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive
 }
 
 function readStickPositions() {
-  return readRoomPreferences().stickPositions;
+  return readRoomPreferences("stickPositions");
 }
 
 /** A failed picture operation stays with its picture until its owner clears it or it is dismissed. */
@@ -439,10 +439,10 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const pictureTrigger = useRef<HTMLSpanElement>(null), picturePanel = useRef<HTMLDivElement>(null);
   const [pictureOpen, setPictureOpen] = useState(false);
   useLayerHistory(picturePanel, pictureOpen);
-  const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
+  const [pictureFit, setPictureFit] = useState(() => readRoomPreferences("pictureFit"));
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
-  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
-  const [remoteTouchMode, setRemoteTouchMode] = useState(() => readRoomPreferences().remoteTouchMode);
+  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences("previewAutoPause"));
+  const [remoteTouchMode, setRemoteTouchMode] = useState(() => readRoomPreferences("remoteTouchMode"));
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [ready, setReady] = useState(false);

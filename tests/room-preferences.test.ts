@@ -52,7 +52,7 @@ it("isolates nested preferences across reads and observes external edits after a
   const clip = { name: "short.wav", data: "AAAA" };
   values.set(key, JSON.stringify({ feedbackSound: { enabled: true, volume: .5, clips: { message: clip } } }));
   readRoomPreferences().feedbackSound.clips!.message!.name = "first edit";
-  readRoomPreferences().feedbackSound.clips!.message!.name = "second edit";
+  readRoomPreferences("feedbackSound").clips!.message!.name = "second edit";
   expect(readRoomPreferences().feedbackSound.clips?.message).toEqual(clip);
   vi.spyOn(window.localStorage, "setItem").mockImplementation(() => { throw new Error("quota full"); });
   expect(saveRoomPreferences({ pictureFit: "cover" })).toBe(false);

@@ -76,8 +76,10 @@ export class RoomInteractionSession {
 
   constructor(private readonly sendMessage: (message: InteractionCommand) => boolean | { nonce: number }, readonly now = Date.now, reactionIds?: readonly string[],
     private readonly onFeedback?: (event: RoomInteraction) => void) {
-    const { overlayEnabled, overlayAppearance } = readRoomPreferences();
-    this.state = { ...this.state, overlayEnabled, overlayAppearance };
+    this.state = { ...this.state,
+      overlayEnabled: readRoomPreferences("overlayEnabled"),
+      overlayAppearance: readRoomPreferences("overlayAppearance"),
+    };
     this.setSupportedReactions(reactionIds);
   }
 

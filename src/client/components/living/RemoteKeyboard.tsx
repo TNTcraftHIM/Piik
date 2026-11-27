@@ -61,11 +61,11 @@ export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch
       : mac ? [["Ctrl+Space", "InputLanguage", ["ControlLeft", "Space"]], ["Cmd+`", "SwitchWindow", ["MetaLeft", "Backquote"]]] as const : []),
     [`${mac ? "Cmd" : "Alt"}+Tab`, mac ? "SwitchApp" : "SwitchWindow", [mac ? "MetaLeft" : "AltLeft", "Tab"]],
   ] as const;
-  const [page, setPage] = useState<Page>(() => readRoomPreferences().keyboardPage);
+  const [page, setPage] = useState<Page>(() => readRoomPreferences("keyboardPage"));
   const pages = PAGES;
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
-  const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences().combineKeys);
+  const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences("combineKeys"));
   const composing = useRef(false);
   const editor = useRef<HTMLTextAreaElement>(null);
   const textTooLong = !remoteTextFits(text);

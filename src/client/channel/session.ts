@@ -174,18 +174,18 @@ function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
 export class ChannelSession {
   private view: ChannelView = {
     watchPlayers: new Map(), pagePlayer: false, externalScreenInputAvailable: false,
-    screenBufferTargetMs: readRoomPreferences().screenBufferTargetMs,
+    screenBufferTargetMs: readRoomPreferences("screenBufferTargetMs"),
     screenBufferStatus: null,
     quality: readPreferredQuality(),
     videoCodecMode: "auto",
     encodingExecution: "auto",
     interactionsByRoom: new Map(),
     publicationReactions: new Map(),
-    voiceInput: readRoomPreferences().voiceInput,
-    voiceTransmission: readRoomPreferences().voiceTransmission,
+    voiceInput: readRoomPreferences("voiceInput"),
+    voiceTransmission: readRoomPreferences("voiceTransmission"),
     voicePlaybackByUser: new Map(),
-    listeningVolume: readRoomPreferences().voiceListeningVolume,
-    feedbackSound: readRoomPreferences().feedbackSound,
+    listeningVolume: readRoomPreferences("voiceListeningVolume"),
+    feedbackSound: readRoomPreferences("feedbackSound"),
     appConnected: false,
     forwardingLimit: -1,
     ownedScreens: new Set(),
@@ -575,7 +575,7 @@ export class ChannelSession {
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
       const identityKey = JSON.stringify([event.state.channel.id, event.selfProfile.id]);
-      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences().forwardingLimitByIdentity[identityKey] ?? -1;
+      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences("forwardingLimitByIdentity")[identityKey] ?? -1;
       this.forwardingBudget ??= this.conversation.forwardingBudget();
       if (resumed) this.forwardingBudget?.reconnected();
       if (this.historyOwner !== undefined && this.historyOwner !== identityKey) {
@@ -1209,7 +1209,7 @@ export class ChannelSession {
   inputShortcut = async (publicationId: string, key?: number): Promise<ChannelStopShortcut> => {
     const app = this.app, state = this.view.remoteControls.get(publicationId);
     if (!app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
-    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences().remoteStopKey, available: state.stopShortcut != null,
+    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences("remoteStopKey"), available: state.stopShortcut != null,
       ...(state.stopShortcutLabel !== undefined ? { stopShortcutLabel: state.stopShortcutLabel } : {}) };
     const shortcut = await app.inputShortcut(publicationId, key);
     const current = this.view.remoteControls.get(publicationId);
@@ -2154,7 +2154,7 @@ export class ChannelSession {
     const { self, sessionId, connection } = this.view, state = this.roomSnapshot;
     if (!self || !sessionId || !state || !Number.isInteger(forwardingLimit) || forwardingLimit < -1 || forwardingLimit > MAX_RELAY_CAPACITY) return;
     const key = JSON.stringify([state.channel.id, self.id]);
-    saveRoomPreferences({ forwardingLimitByIdentity: { ...readRoomPreferences().forwardingLimitByIdentity, [key]: forwardingLimit } });
+    saveRoomPreferences({ forwardingLimitByIdentity: { ...readRoomPreferences("forwardingLimitByIdentity"), [key]: forwardingLimit } });
     this.patch({ forwardingLimit });
     if (connection === "connected") this.applyForwarding(sessionId, state, self.id);
   };

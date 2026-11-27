@@ -118,7 +118,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [bufferTarget, setBufferTarget] = useState<number | null>(null);
-  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
+  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences("previewAutoPause"));
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(true);

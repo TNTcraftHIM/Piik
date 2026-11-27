@@ -42,8 +42,8 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const rightStick = useCallback((x: number, y: number) => gamepad.current?.setRightStick(x, y), []);
   const stickMouse = useRef<StickMouse | null>(null);
   const moveStickMouse = useCallback((x: number, y: number) => stickMouse.current?.set(x, y), []);
-  const [virtualSticksEnabled, setVirtualSticksEnabled] = useState(() => readRoomPreferences().virtualSticksEnabled);
-  const [touchOnlySticks, setTouchOnlySticks] = useState(() => readRoomPreferences().touchOnlySticks);
+  const [virtualSticksEnabled, setVirtualSticksEnabled] = useState(() => readRoomPreferences("virtualSticksEnabled"));
+  const [touchOnlySticks, setTouchOnlySticks] = useState(() => readRoomPreferences("touchOnlySticks"));
   const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [gamepadConnected, setGamepadConnected] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -51,7 +51,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const keyboardDetached = Boolean(keyboardDocument && keyboardDocument !== document);
   const [touchPointer, setTouchPointer] = useState<RemoteTouchpad | null>(null);
   const touch = touchPointer !== null;
-  const [releaseKey, setReleaseKey] = useState(() => readRoomPreferences().remoteReleaseKey);
+  const [releaseKey, setReleaseKey] = useState(() => readRoomPreferences("remoteReleaseKey"));
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
   const cursor = useRef<HTMLDivElement | null>(null);

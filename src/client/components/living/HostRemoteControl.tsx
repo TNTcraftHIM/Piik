@@ -37,7 +37,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   const gamepadGuide = diagnosisGuide("gamepad", lang).fallback;
   const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
   const detached = Boolean(surfaceDocument && surfaceDocument !== document);
-  const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences().remoteControlMode : mode);
+  const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences("remoteControlMode") : mode);
   const [preparing, setPreparing] = useState(false);
   const [password, setPassword] = useState("");
   const [failure, setFailure] = useState<{ id: string; error: unknown } | null>(null);
@@ -55,14 +55,14 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
     let current = true;
     setShortcut(null);
     // Restore this Site's choice before allowing a new permission request.
-    const key = readRoomPreferences().remoteStopKey;
+    const key = readRoomPreferences("remoteStopKey");
     const load = onShortcut().then(current => mode === "off" && current.stopShortcutLabel === undefined
       ? onShortcut(key).catch(() => ({ key, available: false })) : current);
     void load.then(value => { if (current) setShortcut(value); }, () => { if (current) setShortcut(null); });
     return () => { current = false; };
   }, [open, mode, onShortcut, stopShortcutLabel]);
   useEffect(() => {
-    setDraft(mode === "off" ? readRoomPreferences().remoteControlMode : mode);
+    setDraft(mode === "off" ? readRoomPreferences("remoteControlMode") : mode);
     setPassword(""); setPreparing(false);
     if (mode !== "off") saveRoomPreferences({ remoteControlMode: mode });
   }, [mode]);
@@ -89,7 +89,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
     return perform(nextMode !== "off" && mode === "off" ? "enable" : "policy", async identity => {
       try {
         if (nextMode !== "off" && onShortcut && shortcut?.stopShortcutLabel !== undefined && !shortcut.available) {
-          const registered = await onShortcut(readRoomPreferences().remoteStopKey);
+          const registered = await onShortcut(readRoomPreferences("remoteStopKey"));
           if (latestOperation.current !== identity) return;
           setShortcut(registered);
           if (!registered.available) throw new Error("input_shortcut_unavailable");
@@ -119,7 +119,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
         if (!opened) {
           setShortcut(null);
           setPassword(""); setPreparing(false);
-          setDraft(mode === "off" ? readRoomPreferences().remoteControlMode : mode);
+          setDraft(mode === "off" ? readRoomPreferences("remoteControlMode") : mode);
         }
       }}>
       <div className="lr-floating-scroll lr-remote-panel-body">
@@ -186,7 +186,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
           </label>}
           {(draft !== mode || draft === "password") && <div className="lr-remote-policy-actions">
             {preparing && !busy && <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" hint="hint-close" onClick={() => {
-              setPreparing(false); setPassword(""); setDraft(readRoomPreferences().remoteControlMode);
+              setPreparing(false); setPassword(""); setDraft(readRoomPreferences("remoteControlMode"));
               (surfaceDocument ?? document).getElementById(id)?.querySelector<HTMLButtonElement>('[role="switch"]')?.focus();
             }} />}
             <Btn icon="check" title={policyAction} cap={policyAction}
