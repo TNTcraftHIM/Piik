@@ -125,10 +125,11 @@ the reasons and the sources. The rule:
   as unsupported in that request's reply. A reply of a kind its requester does
   not know ends that request as an unknown outcome, never as success. A
   notification of an unknown kind is ignored.
-- **Unknown fields.** On the wire the final recipient ignores the fields it
-  does not know, at every depth. A relay forwards the enclosed signed payload
-  unchanged. Required fields, bounds, types and closed sets of kinds keep
-  their meaning. A writer stores the
+- **Unknown fields.** The final recipient ignores unknown object members at
+  every depth of requests, replies, notifications and state descriptions.
+  A relay forwards the enclosed signed payload unchanged. Known bounds,
+  types, required fields and kind values keep their defined contracts.
+  A writer stores the
   fields it knows, and its confirmation carries the message as stored. Stores
   and archives are the exception, because nobody is there to be told: content
   their reader does not know is refused before anything is installed, at the
