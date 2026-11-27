@@ -58,10 +58,26 @@ yet.
    admission that harmed no viewer. A share of frames delivered has no
    denominator that means the same in every runtime. The proposed reading
    asks the owner each runtime already has: whether a flow's own adaptation
-   reports that the path or the device limits it, and for how much of the
-   window. A trial fails when a flow that was not limited becomes limited,
-   and a sender whose flows are already limited is not tried. Recorded
-   controls decide whether that follows what receivers present. Otherwise the
+   holds it below what was asked of it, and for how much of the window. In a
+   Browser that is a limitation reason other than none on the sending stream.
+   In Native it is one of three states the code already holds. The encoder's
+   quality policy has a restriction on pixels or frames in force: the device
+   where its processing restriction binds, the path otherwise. Or the
+   allocator leaves out a representation the flow's parent supplies, or
+   pauses the flow, for want of budget. Or the allocator holds the flow at
+   its least representation above its share of the pair's estimate. A lower
+   target rate with none of these is not limited. Where an owner cannot say
+   (a pair before its first feedback, a supply not yet measured, an encoder
+   whose policy is set not to adapt), the reading is unknown and is evidence
+   for neither side: a trial among flows that cannot say is decided by what
+   its children report, as now. Native keeps no time in these states yet. It
+   takes the Browser's form, seconds accumulated per reason, so that one
+   comparison serves both runtimes. A trial fails when a flow that was not
+   limited becomes limited, and a sender whose flows are already limited is
+   not tried. Both readings are local to the sender, so the sender judges its
+   own flows and ends the trial through the failure a flow already reports;
+   no measurement crosses to placement. Recorded controls decide whether the
+   reading follows what receivers present. Otherwise the
    new child alone is withdrawn, by its generation, and that sender is not
    tried again without fresh evidence. A node healthy with N children has
    proved N for that workload, nothing more, and the room's number is where it
