@@ -11,7 +11,7 @@ import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
 import { useLayerHistory } from "../../ui/layer-history";
 import { useAnchoredPopover } from "./use-anchored-popover";
-import { diagnosisGuide } from "../../channel/diagnosis";
+import { diagnosisGuide } from "../../ui/diagnosis";
 import { Btn } from "./primitives";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";

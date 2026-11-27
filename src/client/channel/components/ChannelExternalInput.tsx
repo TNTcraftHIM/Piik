@@ -2,7 +2,7 @@ import { useId } from "react";
 import { useCopy } from "../../ui/copy";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
 import type { NativeExternalInput } from "../app-link";
-import { channelErrorPresentation } from "../error-presentation";
+import { channelErrorPresentation } from "../../components/error-presentation";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
 import "./channel-share-control.css";

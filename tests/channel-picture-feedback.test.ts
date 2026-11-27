@@ -1,7 +1,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
-import { useKeyedSettingsAction } from "../src/client/channel/components/ChannelSettingsDialog";
+import { useKeyedSettingsAction } from "../src/client/ui/use-settings-action";
 
 test("picture feedback follows live publications across room views and reconnects", async () => {
   const view = Object.assign(new EventTarget(), { HTMLIFrameElement: class {} });

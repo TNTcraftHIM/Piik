@@ -27,9 +27,10 @@ import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
-import { ChannelSettingsDialog, useSettingsAction } from "./ChannelSettingsDialog";
-import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
-import { diagnoseChannelFact, type ChannelDiagnosis } from "../diagnosis";
+import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+import { useSettingsAction } from "../../ui/use-settings-action";
+import { ChannelDiagnosisHelp } from "../../components/ChannelDiagnosisHelp";
+import { diagnoseChannelFact, type ChannelDiagnosis } from "../../ui/diagnosis";
 import { Comic } from "../../components/living/Comic";
 
 function PictureDeliveryHelp({ diagnosis, admitted, playbackFailed, routeFailed, onRetry }: {

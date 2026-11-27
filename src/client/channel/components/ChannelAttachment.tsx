@@ -7,7 +7,7 @@ import { inlineImageFile } from "../image-preview";
 import { ChannelAction } from "./ChannelAction";
 import { Tooltip } from "../../components/living/Tooltip";
 import { ChannelImageDialog } from "./ChannelImageDialog";
-import { channelErrorPresentation } from "../error-presentation";
+import { channelErrorPresentation } from "../../components/error-presentation";
 import { useSurfaceDocument } from "../../ui/panel-window";
 
 const visibilityObservers = new WeakMap<Document, {

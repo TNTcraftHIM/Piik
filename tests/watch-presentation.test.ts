@@ -6,7 +6,7 @@ import { ChannelStage, SourceAudience, type WatchStageSource } from "../src/clie
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { setCopy, t, type Lang } from "../src/client/ui/copy";
 import { ChannelSettingsError } from "../src/client/channel/components/ChannelSettingsDialog";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { locales } from "../src/client/locales";
 import { WatchSourceDialog } from "../src/client/channel/components/ChannelShareControl";
 import type { ChannelController } from "../src/client/channel/types";

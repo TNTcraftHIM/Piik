@@ -1,7 +1,7 @@
 import type { CopyKey } from "../locales";
 import type { UnsupportedVideoFormat } from "../native/wire";
-import { isIncompatibleProtocol } from "./protocol";
-import { diagnoseChannelFact } from "./diagnosis";
+import { isIncompatibleProtocol } from "../channel/protocol";
+import { diagnoseChannelFact } from "../ui/diagnosis";
 
 export interface ChannelErrorPresentation {
   message: string | null;

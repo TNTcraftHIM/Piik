@@ -1,7 +1,7 @@
 import type { CopyKey } from "../locales";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
-import type { NativeRoomOpenReason } from "./hosting-api";
-import type { RoomOpenFailure } from "./types";
+import type { NativeRoomOpenReason } from "../channel/hosting-api";
+import type { RoomOpenFailure } from "../channel/types";
 
 const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],

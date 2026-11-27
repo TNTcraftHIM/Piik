@@ -12,7 +12,8 @@ import type { ChannelController } from "../types";
 import type { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutLabel, type VoiceShortcutBinding } from "../voice-shortcut-binding";
 import { ChannelVoiceShortcutSettings } from "./ChannelVoiceShortcutSettings";
-import { ChannelSettingsDialog, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+import { useSettingsAction, type SettingsAction } from "../../ui/use-settings-action";
 import "./channel-voice-settings.css";
 
 type VoiceSettingsProps = {

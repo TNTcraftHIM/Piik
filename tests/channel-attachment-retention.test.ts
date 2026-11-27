@@ -1,7 +1,7 @@
 import { stubTransferStorage } from "./fixtures/transfer-storage";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelAttachments } from "../src/client/channel/attachments";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { t } from "../src/client/ui/copy";
 import { FileStore } from "../src/client/channel/file-store";
 import * as hosting from "../src/client/channel/hosting";

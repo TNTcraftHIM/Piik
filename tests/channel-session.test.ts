@@ -10,7 +10,7 @@ import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import { RoomCreationInterrupted } from "../src/client/channel/room-creation";
 import { FeedbackAudio } from "../src/client/channel/feedback-audio";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
 import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";

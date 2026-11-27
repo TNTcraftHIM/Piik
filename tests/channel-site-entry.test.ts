@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChannelSiteEntry } from "../src/client/channel/components/ChannelSiteEntry";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { currentSiteResponds } from "../src/client/channel/site-health";
 import { setCopy, t } from "../src/client/ui/copy";
 

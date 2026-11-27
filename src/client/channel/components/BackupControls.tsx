@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { downloadBlob } from "../../lib/download";
 import { useCopy } from "../../ui/copy";
-import { channelErrorPresentation } from "../error-presentation";
+import { channelErrorPresentation } from "../../components/error-presentation";
 import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsError, useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsError } from "./ChannelSettingsDialog";
+import { useSettingsAction } from "../../ui/use-settings-action";
 
 export function RoomRestoreResult({ message, unconfirmed = false, onClose }: {
   message: string; unconfirmed?: boolean; onClose?: () => void;

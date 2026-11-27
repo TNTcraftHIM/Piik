@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { WatchMedia } from "../watch-media";
 import { Btn } from "../../components/living/primitives";
 import { useCopy } from "../../ui/copy";
-import { channelErrorPresentation } from "../error-presentation";
+import { channelErrorPresentation } from "../../components/error-presentation";
 import "./channel-media.css";
 
 /** Keep the embedded player mounted until the stage takes its element. */

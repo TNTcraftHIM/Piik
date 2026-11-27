@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import { roomCreationPolicySchema } from "../src/client/channel/protocol";
 import { roomCreationPolicyFor, roomDraft, roomSettings, readSimpleShareRoom, rememberSimpleShareRoom, roomSettingsPatch, simpleShareRoom, simpleShareRoomKey } from "../src/client/channel/room-creation";
 

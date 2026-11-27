@@ -7,7 +7,7 @@ import { ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomCont
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
-import { useSettingsAction } from "../channel/components/ChannelSettingsDialog";
+import { useSettingsAction } from "../ui/use-settings-action";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type DomainSettings, type ProfileUpdate, type RoomSettings } from "../channel/protocol";
 import { messageRemoved, type ChannelController } from "../channel/types";

@@ -2,9 +2,9 @@ import type { NativeCaptureSelection } from "../../native/capture-selection";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
-import { ChannelDiagnosisHelp } from "../../channel/components/ChannelDiagnosisHelp";
-import { diagnoseChannelFact } from "../../channel/diagnosis";
-import { channelErrorPresentation } from "../../channel/error-presentation";
+import { ChannelDiagnosisHelp } from "../ChannelDiagnosisHelp";
+import { diagnoseChannelFact } from "../../ui/diagnosis";
+import { channelErrorPresentation } from "../error-presentation";
 import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";

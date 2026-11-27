@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { diagnosisGuide } from "../../channel/diagnosis";
+import { diagnosisGuide } from "../../ui/diagnosis";
 import type { RemoteControlRequest, RemoteStopShortcut } from "../../native/wire";
 import type { RemoteControlMode, RemoteInputPlatform } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
