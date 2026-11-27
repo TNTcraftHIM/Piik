@@ -590,7 +590,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-minimal] .c3-site-overview:has(> .lr-tv) { flex: 1; display: grid; place-items: center; padding: var(--room-inset); }
 [data-minimal] .c3-site-overview > .lr-tv { width: min(100%, 880px); max-height: 100%; }
 [data-minimal] .c3-quick-start { align-content: center; gap: 16px; }
-[data-minimal] .c3-quick-start p { margin: 0; max-width: 28em; text-align: center; text-wrap: balance; }
+[data-minimal] .c3-quick-start p { margin: 0; max-width: 28em; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
 [data-minimal] .c3-quick-start .lr-btn { border-radius: var(--c3-inset-radius); }
 [data-sidebars="phone"] .c3-voice-room-row[data-direct] .c3-voice-room-actions .lr-cap { display: none; }
 [data-minimal]:not([data-sidebars="phone"]) .c3-voice-room-actions .lr-btn:has(> .lr-cap) > :is(.lr-glyph, .lr-voice-mic-level) {
