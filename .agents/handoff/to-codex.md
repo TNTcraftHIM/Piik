@@ -186,8 +186,10 @@ small things, one rule each:
    named member where another person in the same list shows the same name,
    and on the profile card and in member management, where which Ada is
    meant matters. Not on every message line: in a room of friends it would
-   be noise, and it is the reason Discord gave for dropping its own. If the
-   owner wants it on every name, that is one condition to remove.
+   be noise, and it is the reason Discord gave for dropping its own. The
+   owner has since confirmed this placement: the tag is the answer to two
+   people with one name, and the word for guest is a placeholder that
+   follows the viewer's language.
 3. **A site switch, off by default: ask a new person for a name on a first
    visit.** It is the site's, because the site owns identities. When on, a
    person who enters with no stored name gets the profile editor's name
@@ -198,6 +200,56 @@ small things, one rule each:
 
 Say if the first reaches further than it looks: I have not counted the
 places that read `name` directly.
+
+## A sweep that is yours: hard-coded text and numbers without an owner
+
+The owner, on seeing that "Guest" was a literal: "类似的hard coded/magic
+number之类的问题也得检查", and to me: this kind of wide, patient work goes to
+you, and I keep to design and the hard problems. So the sweep is yours to
+run, with as many readers as you like; what I add is the rule, what is
+already known, and what should stop it coming back.
+
+**The rule** is the one in AGENTS.md: every fact has one writer. Four shapes
+of breaking it:
+
+1. *Text a person reads, or that is stored or sent, in one language.* The
+   join's `"Guest"` (`session.ts:476`); the site's default name
+   `"Piik friends"` (`channel.rs:189`); the rooms the client names itself
+   ("Living room", "Screen sharing"); `common.name.hostDefault`. Where the
+   thing is the absence of a choice, it is a state that each viewer's
+   client words; where it is a message, it is a code the client translates.
+   Also JSX text and `title`, `aria-label`, `placeholder`, `alt` outside the
+   catalogue, and anything the App or Server shows that does not come from
+   a catalogue as `window-controls.json` does.
+2. *One fact written in several places.* Known: the quick-tunnel rule in
+   `app_tunnel.rs:293` and `site-address.ts`; `/healthz` and its marker;
+   8192 for remote input in `channel/input.ts:42`,
+   `remote-control/input-route.ts:40` and `input-session.ts:113` and twice
+   in Rust (say whether these are one limit or three); the launch
+   fragment's parameter names; storage key names; name length 40 in
+   `identity.rs` and `protocol.ts:30`. `96960cb6` and `d484b5a0` did this
+   for the recovery time, frame sizes, the Opus range and the playback
+   buffer; the same treatment for what is left.
+3. *A bare number in logic* used as a timeout, retry count, capacity,
+   threshold or breakpoint, with no name and no reason beside it.
+4. *A tuning constant with a name and no stated source.* Ports of upstream
+   values that say so are fine.
+
+**What I want back** is not the list. For each shape, the owner you gave
+it and the count moved there, the cases you left and why (two equal numbers
+that are different facts are not duplicates), and the check that keeps it
+from returning. One check per shape is the aim, each general and none a
+list of today's offenders: a lint that refuses literal text in JSX and in
+the text-bearing props outside an allowlist; no default names in the wire
+or stored forms, so that absence is the only default; constants the client
+needs from the core coming through the boundary that already carries some,
+with the one comparison test; and for bare delays and limits a ratchet in
+`scripts/` that fails on a new literal passed to a timer or a
+`Duration` constructor outside a constant's definition. Decline any of
+these with a reason and a better one.
+
+It is not urgent beside the fixes above, and it must not turn into renaming
+for its own sake: a local number that is arithmetic stays where it is.
 
 ## The NAT lab needs your machine
 
