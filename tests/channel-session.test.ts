@@ -3931,7 +3931,7 @@ test.each(["transfer", "commit", "stop"] as const)("Native selection retains its
   } finally { session.close(); }
 });
 
-test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
+test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "browser-inherits-pending-mute", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = await startFixtureApp(session);
@@ -3939,7 +3939,8 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
   const muteTransition = outcome.startsWith("mute-");
   const contexts = muteTransition ? microphoneMixer([]) : [];
   vi.mocked(next.stop).mockImplementation(() => { Object.defineProperty(next, "readyState", { value: "ended" }); });
-  const nextStream = remoteStream("browser-next", [next]);
+  const inheritsMute = outcome === "browser-inherits-pending-mute";
+  const nextStream = remoteStream("browser-next", [next, ...(inheritsMute ? [remoteTrack("audio")] : [])]);
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
     .mockResolvedValueOnce(remoteStream("browser-old", [old, ...(muteTransition ? [remoteTrack("audio")] : [])])).mockResolvedValueOnce(nextStream) } });
   const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
@@ -4066,7 +4067,7 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     const oldShortcut = session.inputShortcut(publication.id, 10);
     const oldShortcutCommand = app.sent.at(-1)!;
     const retiredShortcut = expect(oldShortcut).rejects.toMatchObject({ name: "AbortError" });
-    const nativeAgain = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
+    const nativeAgain = session.startNativeScreen("first", { target, audio: inheritsMute, showCaptureBorder: false });
     expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
     expect(session.sourceAudio(publication.id)?.canMute).toBe(true);
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
@@ -4105,9 +4106,30 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
       const silence = session.setSourceAudio(publication.id, { level: 0 });
       await appCommand("capture_audio_settings"); appReply(); await silence;
     }
+    if (inheritsMute) {
+      const unity = session.setSourceAudio(publication.id, { level: 1 });
+      await appCommand("capture_audio_settings"); appReply(); await unity;
+    }
     const browser = session.startScreen("first");
     const transferring = await appCommand("transfer_source");
     expect(transferring).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
+    if (inheritsMute) {
+      const muted = session.setSourceAudio(publication.id, { muted: true }).then(() => "muted", error => error.name);
+      const command = await appCommand("capture_audio_settings");
+      state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }], subscriptions: [] };
+      socket.receive({ type: "state", state });
+      app.receive({ id: transferring.id, result: null });
+      const stop = await appCommand("stop_capture");
+      expect(session.getSnapshot().streams.get(publication.id)?.getAudioTracks()).toHaveLength(0);
+      app.receive({ id: command.id, result: null });
+      app.receive({ id: stop.id, result: null });
+      await ackSourceUpdate(socket);
+      await browser;
+      const result = await muted;
+      expect(session.sourceAudio(publication.id)?.muted).toBe(true);
+      expect(result).toBe("muted");
+      return;
+    }
     if (outcome === "app-close-before-state" || outcome === "app-close-after-state" || outcome === "transfer-rejected") {
       const committed = outcome !== "transfer-rejected";
       const error = committed ? "app_disconnected" : "source_unavailable";
