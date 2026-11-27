@@ -379,6 +379,20 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], (asked, unasked
     // A silent first port shows only that it did not answer: the rest of its run was not asked.
     let left = if unasked > 0 { format!(", {unasked} more not asked after their run's first port stayed silent") } else { String::new() };
     println!("observers answered: {} of {} asked{left}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
+    // Which observers are one address, by number: names alone do not say, since two names can be
+    // one address and one name can be two. The replay reads its destinations from this line.
+    let mut grouped: Vec<Ipv4Addr> = Vec::new();
+    let groups: Vec<String> = observers
+        .iter()
+        .map(|(_, observer)| {
+            let group = grouped.iter().position(|known| known == observer.ip()).unwrap_or_else(|| {
+                grouped.push(*observer.ip());
+                grouped.len() - 1
+            });
+            (group + 1).to_string()
+        })
+        .collect();
+    println!("observer address groups: {}", groups.join(" "));
     println!("local: {network}; global IPv6: {}", if ipv6 { "yes" } else { "no" });
     println!("public addresses: {}", addresses.iter().map(|address| format!("{} {}", letter(address), shown(*address))).collect::<Vec<_>>().join(", "));
     // Whether the mapping follows the destination's port: the same socket, the same address, two ports.

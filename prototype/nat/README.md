@@ -28,7 +28,7 @@
 
 ## For whoever reads the reports
 
-`cargo run --example replay -- [--drop <text in an observer's name>] [--only <address letter>] report.txt...` replays pasted reports offline: how often the aim read from earlier mappings would have held each new one, at several packet budgets. No packet is sent.
+`cargo run --example replay -- [--drop <text in an observer's name>] [--only <address letter>] report.txt...` replays pasted reports offline: how often the aim read from earlier mappings would have held each new one, at several packet budgets. No packet is sent. A report says which of its observers are one address by number (`observer address groups`), since names alone do not: the replay reads its destinations from that line.
 
 ## The server of our own
 
