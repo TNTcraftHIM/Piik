@@ -221,7 +221,7 @@ its public rooms. Use the same
 browser profile to retain your existing identity; private/incognito profiles
 have separate saved credentials.
 
-If Piik asks you to refresh, reload the page. If it asks you to update the
+If Piik asks you to refresh, click **Refresh page**. If it asks you to update the
 site, contact the administrator who runs its Piik App or Server.
 
 ### The page opens but the site will not connect
@@ -251,9 +251,6 @@ If Piik asks you to update the App, install the latest package supplied for
 your 3.0 test and restart it. If it asks you to refresh, reload the page. If
 the page still needs an update, contact the site administrator. Then select
 **App** again.
-
-If you are using an earlier beta with the old handshake, ask
-the site administrator for the App package from that candidate.
 
 ## Chat and files
 

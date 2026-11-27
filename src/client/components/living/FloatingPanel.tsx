@@ -3,6 +3,7 @@ import { useImperativeHandle, useLayoutEffect, useRef, useState, type PointerEve
 import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { useLayerHistory } from "../../ui/layer-history";
 import { surfaceViewport } from "../../ui/window-appearance";
 import { usePanelWindow, panelWindowAPI, SurfaceDocument, PANEL_SIZE } from "../../ui/panel-window";
 import { Btn } from "./primitives";
@@ -120,6 +121,8 @@ export function FloatingPanel({ onDetachedTrigger, onNativeReady, closeOnReturn 
     owner.addEventListener("fullscreenchange", hideOutsideFullscreen);
     return () => owner.removeEventListener("fullscreenchange", hideOutsideFullscreen);
   }, [surfaceDocument]);
+
+  useLayerHistory(panelRef, open && !detached);
 
   useLayoutEffect(() => {
     if (!surfaceDocument) return;

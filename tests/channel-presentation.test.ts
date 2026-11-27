@@ -12,7 +12,7 @@ import { firstUnreadMessageId, messageDateFormats, roomActivityPeople, roomPeopl
 import { messageSchema, snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { say, t, type CopyKey } from "../src/client/ui/copy";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
-import type { WatchMedia } from "../src/client/channel/watch-media";
+import { AppPageMedia, type WatchMedia } from "../src/client/channel/watch-media";
 
 const english = (key: CopyKey) => t("en", key);
 const chinese = (key: CopyKey) => t("zh", key);
@@ -27,7 +27,7 @@ it("adds the date to a message timestamp across local midnight", () => {
   expect(formats.clock(message, new Date(2027, 0, 1))).toContain("2026");
 });
 
-it("projects joined watch people independently of transport and deduplicates their endpoints", () => {
+it("projects joined watch people independently of transport and deduplicates their endpoints", async () => {
   const sessions = [["owner-page", "owner"], ["owner-app", "owner"], ["viewer-web", "viewer"], ["viewer-app", "viewer"], ["direct-web", "direct"], ["relay-endpoint", "relay"]];
   const activity = watchActivitySchema.parse({ id: "watch", roomId: "room", sessionId: "owner-page", userId: "owner",
     source: { kind: "website", url: "https://video.test/watch" }, playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 },
@@ -86,6 +86,28 @@ it("projects joined watch people independently of transport and deduplicates the
     expect(viewing("viewer")).toBe("failed");
     expect(localViewing()).toBe("failed");
   } finally { player.close(); }
+  let sample = { position: 0, paused: true, rate: 1, duration: 10, readyState: 1, ended: false, buffered: null };
+  const page = new AppPageMedia({ id: "native-page", selectedCandidateId: "native-video", read: async () => sample,
+    patch: async () => {}, listen: () => () => {}, focus: async () => {}, close() {} });
+  const originalPlayer = new WatchPlayer("room", false, page, () => {});
+  local.watchPlayers.set("watch", originalPlayer);
+  state.watchActivities[0].viewerSessionIds = ["viewer-web", "direct-web"];
+  try {
+    originalPlayer.calibrate(0, performance.now());
+    originalPlayer.update(activity.playback);
+    await originalPlayer.sample();
+    expect(viewing("viewer")).toBe("preparing");
+    expect(localViewing()).toBe("preparing");
+    sample = { ...sample, readyState: 4 };
+    await originalPlayer.sample();
+    expect(viewing("viewer")).toBe("active");
+    expect(localViewing()).toBe("active");
+    expect(viewing("direct")).toBe("joined");
+    sample = { ...sample, readyState: 2, ended: true };
+    await originalPlayer.sample();
+    expect(viewing("viewer")).toBe("active");
+    expect(localViewing()).toBe("active");
+  } finally { originalPlayer.close(); }
 
 });
 
