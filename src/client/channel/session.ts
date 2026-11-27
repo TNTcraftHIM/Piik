@@ -2780,15 +2780,16 @@ export class ChannelSession {
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
   inspectWatchMpdSource = (roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog> => this.action(activityId ? `watch-source:${activityId}` : `screen:${roomId}`, async () => {
-    const selection = this.stages.get(roomId)?.sourceSelection, player = activityId ? this.watchPlayer(activityId) : undefined;
-    const page = activityId ? player?.owner ? player.media.page : undefined : selection?.page;
+    const selection = activityId ? undefined : this.stages.get(roomId)?.sourceSelection;
+    const player = activityId ? this.watchPlayer(activityId) : undefined;
+    const page = player?.owner ? player.media.page : selection?.page;
+    const owner = player?.signal ?? selection?.controller.signal;
     const sources = selection?.watchSources;
-    if (!(page instanceof AppPage) || !activityId && !sources?.mpd.some(value => value.candidate.id === choiceId)) throw new Error("watch_page_unavailable");
-    const lifetime = AbortSignal.any([signal, ...(!activityId && selection ? [selection.controller.signal] : [])]);
+    if (!owner || !(page instanceof AppPage) || !activityId && !sources?.mpd.some(value => value.candidate.id === choiceId)) throw new Error("watch_page_unavailable");
+    const lifetime = AbortSignal.any([signal, owner]);
     const catalog = await page.inspectMpd(choiceId, lifetime, selection?.pendingCandidateId);
     lifetime.throwIfAborted();
-    if (activityId ? this.watchPlayer(activityId) !== player : this.stages.get(roomId)?.sourceSelection !== selection) throw new DOMException("Cancelled", "AbortError");
-    if (!activityId && sources) {
+    if (sources) {
       const choice = sources.mpd.find(value => value.candidate.id === choiceId);
       if (!choice) throw new Error("watch_page_unavailable");
       for (const value of sources.mpd) { delete value.catalog; delete value.error; }
@@ -2824,9 +2825,7 @@ export class ChannelSession {
   watchMediaChoices = (id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> => this.action(`watch-source:${id}`, async () => {
     const player = this.watchPlayer(id), media = player?.media;
     if (!player?.owner || !(media?.page instanceof AppPage) || media.retainedByteSource) throw new Error("watch_page_unavailable");
-    return observeWatchSources(media.page, signal, sources => {
-      if (this.watchPlayer(id) === player) onChange?.(sources);
-    }).ready;
+    return observeWatchSources(media.page, AbortSignal.any([signal, player.signal]), sources => onChange?.(sources)).ready;
   }, false);
   private async reconcileWatchBytes(id: string, player: WatchPlayer): Promise<void> {
     const declaredSource = () => this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource;
