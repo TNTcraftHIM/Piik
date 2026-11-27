@@ -4393,7 +4393,8 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
   } finally { session.close(); }
 });
 
-test("a rejected Browser quality rollback retires the capture and retains both errors", async () => {
+test.each(["metadata", "sender"])("a rejected Browser quality rollback after %s failure retires the capture and retains both errors", async failure => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket } = await setup();
   const video = remoteTrack("video"), stream = remoteStream("quality", [video]);
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => stream } });
@@ -4405,16 +4406,27 @@ test("a rejected Browser quality rollback retires the capture and retains both e
     socket.receive({ type: "ack", requestId });
     await starting;
     const previous = session.getSnapshot().quality;
+    const initialError = failure === "metadata" ? "room_unavailable" : "sender rejected quality";
+    if (failure === "sender") {
+      const state = structuredClone(session.getSnapshot().state!);
+      state.publications = [{ ...publication as Extract<typeof state.publications[number], { kind: "screen" }>, audience: [], title: null, paused: false, sessionId: "endpoint", userId: "self" }];
+      state.pairs = [{ id: "quality-pair", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [],
+        outgoing: [{ id: "quality-flow", publicationId: id, selected: true, inputFlowId: null }] }];
+      socket.receive({ type: "state", state });
+      vi.spyOn(ChannelTransport.prototype, "configureVideo").mockRejectedValueOnce(new Error(initialError));
+    }
     const restoreError = new Error("constraints could not be restored");
     video.applyConstraints = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(restoreError).mockResolvedValue(undefined);
     const editing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]).catch(error => error);
-    await vi.waitFor(() => expect(socket.sent.at(-1)?.requestId).not.toBe(requestId));
-    expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } });
-    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    if (failure === "metadata") {
+      await vi.waitFor(() => expect(socket.sent.at(-1)?.requestId).not.toBe(requestId));
+      expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } });
+      socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    }
     await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce());
     expect(socket.sent.at(-1)).toMatchObject({ type: "unpublish", publicationId: id });
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
-    expect(await editing).toMatchObject({ message: "room_unavailable", errors: [expect.objectContaining({ message: "room_unavailable" }), restoreError] });
+    expect(await editing).toMatchObject({ message: initialError, errors: [expect.objectContaining({ message: initialError }), restoreError] });
     expect(session.screenQuality(id)).toBeUndefined();
     expect(session.getSnapshot().streams.has(id)).toBe(false);
     expect(session.getSnapshot().quality).toEqual(previous);

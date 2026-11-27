@@ -2325,8 +2325,10 @@ export class ChannelSession {
     if (!stage) {
       stage = new Stage(roomId, id => this.local.has(id) || !!this.app?.screens.has(id), () => this.patch({}), {
         local: id => this.local.get(id), app: () => this.app,
-        configure: (id, profile) => this.media.configureLocal(id, profile),
-        publish: (id, roomId, profile) => this.request({ type: "publish", publication: { id, roomId, kind: "screen", videoSettings: screenVideoSettings(profile) } }),
+        configure: (id, profile, current) => this.media.configureLocal(id, profile, async () => {
+          if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+          await this.request({ type: "publish", publication: { id, roomId, kind: "screen", videoSettings: screenVideoSettings(profile) } });
+        }),
         retire: id => this.retireScreenPublication(id),
         remember: this.setQuality, begin: () => this.beginActionFeedback(),
       });
