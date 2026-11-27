@@ -2686,19 +2686,20 @@ impl Driver {
                 }
             }
             self.report_room_data_ready(id).await;
-        }
-        let expired: Vec<_> = self
-            .pairs
-            .iter()
-            .filter(|(_, p)| {
-                p.overflow.swap(false, Ordering::AcqRel)
-                    || p.deadline.is_some_and(|d| Instant::now() >= d.expires())
-            })
-            .map(|(id, p)| (*id, p.established()))
-            .collect();
-        for (id, connected) in expired {
+
+            let p = &self.pairs[&id];
+            let established = p.established();
+            let expired = p.deadline.is_some_and(|deadline| {
+                Instant::now() >= deadline.expires() && match deadline {
+                    Deadline::Connecting(_) => !established,
+                    Deadline::Control(_) => !p.data.control_open(),
+                }
+            });
+            if !p.overflow.swap(false, Ordering::AcqRel) && !expired {
+                continue;
+            }
             self.pairs.get_mut(&id).unwrap().deadline = None;
-            if connected {
+            if established {
                 self.fail_room_data(id).await;
             } else {
                 self.fail(id, RetirementReason::ConnectionDeadline).await;

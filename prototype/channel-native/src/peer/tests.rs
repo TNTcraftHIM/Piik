@@ -559,6 +559,52 @@ async fn room_control_open_before_driver_notification_survives_deadline_and_resy
 }
 
 #[tokio::test]
+async fn room_control_open_during_another_pairs_deadline_report_survives() -> Result<()> {
+    let (mut d, _events, _commands, _stop) = driver();
+    let socket = server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    d.transport = transport::Runtime::new(Some(socket));
+    for _ in 0..2 {
+        let plan = PairInfo {
+            id: Uuid::new_v4(),
+            peer_id: Uuid::new_v4(),
+            rooms: vec!["one".into(), "two".into()],
+            incoming: vec![],
+            outgoing: vec![],
+            can_receive_video_layers: false,
+            udp_preparation: None,
+        };
+        d.create_pair(&plan).await?;
+        let p = d.pairs.get_mut(&plan.id).unwrap();
+        // Supply the transport callback fact without running remote ICE.
+        p.state = Arc::new(AtomicU8::new(PeerState::Connected as u8));
+        p.deadline = Some(Deadline::Control(Instant::now()));
+    }
+    let mut order = d.pairs.keys().copied();
+    let first = order.next().unwrap();
+    let second = order.next().unwrap();
+    let p = &d.pairs[&second];
+    let channel = p.pc.create_channel("piik-room").await?;
+    let ready = p.data.bind(Lane::Control, Uuid::new_v4(), channel);
+
+    // Reporting the first pair to two rooms fills one slot and suspends the Driver.
+    let (commands, mut output) = mpsc::channel(1);
+    d.commands = commands;
+    let callback = async move {
+        let report = output.recv().await;
+        assert!(matches!(report, Some(NativeEvent::Command(Command::RoomDataState {
+            pair_id, ready: false, ..
+        })) if pair_id == first));
+        assert!(ready.set(true));
+    };
+    tokio::join!(biased; d.deadlines(), callback);
+    let survived = d.pairs[&second].data.control_open() && !d.pairs[&second].room_data_failed;
+    let first_failed = d.pairs[&first].room_data_failed;
+    d.close().await?;
+    ensure!(first_failed && survived, "another pair's deadline retired the open room control");
+    Ok(())
+}
+
+#[tokio::test]
 async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_lease() -> Result<()> {
     let (mut d, _events, mut commands, _stop) = driver();
     // Owned loopback destinations keep this lifecycle check off the real gateway.
