@@ -1709,9 +1709,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(discovery).toHaveBeenCalledTimes(healthChecks);
     expect(ChannelSocket.current).toBe(resumedApp);
     await vi.waitFor(() => expect(host.close).toHaveBeenCalledOnce());
-    expect(socket.sent.filter(command => command.type === "host_stop")).toEqual([
-      { type: "host_stop", roomId: localRoom.id, bindingId: "browser-binding" },
-    ]);
+    expect(socket.sent.filter(command => command.type === "host_stop" || command.type === "leave")).toEqual([{ type: "leave" }]);
     expect(app.sent.map(command => command.type)).toEqual(["hello", "open", "connection_metrics", "connection_metrics", "connection_metrics"]);
   } finally { session.close(); }
 });
