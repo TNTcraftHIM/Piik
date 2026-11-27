@@ -129,15 +129,32 @@ impl Model {
     }
 
     /// The ports a peer allowed `packets` should send to for a mapping made `lead_ms` after the
-    /// survey began, one window for each cursor that gets any. Empty when the allocator has no
-    /// cursors or none of them can be aimed at.
+    /// survey began, one window for each cursor that gets any. Empty when nothing can be aimed at.
     ///
     /// A port's worth is its cursor's share of landings times the chance that other traffic
     /// carries the cursor exactly there, and the worthiest are taken first. So a cursor whose
     /// traffic could carry it further than the packets reach still gets the ports around its
     /// likeliest one.
+    ///
+    /// Draws seen within a few ports are a block a carrier gave this subscriber: the next mapping
+    /// is somewhere in it, so the aim is the block, and packets left over reach past both ends of
+    /// what was seen, where the block may go on.
     pub fn aim(&self, lead_ms: u32, packets: u16) -> Vec<Window> {
-        let Allocator::Cursors(cursors) = &self.allocator else { return Vec::new() };
+        let cursors = match &self.allocator {
+            Allocator::Cursors(cursors) => cursors,
+            Allocator::Drawn { low, high } => {
+                let (seen, packets) = (u32::from(high - low) + 1, u32::from(packets));
+                if seen > WIDEST_WINDOW || packets == 0 {
+                    return Vec::new();
+                }
+                let (first, last) = match packets.checked_sub(seen) {
+                    Some(spare) => (u32::from(*low).saturating_sub(spare / 2).max(u32::from(LOWEST_PORT)), (u32::from(*high) + spare / 2).min(u32::from(u16::MAX))),
+                    None => (u32::from(*low) + (seen - packets) / 2, u32::from(*low) + (seen - packets) / 2 + packets - 1),
+                };
+                return vec![Window { first: first as u16, step: 1, count: (last - first + 1) as u16 }];
+            }
+            Allocator::Point { .. } => return Vec::new(),
+        };
         let total: f64 = cursors.iter().map(|cursor| f64::from(cursor.landings)).sum();
         /// One cursor that can be aimed at: its share of landings, the least count of foreign
         /// allocations, the chance of each count from there, and the counts taken so far.
@@ -458,6 +475,18 @@ mod tests {
         // So is a crowd inside a carrier's block of a thousand ports, where many come close by chance.
         let block = timed(&[20_512, 20_101, 20_877, 20_530, 20_120, 20_333, 20_890, 20_050, 20_700, 20_345, 20_990, 20_560, 20_222, 20_130, 20_640, 20_015, 20_800, 20_410]);
         assert!(matches!(Allocator::of(&block), Allocator::Drawn { .. }));
+    }
+
+    #[test]
+    fn a_block_is_aimed_at_whole_and_draws_from_everywhere_not_at_all() {
+        // A field survey: forty-two mappings toward nine destinations, all inside fifty-seven ports.
+        let block = Model { address: Ipv4Addr::LOCALHOST, allocator: Allocator::Drawn { low: 60_523, high: 60_579 } };
+        // Packets to spare reach equally past both ends of what was seen.
+        assert_eq!(block.aim(0, 64), [Window { first: 60_520, step: 1, count: 63 }]);
+        // Fewer packets than ports seen take the middle.
+        assert_eq!(block.aim(0, 16), [Window { first: 60_543, step: 1, count: 16 }]);
+        let everywhere = Model { address: Ipv4Addr::LOCALHOST, allocator: Allocator::Drawn { low: 5_150, high: 64_100 } };
+        assert!(everywhere.aim(0, 1024).is_empty());
     }
 
     #[test]
