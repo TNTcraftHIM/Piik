@@ -43,7 +43,7 @@ impl Survey {
             socket.send_to(&stun::request(transaction), observer).ok()?;
             receive(socket, observer, transaction)
         })?;
-        self.samples.push(Sample { socket: number, observer, sent_ms, mapped });
+        self.samples.push(Sample { socket: number, local_port: self.local_ports[usize::from(number)], observer, sent_ms, mapped });
         Some(mapped)
     }
     fn socket(&mut self) -> Option<(UdpSocket, u8)> {
@@ -183,23 +183,19 @@ fn main() {
             burst = sockets.iter().zip(sent).filter_map(|(socket, sent)| Some(receive(socket, observers[0].1, sent?)?.port())).collect();
         }
     }
-    report(&survey, &observers, first_number, second_number, by_port, &brackets, &burst, full);
+    report(&survey, &observers, by_port, &brackets, &burst, full);
 }
 
 /// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
 fn cursors_line(cursors: &[Cursor]) -> String {
     let each: Vec<String> = cursors
         .iter()
-        .map(|cursor| format!("{} step {} x{} ({:.1}/s)", cursor.last, cursor.step, cursor.landings, f64::from(cursor.foreign_per_ks) / 1000.0))
+        .map(|cursor| format!("{} step {} x{} ({:.1}/s)", cursor.last, cursor.step, cursor.landings, cursor.per_second()))
         .collect();
     format!("CURSORS. {} counter(s), next mapping one step past one of: {}", cursors.len(), each.join(", "))
 }
 
-#[allow(clippy::too_many_arguments)]
-fn report(
-    survey: &Survey, observers: &[(&str, SocketAddrV4)], first: u8, second: u8, by_port: Option<bool>,
-    brackets: &[(u16, u16, u16, bool)], burst: &[u16], full: bool,
-) {
+fn report(survey: &Survey, observers: &[(&str, SocketAddrV4)], by_port: Option<bool>, brackets: &[(u16, u16, u16, bool)], burst: &[u16], full: bool) {
     let model = Model::read(&survey.samples);
     let public = *survey.samples[0].mapped.ip();
     let shown = |address: Ipv4Addr| match full {
@@ -227,14 +223,13 @@ fn report(
     match &model {
         Err(unusable) => println!("model: unusable ({unusable:?})"),
         Ok(model) => match model.allocator.clone() {
-            Allocator::Point { port } => {
-                let preserved = [first, second].iter().all(|number| {
-                    survey.samples.iter().filter(|sample| sample.socket == *number).all(|sample| sample.mapped.port() == survey.local_ports[usize::from(*number)])
-                });
+            Allocator::Point { port, preserved } => {
                 println!("model: POINT. One mapping per socket whatever the destination (port {port}); local port kept: {}", if preserved { "yes" } else { "no" });
             }
             Allocator::Cursors(ref cursors) => println!("model: {}", cursors_line(cursors)),
-            Allocator::Set(PortSet::Span { low, high }) => println!("model: SET. Ports seen between {low} and {high} ({} ports)", u32::from(high) - u32::from(low) + 1),
+            Allocator::Set(set @ PortSet::Span { low, high, seen }) => {
+                println!("model: SET. {seen} ports seen between {low} and {high} ({} ports); the next lies inside with {:.0}%", set.size(), set.holds() * 100.0)
+            }
             Allocator::Set(set @ PortSet::Shared { offset, length, psid }) => {
                 println!("model: PORT SET (RFC 7597). Offset {offset}, length {length}, identifier {psid}: {} ports", set.size())
             }

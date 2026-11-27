@@ -7,12 +7,16 @@
 //! allocator into ports a peer can use, [`part`] says what one side does about the other's aim, and
 //! [`chance`] gives the probability that the two parts meet.
 //!
+//! What is read is a hypothesis about the allocator, and the probabilities say so: a span drawn by
+//! `n` ports holds the next draw with `(n-1)/(n+1)`, and a cursor's traffic is predicted from what
+//! the survey saw of it, with the uncertainty of a short watch.
+//!
 //! One bound holds for every plan. A mapping bound to one destination port meets only a peer mapping
 //! aimed at exactly it, so with `m` and `n` such mappings drawn from sets of `r` and `s` ports the
 //! expected number of meetings is `m·n / (r·s)`. Two set allocators therefore have no part here.
 //!
-//! Every decision is integer arithmetic, so two endpoints reach the same plan. The probabilities
-//! are floating point and decide nothing between endpoints.
+//! An endpoint computes its own aim and sends it, and its peer acts on those numbers, so no two
+//! machines have to agree on a floating-point result.
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 /// The lowest port a mapping is expected on; lower ports are not searched.
@@ -32,20 +36,23 @@ const MAX_FOREIGN_PER_SECOND: u64 = 2_000;
 const PORT_SET_EVIDENCE_BITS: u32 = 16;
 /// Offset and identifier lengths of RFC 7597 port sets in use, the most specific first.
 const PORT_SET_SHAPES: [(u8, u8); 5] = [(4, 8), (6, 8), (4, 6), (6, 6), (6, 4)];
-/// A window holds the Poisson mass within this many standard deviations of the mean, squared and
-/// times a hundred: 3.3 deviations hold 99.9%.
-const WINDOW_DEVIATIONS_SQUARED_X100: u64 = 1_089;
+/// A window leaves this much of the predicted traffic outside at each end.
+const TAIL: f64 = 0.0005;
+/// A cursor whose window would be wider than this has no window: its traffic is not known well
+/// enough, or is too heavy, to aim at.
+const WIDEST_WINDOW: u32 = 512;
 /// Two packets of one burst leave this many microseconds apart; a foreign allocation that falls
 /// between them moves a mapping off the port it was meant for.
 const BURST_SPACING_US: f64 = 200.0;
-/// A pool and a search of `p` and `q` ports in a set of `s` meet with probability
-/// `1 - exp(-p·q/s)`; `p·q = 4.6·s` gives 99%.
-const POOL_PRODUCT_X10: u64 = 46;
+/// A pool is sized to miss its search no more often than this.
+const POOL_MISS: f64 = 0.01;
 
 /// One answer of a survey.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Sample {
     pub socket: u8,
+    /// The port the socket is bound to on this machine.
+    pub local_port: u16,
     pub observer: SocketAddrV4,
     /// Milliseconds since the survey began.
     pub sent_ms: u32,
@@ -55,7 +62,8 @@ pub struct Sample {
 /// The ports a set allocator draws from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PortSet {
-    Span { low: u16, high: u16 },
+    /// The span of the `seen` distinct ports a survey saw.
+    Span { low: u16, high: u16, seen: u16 },
     /// An RFC 7597 port set: `offset` leading bits that are never all zero, then `length` bits equal
     /// to `psid`, then the rest free.
     Shared { offset: u8, length: u8, psid: u16 },
@@ -63,13 +71,13 @@ pub enum PortSet {
 impl PortSet {
     pub fn size(&self) -> u32 {
         match *self {
-            Self::Span { low, high } => u32::from(high) - u32::from(low) + 1,
+            Self::Span { low, high, .. } => u32::from(high) - u32::from(low) + 1,
             Self::Shared { offset, length, .. } => ((1 << offset) - 1) << (16 - offset - length),
         }
     }
     pub fn contains(&self, port: u16) -> bool {
         match *self {
-            Self::Span { low, high } => (low..=high).contains(&port),
+            Self::Span { low, high, .. } => (low..=high).contains(&port),
             Self::Shared { offset, length, psid } => {
                 let free = 16 - offset - length;
                 port >> (16 - offset) != 0 && (port >> free) & ((1 << length) - 1) == psid
@@ -87,6 +95,15 @@ impl PortSet {
             }
         }
     }
+    /// The chance that the next draw lies in the set. Of `n + 1` exchangeable draws the last is
+    /// the lowest or the highest with probability `2/(n+1)`, so a span holds it with the rest. A
+    /// port set is believed on evidence worth one in 2^16.
+    pub fn holds(&self) -> f64 {
+        match *self {
+            Self::Span { seen, .. } => (f64::from(seen) - 1.0).max(0.0) / (f64::from(seen) + 1.0),
+            Self::Shared { .. } => 1.0 - 1.0 / 65_536.0,
+        }
+    }
 }
 
 /// One counter of an allocator: the next mapping that lands on it takes `last + step`.
@@ -98,14 +115,16 @@ pub struct Cursor {
     pub step: i16,
     /// How many of the survey's mappings landed on it.
     pub landings: u16,
-    /// Mappings other traffic took from it, in a thousand seconds.
-    pub foreign_per_ks: u32,
+    /// Mappings other traffic took from it while the survey watched it for `watched_ms`. A cursor
+    /// seen once is given what the others showed together.
+    pub foreign: u16,
+    pub watched_ms: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Allocator {
-    /// One mapping whatever the destination.
-    Point { port: u16 },
+    /// One mapping whatever the destination, on the socket's own port when `preserved`.
+    Point { port: u16, preserved: bool },
     /// Each new mapping lands one step past one of these, the most used first. A plain counter is
     /// one cursor; a carrier NAT that keeps a port range for each of its workers shows several.
     Cursors(Vec<Cursor>),
@@ -158,7 +177,8 @@ impl Model {
                 .all(|other| other.socket != sample.socket || other.mapped == sample.mapped)
         });
         if independent {
-            return Ok(Self { address, allocator: Allocator::Point { port: ordered[0].mapped.port() } });
+            let preserved = ordered.iter().all(|sample| sample.mapped.port() == sample.local_port);
+            return Ok(Self { address, allocator: Allocator::Point { port: ordered[0].mapped.port(), preserved } });
         }
         // What remains is one new mapping for each port not seen before on its socket.
         let mut allocations: Vec<(u32, u16)> = Vec::with_capacity(ordered.len());
@@ -174,10 +194,10 @@ impl Model {
     }
 
     /// Where the next mappings will be when they are made `lead_ms` after the survey began.
-    /// `None` when no cursor's window stays inside the ports that are searched.
+    /// `None` when no cursor has a window inside the ports that are searched.
     pub fn aim(&self, lead_ms: u32) -> Option<Aim> {
         match &self.allocator {
-            Allocator::Point { port } => Some(Aim::Port(*port)),
+            Allocator::Point { port, .. } => Some(Aim::Port(*port)),
             Allocator::Set(set) => Some(Aim::Set(*set)),
             Allocator::Cursors(cursors) => {
                 let windows: Vec<Window> = cursors.iter().filter_map(|cursor| cursor.window(lead_ms)).collect();
@@ -188,9 +208,9 @@ impl Model {
 }
 
 impl Cursor {
-    /// The ports the next mapping on this cursor can take, for the traffic expected by `lead_ms`.
+    /// The ports the next mapping on this cursor can take, for the traffic predicted by `lead_ms`.
     fn window(&self, lead_ms: u32) -> Option<Window> {
-        let (low, high) = window(foreign_milli(self.foreign_per_ks, lead_ms.saturating_sub(self.at_ms)));
+        let (low, high, _) = predicted(self.foreign, self.watched_ms, lead_ms.saturating_sub(self.at_ms))?;
         let port = |position: u32| {
             u16::try_from(i64::from(self.last) + i64::from(self.step) * i64::from(position))
                 .ok()
@@ -202,9 +222,11 @@ impl Cursor {
     }
     /// The chance that this cursor's traffic stays inside its window.
     fn covered(&self, lead_ms: u32) -> f64 {
-        let mean = foreign_milli(self.foreign_per_ks, lead_ms.saturating_sub(self.at_ms));
-        let (low, high) = window(mean);
-        poisson_between(mean as f64 / 1000.0, low, high)
+        predicted(self.foreign, self.watched_ms, lead_ms.saturating_sub(self.at_ms)).map_or(0.0, |(_, _, mass)| mass)
+    }
+    /// The traffic the survey saw, in mappings a second.
+    pub fn per_second(&self) -> f64 {
+        f64::from(self.foreign) * 1000.0 / f64::from(self.watched_ms.max(1))
     }
 }
 
@@ -263,7 +285,8 @@ pub enum Part {
 }
 
 /// The port of a mapping made between two observations of a counter, when nothing else fell
-/// between the three.
+/// between the three. The three must be known to have been allocated in that order: the order of
+/// sending does not prove it.
 pub fn measured(before: u16, after: u16, step: i16) -> Option<u16> {
     (i32::from(after) - i32::from(before) == 2 * i32::from(step))
         .then(|| (i32::from(before) + i32::from(step)) as u16)
@@ -276,21 +299,17 @@ pub fn walk(seen: u16, step: i16, to: u16) -> Option<u16> {
         .then(|| (distance / i32::from(step)) as u16)
 }
 
-/// What the side with allocator `local` does about its peer's aim, or `None` when no plan within
-/// the budget is worth its cost. `lead_ms` is when its own mappings will be made, and `peer` is the
-/// address the aim belongs to.
-pub fn part(local: &Model, lead_ms: u32, remote: &Aim, peer: Ipv4Addr, budget: Budget) -> Option<Part> {
-    match (local.aim(lead_ms)?, remote) {
+/// What the side with allocator `local` does about its peer's aim. `own` is the aim it sent, and
+/// `peer` the address the other aim belongs to. `None` is an abstention: this module has no plan
+/// for the pair, which says nothing about whether ordinary connectivity checks would succeed.
+pub fn part(local: &Model, own: &Aim, remote: &Aim, peer: Ipv4Addr, budget: Budget) -> Option<Part> {
+    match (own, remote) {
         (Aim::Port(_), Aim::Port(port)) => Some(Part::Send(*port)),
         (Aim::Port(_), Aim::Windows(windows)) => {
             let swept = swept(windows, budget);
             (!swept.is_empty()).then(|| Part::Sweep(swept.to_vec()))
         }
-        (Aim::Port(_), Aim::Set(set)) => {
-            let count = u32::from(budget.packets).min(set.size()) as u16;
-            // The peer's pool is sized for this search; a search too small for any pool is no plan.
-            pool(*set, count, budget).map(|_| Part::Search { set: *set, count })
-        }
+        (Aim::Port(_), Aim::Set(set)) => Some(Part::Search { set: *set, count: search(*set, budget) }),
         // The peer sends to every port of this side's windows, so one mapping is enough.
         (Aim::Windows(_), Aim::Port(port)) => Some(Part::Open { sockets: 1, port: *port }),
         (Aim::Windows(own), Aim::Windows(theirs)) => {
@@ -309,28 +328,22 @@ pub fn part(local: &Model, lead_ms: u32, remote: &Aim, peer: Ipv4Addr, budget: B
                 (sockets <= budget.mappings).then_some(Part::Open { sockets, port: yours.last() })
             }
         }
-        (Aim::Set(set), Aim::Port(port)) => {
-            let search = u32::from(budget.packets).min(set.size()) as u16;
-            pool(set, search, budget).map(|sockets| Part::Open { sockets, port: *port })
-        }
+        // The peer searches this side's set, and the pool is what the budget allows of the size
+        // that search calls for.
+        (Aim::Set(set), Aim::Port(port)) => Some(Part::Open { sockets: pool(*set, search(*set, budget)).min(budget.mappings), port: *port }),
         // A set against windows or a set: see the bound in the module's head.
         (Aim::Windows(_) | Aim::Set(_), Aim::Set(_)) | (Aim::Set(_), Aim::Windows(_)) => None,
     }
 }
 
-/// The probability that the parts of two sides meet. Both leads are measured as in [`Model::aim`],
-/// both sides have the same budget, and no foreign allocation falls inside a burst of mappings
-/// except where a walker races for its port.
-pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms: u32, budget: Budget) -> f64 {
-    let (Some(local_aim), Some(remote_aim)) = (local.aim(local_lead_ms), remote.aim(remote_lead_ms)) else {
-        return 0.0;
-    };
-    let (Some(local_part), Some(remote_part)) = (
-        part(local, local_lead_ms, &remote_aim, remote.address, budget),
-        part(remote, remote_lead_ms, &local_aim, local.address, budget),
-    ) else {
-        return 0.0;
-    };
+/// The probability that the parts of two sides meet, under the allocators read. Both leads are
+/// measured as in [`Model::aim`], both sides have the same budget, and no foreign allocation falls
+/// inside a burst of mappings except where a walker races for its port. `None` is an abstention, as
+/// in [`part`].
+pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms: u32, budget: Budget) -> Option<f64> {
+    let (local_aim, remote_aim) = (local.aim(local_lead_ms)?, remote.aim(remote_lead_ms)?);
+    let local_part = part(local, &local_aim, &remote_aim, remote.address, budget)?;
+    let remote_part = part(remote, &remote_aim, &local_aim, local.address, budget)?;
     // One side of the pair as the other's part meets it.
     let side = |model: &Model, lead_ms: u32, own: &Part, other: &Part| match (&model.allocator, own, other) {
         // The peer sweeps some of this side's windows: the mapping must land on a swept cursor
@@ -340,11 +353,11 @@ pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms:
             cursors.iter().take(swept.len()).map(|cursor| f64::from(cursor.landings) / total * cursor.covered(lead_ms)).sum()
         }
         // Measured: nothing may fall inside the measurement.
-        (Allocator::Cursors(cursors), Part::Measure { .. }, _) => (-2.0 * per_second(&cursors[0]) * BURST_SPACING_US / 1e6).exp(),
+        (Allocator::Cursors(cursors), Part::Measure { .. }, _) => (-2.0 * cursors[0].per_second() * BURST_SPACING_US / 1e6).exp(),
         // Walker: its traffic must not have passed the port named, and its own socket must take
         // the port, which other traffic races it for.
         (Allocator::Cursors(cursors), Part::Walk { .. }, _) => {
-            cursors[0].covered(lead_ms) / (1.0 + per_second(&cursors[0]) * BURST_SPACING_US / 1e6)
+            cursors[0].covered(lead_ms) / (1.0 + cursors[0].per_second() * BURST_SPACING_US / 1e6)
         }
         // Several cursors: enough of the sockets opened must land on the most used one.
         (Allocator::Cursors(cursors), Part::Open { sockets, .. }, Part::Open { .. }) => {
@@ -352,12 +365,10 @@ pub fn chance(local: &Model, local_lead_ms: u32, remote: &Model, remote_lead_ms:
             let needed = cursors[0].window(lead_ms).map_or(u16::MAX, |window| window.count);
             cursors[0].covered(lead_ms) * binomial_at_least(*sockets, f64::from(cursors[0].landings) / total, needed)
         }
-        (Allocator::Set(set), Part::Open { sockets, .. }, Part::Search { count, .. }) => {
-            1.0 - (1.0 - f64::from(*count) / f64::from(set.size())).powi(i32::from(*sockets))
-        }
+        (Allocator::Set(set), Part::Open { sockets, .. }, Part::Search { count, .. }) => 1.0 - missed(*set, *count).powi(i32::from(*sockets)),
         _ => 1.0,
     };
-    side(local, local_lead_ms, &local_part, &remote_part) * side(remote, remote_lead_ms, &remote_part, &local_part)
+    Some(side(local, local_lead_ms, &local_part, &remote_part) * side(remote, remote_lead_ms, &remote_part, &local_part))
 }
 
 /// The windows a peer's packets reach, in order, within the budget.
@@ -385,13 +396,25 @@ fn walks(own: (u16, u16, Ipv4Addr), other: (u16, u16, Ipv4Addr)) -> Option<bool>
     (own != other).then_some(own > other)
 }
 
-/// The pool that meets a search of `search` ports in `set` with 99%, when the budget holds it.
-fn pool(set: PortSet, search: u16, budget: Budget) -> Option<u16> {
-    if search == 0 {
-        return None;
+/// How many ports of `set` one side's packets search.
+fn search(set: PortSet, budget: Budget) -> u16 {
+    u32::from(budget.packets).min(set.size()) as u16
+}
+
+/// The chance that one mapping drawn by the allocator escapes a search of `count` ports of `set`:
+/// it lies outside the set, or on a port of it that was not searched.
+fn missed(set: PortSet, count: u16) -> f64 {
+    1.0 - set.holds() * f64::from(count) / f64::from(set.size())
+}
+
+/// The least pool that escapes a search of `count` ports of `set` no more often than
+/// [`POOL_MISS`]: one mapping when the search covers a set that surely holds it.
+fn pool(set: PortSet, count: u16) -> u16 {
+    let missed = missed(set, count);
+    if missed <= POOL_MISS {
+        return 1;
     }
-    let sockets = (POOL_PRODUCT_X10 * u64::from(set.size())).div_ceil(10 * u64::from(search)).max(1);
-    u16::try_from(sockets).ok().filter(|sockets| *sockets <= budget.mappings)
+    (POOL_MISS.ln() / missed.ln()).ceil().min(f64::from(u16::MAX)) as u16
 }
 
 /// The cursors behind allocations in the order they were made, the most used first, or `None`
@@ -419,30 +442,36 @@ fn cursors(allocations: &[(u32, u16)]) -> Option<Vec<Cursor>> {
         // Not a few quiet cursors. One busy counter is the other shape with an order in it.
         return busy(allocations).map(|cursor| vec![cursor]);
     }
-    // A port seen once may be a cursor of its own, so it is kept with the step the others have.
-    let step = runs.iter().filter(|run| run.len() >= BELIEVED).map(|run| cursor(run, 1).step).next().unwrap_or(1);
-    let mut cursors: Vec<Cursor> = runs.iter().map(|run| cursor(run, step)).collect();
+    let mut cursors: Vec<Cursor> = runs.iter().map(|run| cursor(run)).collect();
+    // A port seen once may be a cursor of its own. It is kept with the step the believed ones
+    // have and the traffic they showed together.
+    let step = cursors.iter().find(|cursor| usize::from(cursor.landings) >= BELIEVED).map_or(1, |cursor| cursor.step);
+    let (foreign, watched_ms) = cursors
+        .iter()
+        .filter(|cursor| usize::from(cursor.landings) >= BELIEVED)
+        .fold((0u16, 0u32), |(foreign, watched), cursor| (foreign.saturating_add(cursor.foreign), watched + cursor.watched_ms));
+    for lone in cursors.iter_mut().filter(|cursor| cursor.landings == 1) {
+        (lone.step, lone.foreign, lone.watched_ms) = (step, foreign, watched_ms);
+    }
     cursors.sort_by(|a, b| b.landings.cmp(&a.landings).then(b.at_ms.cmp(&a.at_ms)));
     Some(cursors)
 }
 
-/// The cursor a run of ports shows; `lone` is the step given to a run of one.
-fn cursor(run: &[(u32, u16)], lone: i16) -> Cursor {
+/// The cursor a run of ports shows.
+fn cursor(run: &[(u32, u16)]) -> Cursor {
     let (first_ms, _) = run[0];
     let (at_ms, last) = run[run.len() - 1];
     let differences: Vec<i32> = run.windows(2).map(|pair| i32::from(pair[1].1) - i32::from(pair[0].1)).collect();
     let divisor = differences.iter().fold(0, |divisor, difference| gcd(divisor, difference.unsigned_abs()));
-    let step = match differences.first() {
-        None => i32::from(lone),
-        Some(first) => first.signum() * if divisor <= MAX_STEP { divisor as i32 } else { 1 },
-    };
-    let foreign: u64 = differences.iter().map(|difference| u64::from((difference / step - 1).unsigned_abs())).sum();
+    let step = differences.first().map_or(1, |first| first.signum() * if divisor <= MAX_STEP { divisor as i32 } else { 1 });
+    let foreign: u32 = differences.iter().map(|difference| (difference / step - 1).unsigned_abs()).sum();
     Cursor {
         last,
         at_ms,
         step: step as i16,
         landings: run.len() as u16,
-        foreign_per_ks: (foreign * 1_000_000 / u64::from(at_ms - first_ms).max(1)) as u32,
+        foreign: foreign.min(u32::from(u16::MAX)) as u16,
+        watched_ms: at_ms - first_ms,
     }
 }
 
@@ -456,21 +485,22 @@ fn busy(allocations: &[(u32, u16)]) -> Option<Cursor> {
         return None;
     }
     let divisor = differences.iter().fold(0, |divisor, difference| gcd(divisor, difference.unsigned_abs()));
-    let found = cursor(allocations, 1);
-    (divisor <= MAX_STEP && u64::from(found.foreign_per_ks) <= MAX_FOREIGN_PER_SECOND * 1_000).then_some(found)
+    let found = cursor(allocations);
+    let per_second = u64::from(found.foreign) * 1000 / u64::from(found.watched_ms.max(1));
+    (divisor <= MAX_STEP && per_second <= MAX_FOREIGN_PER_SECOND).then_some(found)
 }
 
 /// The set the allocations were drawn from: a port set they all share, or the span they cover.
 fn port_set(allocations: &[(u32, u16)]) -> PortSet {
     let ports = || allocations.iter().map(|&(_, port)| port);
-    let distinct = {
+    let seen = {
         let mut seen: Vec<u16> = ports().collect();
         seen.sort_unstable();
         seen.dedup();
-        seen.len() as u32
+        seen.len() as u16
     };
     for (offset, length) in PORT_SET_SHAPES {
-        if u32::from(length) * distinct.saturating_sub(1) < PORT_SET_EVIDENCE_BITS {
+        if u32::from(length) * u32::from(seen.saturating_sub(1)) < PORT_SET_EVIDENCE_BITS {
             continue;
         }
         let free = 16 - offset - length;
@@ -484,45 +514,36 @@ fn port_set(allocations: &[(u32, u16)]) -> PortSet {
     PortSet::Span {
         low: ports().min().unwrap_or(LOWEST_PORT).max(LOWEST_PORT),
         high: ports().max().unwrap_or(u16::MAX),
+        seen,
     }
 }
 
-fn per_second(cursor: &Cursor) -> f64 {
-    f64::from(cursor.foreign_per_ks) / 1000.0
-}
-
-/// Foreign allocations expected in `elapsed_ms`, in thousandths.
-fn foreign_milli(foreign_per_ks: u32, elapsed_ms: u32) -> u64 {
-    u64::from(foreign_per_ks) * u64::from(elapsed_ms) / 1_000
-}
-
-/// The foreign allocations a window covers, lowest and highest, for a mean in thousandths.
-fn window(mean_milli: u64) -> (u32, u32) {
-    // The half width is the least h with h² >= deviations² · mean, and the mean counts as a half
-    // at least, so a quiet counter still gets a window of four.
-    let spread = WINDOW_DEVIATIONS_SQUARED_X100 * mean_milli.max(500);
-    let mut half = 0u64;
-    while half * half * 100_000 < spread {
-        half += 1;
+/// The foreign allocations to expect `lead_ms` after a cursor showed `foreign` of them in
+/// `watched_ms`: the least range that leaves [`TAIL`] outside at each end, and the mass inside it.
+/// The count is negative binomial, which is a Poisson count whose rate is known only through the
+/// watch (Jeffreys' prior on the rate), so a short watch gives a wide range. `None` when the range
+/// would pass [`WIDEST_WINDOW`].
+fn predicted(foreign: u16, watched_ms: u32, lead_ms: u32) -> Option<(u32, u32, f64)> {
+    if lead_ms == 0 {
+        return Some((0, 0, 1.0));
     }
-    let centre = mean_milli / 1_000;
-    (centre.saturating_sub(half) as u32, (centre + half) as u32)
-}
-
-/// The Poisson mass on `low..=high`, summed in logarithms so that a large mean does not underflow.
-fn poisson_between(mean: f64, low: u32, high: u32) -> f64 {
-    if mean <= 0.0 {
-        return if low == 0 { 1.0 } else { 0.0 };
-    }
-    let mut log_term = -mean;
-    let mut total = 0.0;
-    for count in 0..=high {
-        if count >= low {
-            total += log_term.exp();
+    let shape = f64::from(foreign) + 0.5;
+    let watched = f64::from(watched_ms.max(1));
+    let stay = watched / (watched + f64::from(lead_ms));
+    let mut log_term = shape * stay.ln();
+    let (mut below, mut total, mut low) = (0.0, 0.0, None);
+    for count in 0..=WIDEST_WINDOW {
+        let term = log_term.exp();
+        if low.is_none() && total + term > TAIL {
+            (low, below) = (Some(count), total);
         }
-        log_term += mean.ln() - f64::from(count + 1).ln();
+        total += term;
+        if total >= 1.0 - TAIL {
+            return Some((low?, count, total - below));
+        }
+        log_term += ((f64::from(count) + shape) / f64::from(count + 1)).ln() + (1.0 - stay).ln();
     }
-    total
+    None
 }
 
 /// The chance that at least `needed` of `trials` succeed, each with probability `share`.
@@ -550,16 +571,19 @@ mod tests {
     const WAN: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 7);
     const PEER: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 200);
     const BUDGET: Budget = Budget { mappings: 256, packets: 1024 };
+    /// The surveys of these tests ask every 400 ms, and their mappings are made 300 ms after the last.
+    const EVERY_MS: u32 = 400;
 
-    /// One sample for each port, from sockets and observers in turn, 20 ms apart.
+    /// One sample for each port, from sockets and observers in turn.
     fn survey(sockets: u8, ports: &[u16]) -> Vec<Sample> {
         ports
             .iter()
             .enumerate()
             .map(|(index, port)| Sample {
                 socket: index as u8 % sockets,
+                local_port: 50_000 + index as u16 % u16::from(sockets),
                 observer: SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1 + (index / sockets as usize) as u8), 3478),
-                sent_ms: index as u32 * 20,
+                sent_ms: index as u32 * EVERY_MS,
                 mapped: SocketAddrV4::new(WAN, *port),
             })
             .collect()
@@ -567,31 +591,38 @@ mod tests {
     fn model(sockets: u8, ports: &[u16]) -> Model {
         Model::read(&survey(sockets, ports)).unwrap()
     }
-    fn counter(last: u16, at_ms: u32, step: i16, landings: u16, foreign_per_ks: u32) -> Allocator {
-        Allocator::Cursors(vec![Cursor { last, at_ms, step, landings, foreign_per_ks }])
+    fn lead(ports: usize) -> u32 {
+        (ports as u32 - 1) * EVERY_MS + 300
+    }
+    fn counter(last: u16, at_ms: u32, step: i16, landings: u16, foreign: u16) -> Allocator {
+        Allocator::Cursors(vec![Cursor { last, at_ms, step, landings, foreign, watched_ms: at_ms }])
+    }
+    fn windows(model: &Model, lead_ms: u32) -> Vec<Window> {
+        match model.aim(lead_ms) {
+            Some(Aim::Windows(windows)) => windows,
+            other => panic!("no windows: {other:?}"),
+        }
     }
 
     #[test]
     fn reads_a_point_a_counter_and_a_set() {
-        assert_eq!(model(1, &[40_000, 40_000, 40_000]).allocator, Allocator::Point { port: 40_000 });
-        assert_eq!(model(1, &[40_000, 40_002, 40_004]).allocator, counter(40_004, 40, 2, 3, 0));
-        assert_eq!(model(1, &[40_000, 39_999, 39_998]).allocator, counter(39_998, 40, -1, 3, 0));
-        // Other traffic took 2, 0, 3, 1 and 1 allocations between six of ours: 7 in 100 ms.
-        assert_eq!(model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]).allocator, counter(40_012, 100, 1, 6, 70_000));
+        assert_eq!(model(1, &[40_000, 40_000, 40_000]).allocator, Allocator::Point { port: 40_000, preserved: false });
+        assert_eq!(model(1, &[50_000, 50_000, 50_000]).allocator, Allocator::Point { port: 50_000, preserved: true });
+        assert_eq!(model(1, &[40_000, 40_002, 40_004]).allocator, counter(40_004, 800, 2, 3, 0));
+        assert_eq!(model(1, &[40_000, 39_999, 39_998]).allocator, counter(39_998, 800, -1, 3, 0));
+        // Other traffic took 2, 0, 3, 1 and 1 allocations between six of ours.
+        assert_eq!(model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]).allocator, counter(40_012, 2_000, 1, 6, 7));
         assert_eq!(
             model(2, &[51_200, 60_011, 50_333, 64_100, 57_000, 52_048]).allocator,
-            Allocator::Set(PortSet::Span { low: 50_333, high: 64_100 })
+            Allocator::Set(PortSet::Span { low: 50_333, high: 64_100, seen: 6 })
         );
     }
 
     #[test]
     fn a_busy_counter_needs_five_mappings_and_plausible_traffic() {
         // Gaps of 40 to 90 are too wide for a quiet cursor, and six that rise together are one
-        // counter under about two thousand mappings a second.
-        assert_eq!(
-            model(2, &[40_000, 40_040, 40_100, 40_190, 40_230, 40_300]).allocator,
-            counter(40_300, 100, 10, 6, 250_000)
-        );
+        // counter: 25 foreign allocations in two seconds.
+        assert_eq!(model(2, &[40_000, 40_040, 40_100, 40_190, 40_230, 40_300]).allocator, counter(40_300, 2_000, 10, 6, 25));
         // Four are too few, and six that rise by thousands imply traffic no counter has.
         assert!(matches!(model(2, &[40_000, 40_040, 40_100, 40_190]).allocator, Allocator::Set(_)));
         assert!(matches!(
@@ -600,27 +631,29 @@ mod tests {
         ));
         // A fall of half the port space is no counter, and reading it does not overflow.
         assert!(matches!(model(1, &[40_000, 7_232]).allocator, Allocator::Set(_)));
-        assert!(poisson_between(900.0, 800, 1_000) > 0.998);
     }
 
     #[test]
     fn reads_the_cursors_of_a_carrier_network() {
         // Ports a carrier network gave on 2026-11-26, in the order they were made.
         let ports = [14_156, 34_188, 6_253, 63_295, 34_189, 63_296, 6_254, 63_297, 34_190, 63_298, 63_299, 63_300, 34_191, 21_019];
-        let allocations: Vec<(u32, u16)> = ports.iter().enumerate().map(|(index, port)| (index as u32 * 400, *port)).collect();
+        let allocations: Vec<(u32, u16)> = ports.iter().enumerate().map(|(index, port)| (index as u32 * EVERY_MS, *port)).collect();
         let Allocator::Cursors(cursors) = Allocator::of(&allocations) else { panic!("not cursors") };
         let seen: Vec<(u16, u16)> = cursors.iter().map(|cursor| (cursor.last, cursor.landings)).collect();
         assert_eq!(seen, [(63_300, 6), (34_191, 4), (6_254, 2), (21_019, 1), (14_156, 1)]);
-        assert!(cursors.iter().all(|cursor| cursor.step == 1 && cursor.foreign_per_ks == 0));
-        // A peer with one mapping sweeps five windows of four ports and meets every landing.
+        assert!(cursors.iter().all(|cursor| cursor.step == 1 && cursor.foreign == 0));
+        // A peer with one mapping sweeps a window on each cursor. A cursor watched briefly or long
+        // ago gets the wider window, and the five take 35 packets together.
         let network = Model { address: WAN, allocator: Allocator::Cursors(cursors) };
         let point = model(1, &[40_000, 40_000, 40_000]);
-        let aim = network.aim(6_000).unwrap();
-        let Some(Part::Sweep(swept)) = part(&point, 40, &aim, WAN, BUDGET) else { panic!("no sweep") };
-        assert_eq!(swept.iter().map(|window| (window.first, window.count)).collect::<Vec<_>>(), [(63_301, 4), (34_192, 4), (6_255, 4), (21_020, 4), (14_157, 4)]);
-        assert!(chance(&point, 40, &network, 6_000, BUDGET) > 0.998);
+        let aim = network.aim(lead(ports.len())).unwrap();
+        let Some(Part::Sweep(swept)) = part(&point, &Aim::Port(40_000), &aim, WAN, BUDGET) else { panic!("no sweep") };
+        assert_eq!(swept.iter().map(|window| window.first).collect::<Vec<_>>(), [63_301, 34_192, 6_255, 21_020, 14_157]);
+        assert_eq!(swept.iter().map(|window| u32::from(window.count)).sum::<u32>(), 35);
+        assert!(chance(&point, 40, &network, lead(ports.len()), BUDGET).unwrap() > 0.998);
         // Two such networks: each opens enough sockets for its most used cursor to reach its window.
-        assert_eq!(part(&network, 6_000, &aim, PEER, BUDGET), Some(Part::Open { sockets: 19, port: 63_304 }));
+        let sockets = (u32::from(swept[0].count) * 14 * 2).div_ceil(6) as u16;
+        assert_eq!(part(&network, &aim, &aim, PEER, BUDGET), Some(Part::Open { sockets, port: swept[0].last() }));
     }
 
     #[test]
@@ -647,50 +680,68 @@ mod tests {
         assert_eq!(model(1, &[ports[200], ports[17], ports[99]]).allocator, Allocator::Set(set));
         // Two samples agree on eight bits once in 256 by chance, so they stay a span.
         assert!(matches!(model(1, &[ports[200], ports[17]]).allocator, Allocator::Set(PortSet::Span { .. })));
+        // A search of the whole set needs one mapping.
+        assert_eq!(pool(set, 240), 1);
     }
 
     #[test]
-    fn a_window_holds_the_mass_of_its_mean() {
-        for (mean, sockets) in [(0, 4), (2, 8), (4, 12), (8, 19), (16, 29), (64, 55)] {
-            let (low, high) = window(mean * 1_000);
-            assert_eq!(high - low + 1, sockets, "mean {mean}");
-            assert!(poisson_between(mean as f64, low, high) > 0.998, "mean {mean}");
-        }
+    fn a_span_holds_the_next_draw_as_often_as_its_samples_allow() {
+        let span = |seen| PortSet::Span { low: 20_000, high: 20_999, seen };
+        assert_eq!(span(3).holds(), 0.5);
+        assert!((span(6).holds() - 5.0 / 7.0).abs() < 1e-12);
+        // Searching all of a span three ports drew still misses every other mapping, so the pool
+        // is seven; six ports make it four.
+        assert_eq!(pool(span(3), 1_000), 7);
+        assert_eq!(pool(span(6), 1_000), 4);
+        assert_eq!(pool(span(6), 100), 63);
+    }
+
+    #[test]
+    fn a_window_holds_the_traffic_predicted_and_widens_with_a_short_watch() {
+        // Nothing foreign in a watch of six seconds: three hundred milliseconds later the count is
+        // zero to two. The same after a watch of forty milliseconds could be anything up to dozens.
+        assert_eq!(predicted(0, 6_000, 300).map(|(low, high, _)| (low, high)), Some((0, 2)));
+        let (low, high, mass) = predicted(0, 40, 300).unwrap();
+        assert!(low == 0 && (30..=80).contains(&high) && mass >= 0.999);
+        // Fourteen in two seconds is seven a second: about two in 300 ms, and the range holds 99.9%.
+        let (low, high, mass) = predicted(14, 2_000, 300).unwrap();
+        assert!(low == 0 && (8..=11).contains(&high) && mass >= 0.999 && mass <= 1.0);
+        // A known mean of two would need zero to eight for the same mass; the watch adds to it.
+        assert!(predicted(1_000, 500_000, 1_000).unwrap().1 >= 8);
+        // Nothing is predicted for no time, and heavy unknown traffic has no window.
+        assert_eq!(predicted(40, 100, 0), Some((0, 0, 1.0)));
+        assert_eq!(predicted(2_000, 1_000, 2_000), None);
     }
 
     #[test]
     fn a_counter_aims_past_the_traffic_expected_before_its_mappings() {
-        // 70 foreign allocations a second, mappings made 200 ms after the last sample: a mean of 14.
         let busy = model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]);
-        let (low, high) = window(14_000);
-        assert_eq!(
-            busy.aim(300),
-            Some(Aim::Windows(vec![Window { first: 40_012 + 1 + low as u16, step: 1, count: (high - low + 1) as u16 }]))
-        );
+        let (low, high, _) = predicted(7, 2_000, 300).unwrap();
+        assert_eq!(windows(&busy, lead(6)), [Window { first: 40_012 + 1 + low as u16, step: 1, count: (high - low + 1) as u16 }]);
         // A counter that would run past the last port has no aim.
-        assert_eq!(model(1, &[65_520, 65_524, 65_528]).aim(40), None);
+        assert_eq!(model(1, &[65_520, 65_524, 65_528]).aim(lead(3)), None);
     }
 
     #[test]
     fn each_pair_has_its_part() {
         let point = model(1, &[40_000, 40_000, 40_000]);
-        let quiet = model(1, &[50_000, 50_001, 50_002]);
+        let quiet = model(1, &[50_000, 50_001, 50_002, 50_003, 50_004, 50_005]);
+        let busy = model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]);
         let set = model(2, &[51_200, 60_011, 50_333, 64_100, 57_000, 52_048]);
-        let aim = |model: &Model| model.aim(40).unwrap();
-        assert_eq!(part(&point, 40, &aim(&point), PEER, BUDGET), Some(Part::Send(40_000)));
+        let aim = |model: &Model| model.aim(lead(6)).unwrap();
+        let (quiet_window, busy_window) = (windows(&quiet, lead(6))[0], windows(&busy, lead(6))[0]);
+        assert!(quiet_window.count < busy_window.count);
+        assert_eq!(part(&point, &aim(&point), &aim(&point), PEER, BUDGET), Some(Part::Send(40_000)));
         // A point sends to every port of a counter's window and the counter opens one mapping.
-        assert_eq!(part(&point, 40, &aim(&quiet), PEER, BUDGET), Some(Part::Sweep(vec![Window { first: 50_003, step: 1, count: 4 }])));
-        assert_eq!(part(&quiet, 40, &aim(&point), PEER, BUDGET), Some(Part::Open { sockets: 1, port: 40_000 }));
+        assert_eq!(part(&point, &aim(&point), &aim(&quiet), PEER, BUDGET), Some(Part::Sweep(vec![quiet_window])));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&point), PEER, BUDGET), Some(Part::Open { sockets: 1, port: 40_000 }));
         // Two counters: the busier walks onto the last port of its own window and the other
         // measures one mapping to it. Alike in window and port, the higher address walks.
-        let busy = model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]);
-        let Some(Aim::Windows(windows)) = busy.aim(300) else { panic!("no window") };
-        let top = windows[0].last();
-        assert_eq!(part(&busy, 300, &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: top, step: 1 }));
-        assert_eq!(part(&quiet, 40, &busy.aim(300).unwrap(), PEER, BUDGET), Some(Part::Measure { port: top }));
-        assert_eq!(part(&quiet, 40, &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: 50_006, step: 1 }));
-        assert_eq!(part(&quiet, 40, &aim(&quiet), Ipv4Addr::new(203, 0, 113, 9), BUDGET), Some(Part::Measure { port: 50_006 }));
-        assert_eq!(part(&quiet, 40, &aim(&quiet), WAN, BUDGET), None);
+        assert_eq!(part(&busy, &aim(&busy), &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: busy_window.last(), step: 1 }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&busy), PEER, BUDGET), Some(Part::Measure { port: busy_window.last() }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), PEER, BUDGET), Some(Part::Walk { to: quiet_window.last(), step: 1 }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), Ipv4Addr::new(203, 0, 113, 9), BUDGET), Some(Part::Measure { port: quiet_window.last() }));
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&quiet), WAN, BUDGET), None);
         // The measured port is the one between two observations a step apart on each side; the
         // walker opens as many sockets as steps remain.
         assert_eq!(measured(41_000, 41_002, 1), Some(41_001));
@@ -698,45 +749,37 @@ mod tests {
         assert_eq!(walk(50_002, 1, 50_006), Some(4));
         assert_eq!(walk(50_006, 1, 50_006), None);
         assert_eq!(walk(50_010, -2, 50_004), Some(3));
-        // A point searches the span the survey saw, and the set's pool is sized for that search.
-        let span = PortSet::Span { low: 50_333, high: 64_100 };
-        assert_eq!(part(&point, 40, &aim(&set), PEER, BUDGET), Some(Part::Search { set: span, count: 1024 }));
-        assert_eq!(part(&set, 40, &aim(&point), PEER, BUDGET), Some(Part::Open { sockets: 62, port: 40_000 }));
+        // A point searches the span the survey saw, and the set's pool is what the budget allows.
+        let span = PortSet::Span { low: 50_333, high: 64_100, seen: 6 };
+        assert_eq!(part(&point, &aim(&point), &aim(&set), PEER, BUDGET), Some(Part::Search { set: span, count: 1024 }));
+        assert_eq!(part(&set, &aim(&set), &aim(&point), PEER, BUDGET), Some(Part::Open { sockets: 85, port: 40_000 }));
+        assert_eq!(part(&set, &aim(&set), &aim(&point), PEER, Budget { mappings: 32, packets: 1024 }), Some(Part::Open { sockets: 32, port: 40_000 }));
         // A set has no part against a counter or another set.
-        assert_eq!(part(&set, 40, &aim(&quiet), PEER, BUDGET), None);
-        assert_eq!(part(&quiet, 40, &aim(&set), PEER, BUDGET), None);
-        assert_eq!(part(&set, 40, &aim(&set), PEER, BUDGET), None);
-    }
-
-    #[test]
-    fn two_counters_meet_for_every_traffic_inside_their_windows() {
-        // Socket i of a side lands on position 1 + foreign + i; the peer aims at the window's last.
-        let (low, high) = window(8_000);
-        let sockets = high - low + 1;
-        for foreign in low..=high {
-            assert!((0..sockets).any(|socket| 1 + foreign + socket == high + 1));
-        }
-        assert!(!(0..sockets).any(|socket| 1 + (high + 1) + socket == high + 1));
+        assert_eq!(part(&set, &aim(&set), &aim(&quiet), PEER, BUDGET), None);
+        assert_eq!(part(&quiet, &aim(&quiet), &aim(&set), PEER, BUDGET), None);
+        assert_eq!(part(&set, &aim(&set), &aim(&set), PEER, BUDGET), None);
     }
 
     #[test]
     fn chances_follow_the_allocators() {
         let point = model(1, &[40_000, 40_000, 40_000]);
-        let quiet = model(1, &[50_000, 50_001, 50_002]);
+        let quiet = model(1, &[50_000, 50_001, 50_002, 50_003, 50_004, 50_005]);
         let busy = model(2, &[40_000, 40_003, 40_004, 40_008, 40_010, 40_012]);
         let wide = model(2, &[1_200, 60_011, 30_333, 64_100, 17_000, 52_048]);
         let block = model(2, &[20_500, 21_900, 20_480, 22_500, 21_000, 22_048]);
-        assert_eq!(chance(&point, 40, &point, 40, BUDGET), 1.0);
-        assert!(chance(&point, 300, &busy, 300, BUDGET) > 0.998);
-        // Seventy foreign allocations a second cost the walker's race about 1.4%.
-        assert!((0.980..0.990).contains(&chance(&quiet, 40, &busy, 300, BUDGET)));
-        assert_eq!(chance(&busy, 300, &busy, 300, BUDGET), 0.0);
-        // The widest span needs a pool beyond the budget's mappings; a block of 2,021 ports needs ten.
-        assert_eq!(chance(&point, 40, &wide, 40, BUDGET), 0.0);
-        assert!(chance(&point, 40, &wide, 40, Budget { mappings: 512, packets: 1024 }) > 0.98);
-        assert_eq!(part(&block, 40, &Aim::Port(40_000), PEER, BUDGET), Some(Part::Open { sockets: 10, port: 40_000 }));
-        assert!(chance(&point, 40, &block, 40, BUDGET) > 0.99);
-        assert_eq!(chance(&wide, 40, &busy, 300, BUDGET), 0.0);
+        let at = lead(6);
+        assert_eq!(chance(&point, 40, &point, 40, BUDGET), Some(1.0));
+        assert!(chance(&point, 40, &busy, at, BUDGET).unwrap() > 0.998);
+        // Three and a half foreign allocations a second cost the walker's race under a tenth of a per cent.
+        assert!((0.997..1.0).contains(&chance(&quiet, at, &busy, at, BUDGET).unwrap()));
+        // Two counters alike in everything, and a set against a counter, have no plan: an abstention.
+        assert_eq!(chance(&busy, at, &busy, at, BUDGET), None);
+        assert_eq!(chance(&wide, at, &busy, at, BUDGET), None);
+        // A span six ports drew holds five mappings of seven. In 62,901 ports a pool of 256 meets a
+        // search of 1,024 about nineteen times in twenty; a block of 2,021 ports is met with eleven.
+        assert!((0.94..0.96).contains(&chance(&point, 40, &wide, at, BUDGET).unwrap()));
+        assert_eq!(part(&block, &block.aim(at).unwrap(), &Aim::Port(40_000), PEER, BUDGET), Some(Part::Open { sockets: 11, port: 40_000 }));
+        assert!(chance(&point, 40, &block, at, BUDGET).unwrap() > 0.99);
         assert!((binomial_at_least(14, 6.0 / 14.0, 4) - 0.914).abs() < 0.005);
         assert!(binomial_at_least(19, 6.0 / 14.0, 4) > 0.98);
     }
