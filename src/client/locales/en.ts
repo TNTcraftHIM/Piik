@@ -272,7 +272,7 @@ export const en: Record<CopyKey, string> = {
   "conversation.deleteMessage": "Delete this message",
   "conversation.confirmDeleteMessage": "Permanently delete this message and its attachments? Saved downloads are kept.",
   "screen.sharedSound": "Shared sound: {title}",
-  "screen.viewersCount": "Viewers: {count} watching",
+  "screen.pictureReceivedCount": "Viewers who received the picture: {count}",
   "screen.pictureReceived": "Picture received",
   "screen.pictureFailed": "Picture unavailable",
   "screen.viewers": "Viewers of this screen",

@@ -225,7 +225,7 @@ export const zhHant = {
   "conversation.deleteMessage": "刪除這則訊息",
   "conversation.confirmDeleteMessage": "要永久刪除這則訊息及其附件嗎？已下載的檔案仍會保留。",
   "screen.sharedSound": "{title}的分享聲音",
-  "screen.viewersCount": "觀看者：{count} 人正在觀看",
+  "screen.pictureReceivedCount": "畫面已送達：{count} 人",
   "screen.viewers": "此畫面的觀看者",
   "screen.noViewers": "還沒有人觀看此畫面。",
   "screen.sharedScreens": "共享畫面",

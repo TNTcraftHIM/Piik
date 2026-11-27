@@ -2101,6 +2101,12 @@ async fn connection(
                                 }
                             }
                         }
+                        // The commit reply lets the Browser expose the new selection and its
+                        // controls. Its mixer snapshot must already describe the selected source.
+                        if let Some(state) = initial_audio {
+                            let event = json!({"type":"capture_audio_state","publicationId":publication_id,"state":state});
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
                         let response = control_reply(id, result);
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         if let Some((generation, ended)) = ended {
@@ -2110,10 +2116,6 @@ async fn connection(
                         }
                         if let Some(state) = initial_input {
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
-                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                        }
-                        if let Some(state) = initial_audio {
-                            let event = json!({"type":"capture_audio_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
                         continue;

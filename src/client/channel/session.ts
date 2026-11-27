@@ -2421,7 +2421,6 @@ export class ChannelSession {
         codecMode: this.view.videoCodecMode, encodingExecution: this.view.encodingExecution,
         volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
     }
-    if (this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
     return stage.selectScreen(share, { profile: this.view.quality, codecMode: this.view.videoCodecMode,
       encodingExecution: this.view.encodingExecution });
   }

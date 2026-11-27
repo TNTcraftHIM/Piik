@@ -258,9 +258,12 @@ the feedback period; they do not delay that delivery.
   Editing supplies the first concrete addition; no extension interface or
   generic capability registry is built. A part interface is weighed only by a bounded
   comparison with plain lifecycle-owner extraction.
-- [ ] **Routing authority placement.** Measure the writer turn and storage
-  validation cost before proposing domain-owned repair. Decide the revocable
-  grant and writer-disconnect semantics separately from physical pair reuse.
+- [ ] **Remote-writer route continuity.** Measure writer round-trip time and
+  cold repair on independent networks. The
+  [local writer control](./research/topology-improvement-design.md#room-writer-turn-cost)
+  found no history scan or persistent write during route turns. Any proposal
+  to continue new room grants while its writer is offline must define their
+  revocation and lifetime separately from physical-pair reuse.
 - [ ] **Prepared-path migration after TURN.** Extend the verified Native
   transport handoff to full App signaling and independent networks. Correlate
   selected-path traffic with picture and sound continuity; unknown candidate

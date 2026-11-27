@@ -19,6 +19,11 @@ on:
         default: both
         type: choice
         options: [both, windows, macos]
+      nat_helper_macos:
+        description: Build the standalone NAT survey tool for Apple Silicon and Intel Macs
+        required: false
+        default: false
+        type: boolean
       channel_network_lab:
         description: Run one isolated network control (never publishes)
         required: false
@@ -44,6 +49,56 @@ concurrency:
   queue: max
 
 jobs:
+  nat-helper-macos:
+    if: github.event_name == 'workflow_dispatch' && inputs.nat_helper_macos == true
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: f3b527a9965ae2726621f9852d6671c3e2be6b6a
+          persist-credentials: false
+      - name: Build and check the standalone universal tool
+        working-directory: prototype/nat
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          rustup toolchain install 1.91.0 --profile minimal
+          rustup target add --toolchain 1.91.0 aarch64-apple-darwin x86_64-apple-darwin
+          cargo +1.91.0 test --locked --offline
+          for nat_target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo +1.91.0 build --locked --offline --release --bin piik-nat-lab --target "$nat_target"
+          done
+          mkdir -p "$RUNNER_TEMP/nat-helper/package"
+          lipo -create target/{aarch64,x86_64}-apple-darwin/release/piik-nat-lab -output "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
+          codesign --force --sign - "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
+          codesign --verify --strict --all-architectures "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
+          lipo "$RUNNER_TEMP/nat-helper/package/piik-nat-lab" -verify_arch arm64 x86_64
+          "$RUNNER_TEMP/nat-helper/package/piik-nat-lab" --help
+          cp ../../LICENSE "$RUNNER_TEMP/nat-helper/package/LICENSE"
+          {
+            git rev-parse HEAD
+            rustc +1.91.0 --version
+            uname -m
+            lipo -info "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
+            otool -L "$RUNNER_TEMP/nat-helper/package/piik-nat-lab"
+          } > "$RUNNER_TEMP/nat-helper/build.txt"
+          cd "$RUNNER_TEMP/nat-helper"
+          tar -czf piik-nat-lab-macos-universal.tar.gz -C package piik-nat-lab LICENSE
+          (cd package && shasum -a 256 piik-nat-lab) > SHA256SUMS
+          shasum -a 256 piik-nat-lab-macos-universal.tar.gz >> SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: piik-nat-lab-macos-universal-f3b527a9
+          path: |
+            ${{ runner.temp }}/nat-helper/piik-nat-lab-macos-universal.tar.gz
+            ${{ runner.temp }}/nat-helper/build.txt
+            ${{ runner.temp }}/nat-helper/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
   channel-network:
     if: github.event_name == 'workflow_dispatch' && inputs.channel_network_lab != 'none' && inputs.channel_network_lab != '' && inputs.channel_network_lab != 'public-peer'
     runs-on: ubuntu-24.04
@@ -265,7 +320,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request' &&
       !(github.event_name == 'workflow_dispatch' &&
-        (inputs.channel_native == true || (inputs.channel_network_lab != 'none' && inputs.channel_network_lab != '')))
+        (inputs.channel_native == true || inputs.nat_helper_macos == true || (inputs.channel_network_lab != 'none' && inputs.channel_network_lab != '')))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}

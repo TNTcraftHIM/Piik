@@ -9,12 +9,15 @@ have separate records. [3.0 status](./status.md#isolated-30-prototype) ·
 
 ## Current Evidence
 
-An isolated Windows runner at `a80a7181` exercised the actual WebView2 window
+An isolated Windows runner at `56092074` exercised the actual WebView2 window
 lifecycle and local stop shortcut. It verified candidate retirement, window and
 browser-process exit, profile cleanup, and all four combinations of extra Shift
 and Win while stopping remote control. Held input was released and the same
-shortcut could be rebound. This run used the required group of four registered
-shortcuts. [Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45970521763/job/140409547713)
+shortcut could be rebound. The same run loaded a synthetic video through the
+real HTTP webpage entry, selected it in the Native bridge, observed resource
+emptying and restored media readiness, then checked window and process cleanup.
+This covers App control 28 with local synthetic media.
+[Windows CI](https://github.com/TNTcraftHIM/Piik/actions/runs/45987669686/job/140467319818)
 
 The Windows x64 review builds opened WebView2, created a room and
 decoded a synthetic screen from an independent Browser on loopback. Main-window
