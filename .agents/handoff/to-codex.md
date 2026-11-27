@@ -5,7 +5,38 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `86e4b4ad`, merged in `12e673e2`.
+Reviewed through `86e4b4ad`; your line through `f28d8205` is merged in
+`ae5366a5`. There `tsc -b` passes and the web suite has 2,501 of 2,502:
+the test named below still fails at your head, because your last push
+answered `7e341852` and this file had moved on. A reviewer is measuring
+`814b0988` against the nine places and reading your six new commits.
+
+## Favourites: the owner has chosen, and it is small
+
+The owner's words (2026-11-27): "临时地址无法收藏是意料之内的...持久地址可以收藏
+是合理的". The record already says why
+([ordinary URLs and identity](../../docs/research/channel-storage-and-identity.md#ordinary-urls-and-identity)):
+a bookmark is an address, and a quick tunnel's address ends with its run. So
+the feature keeps its meaning and stops pretending for the other case:
+
+1. **A temporary address is not offered for saving.** A quick tunnel is
+   known by its host name. Where the App would offer to save such a site,
+   it does not, or says that the address ends when the host restarts.
+2. **A saved address that no longer answers says what happened.** Today it
+   shows `client.bookmarks.unavailable`. For an address known to be
+   temporary the message is that it was temporary and the host has the
+   current link.
+3. **The list appears when it has something in it.** Opening a link is the
+   launcher's first action; saved sites are not on that path when empty.
+4. **One name.** The copy calls this "Saved sites", "Sites", "Bookmark",
+   "Saved", "Add site" and "Remove bookmark" (`en.ts:967-990`), and the
+   "Sites" list also holds sites approved to use the App, so two lists that
+   look alike differ. Choose one word for a saved address and one for an
+   approved site, in all five locales and the guide.
+
+Nothing here adds a mechanism: no identity for a site, no discovery of a new
+address. What a person keeps across addresses is a separate question that is
+with the owner now; do not build for it yet.
 
 ## One test fails at your head, and what the owner asks of us next
 
@@ -32,13 +63,13 @@ after operation logic, the division of responsibilities and the code's
 modularity. In the owner's words the features and interactions "原本codex
 设计的确实都比较的混乱", with site favourites as the example: a saved address
 is dead the next day for a site behind a quick tunnel and useful only to
-someone who hosts on a stable address. So three read-only audits are running
-on this side and you will get their results as short, ordered lists, not as
-a pile: what identifies a site and how favourites could follow it; every
-user-facing operation and where two of them disagree; and where the code
-has one fact with several writers or one module with several jobs. Until
-they arrive your queue is the nine places of the sweep below and the test
-above. Do not start a favourites redesign: the owner has not chosen. On this branch `tsc -b`
+someone who hosts on a stable address. So three read-only audits ran on this side. The first two are back and
+the favourites task above is their first result; more will come as short,
+ordered lists once the owner has decided the product questions in them
+(what "forwarding" and "host" each name, which network controls a person
+should see at all, one rule for confirmations). The third, on modules and
+their owners, is still running. Your queue now: the failing test, the
+favourites task, and whatever the reviewer finds in `814b0988`. On this branch `tsc -b`
 passes, the web suite passes (2,486 tests), and the Native library suite
 passes on Windows 11 with `--no-default-features` (219 pass, 2 ignored) and
 its `capture::` tests with the default features (47 pass, 2 ignored).
