@@ -221,9 +221,12 @@ describe("Webpage watch presentation", () => {
     const originalPage = html.match(/<button[^>]*aria-label="Sync video on its webpage"[^>]*>/)?.[0];
     expect(originalPage).toBeDefined();
     expect(originalPage).not.toContain("disabled");
-    expect(html.includes(`aria-label="Owned video — ${t("en", "watch.forward.direct")}"`)).toBe(direct);
-    expect(html.includes(`aria-label="Owned video — ${t("en", "watch.forward.originFallback")}"`)).toBe(direct);
-    expect(html.includes(t("en", "watch.browserSource.help"))).toBe(direct);
+    expect(html.match(/<button[^>]*aria-label="Owned video"/g) ?? []).toHaveLength(direct ? 1 : 0);
+    expect(html.includes('<summary>Playback method</summary>')).toBe(direct);
+    if (direct) {
+      expect(html).toContain('<option value="forward" selected="">'+t("en", "watch.forward.originFallback")+'</option>');
+      expect(html).toContain('<option value="direct">'+t("en", "watch.forward.direct")+'</option>');
+    }
   });
 
   it.each([false, true])("a candidate without a webpage locator retains media choices after inspection=%s", inspected => {
@@ -237,9 +240,10 @@ describe("Webpage watch presentation", () => {
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
     expect(html).not.toContain('aria-label="Sync video on its webpage"');
     expect(html).not.toContain(t("en", "watch.browserSource.originalHelp"));
-    expect(html).toContain(inspected ? `aria-label="Video — ${t("en", "watch.forward.originFallback")}"` : 'aria-label="Select video Popup video"');
+    expect(html).toContain(inspected ? 'aria-label="Video"' : 'aria-label="Select video Popup video"');
     if (inspected) {
-      expect(html).toContain(`aria-label="Video — ${t("en", "watch.forward.direct")}"`);
+      expect(html.match(/<button[^>]*aria-label="Video"/g)).toHaveLength(1);
+      expect(html).toContain('<summary>Playback method</summary>');
       expect(html).toMatch(/<button[^>]*aria-label="Start watching together"(?![^>]*disabled)/);
     }
   });

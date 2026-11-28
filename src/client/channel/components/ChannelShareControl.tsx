@@ -98,10 +98,12 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
   </details>;
 }
 
+export type WatchReplacement = { activityId: string; onOtherSources(): void };
+
 /** The picker closes before a start runs and this control can unmount with it, so a mounted owner supplies startAction. */
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, variant, publicationActions, compactCaption, disabled, openRequested, onPickerRequestHandled, onWatch, startAction, onStopScreen }: {
-  channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; variant?: "split"; publicationActions?: ReactNode; compactCaption?: boolean; disabled: boolean;
-  openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(): void;
+export function ChannelShareControl({ channel, roomId, publicationId, watchActivityId, compact = false, variant, publicationActions, compactCaption, disabled, openRequested, onPickerRequestHandled, onWatch, startAction, onStopScreen }: {
+  channel: ChannelController; roomId: string; publicationId?: string; watchActivityId?: string; compact?: boolean; variant?: "split"; publicationActions?: ReactNode; compactCaption?: boolean; disabled: boolean;
+  openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(replacement?: WatchReplacement): void;
   onStopScreen(roomId: string, publicationId: string): Promise<void>;
   startAction: ReturnType<typeof useSettingsAction>;
 }) {
@@ -114,6 +116,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const settingsPanel = useRef<HTMLDivElement>(null);
   const request = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
+  const [otherSourcesRequested, setOtherSourcesRequested] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   useLayerHistory(panel, open);
   useLayerHistory(settingsPanel, settingsOpen);
@@ -125,9 +128,10 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const captureRequest = channel.nativeCaptureRequest(roomId);
   const selectedNative = channel.nativeCaptureSelection(roomId);
   const externalInput = channel.externalInput(roomId);
-  const sharing = channel.state?.publications.find(publication => publication.kind === "screen" &&
+  const sharing = watchActivityId ? undefined : channel.state?.publications.find(publication => publication.kind === "screen" &&
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
-  const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
+  const watching = watchActivityId ? channel.state?.watchActivities.find(activity =>
+    activity.id === watchActivityId && activity.roomId === roomId && activity.sessionId === channel.sessionId) : undefined;
   const pageWatch = watching && !!channel.watchPlayers.get(watching.id)?.media.page;
   const room = channel.state?.channel.rooms.find(room => room.id === roomId);
   const roomName = room?.name;
@@ -179,7 +183,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     ? t("screen.switchRoomSource", { room: roomName })
     : label;
   // The inner grid scrolls independently, so its clipped outer scrollHeight cannot size placement.
-  const sourceButton = useCallback(() => trigger.current?.querySelector<HTMLButtonElement>("button[popovertarget]"), []);
+  const sourceButton = useCallback(() => trigger.current?.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]'), []);
   useAnchoredPopover(trigger, panel, { maxHeight: 560, preferredHeight: 560, minVisibleHeight: 360, returnFocus: sourceButton });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, preferredHeight: 640, minVisibleHeight: 240 });
   const closePicker = useCallback(() => panel.current?.hidePopover(), []);
@@ -219,17 +223,23 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       });
     }
   }, [open, settingsNeedSources, appConnected, refresh]);
-  useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
+  useLayoutEffect(() => { close(); }, [roomId, publicationId, watchActivityId, disabled, close]);
   useEffect(() => { setExternalOpen(false); }, [roomId]);
   useEffect(() => {
-    if (!openRequested || !panel.current) return;
-    const source = trigger.current?.querySelector("button");
+    if ((!openRequested && !otherSourcesRequested) || !panel.current) return;
+    const source = sourceButton();
     if (canOpenSourcePicker && source) {
       source.scrollIntoView({ block: "nearest" });
       panel.current.showPopover({ source });
     }
-    onPickerRequestHandled?.();
-  }, [openRequested, canOpenSourcePicker, onPickerRequestHandled]);
+    if (openRequested) onPickerRequestHandled?.();
+    if (otherSourcesRequested) setOtherSourcesRequested(false);
+  }, [openRequested, otherSourcesRequested, canOpenSourcePicker, onPickerRequestHandled, sourceButton]);
+  const openWatchSource = () => {
+    close();
+    sourceButton()?.focus({ preventScroll: true });
+    onWatch(watching ? { activityId: watching.id, onOtherSources: () => setOtherSourcesRequested(true) } : undefined);
+  };
   // A result its owner can no longer receive, after a room change, still reaches the banner.
   const start = (operation: (reportError: () => boolean) => Promise<void>, onSuccess?: () => void) => {
     close();
@@ -267,7 +277,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     actionsHost.addEventListener("toggle", place, true);
     return () => actionsHost.removeEventListener("toggle", place, true);
   }, [actionsHost, compactCaption, captureRequest, cancellable, settingsOpen, open]);
-  if (publicationId && !sharing) return null;
+  if ((publicationId && !sharing) || (watchActivityId && !watching)) return null;
   const hasSettings = !watching || !!sharing || pageWatch;
   const split = variant === "split" && hasSettings && !captureRequest && !cancellable;
   const actionTone = sharing || watching ? undefined : "primary";
@@ -280,8 +290,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }}
       className={split ? "is-split-main" + tonal : undefined} size="compact" tone={actionTone} quiet={!split && compact}
       hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
-      disabled={!canOpenSourcePicker} busy={sourcePending} expanded={open}
-      hasPopup="dialog" controls={id} popoverTarget={id} />}
+      disabled={!canOpenSourcePicker} busy={sourcePending} expanded={watching ? undefined : open}
+      hasPopup="dialog" controls={watching ? undefined : id} popoverTarget={watching ? undefined : id}
+      onClick={watching ? openWatchSource : undefined} />}
     {cancellable && <Btn id={cancelId} icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
       cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
       onClick={() => {
@@ -385,7 +396,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialRenderEndpointId={selectedNative?.renderEndpointId} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(reportError => startScreen(roomId, "browser", "", reportError))}
-        onWatch={() => { close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true }); onWatch(); }}
+        onWatch={openWatchSource}
         onCamera={deviceId => start(reportError => startScreen(roomId, "camera", deviceId, reportError))}
         onExternalInput={channel.externalScreenInputAvailable ? () => {
           close();
@@ -467,12 +478,14 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
   </div>;
 }
 
-export function WatchSourceDialog({ channel, roomId, activityId, initialURL = "", onClose }: { channel: ChannelController; roomId: string; activityId?: string; initialURL?: string; onClose(): void }) {
+export function WatchSourceDialog({ channel, roomId, activityId, replacing = false, initialURL = "", onOtherSources, onClose }: {
+  channel: ChannelController; roomId: string; activityId?: string; replacing?: boolean; initialURL?: string;
+  onOtherSources?(): void; onClose(): void;
+}) {
   const { t } = useCopy();
   const [url, setURL] = useState(initialURL);
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
-  const replacing = !activityId && channel.state?.watchActivities.some(watch => watch.roomId === roomId && watch.sessionId === channel.sessionId);
   const confirmLabel = activityId ? "watch.start" : replacing ? "watch.switchVideo" : "watch.startVideo";
   const windowAction = useSettingsAction(!!page, page?.pageId);
   const embed = !activityId ? channel.watchEmbed(roomId) : undefined;
@@ -526,18 +539,20 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
       }
     }
   };
-  const sourceOptions = (pageSources?.choices ?? []).flatMap(entry => {
+  const sourceOptions = (pageSources?.choices ?? []).map(entry => {
     const direct = { kind: "direct", id: entry.id } as const;
     const forward = { kind: "forward", id: entry.id } as const;
-    return directForwardMediaURL(entry) ? [forward, direct] : [direct, forward];
+    return directForwardMediaURL(entry) ? { preferred: forward, alternate: direct } : { preferred: direct, alternate: forward };
   });
   const website = { kind: "website" } as const;
   const staged = sourceDraft && sourceDraft.pageId === page?.pageId && sourceDraft.candidateId === pageSources?.candidateId
     ? sourceDraft.choice : undefined;
   const hasTrackChoices = !!(pageSources?.indexed.length || pageSources?.mpd.length);
-  const choice = staged ?? (!hasTrackChoices && pageSources?.choices.length === 1 ? sourceOptions[0]
+  const choice = staged ?? (!hasTrackChoices && sourceOptions.length === 1 ? sourceOptions[0].preferred
     : !hasTrackChoices && sourceOptions.length === 0 && sourceCandidate?.pageURL ? website : undefined);
   const source = choice && describeChoice(choice);
+  const selectedOption = choice?.kind === "direct" || choice?.kind === "forward"
+    ? sourceOptions.find(option => option.preferred.id === choice.id) : undefined;
   const sourceTitle = sourceCandidate?.title || t("watch.video");
   const stageSource = (choice: SourceChoice) => {
     if (page && pageSources) setSourceDraft({ pageId: page.pageId, candidateId: pageSources.candidateId, choice });
@@ -594,27 +609,34 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
           : <p role="status">{t(sourceOptions.length || sourceCandidate?.pageURL || hasTrackChoices ? "watch.browserSource.title" : "watch.waitForVideo")}</p>}
         <Btn icon="play" tone="primary" title={confirmLabel} cap={confirmLabel} busy={busy} disabled={busy || !source}
           onClick={() => { if (choice && source) void run(() => commitSource(choice), onClose); }} />
-        <details className="c3-settings-details" open={source ? undefined : true}>
-          <summary>{t("watch.browserSource.title")}</summary>
-          <div className="lr-source-picker-list c3-watch-source-list" data-text-list>
-            {sourceOptions.map(option => {
-              const detail = describeChoice(option);
-              if (!detail) return null;
-              return <CaptureSourceCard key={option.kind + option.id} title={detail.name} description={detail.capability}
-                action={detail.name + " — " + detail.capability} icon="play"
-                selected={choice?.kind === option.kind && choice.id === option.id} disabled={busy} onSelect={() => stageSource(option)} />;
-            })}
-            {sourceCandidate?.pageURL && <CaptureSourceCard title={t("watch.browserSource.skip")} description={t("watch.browserSource.originalHelp")}
-              action={t("watch.browserSource.skip")} icon="globe" selected={choice?.kind === "website"}
-              disabled={busy} onSelect={() => stageSource(website)} />}
-          </div>
-          {sourceOptions.length > 0 && <p>{t("watch.browserSource.help")}</p>}
+        {sourceOptions.length > 0 && <div className="lr-source-picker-list c3-watch-source-list" data-text-list>
+          {sourceOptions.map(option => {
+            const detail = describeChoice(option.preferred);
+            if (!detail) return null;
+            return <CaptureSourceCard key={option.preferred.id} title={detail.name}
+              action={detail.name} icon="play" selected={selectedOption === option}
+              disabled={busy} onSelect={() => stageSource(option.preferred)} />;
+          })}
+        </div>}
+        {selectedOption && <details className="c3-settings-details">
+          <summary>{t("watch.playbackMethod")}</summary>
+          <select className="lr-select" aria-label={t("watch.playbackMethod")} value={choice?.kind} disabled={busy}
+            onChange={event => stageSource(event.target.value === selectedOption.preferred.kind ? selectedOption.preferred : selectedOption.alternate)}>
+            {[selectedOption.preferred, selectedOption.alternate].map(option =>
+              <option key={option.kind} value={option.kind}>{describeChoice(option)?.capability}</option>)}
+          </select>
+        </details>}
+        {sourceCandidate?.pageURL && <CaptureSourceCard title={t("watch.browserSource.skip")} description={t("watch.browserSource.originalHelp")}
+          action={t("watch.browserSource.skip")} icon="globe" selected={choice?.kind === "website"}
+          disabled={busy} onSelect={() => stageSource(website)} />}
+        {hasTrackChoices && <details className="c3-settings-details" open={source ? undefined : true}>
+          <summary>{t("watch.forward.trackOptions")}</summary>
           <WatchIndexedTrackPicker choices={pageSources.indexed} onRetry={pageSources.retryIndexed} busy={busy} mainPlayback confirmLabel="watch.useTracks"
             onConfirm={(videoId, audioId) => stageSource({ kind: "indexed", videoId, audioId })} />
           {pageSources.mpd.length > 0 && <WatchMpdSourcePicker choices={pageSources.mpd} busy={busy} mainPlayback confirmLabel="watch.useTracks"
             onInspect={(choiceId, signal) => run(() => channel.inspectWatchMpdSource(roomId, choiceId, signal))}
             onConfirm={selection => stageSource({ kind: "mpd", selection })} />}
-        </details>
+        </details>}
         {videos.length > 1 && <details className="c3-settings-details">
           <summary>{t("watch.chooseAnotherVideo")}</summary>
           <div className="lr-source-picker-list c3-watch-source-list" data-text-list>
@@ -675,6 +697,10 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
           title={openPage ? "watch.directStart" : "watch.openPage"} cap={openPage ? "watch.directStart" : "watch.openPage"} disabled={busy || !validURL}
           onClick={() => { if (openPage) void run(() => channel.startWatch(roomId, url.trim(), false), onClose);
             else void run(() => channel.prepareWatchPage(roomId, url.trim(), undefined, false)); }} />}
+        {onOtherSources && <Btn icon="cast" quiet title="watch.otherSources" cap="watch.otherSources" disabled={busy} onClick={() => {
+          close();
+          onOtherSources();
+        }} />}
         <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} /></div>
     </form>}
     {help && <ChannelDiagnosisHelp diagnosis={help} />}

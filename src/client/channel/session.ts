@@ -2719,6 +2719,8 @@ export class ChannelSession {
         await this.commitOriginalPageWatch(roomId, page, selection, candidateId);
         return true;
       }
+      delete selection.discovery;
+      delete selection.watchSources;
       if (selection.borrowed) {
         if (selection.pendingCandidateId && selection.pendingCandidateId !== candidateId) await page.stopMedia(selection.pendingCandidateId);
         selection.pendingCandidateId = candidateId;
@@ -2727,11 +2729,11 @@ export class ChannelSession {
       const selected = page.candidates.find(value => value.id === candidateId);
       if (!selected) throw new Error("watch_page_unavailable");
       // Both opaque players and a failed direct URL retain explicit page-source choices.
-      const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [], mpd: [] };
-      this.patch({});
       const discover = async () => {
         await waitForWatchMedia({ read: () => page.read(selection.pendingCandidateId), listen: listener => page.listen(listener, selection.pendingCandidateId) }, selection.controller.signal);
         selection.controller.signal.throwIfAborted();
+        const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [], mpd: [] };
+        this.patch({});
         const discovery = selection.discovery = observeWatchSources(page, selection.controller.signal, sources => {
           Object.assign(watchSources, sources);
           if (!sources.error) delete watchSources.error;
@@ -3212,7 +3214,7 @@ export class ChannelSession {
           || this.stages.get(player.roomId)?.sourceSelection) return;
         this.stage(player.roomId).selectSource(page);
         this.patch({});
-        window.dispatchEvent(new CustomEvent("piik-watch-source-picker", { detail: player.roomId }));
+        window.dispatchEvent(new CustomEvent("piik-watch-source-picker", { detail: { roomId: player.roomId, activityId: id } }));
       };
       const reconcile = () => {
         if (this.watchPlayer(id) === player && this.view.connection === "connected")

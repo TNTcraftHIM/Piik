@@ -490,8 +490,8 @@ webpage entry remains available. A hidden embedded player pauses locally;
 
 With the Windows App connected, **Open webpage and select video**
 opens a separate website window. After loading or signing in, choose the video
-if Piik finds more than one. To change the source or select tracks, open
-**Choose playback source**. Select **Start watching together** to share, or
+if Piik finds more than one. Open **Playback method** to change how viewers receive
+the selected video, or **Track options** to choose video and audio tracks when offered. Select **Start watching together** to share, or
 **Switch video** to replace your current share. For **Sync video on its webpage**,
 viewers open the same page in their App, select the matching video and confirm
 with **Watch together**. Sources with a direct link let browser viewers try the

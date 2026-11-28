@@ -17674,6 +17674,12 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
       { pageURL: page.url, id: candidateId, title: "A", url: null, duration: 60 }, { pageURL: otherPageURL, id: otherId, title: "B", url: null, duration: 60 },
     ] });
     expect(page.selectedCandidateId).toBe(candidateId);
+    vi.spyOn(page, "read").mockRejectedValueOnce(new Error("page_candidate_unavailable"));
+    await expect(session.selectWatchPage("first", otherId, undefined, false, "choose-source")).rejects.toThrow("page_candidate_unavailable");
+    expect(session.watchPage("first")?.pageId).toBe(next.id);
+    expect(session.watchPage("first")?.watchSources).toBeUndefined();
+    expect(page.selectedCandidateId).toBe(candidateId);
+    expect(session.getSnapshot().watchPlayers.has(old.id as string)).toBe(true);
     expect(await session.selectWatchPage("first", otherId, undefined, false, "choose-source")).toBe(false);
     expect(page.selectedCandidateId).toBe(candidateId);
     await session.cancelScreenSelection("first");
