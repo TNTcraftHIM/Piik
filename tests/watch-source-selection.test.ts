@@ -22,7 +22,7 @@ test("website locators are optional values and do not manufacture an original-pa
   expect(watchSourceSchema.safeParse({ kind: "media" }).success).toBe(false);
 });
 
-test.each(["commit", "cancel"] as const)("source discovery survives preparation failure until %s", async finish => {
+test.each(["commit", "cancel", "unknown"] as const)("source discovery survives preparation failure until %s", async finish => {
   vi.stubGlobal("window", { localStorage: { getItem: () => null } });
   vi.stubGlobal("localStorage", { getItem: () => null });
   vi.stubGlobal("location", { origin: "https://source.test", hash: "" });
@@ -69,6 +69,12 @@ test.each(["commit", "cancel"] as const)("source discovery survives preparation 
     expect(prepare.mock.calls).toEqual([[b.id]]);
     expect(request).not.toHaveBeenCalled();
 
+    const read = vi.spyOn(page, "read").mockRejectedValueOnce(new Error("page_candidate_unavailable"));
+    await expect(session.selectWatchBrowserSource("room", null, false)).rejects.toThrow("page_candidate_unavailable");
+    read.mockRestore();
+    expect(session.watchPage("room")?.watchSources).toBe(sources);
+    expect(dispose).not.toHaveBeenCalled();
+
     delayDiscovery = true;
     choices = [a];
     changed();
@@ -77,6 +83,10 @@ test.each(["commit", "cancel"] as const)("source discovery survives preparation 
       await session.selectWatchBrowserSource("room", null);
       expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "start_watch", source: { kind: "website", url: page.url } }), expect.any(Function), "room");
       expect(dispose).not.toHaveBeenCalled();
+    } else if (finish === "unknown") {
+      request.mockRejectedValueOnce(new Error("unknown_outcome"));
+      await expect(session.selectWatchBrowserSource("room", null, false)).rejects.toThrow("unknown_outcome");
+      expect(dispose).toHaveBeenCalledOnce();
     } else {
       await session.cancelScreenSelection("room");
       expect(dispose).toHaveBeenCalledOnce();

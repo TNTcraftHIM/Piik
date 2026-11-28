@@ -18,6 +18,7 @@
 .c3-watch-source-dialog .c3-settings-content > .c3-external-input { display: flex; flex-direction: column; padding-block-start: 6px; }
 .c3-watch-source-dialog .c3-settings-content > .c3-external-input > * { flex-shrink: 0; }
 .c3-watch-source-dialog .c3-external-input > .lr-btn { align-self: start; }
+.c3-watch-source-dialog .c3-external-input > [tabindex="-1"]:focus { outline: none; }
 .c3-watch-source-list { gap: 12px; }
 .c3-watch-source-choice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
 .c3-watch-source-choice > .lr-btn { justify-self: start; }

@@ -479,8 +479,8 @@ remains supported. Other distribution packages still need their own runtime chec
 
 ## Watching video together
 
-Choose **Start sharing → Browser → Watch together**. **Play direct video URL**
-opens a playable video link in Piik. Direct links can point to video files,
+Choose **Start sharing → Browser → Watch together**. Paste a playable video link and select
+**Start watching together**. Direct links can point to video files,
 supported HLS streams or clear static DASH (`.mpd`) streams.
 For a YouTube video or Short, play the preview in the official
 player, then confirm sharing. Browser viewers can watch without an App or
@@ -489,15 +489,14 @@ webpage entry remains available. A hidden embedded player pauses locally;
 **Start local playback** returns it to the shared position.
 
 With the Windows App connected, **Open webpage and select video**
-opens a separate website window; select its player after loading or signing in.
-If the player uses a media buffer, Piik offers the video addresses discovered in
-that page. Choose **Sync video on its webpage** to sync the chosen player’s
-playback while viewers open the same page in their App and select the video.
-**Share this video** for a complete file or a supported HLS stream lets Browser
-viewers try the site first and choose **Receive from sharer** if needed.
-The list updates as the page discovers media. For indexed or DASH sources,
-choose a video track and optional audio track, then explicitly confirm forwarding.
-The App sends the original encoded bytes through the room's peer paths;
+opens a separate website window. After loading or signing in, choose the video
+if Piik finds more than one. To change the source or select tracks, open
+**Choose playback source**. Select **Start watching together** to share, or
+**Switch video** to replace your current share. For **Sync video on its webpage**,
+viewers open the same page in their App, select the matching video and confirm
+with **Watch together**. Sources with a direct link let browser viewers try the
+original site. When available, **Receive from sharer** uses the sharer's App.
+With App forwarding, the App sends the original encoded bytes through the room's peer paths;
 the [website verification record](../../docs/verification-status.md) records current limits.
 The sharer controls play, pause, position and speed. Each viewer controls local
 sound and can stop watching independently.

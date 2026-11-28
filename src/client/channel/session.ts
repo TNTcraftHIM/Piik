@@ -178,6 +178,8 @@ function captureCodec(name: string) {
   return codec.data;
 }
 
+class ChannelCommandRejected extends Error {}
+
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
@@ -646,7 +648,7 @@ export class ChannelSession {
       // Only the writer confirms its signed conversation command.
       if (request.signedResult && result.type !== "error") return;
       this.retireRequest(requestId);
-      if (result.type === "error") request.reject(new Error(result.code));
+      if (result.type === "error") request.reject(new ChannelCommandRejected(result.code));
       else if (result.type === "unknown_outcome") request.reject(new Error("unknown_outcome"));
       else { request.result?.(result); request.resolve(); }
     } else if (event.type === "state") this.applyState(event.state);
@@ -2823,7 +2825,10 @@ export class ChannelSession {
   private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource, mediaUrl?: string): Promise<void> {
     const candidateId = selection.pendingCandidateId;
     const source = this.watchPageSource(page, candidateId, mediaUrl);
-    const media = await preparePageSuppliedWatchMedia(page, byteSource, selection.controller.signal, candidateId);
+    const media = await preparePageSuppliedWatchMedia(page, byteSource, selection.controller.signal, candidateId).catch(async error => {
+      await selection.discovery?.refresh().catch(() => {});
+      throw error;
+    });
     const confirmPage = candidateId ? async () => {
       await page.select(candidateId, false, byteSource.resourceId);
       delete selection.pendingCandidateId;
@@ -2958,6 +2963,7 @@ export class ChannelSession {
     const id = crypto.randomUUID();
     const player = this.makeWatchPlayer(id, roomId, true, media);
     selection.watchCandidate = player;
+    let canRetry = true;
     let committed = false;
     let startSocket: WebSocket | null = null;
     try {
@@ -2970,11 +2976,15 @@ export class ChannelSession {
       const start = performance.now();
       startSocket = this.socket;
       const replaceId = this.ownedReplacementWatchId(selection);
+      canRetry = false;
       await this.request({ type: "start_watch", roomId, id, source, ...(replaceId ? { replaceId } : {}), ...(byteSource ? { byteSource } : {}),
         playback: { timeline: initial.live ? "program" : "media", position: initial.position, paused: true, rate: initial.rate, anchorTime: 0 } }, event => {
         if (event.type === "watch_ready" && typeof event.serverTime === "number")
           player.calibrate(event.serverTime, start);
-      }, roomId);
+      }, roomId).catch(error => {
+        canRetry = error instanceof ChannelCommandRejected;
+        throw error;
+      });
       if (!current() || this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
       const screen = this.stages.get(roomId)?.screen;
       if (screen && screen.id === selection.replaceScreenId && (this.local.has(screen.id) || this.app?.screens.has(screen.id))) {
@@ -3021,7 +3031,15 @@ export class ChannelSession {
         // reconciles orphaned activities from Welcome.
         if (!player.stopRequested && startSocket && this.socket === startSocket) this.send({ type: "stop_watch", roomId, id });
       }
-      this.finishSourceSelection(roomId, selection);
+      if (canRetry && current() && selection.page) {
+        delete selection.watchCandidate;
+        if (media instanceof PageSuppliedMedia) {
+          await selection.page.stopMedia(selection.pendingCandidateId).catch(() => {});
+          await selection.discovery?.refresh().catch(() => {});
+        }
+        selection.committing = false;
+        this.patch({});
+      } else this.finishSourceSelection(roomId, selection);
     }
   }
   joinWatch = (id: string, mode: WatchMode = "direct", reportError: ReportError = true): Promise<void> => this.action(`watch-video:${id}`, async () => {

@@ -14,7 +14,7 @@ export function directForwardMediaURL(choice: NativePageMediaChoice): string | u
 }
 
 /** One page observation owns its resource cache, reads and listener retirement. */
-export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publish: (sources: WatchMediaSources) => void, candidateId?: string): { ready: Promise<WatchMediaSources>; unsubscribe(): void } {
+export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publish: (sources: WatchMediaSources) => void, candidateId?: string): { ready: Promise<WatchMediaSources>; refresh(): Promise<WatchMediaSources>; unsubscribe(): void } {
   const controller = new AbortController(), signal = AbortSignal.any([lifetime, controller.signal]);
   let running: Promise<WatchMediaSources> | null = null, dirty = false;
   let inspecting: AbortController | null = null;
@@ -83,7 +83,14 @@ export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publis
   };
   lifetime.addEventListener("abort", unsubscribe, { once: true });
   if (lifetime.aborted) unsubscribe();
-  return { ready: refresh(), unsubscribe };
+  const reset = () => {
+    current = { choices: [], indexed: [], mpd: [] };
+    publish(current);
+    dirty = true;
+    inspecting?.abort();
+    return refresh();
+  };
+  return { ready: refresh(), refresh: reset, unsubscribe };
 }
 
 /** Prepare the main player without transferring the selected page's lifetime. */

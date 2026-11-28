@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { WatchMedia } from "../watch-media";
 import { Btn } from "../../components/living/primitives";
-import { useCopy } from "../../ui/copy";
+import { useCopy, type CopyKey } from "../../ui/copy";
 import { channelErrorPresentation } from "../../components/error-presentation";
 import "./channel-media.css";
 
 /** Keep the embedded player mounted until the stage takes its element. */
-export function WatchEmbedPreview({ media, busy, onConfirm, onCancel, onOriginalPage }: {
-  media: WatchMedia; busy: boolean; onConfirm?(): void; onCancel(): void; onOriginalPage?: () => void;
+export function WatchEmbedPreview({ media, busy, confirmLabel = "watch.selectVideo", onConfirm, onCancel, onOriginalPage }: {
+  media: WatchMedia; busy: boolean; confirmLabel?: CopyKey; onConfirm?(): void; onCancel(): void; onOriginalPage?: () => void;
 }) {
   const { t } = useCopy();
   const slot = useRef<HTMLDivElement>(null);
@@ -42,7 +42,7 @@ export function WatchEmbedPreview({ media, busy, onConfirm, onCancel, onOriginal
     <div ref={slot} className="c3-watch-embed-preview" />
     {error && <p className="c3-settings-error" role="alert">{channelErrorPresentation(error, t).message}</p>}
     <div className="c3-share-title-actions">
-      {onConfirm && <Btn icon="check" tone="primary" title="watch.selectVideo" cap="watch.selectVideo" busy={busy} disabled={busy || !ready || !!error} onClick={onConfirm} />}
+      {onConfirm && <Btn icon="check" tone="primary" title={confirmLabel} cap={confirmLabel} busy={busy} disabled={busy || !ready || !!error} onClick={onConfirm} />}
       {onOriginalPage && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" disabled={busy} onClick={onOriginalPage} />}
       <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={busy} onClick={onCancel} />
     </div>

@@ -158,7 +158,7 @@ describe("Webpage watch presentation", () => {
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
     expect(html.includes(t("en", "watch.connectApp"))).toBe(connectAdvice);
     expect(html.includes('aria-label="Open webpage and select video"')).toBe(pagePlayer);
-    expect(html).toContain('aria-label="Play direct video URL"');
+    expect(html).toMatch(pagePlayer ? /type="button"[^>]*aria-label="Play direct video URL"/ : /type="submit"[^>]*aria-label="Start watching together"[^>]*disabled/);
   });
 
   it.each([
@@ -174,11 +174,11 @@ describe("Webpage watch presentation", () => {
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, {
       channel, roomId: "room", initialURL, onClose: vi.fn(),
     }));
-    expect(html).toMatch(direct ? /type="submit"[^>]*aria-label="Play direct video URL"/ : /type="submit"[^>]*aria-label="Open webpage and select video"/);
+    expect(html).toMatch(direct ? /type="submit"[^>]*aria-label="Start watching together"/ : /type="submit"[^>]*aria-label="Open webpage and select video"/);
     if (appConnected) {
       expect(html).toMatch(direct ? /type="button"[^>]*aria-label="Open webpage and select video"/ : /type="button"[^>]*aria-label="Play direct video URL"/);
     } else {
-      expect(html.match(/<button[^>]*aria-label="Play direct video URL"[^>]*>/)?.[0]).not.toContain("disabled");
+      expect(html.match(/<button[^>]*aria-label="Start watching together"[^>]*>/)?.[0]).not.toContain("disabled");
       expect(html).not.toContain(t("en", "watch.connectApp"));
     }
   });
@@ -221,9 +221,9 @@ describe("Webpage watch presentation", () => {
     const originalPage = html.match(/<button[^>]*aria-label="Sync video on its webpage"[^>]*>/)?.[0];
     expect(originalPage).toBeDefined();
     expect(originalPage).not.toContain("disabled");
-    expect(html.includes(`aria-label="${t("en", "watch.forward.direct")}"`)).toBe(direct);
-    expect(html.includes(`aria-label="${t("en", "watch.forward.shareFile")}"`)).toBe(direct);
-    expect(html.includes(t("en", "watch.forward.shareFileHelp"))).toBe(direct);
+    expect(html.includes(`aria-label="Owned video — ${t("en", "watch.forward.direct")}"`)).toBe(direct);
+    expect(html.includes(`aria-label="Owned video — ${t("en", "watch.forward.originFallback")}"`)).toBe(direct);
+    expect(html.includes(t("en", "watch.browserSource.help"))).toBe(direct);
   });
 
   it.each([false, true])("a candidate without a webpage locator retains media choices after inspection=%s", inspected => {
@@ -237,8 +237,11 @@ describe("Webpage watch presentation", () => {
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
     expect(html).not.toContain('aria-label="Sync video on its webpage"');
     expect(html).not.toContain(t("en", "watch.browserSource.originalHelp"));
-    expect(html).toContain(inspected ? `aria-label="${t("en", "watch.forward.shareFile")}"` : 'aria-label="Select video Popup video"');
-    if (inspected) expect(html).toContain(`aria-label="${t("en", "watch.forward.direct")}"`);
+    expect(html).toContain(inspected ? `aria-label="Video — ${t("en", "watch.forward.originFallback")}"` : 'aria-label="Select video Popup video"');
+    if (inspected) {
+      expect(html).toContain(`aria-label="Video — ${t("en", "watch.forward.direct")}"`);
+      expect(html).toMatch(/<button[^>]*aria-label="Start watching together"(?![^>]*disabled)/);
+    }
   });
 
 
