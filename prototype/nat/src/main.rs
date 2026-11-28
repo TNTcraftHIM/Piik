@@ -276,9 +276,13 @@ fn main() {
             observers.push((name, address));
         }
     }
-    // Two observers are the least that can be compared, on one address or on two.
+    let questions = Asked { asked, unasked, defaults_silent: public.then(|| silent_defaults(&observers)) };
+    // Two observers are the least that can be compared, on one address or on two. Who stayed
+    // silent is then all such a network has to tell, so the report still says it.
     if observers.len() < 2 {
-        return println!("Fewer than two STUN servers answered ({}). UDP may be blocked on this network.", observers.len());
+        print!("{}", opening(&survey, &observers, &questions));
+        println!("too few observers answered to read a mapping; UDP may be blocked on this network");
+        return closing(&observers);
     }
     for index in shuffled(observers.len()) {
         survey.ask(&second, second_number, observers[index].1);
@@ -313,8 +317,31 @@ fn main() {
             elsewhere.push(*observer.ip());
         }
     }
-    let defaults_silent = public.then(|| silent_defaults(&observers));
-    report(&survey, &observers, Asked { asked, unasked, defaults_silent }, first_number, full);
+    report(&survey, &observers, &questions, first_number, full);
+}
+
+/// The first lines of a report: what was asked and who answered.
+fn opening(survey: &Survey, observers: &[(String, SocketAddrV4)], Asked { asked, unasked, defaults_silent }: &Asked) -> String {
+    // A silent first port shows only that it did not answer: the rest of its run was not asked.
+    let left = if *unasked > 0 { format!(", {unasked} more not asked after their run's first port stayed silent") } else { String::new() };
+    let mut lines = format!(
+        "\n==== report (copy from here) ====\ntool: piik-nat-lab {}\nobservers answered: {} of {asked} asked{left}; requests answered {}, unanswered {}\n",
+        env!("CARGO_PKG_VERSION"),
+        observers.len(),
+        survey.answered,
+        survey.unanswered
+    );
+    if let Some(silent) = defaults_silent {
+        let missing = if silent.is_empty() { String::new() } else { format!("; no answer from {}", silent.join(", ")) };
+        lines += &format!("product's default servers answered: {} of {PRODUCT_DEFAULTS}{missing}\n", PRODUCT_DEFAULTS - silent.len());
+    }
+    lines
+}
+
+/// The last lines of a report: the observers by number.
+fn closing(observers: &[(String, SocketAddrV4)]) {
+    println!("observers: {}", observers.iter().enumerate().map(|(index, (name, _))| format!("{index}={name}")).collect::<Vec<_>>().join(" "));
+    println!("==== end of report ====");
 }
 
 /// The product's default servers that are not among the observers that answered. A name that did
@@ -376,7 +403,7 @@ fn read_address(samples: &[Sample], observers: &[(String, SocketAddrV4)]) {
     }
 }
 
-fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], Asked { asked, unasked, defaults_silent }: Asked, first: u16, full: bool) {
+fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], questions: &Asked, first: u16, full: bool) {
     // Each public address seen gets a letter, in the order seen.
     let addresses = &survey.addresses;
     let letter = |address: &Ipv4Addr| {
@@ -396,15 +423,7 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], Asked { asked, 
         None => "no IPv4 route",
     };
     let ipv6 = matches!(local_address("[2606:4700:4700::1111]:53"), Some(IpAddr::V6(address)) if address.segments()[0] & 0xe000 == 0x2000);
-    println!("\n==== report (copy from here) ====");
-    println!("tool: piik-nat-lab {}", env!("CARGO_PKG_VERSION"));
-    // A silent first port shows only that it did not answer: the rest of its run was not asked.
-    let left = if unasked > 0 { format!(", {unasked} more not asked after their run's first port stayed silent") } else { String::new() };
-    println!("observers answered: {} of {} asked{left}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
-    if let Some(silent) = defaults_silent {
-        let missing = if silent.is_empty() { String::new() } else { format!("; no answer from {}", silent.join(", ")) };
-        println!("product's default servers answered: {} of {PRODUCT_DEFAULTS}{missing}", PRODUCT_DEFAULTS - silent.len());
-    }
+    print!("{}", opening(survey, observers, questions));
     // Which observers are one address, by number: names alone do not say, since two names can be
     // one address and one name can be two. The replay reads its destinations from this line.
     let mut grouped: Vec<Ipv4Addr> = Vec::new();
@@ -509,8 +528,7 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], Asked { asked, 
         let observer = observers.iter().position(|(_, address)| *address == sample.observer).unwrap_or(99);
         println!("  {:>2} {:>2} {:>5} {} {:>5} {:>5}", sample.socket, observer, sample.sent_ms, letter(sample.mapped.ip()), sample.mapped.port(), survey.local_ports[usize::from(sample.socket)]);
     }
-    println!("observers: {}", observers.iter().enumerate().map(|(index, (name, _))| format!("{index}={name}")).collect::<Vec<_>>().join(" "));
-    println!("==== end of report ====");
+    closing(observers);
 }
 
 #[cfg(test)]
@@ -534,6 +552,16 @@ mod tests {
             }
         });
         address
+    }
+
+    #[test]
+    fn a_report_names_the_silent_defaults_when_nobody_answered() {
+        let survey = Survey { answered: 0, bracket_attempts: 0, addresses: Vec::new(), started: Instant::now(), samples: Vec::new(), unanswered: 22, local_ports: Vec::new(), brackets: Vec::new(), filtering: Vec::new() };
+        let lines = opening(&survey, &[], &Asked { asked: 11, unasked: 0, defaults_silent: Some(silent_defaults(&[])) });
+        assert!(lines.contains("observers answered: 0 of 11 asked; requests answered 0, unanswered 22\n"), "{lines}");
+        assert!(lines.contains("product's default servers answered: 0 of 3; no answer from stun.cloudflare.com:3478, stun.l.google.com:19302, stun.nextcloud.com:443\n"), "{lines}");
+        // With only our own server asked, the product's servers are not spoken of.
+        assert!(!opening(&survey, &[], &Asked { asked: 16, unasked: 0, defaults_silent: None }).contains("default"));
     }
 
     #[test]
