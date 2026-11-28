@@ -16,6 +16,30 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
+- [ ] **Beta.62 native interaction performance.** Reproduce slow More options
+  and playback-popover closure in the reported App, including the roughly
+  0.2-second whole-window stall after the native maximize/restore button.
+  Compare input delay, resize/layout work and native presentation with the
+  Browser baseline; a fast menu-open preview does not clear WebView.
+- [ ] **Beta.62 workspace polish.** Align the first chat content and room mark,
+  room-card disclosure and selection, header identity and invitation spacing.
+  Preserve readable default guest labels on the couch and match native caption
+  materials to the underlying page in both themes.
+  The room roster shows each person's current activities. Evaluate a readable
+  couch treatment for simultaneous activities while keeping voice accessories
+  and the primary activity prominent.
+- [ ] **Beta.62 controls and overlays.** Replace the remaining browser-owned
+  delete confirmations with shared Piik dialogs. Restore double-click fullscreen
+  and room-card return to chat without ending media. Verify sidebar tooltip
+  placement and reaction visibility through scrolling, touch and popup dismissal.
+- [ ] **Beta.62 missing image thumbnails.** Trace a reported message's inline
+  preview, media-clear watermark, readable image and render binding. Existing
+  preview decoding works; the affected message's data is not yet identified.
+- [ ] **Beta.62 webpage startup latency.** The reported source eventually played
+  after a long wait. Identify its original-site or App-forwarded path and locate
+  the initial read, connection and first-picture delays without interrupting it.
+  Trace intermittent stalls and temporary position disagreement after seeking,
+  followed by automatic realignment, through the normal Sync watching entry.
 - [ ] **Browser session ownership.** Continue accepted
   [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) with follow-latest,
   operation feedback and the remaining capture, embed

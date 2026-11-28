@@ -49,10 +49,10 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
           {voice && <Glyph name="headphones" size={14} />}
           {sharing ? <Glyph name="cast" size={14} /> : viewing ? <Glyph name={viewingAppearance[viewing].icon} size={14} />
             : sourceCount > 0 ? <span>{sourceCount}<Glyph name="tv" size={14} /></span> : null}
+          {peopleFaces}
         </span>}
       </button>
     </Tooltip>
-    {!compact && peopleFaces}
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
     {!room.available && <span id={offlineId} className="visually-hidden">{offlineLabel}</span>}
     {activityLabel && <span id={activityId} className="visually-hidden">{activityLabel}</span>}

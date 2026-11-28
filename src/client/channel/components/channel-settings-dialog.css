@@ -19,6 +19,8 @@
 .c3-settings-panels > [hidden] { display: none; }
 .c3-settings-panels h3 { margin: 0; font-size: 16px; }
 .c3-settings-dialog p { font-size: 12px; line-height: 1.65; }
+.c3-confirm-dialog { display: grid; gap: 16px; }
+.c3-confirm-dialog .c3-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .c3-settings-panels p { margin: 0; color: var(--muted); }
 .c3-settings-panels > .c3-settings-offline { margin-bottom: 16px; }
 .c3-settings-error, p.c3-settings-error, .c3-settings-error > p { color: var(--danger-ink); }

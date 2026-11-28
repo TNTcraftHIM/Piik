@@ -94,7 +94,7 @@ export function Btn({
   popoverTarget?: string;
   keyShortcuts?: string;
   shortcutLabel?: string;
-  onClick?: () => void;
+  onClick?: (event?: MouseEvent<HTMLButtonElement>) => void;
   type?: "button" | "submit";
   /** Shared hint comic with its localized caption. */
   hint?: ComicKind | HintKind;
@@ -140,7 +140,7 @@ export function Btn({
           ? blockSoftDisabledClick
           : wrapped
             ? (event) => {
-                onClick?.();
+                onClick?.(event);
                 if (!popoverTarget && hasPopup !== "dialog") blurAfterPointerClick(event);
               }
             : onClick

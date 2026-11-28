@@ -1,7 +1,7 @@
 import { playbackOutput } from "../../media/playback-output";
 import { PlaybackDeviceSelect } from "./PlaybackDeviceSelect";
 import { useWatchPageSlot } from "./use-watch-page-slot";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
@@ -16,6 +16,7 @@ import { useVideoRotation } from "../../components/living/use-video-rotation";
 import { PlaybackControlsAttention, usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
 import { useHostPreviewPlayback } from "../../components/living/use-host-preview-playback";
 import { usePictureInPicture } from "../../components/living/use-picture-in-picture";
+import { bindPlaybackGestures } from "../../components/living/playback-gestures";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot, type VoicePlaybackContext } from "../../media/viewer-audio";
 import { observeDebugPlayback } from "../../lib/debug-webrtc";
@@ -157,11 +158,15 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const showDiagnosis = presentation === "full" && !retryPending && !receiving?.pending ? diagnosis : null;
   const returnToSource = showDiagnosis && player.error === "watch_media_access_denied" && (owned && !!player.media.page || !!openOriginal);
   const picture = usePictureInPicture(videoRef);
+  const toggleFullscreen = useCallback(() => {
+    const video = player.video;
+    if (!video) return;
+    setFullscreenFailed(false);
+    void toggleVideoFullscreen(video).catch(() => setFullscreenFailed(true));
+  }, [player]);
   const windowControls = player.video && {
     picture, canPlay: player.video.readyState >= 2, quiet: true, theaterMode, onToggleTheater, fullscreen, fullscreenFailed,
-    toggleFullscreen: () => {
-      if (player.video) { setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true)); }
-    },
+    toggleFullscreen,
   };
   const localVolume = player.video && audioAvailable ? {
     volume: media.muted ? 0 : media.volume, label: "playback.volumeBasic" as const, max: 1,
@@ -198,6 +203,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       }
     };
   }, [player]);
+  useLayoutEffect(() => {
+    if (presentation !== "full" || surface.kind !== "video") return;
+    return bindPlaybackGestures(surface.element, toggleFullscreen);
+  }, [presentation, surface, toggleFullscreen]);
   useEffect(() => {
     if (surface.kind !== "embed") return;
     const ownerDocument = surface.element.ownerDocument;
@@ -362,6 +371,12 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive
   const [naturalSize, setNaturalSize] = useState<VideoSize>();
   const heldSize = held && fit !== "fill" ? naturalSize : undefined;
   useVideoRotation(ref, fit, rotation, heldSize);
+  const onPictureFullscreen = useEffectEvent(fullscreen);
+  useLayoutEffect(() => {
+    const video = ref.current;
+    if (!video || !visible || !interactive) return;
+    return bindPlaybackGestures(video, onPictureFullscreen);
+  }, [visible, interactive]);
   const attach = useCallback((element: HTMLVideoElement | null) => {
     ref.current = element; register(input, element);
   }, [input.flowId, input.stream, register]);
@@ -391,7 +406,7 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive
       const element = event.currentTarget;
       issue(input, element, element.error, elementPlaybackError(element.error));
     }}
-    onDoubleClick={visible ? fullscreen : undefined} onKeyDown={event => {
+    onKeyDown={event => {
       if (visible && event.code === "Space") {
         event.preventDefault();
         const element = event.currentTarget;

@@ -8,7 +8,7 @@ import { motionDuration } from "../../ui/animation";
 import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsError } from "./ChannelSettingsDialog";
+import { ChannelConfirmDialog, ChannelSettingsError } from "./ChannelSettingsDialog";
 import { firstUnreadMessageId, messageAuthorName, messageDateFormats, profileAvatar, sameCalendarDay } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { ChannelMessageContent } from "./ChannelMessageContent";
@@ -79,8 +79,9 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       view.removeEventListener("focus", refresh);
     };
   }, [surfaceDocument, hidden]);
-  const [deleteFailure, setDeleteFailure] = useState<{ scope: string; code: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ message: ChannelMessage; trigger: HTMLButtonElement } | null>(null);
   const conversationScope = JSON.stringify([domainId, selfUserId, roomId]);
+  useLayoutEffect(() => { setDeleteTarget(null); }, [conversationScope, bindingId, hidden, !!onDeleteMessage]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const input = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
@@ -484,12 +485,16 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     updateDraft(value => ({ ...value, reply }));
     input.current?.focus();
   }, [cancelUnreadLookup, updateDraft]);
-  const deleteMessage = useCallback((message: ChannelMessage) => {
-    setDeleteFailure(null);
-    void onDeleteMessage?.(roomId, message.seq, message.id).catch(error => {
-      setDeleteFailure({ scope: conversationScope, code: error instanceof Error ? error.message : "operation_failed" });
+  function closeDeleteDialog() {
+    setDeleteTarget(null);
+    const trigger = deleteTarget?.trigger;
+    trigger?.ownerDocument.defaultView?.requestAnimationFrame(() => {
+      if (trigger.isConnected) {
+        trigger.closest<HTMLElement>("article")?.focus({ preventScroll: true });
+        trigger.focus({ preventScroll: true });
+      } else log.current?.focus({ preventScroll: true });
     });
-  }, [conversationScope, onDeleteMessage, roomId]);
+  }
   return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={t("conversation.roomChat")}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={event => {
@@ -531,10 +536,14 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
           today={today} timeZone={timeZone} unreadMessage={unreadMessage} attachments={attachments} available={available}
           interaction={interaction} effectsEnabled={!hidden && !loadingHistory} canMention={canMention}
           canModerate={canModerate} pending={pending} onReply={replyToMessage} onMention={selectMention}
-          onMessage={loadingHistory ? undefined : showMessage} onDelete={onDeleteMessage ? deleteMessage : undefined} />
+          onMessage={loadingHistory ? undefined : showMessage} onDelete={onDeleteMessage ? setDeleteTarget : undefined} />
       </div>
     </div>
-    <ChannelSettingsError error={deleteFailure?.scope === conversationScope ? deleteFailure.code : null} />
+    {!hidden && deleteTarget && onDeleteMessage && <ChannelConfirmDialog key={conversationScope}
+      title={t("conversation.deleteMessage")} question={t("conversation.confirmDeleteMessage")}
+      icon="x" label={t("conversation.deleteMessage")} danger
+      disabled={!available || !canModerate && deleteTarget.message.userId !== selfUserId}
+      onClose={closeDeleteDialog} onConfirm={() => onDeleteMessage(roomId, deleteTarget.message.seq, deleteTarget.message.id)} />}
     {jumpFailed && <p className="c3-file-error" role="status">{t("conversation.originalUnavailable")}</p>}
     {roomId && (history ? !history.atLatest || !followingLatest : !loadingHistory || messages.length > 0) && <div className="c3-history-more" ref={latestAction}><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
       label={history ? t("conversation.latest") : t("conversation.load")} busy={loadingHistory} disabled={!history?.atLatest && !available} onClick={() => {
@@ -654,7 +663,7 @@ const MessageHistory = memo(function MessageHistory({ roomId, messages, users, p
   onReply(reply: NonNullable<Draft["reply"]>): void;
   onMention(user: Pick<ChannelUser, "id" | "name">): void;
   onMessage?(seq: number): void;
-  onDelete?(message: ChannelMessage): void;
+  onDelete?(target: { message: ChannelMessage; trigger: HTMLButtonElement }): void;
 }) {
   const { lang } = useCopy();
   const formats = useMemo(() => messageDateFormats(lang, timeZone), [lang, timeZone]);
@@ -701,7 +710,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   selfUserId?: string | null;
   mentionName?: string;
   onMention(user: Pick<ChannelUser, "id" | "name">): void;
-  onDelete?(message: ChannelMessage): void;
+  onDelete?(target: { message: ChannelMessage; trigger: HTMLButtonElement }): void;
   deleting?: boolean;
 }) {
   const { t } = useCopy();
@@ -736,8 +745,10 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
         seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment"),
       })} />
       {onDelete && <ChannelAction icon="x" iconOnly quiet danger textTooltip label={t("conversation.deleteMessage")}
-        disabled={!available} busy={deleting} onClick={() => {
-          if (row.current?.ownerDocument.defaultView?.confirm(t("conversation.confirmDeleteMessage"))) onDelete(message);
+        disabled={!available} busy={deleting} hasPopup="dialog" onClick={event => {
+          if (!event) return;
+          event.currentTarget.focus({ preventScroll: true });
+          onDelete({ message, trigger: event.currentTarget });
         }} />}</>} />
     </div></div>
     </article>

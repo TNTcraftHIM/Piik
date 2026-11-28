@@ -37,12 +37,8 @@
 .c3-room-activity { grid-column: 2; grid-row: 2; }
 .c3-room-activity:empty { display: none; }
 
-/* In the list a row has two lines. The first is the room and what acts on it: the disclosure of its people, its
-   mark, its name, its settings. The second is what is happening there: its state at the start, who is in it at the
-   end. The four columns are the disclosure, the mark, the text and the row's end, so each line ends on one edge.
-   The disclosure's column and the mark's are sized so that the mark stands where it stands in the rail. The
-   columns belong to the whole list, so its headings can stand over the names. */
-.c3-room-navigation { --room-row-padding: 6px; --room-line: 28px; --room-disclosure-width: 16px; --room-icon-size: 24px; --room-content-gap: 8px; --room-end-inset: 6px; --room-metadata-line: 20px;
+/* The room name and its activity share a column. The disclosure centers on the card. */
+.c3-room-navigation { --room-row-padding: 5px; --room-line: 28px; --room-disclosure-width: 16px; --room-icon-size: 24px; --room-content-gap: 8px; --room-end-inset: 6px; --room-metadata-line: 16px;
   --room-text-start: calc(var(--room-disclosure-width) + var(--room-icon-size) + var(--room-content-gap)); }
 .c3-room-list-item > .c3-room-item { display: grid; grid-template-columns: var(--room-disclosure-width) var(--room-icon-size) minmax(0, 1fr) auto; grid-template-rows: var(--room-line) auto;
   align-items: center; padding: var(--room-row-padding) var(--room-end-inset) var(--room-row-padding) 0; }
@@ -51,9 +47,9 @@
 .c3-room-list-item .c3-room-link.lr-btn { grid-column: 1 / -1; grid-row: 1 / -1; grid-template-columns: subgrid; grid-template-rows: subgrid; column-gap: 0; padding: 0; }
 .c3-room-list-item .c3-room-link > .c3-identity-mark { grid-column: 1; }
 .c3-room-list-item .c3-room-link > :is(strong, .c3-room-activity) { grid-column: 2; padding-inline-start: var(--room-content-gap); }
-/* The two controls of the first line stand over the name's button, each a square of the line's height. */
+/* The leading and trailing controls stand over the room button. */
 .c3-room-list-item :is(.c3-room-lead, .c3-room-manage) { grid-row: 1; z-index: 1; display: flex; }
-.c3-room-lead { grid-column: 1; justify-content: flex-end; }
+.c3-room-list-item .c3-room-lead { grid-column: 1; grid-row: 1 / -1; justify-content: flex-end; }
 .c3-room-manage { grid-column: 4; }
 .c3-room-list-item :is(.c3-room-lead, .c3-room-manage) > .lr-comic-tip-wrap { display: flex; }
 .c3-room-list-item :is(.c3-room-lead, .c3-room-manage) .lr-btn { --button-size: var(--room-line); --button-padding: 0; --button-icon-size: 16px; width: var(--room-line); min-width: var(--room-line); border: 0; border-radius: 8px; box-shadow: none; }
@@ -61,7 +57,6 @@
    target reaches into the list's inset, and what it paints stays inside the row. */
 .c3-room-list-item .c3-room-lead .lr-btn { --control-hover: transparent; --room-disclosure-reach: var(--room-list-inset, 0px);
   width: calc(var(--room-disclosure-width) + var(--room-disclosure-reach)); min-width: 0; margin-inline-start: calc(-1 * var(--room-disclosure-reach)); padding-inline-start: var(--room-disclosure-reach); }
-.c3-room-list-item .c3-room-lead .lr-btn[aria-expanded] { --button-icon-size: 24px; }
 .c3-room-lead .lr-btn::before { content: ""; position: absolute; inset-block: 2px; inset-inline: var(--room-disclosure-reach) 0; border-radius: 6px; transition: background-color var(--motion-feedback) ease; }
 .c3-room-lead .lr-btn:is(:hover, :focus-visible)::before { background: var(--row-action-hover); }
 .c3-room-lead .lr-btn > svg { position: relative; }
@@ -69,12 +64,10 @@
 .c3-room-lead [aria-expanded] > svg { transition: transform var(--motion-control) var(--spring); }
 .c3-room-order-handle { cursor: grab; }
 .c3-room-order-handle:active { cursor: grabbing; }
-.c3-room-list-item :is(.c3-room-activity, .c3-room-faces) { min-height: var(--room-metadata-line); }
-/* The text and the padded television glyph sit on the painted lower edge of the metadata row. */
-.c3-room-list-item :is(.c3-room-activity, .c3-room-faces) > span { translate: 0 2px; }
-/* Who is in the room: a picture at the end of the second line, on the edge the settings end on. It is not a
-   control, so the pointer passes through it to the row. */
-.c3-room-faces { grid-column: 3 / -1; grid-row: 2; justify-self: end; z-index: 1; display: flex; align-items: center; padding-inline-end: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.c3-room-list-item .c3-room-activity { min-height: var(--room-metadata-line); }
+.c3-room-activity > .c3-room-faces { margin-inline-start: 4px; gap: 0; }
+.c3-room-activity > .c3-room-faces:first-child { margin-inline-start: 0; }
+.c3-room-faces { display: flex; align-items: center; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .c3-room-faces > .lr-person { width: 16px; height: 16px; }
 .c3-room-faces > .lr-person + .lr-person { margin-inline-start: -5px; }
 .c3-room-faces > span { margin-inline-start: 4px; }
