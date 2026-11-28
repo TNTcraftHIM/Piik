@@ -1204,7 +1204,14 @@ export class ChannelSession {
         || this.view.pending.has(`watch:${publicationId}`) || !resync && watch.helperSessionId === helperSessionId) continue;
       watch.helperSessionId = helperSessionId;
       // Assistance changes route placement; failure must not withdraw the watch.
-      void this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId }).catch(() => {});
+      void this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId }).then(() => {
+        if (helperSessionId) debugEvent("channel", "watch-helper-accepted", { publicationId });
+      }, error => {
+        if (helperSessionId) debugEvent("channel", "watch-helper-request-failed", {
+          publicationId,
+          reason: error instanceof ChannelCommandRejected && error.message === "helper_unavailable" ? "helper_unavailable" : "request_failed",
+        });
+      });
     }
   }
 
