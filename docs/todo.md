@@ -333,11 +333,11 @@ the feedback period; they do not delay that delivery.
   mappings, including burst allocations and missing observations; then verify a
   bounded schedule through authenticated preparation and ICE transfer.
   The [field survey](./research/nat-traversal.md#field-survey-and-search-order)
-  proposes a bit-reversed search order in place of the random draw and a pool
-  made between two observations; it also shows the three default STUN servers
-  reading as sequential on a network with a counter per destination. Compare
-  each under the present deadline, then run a physical pair across such a
-  network.
+  proposes a pool made between two observations, published as a window per
+  address. Compare it under the present deadline. Run a physical pair across
+  a network with a counter per destination on the present search order and
+  default servers, and measure the third default server from such networks:
+  the survey asked only two of the three.
   [Allocator controls](./research/nat-traversal.md#allocator-prediction-controls)
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before

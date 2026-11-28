@@ -331,20 +331,29 @@ Two results follow, both counted in memory with filtering by address and
 port and no packet sent.
 
 **The order of a search.** A pool of sockets that all send to one endpoint is
-a run of neighbouring ports on such a NAT. Sending to ports in the order of
-the 16-bit count with its bits reversed, from a chosen start, combs the range
-evenly at every length: a run of n is reached within 65,536 / n packets
-wherever it began. With 256 sockets and 1,024 packets:
+a run of neighbouring ports on such a NAT, and a search that combs the range
+evenly at every length reaches a run of n within about 65,536 / n packets
+wherever it began. The form first proposed here, the 16-bit count with its
+bits reversed from a random start, does that and no more: its first 1,024
+ports lie 64 apart, so a pool whose ports are an even distance apart is missed
+by half of the starts or more. The
+[product's search](#random-mapping-collision-control) keeps the comb and
+draws one port inside each of its 1,024 steps. With 256 sockets and 1,024
+packets, 4,000 trials a row:
 
-| Pool's ports | Distinct ports drawn at random | Bit-reversed order |
-| --- | --- | --- |
-| Drawn at random | 98.0% | 98.4% |
-| One quiet counter | 98.1% | 100%, last at packet 252 |
-| One counter, 1 port in 10 taken by others | 98.2% | 100% |
-| One counter, 1 port in 2 taken by others | 98.0% | 99.7% |
+| Pool's ports | Distinct ports drawn at random | Bit-reversed count | One draw in each step |
+| --- | --- | --- | --- |
+| Drawn at random | 97.9% | 98.3% | 98.4% |
+| Neighbours on a quiet counter | 98.0% | 100% | 100% |
+| One counter, 1 port in 10 taken by others | 98.5% | 100% | 100% |
+| One counter, 1 port in 2 taken by others | 98.2% | 99.6% | 99.7% |
+| Every second port | 98.3% | 50.4% | 99.8% |
+| Every fourth port | 98.3% | 25.5% | 98.9% |
+| 64 apart | 98.4% | 3.5% | 98.5% |
 
-Against ports drawn at random any distinct ports cover the same, so the order
-costs nothing there. `piik_nat::search::order` holds it with its tests.
+On neighbours either comb arrives at a median of 126 packets and a random
+draw at 166. `piik_nat::search::order` on the research line mirrors the
+product's order for the simulator.
 
 **A pool between two observations.** Where one counter serves every
 destination, an observation just before the pool is made and one just after
@@ -357,8 +366,10 @@ Together they suggest one form in place of separate paths for sequential and
 irregular mappings: the side that cannot name its port pools toward the
 other's endpoint between two observations and publishes, for each public
 address it has seen, the window they bound when there is one; the other side
-sends to the windows first and then to the whole range, each in bit-reversed
-order. Two sides that both cannot name a port remain out of reach.
+sends to the windows first and then to the whole range. The order inside a
+window belongs to the comparison recorded
+[above](#random-mapping-collision-control). Two sides that both cannot name a
+port remain out of reach.
 
 None of this starts from nothing. Predicting a port from a counter is the
 [2003 draft](https://datatracker.ietf.org/doc/html/draft-takeda-symmetric-nat-traversal-00)
@@ -372,15 +383,30 @@ measurement of a counter per destination and no search order that serves a
 run and a draw alike; that is an absence in one search, not a claim of
 novelty.
 
-One reading of the present product path rests on the same data. On the
-campus with three addresses and on the hotspot with three, the three default
-servers each answered through a different address in the latest runs, so
-`observe` ends its enhancement there every time; ordinary discovery goes on. Its three
-default STUN servers share a port. On the campus they read three neighbouring
-ports from one socket in one run, which the survey classifies as sequential,
-while a peer's destination would take another counter; in an earlier run on
-the same network they read far apart. Physical two-sided runs are what would
-settle either change; [TODO](../todo.md) retains them.
+Two readings of the product's observation rest on the same data. It ends its
+enhancement when its servers answer through different addresses, and ordinary
+discovery goes on. Cloudflare and Google did so in every run on the hotspot
+with three addresses and on a network with two (four runs and three); on the
+campus with three addresses the two answered through one address in all four
+runs.
+
+The other reading is of the default servers. Three on one port read three
+neighbouring ports from one socket in two campus runs, which the survey
+classifies as sequential while a peer's destination would take another
+counter. Of the present three on three ports the survey asked two.
+Cloudflare on 3478 answered in 34 of the 35 runs and Google on 19302 in all
+35, and the two lay more than 500 ports apart in every run on the two
+networks with a counter per destination. In the twelve latest runs they
+answered a first request at a median of 216 and 219 ms, and needed a second
+request in 3 of 11 and 1 of 9 measurable runs. The two former defaults nearer
+to these networks answered at 39 and 36 ms, but one of them left both
+requests unanswered in 9 of the 24 runs that ask twice, while another port
+of the same host answered. The third present default, on port 443, was never
+asked. The observation asks its three servers one after another under one
+limit of 1.5 seconds and needs all three, so what the survey can say of that
+limit ends at two servers.
+Physical two-sided runs are what would settle either reading;
+[TODO](../todo.md) retains them.
 
 ### External Forwarding And Participant Relays
 
