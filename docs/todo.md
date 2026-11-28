@@ -338,8 +338,6 @@ the feedback period; they do not delay that delivery.
   a network with a counter per destination on the present search order and
   default servers, and measure the third default server from such networks:
   the survey asked only two of the three.
-  Compare concurrent STUN observation on one socket with the serial path,
-  preserving send order, source and transaction checks, and the current deadline.
   [Allocator controls](./research/nat-traversal.md#allocator-prediction-controls)
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before

@@ -326,13 +326,7 @@ async fn observe(pair:Uuid, local:Ipv4Addr, servers:[SocketAddrV4;3], expires:In
             .min(Instant::now() + Duration::from_millis(1500));
         timeout_at(deadline.into(), async move {
             let socket = UdpSocket::bind((local, 0)).await?;
-            let mut observations = Vec::with_capacity(3);
-            for server in servers {
-                observations.push(binding(&socket, server.into()).await?);
-            }
-            let [a, b, c] = observations.as_slice() else {
-                unreachable!()
-            };
+            let [a, b, c] = bindings(&socket, servers).await?;
             let step = i32::from(c.port()) - i32::from(b.port());
             ensure!(
                 a.ip() == b.ip() && b.ip() == c.ip(),
@@ -670,44 +664,55 @@ async fn receive(
     bytes.truncate(n);
     Ok((index, bytes, peer))
 }
-async fn binding(socket: &UdpSocket, remote: SocketAddr) -> Result<SocketAddrV4> {
+async fn bindings(socket: &UdpSocket, remotes: [SocketAddrV4; 3]) -> Result<[SocketAddrV4; 3]> {
     let local = socket.local_addr()?;
-    let mut client =
-        ClientBuilder::new().build(Instant::now(), local, remote, TransportProtocol::UDP)?;
-    let mut request = Message::new();
-    request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
-    client.handle_write(TaggedMessage {
-        now: Instant::now(),
-        message: request,
-    })?;
+    let mut clients = remotes.iter().map(|remote| {
+        let mut client = ClientBuilder::new().build(Instant::now(), local, (*remote).into(), TransportProtocol::UDP)?;
+        let mut request = Message::new();
+        request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
+        client.handle_write(TaggedMessage { now: Instant::now(), message: request })?;
+        Ok(client)
+    }).collect::<Result<Vec<_>>>()?;
+    let mut observations = [None; 3];
     loop {
-        if let Some(event) = client.poll_event() {
-            let StunEvent::Message(message) = event else {
-                bail!("STUN survey transaction failed")
-            };
-            ensure!(message.typ == BINDING_SUCCESS, "STUN binding rejected");
-            let mut address = XorMappedAddress::default();
-            address.get_from(&message)?;
-            let std::net::IpAddr::V4(ip) = address.ip else {
-                bail!("IPv4 observation required")
-            };
-            return Ok(SocketAddrV4::new(ip, address.port));
+        let mut next_timeout = None;
+        // Send in configuration order; reply order must not change the observed sequence.
+        for (client, observation) in clients.iter_mut().zip(&mut observations) {
+            if observation.is_some() { continue; }
+            if let Some(event) = client.poll_event() {
+                let StunEvent::Message(message) = event else {
+                    bail!("STUN survey transaction failed")
+                };
+                ensure!(message.typ == BINDING_SUCCESS, "STUN binding rejected");
+                let mut address = XorMappedAddress::default();
+                address.get_from(&message)?;
+                let std::net::IpAddr::V4(ip) = address.ip else {
+                    bail!("IPv4 observation required")
+                };
+                *observation = Some(SocketAddrV4::new(ip, address.port));
+                continue;
+            }
+            while let Some(packet) = client.poll_write() {
+                socket.send_to(&packet.message, packet.transport.peer_addr).await?;
+            }
+            let deadline = client.poll_timeout().ok_or_else(|| anyhow::anyhow!("STUN transaction ended"))?;
+            next_timeout = Some(next_timeout.map_or(deadline, |previous: Instant| previous.min(deadline)));
         }
-        while let Some(packet) = client.poll_write() {
-            socket
-                .send_to(&packet.message, packet.transport.peer_addr)
-                .await?;
-        }
-        let deadline = client
-            .poll_timeout()
-            .ok_or_else(|| anyhow::anyhow!("STUN transaction ended"))?;
+        if let [Some(a), Some(b), Some(c)] = observations { return Ok([a, b, c]); }
+        let deadline = next_timeout.ok_or_else(|| anyhow::anyhow!("STUN transaction ended"))?;
         let mut buffer = [0; 1024];
         tokio::select! {
-            _ = sleep_until(deadline.into()) => client.handle_timeout(Instant::now())?,
+            _ = sleep_until(deadline.into()) => {
+                let now = Instant::now();
+                for (client, observation) in clients.iter_mut().zip(&observations) {
+                    if observation.is_none() { client.handle_timeout(now)?; }
+                }
+            },
             result = socket.recv_from(&mut buffer) => {
                 let (n, peer) = result?;
-                if peer == remote {
-                    let _ = client.handle_read(TaggedBytesMut { now: Instant::now(),
+                if let Some(index) = remotes.iter().position(|remote| SocketAddr::V4(*remote) == peer)
+                    .filter(|index| observations[*index].is_none()) {
+                    let _ = clients[index].handle_read(TaggedBytesMut { now: Instant::now(),
                         transport: TransportContext { local_addr: local, peer_addr: peer, ecn: None, transport_protocol: TransportProtocol::UDP },
                         message: buffer[..n].into() });
                 }
@@ -1651,6 +1656,82 @@ mod tests {
         );
         Ok(())
     }
+    #[tokio::test]
+    async fn survey_keeps_transaction_order_with_late_and_lost_replies() -> Result<()> {
+        let mut addresses = Vec::new();
+        let mut servers = tokio::task::JoinSet::new();
+        let (sources, mut seen_sources) = mpsc::channel(3);
+        for (index, delay) in [400, 600, 400].into_iter().enumerate() {
+            let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+            let SocketAddr::V4(address) = socket.local_addr()? else { unreachable!() };
+            addresses.push(address);
+            let sources = sources.clone();
+            servers.spawn(async move {
+                let mut bytes = [0; 1024];
+                let (n, peer) = socket.recv_from(&mut bytes).await?;
+                let mut request = Message { raw: bytes[..n].to_vec(), ..Default::default() };
+                request.decode()?;
+                sources.send(peer).await?;
+                let transaction = request.transaction_id;
+                if index == 1 {
+                    // One request is lost; the client's existing retry owns recovery.
+                    let (n, retried_peer) = socket.recv_from(&mut bytes).await?;
+                    request = Message { raw: bytes[..n].to_vec(), ..Default::default() };
+                    request.decode()?;
+                    assert_eq!(retried_peer, peer);
+                    assert_eq!(request.transaction_id, transaction);
+                }
+                let response = |transaction, port| -> Result<Message> {
+                    let mut message = Message::new();
+                    message.build(&[Box::new(BINDING_SUCCESS), Box::new(transaction),
+                        Box::new(XorMappedAddress { ip: Ipv4Addr::new(203, 0, 113, 5).into(), port })])?;
+                    Ok(message)
+                };
+                let valid = response(transaction, 42000 + 2 * index as u16)?;
+                // Neither an unexpected transaction nor a different sender supplies a sample.
+                socket.send_to(&response(TransactionId::new(), 50000)?.raw, peer).await?;
+                let other = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+                other.send_to(&valid.raw, peer).await?;
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+                socket.send_to(&valid.raw, peer).await?;
+                Ok::<_, anyhow::Error>(())
+            });
+        }
+        let started = Instant::now();
+        let (observation, retained) = observe(Uuid::new_v4(), Ipv4Addr::LOCALHOST,
+            addresses.try_into().unwrap(), started + Duration::from_secs(5)).await?;
+        assert!(matches!(observation, Observation::Sequential { port: 42004, step: 2, .. }));
+        assert!(retained.is_none());
+        let first = seen_sources.recv().await.context("first observation source")?;
+        for _ in 0..2 { assert_eq!(seen_sources.recv().await, Some(first)); }
+        while let Some(result) = servers.join_next().await { result??; }
+        eprintln!("observation completed in {} ms with one lost request", started.elapsed().as_millis());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn survey_timeout_releases_the_shared_observation_socket() -> Result<()> {
+        let mut servers = Vec::new();
+        let mut addresses = Vec::new();
+        for _ in 0..3 {
+            let server = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+            let SocketAddr::V4(address) = server.local_addr()? else { unreachable!() };
+            addresses.push(address);
+            servers.push(server);
+        }
+        let task = tokio::spawn(observe(Uuid::new_v4(), Ipv4Addr::LOCALHOST,
+            addresses.try_into().unwrap(), Instant::now() + Duration::from_secs(5)));
+        let mut bytes = [0; 1024];
+        let (_, client) = servers[0].recv_from(&mut bytes).await?;
+        let error = match task.await? {
+            Ok(_) => bail!("silent STUN servers must not complete the observation"),
+            Err(error) => error,
+        };
+        assert!(error.downcast_ref::<tokio::time::error::Elapsed>().is_some());
+        std::net::UdpSocket::bind(client)?;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn mapping_surveys_keep_stable_sequential_and_irregular_observations_distinct(
     ) -> Result<()> {
