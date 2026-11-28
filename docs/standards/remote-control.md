@@ -40,6 +40,11 @@ to one process-wide source owner, not to several simultaneous shares.
 
 ## Release And Failure
 
+Viewers apply valid control-state transitions even with unfamiliar platform,
+reason or additional status descriptions. An unavailable update retires local
+input and request intent. State, mode and request/grant identifiers keep their
+validation.
+
 An individual input execution failure drops that operation and preserves the
 grant. Failed key and button releases remain owned cleanup: only releases are
 retried, never presses, movement or text. Missing current target geometry

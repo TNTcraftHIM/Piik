@@ -103,7 +103,7 @@ export class RemoteInputSession {
     if (this.state?.state === "active" || this.state?.state === "suspended") {
       this.interrupted?.("control-ended");
     } else if (this.state?.state === "pending") {
-      const awaitingApproval = this.state.mode === "ask" && next?.mode === "ask" && next.state === "ready";
+      const awaitingApproval = this.state.mode === "ask" && next?.mode === "ask" && next.state === "ready" && next.reason === undefined;
       this.interrupted?.(awaitingApproval ? "request-not-approved" : "request-ended");
     }
   }
