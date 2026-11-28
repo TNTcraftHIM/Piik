@@ -328,6 +328,30 @@ test("MPD prepare cancellation uses selection stop while closing one page preser
   } finally { app.close(); }
 });
 
+test("App metrics retain measurable streams alongside future media and direction values", async () => {
+  const { app, socket } = await setup();
+  try {
+    const id = crypto.randomUUID();
+    const stream = { flowId: id, publicationId: id, selected: true, direction: "send", media: "video",
+      outputId: id, mid: "picture", rid: null, codec: "fixture", sampleTimestampMs: 10, ageMs: 0,
+      bytes: 42, packets: 1, rttMs: null, lossFraction: null, jitterMs: null };
+    const connection = { pairId: id, connectionId: id, peerId: id, sampleTimestampMs: 10, ageMs: 0, rttMs: null, bweBps: null };
+    const read = (streams: unknown[][]) => {
+      const reading = app.connectionMetrics("room");
+      socket.reply({ sessionId: id, bindingId: id, connections: streams.map(items => ({ ...connection, streams: items })) });
+      return reading;
+    };
+    const nextMedia = { direction: "send", media: "future" }, nextDirection = { direction: "future", media: "audio" };
+    const mixed = await read([[stream, nextMedia], [nextDirection]]);
+    expect(mixed.connections.map(value => value.streams)).toEqual([[stream], []]);
+    expect((await read([[nextDirection, nextMedia]])).connections[0]?.streams).toEqual([]);
+    await expect(read([[stream, { ...stream, lossFraction: 2 }]])).rejects.toThrow();
+    await expect(read([[{ direction: null, media: "future" }]])).rejects.toThrow();
+    expect((await read([[]])).connections[0]?.streams).toEqual([]);
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+
 test("page media listings retain supported choices alongside future formats", async () => {
   const { app, socket } = await setup();
   try {

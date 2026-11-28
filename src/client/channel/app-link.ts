@@ -46,11 +46,17 @@ const nativeStreamMetricSchema = z.object({
   sampleTimestampMs: measured, ageMs: measured, bytes: measured, packets: measured,
   rttMs: measured.nullable(), lossFraction: measured.max(1).nullable(), jitterMs: measured.nullable(),
 });
+const nativeMetricStreamsSchema = z.array(z.union([
+  nativeStreamMetricSchema,
+  z.object({ direction: z.string(), media: z.string() }).refine(({ direction, media }) =>
+    !Object.hasOwn(nativeStreamMetricSchema.shape.direction.enum, direction)
+    || !Object.hasOwn(nativeStreamMetricSchema.shape.media.enum, media)).transform(() => null),
+])).transform(streams => streams.filter(stream => stream !== null));
 export const nativeConnectionMetricsSchema = z.object({
   sessionId: z.uuid(), bindingId: z.uuid(), connections: z.array(z.object({
     pairId: z.uuid(), connectionId: z.uuid(), peerId: z.uuid(),
     sampleTimestampMs: measured.nullable(), ageMs: measured.nullable(),
-    rttMs: measured.nullable(), bweBps: measured.nullable(), streams: z.array(nativeStreamMetricSchema),
+    rttMs: measured.nullable(), bweBps: measured.nullable(), streams: nativeMetricStreamsSchema,
   })),
 });
 /** SDK sample clocks belong to each Native connectionId, never Browser performance time. */
