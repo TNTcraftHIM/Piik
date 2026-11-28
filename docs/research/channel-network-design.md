@@ -762,8 +762,9 @@ target before replies; both peers complete within the preparation's shared limit
 One stable and one irregular observation can instead use random-port preparation:
 the irregular side opens 256 sockets toward the stable side's retained tuple;
 the stable side checks 1,024 distinct ports on the authorized peer address, each
-once. A random start and a bit-reversed 16-bit order spread the early checks
-across the existing 1024–65535 range. Each endpoint permits at most 1,032 requests and 16 replies,
+once: one port drawn inside each of 1,024 equal parts of the 1024–65535
+range, the parts visited in bit-reversed order from a random start, so early
+checks spread across the range. Each endpoint permits at most 1,032 requests and 16 replies,
 at a mean of one send per 2 ms, within the same five-second preparation lifetime.
 At most two random preparations run per process across all sites and Drivers.
 The [matched budget control](./nat-traversal.md#random-mapping-collision-control)
