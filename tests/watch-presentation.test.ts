@@ -491,7 +491,7 @@ it.each([
     sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
       source: { kind: "screen", name: "Owned picture" }, title: null, owned: false, localSource: false,
       subscribed: true, paused, audience: [], waitingForInput, deliveryFailed }],
-    focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
+    focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, async onPause() {}, onStop() {},
     onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
   }));
   expect(html).toContain('data-publication-id="picture"');
@@ -507,7 +507,7 @@ it("offers picture help and stopping, but no retry, while a watched screen waits
     sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
       source: { kind: "screen", name: null }, title: null, owned: false, localSource: false,
       subscribed: true, paused: false, audience: [], waitingForInput, deliveryFailed: false }],
-    focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
+    focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, async onPause() {}, onStop() {},
     onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
   }));
   const waiting = render(true);

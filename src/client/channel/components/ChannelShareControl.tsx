@@ -149,8 +149,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     ? { kind: "unsupported" } : sources;
   const screenQuality = sharing ? channel.screenQuality(sharing.id) : undefined;
   const quality = screenQuality?.requested ?? channel.quality;
+  const qualityAction = useSettingsAction(settingsOpen, sharing?.id);
   const setQuality = (profile: QualityProfile) => {
-    if (sharing) void channel.setScreenQuality(sharing.id, profile).catch(() => {});
+    if (sharing) void qualityAction.run(() => channel.setScreenQuality(sharing.id, profile));
     else channel.setQuality(profile);
   };
   const qualityPending = !!sharing && channel.pending.has(`quality:${sharing.id}`);
@@ -323,8 +324,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       {hasPublicationActions && <div ref={panelActions} className="c3-share-publication-actions" role="group" aria-label={t("host.shareControls")} />}
       <div className="c3-share-settings-content" inert={!!hasPublicationActions && settingsUnavailable}>
       {watching ? settingsOpen && <WatchForwardSettings channel={channel} activityId={watching.id} disabled={disabled} /> : <>
-      <p className="c3-quality-description">{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
-        : t("screen.shareSettingsNext")}</p>
+      <div className="c3-quality-description">{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
+        : t("screen.shareSettingsNext")}<ChannelSettingsError error={qualityAction.error} /></div>
       {settingsOpen && sharing?.kind === "screen" && <ShareTitleEditor key={sharing.id} sharing={sharing} channel={channel} disabled={disabled || busy} />}
       {externalInput?.state === "live" ? <div className="c3-settings-panels"><p>{t("screen.obsQualityHelp")}</p>
         <ChannelAction icon="cast" label={t("screen.obsSettings")} onClick={() => { close(); setExternalOpen(true); }} />

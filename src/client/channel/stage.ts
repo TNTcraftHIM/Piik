@@ -59,7 +59,6 @@ interface ScreenQualityEffects {
   configure(id: string, profile: QualityProfile, current: () => boolean): Promise<void>;
   retire(id: string): Promise<void>;
   remember(profile: QualityProfile): void;
-  begin(): (error: unknown) => void;
 }
 
 /** The local stage in one room owns selection, screen identity and watch-player resources. */
@@ -108,7 +107,7 @@ export class Stage {
     let settle!: (work: Promise<void>) => void;
     const promise = new Promise<void>(resolve => { settle = resolve; });
     const edit = this.qualityEdit = { current, requested: profile, promise };
-    const failed = this.quality.begin();
+    this.changed();
     const apply = async () => {
       try {
         while (current()) {
@@ -138,7 +137,6 @@ export class Stage {
         throw new DOMException("Capture cancelled", "AbortError");
       } catch (error) {
         if (this.qualityEdit === edit) this.qualityEdit = undefined;
-        failed(error);
         this.changed();
         throw error;
       }
