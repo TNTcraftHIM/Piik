@@ -736,8 +736,9 @@ Candidate probes and other pairs retain their own lifetimes.
 
 An ordinary Native connection with exclusive sockets may send Browser peers one
 batch of at most 16 typed linear candidate hypotheses from three existing STUN
-observations on the same IPv4 base. Discovery stays concurrent; no socket or
-probe is added. Native emission and Browser admission stop after their initial
+observations on the same IPv4 base. Each base retains its original send order;
+the first complete qualifying cohort supplies the single batch. Discovery stays
+concurrent; no socket or probe is added. Native emission and Browser admission stop after their initial
 five-second window or connection, and retain the current ICE generation. Ordinary
 candidates and IPv6 continue through the SDK. Native receivers ignore these
 hypotheses; fixed Server listeners and coordinated Native preparation do not
@@ -745,8 +746,10 @@ generate them. The limit bounds added targets, not the SDK's connectivity checks
 
 Coordinated UDP preparation starts beside ordinary ICE on one authorized physical
 pair when at least two distinct supported STUN authorities are configured.
-Both capable Native endpoints survey concurrently, using up to three
-resolved STUN destinations and preserving send order. One reply or equal partial
+Both capable Native endpoints survey concurrently. The first routable STUN
+destination starts the existing observation window; subsequent resolved
+destinations join the same socket, up to three, preserving send order.
+One reply or equal partial
 replies retain the survey socket and an unclassified observed endpoint. Two
 differing ports on the same mapped IP qualify for the irregular side. Sequential
 prediction still requires three complete observations. The existing plan pairs

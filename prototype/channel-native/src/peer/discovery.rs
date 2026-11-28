@@ -95,11 +95,11 @@ pub(super) struct Config {
     linear: Option<Arc<Mutex<linear::Linear>>>,
 }
 impl Config {
-    pub fn new(bases: Vec<Base>, urls: &[IceServerUrl], linear: Option<Candidate>) -> Self {
+    pub fn new(bases: Vec<Base>, urls: &[IceServerUrl], linear_ufrag: Option<String>) -> Self {
         Self {
             bases,
             urls: urls.iter().filter(|url| !url.is_turn).cloned().collect(),
-            linear: linear.map(|base| Arc::new(Mutex::new(linear::Linear::new(base)))),
+            linear: linear_ufrag.map(|ufrag| Arc::new(Mutex::new(linear::Linear::new(ufrag)))),
         }
     }
 }
@@ -200,7 +200,7 @@ pub(super) async fn gather(handle: Transport, config: Config) {
                     for base in &config.bases {
                         if attempted.len() >= super::super::MAX_ICE_CANDIDATES { break; }
                         if base.local.is_ipv4() != server.is_ipv4() || !attempted.insert((base.local,server)) { continue; }
-                        let linear = config.linear.as_ref().filter(|state| state.lock().unwrap().local() == base.local);
+                        let linear = config.linear.as_ref().filter(|_| base.local.is_ipv4());
                         probes.push(binding(handle.clone(),base.clone(),server,linear));
                     }
                 }
@@ -281,7 +281,7 @@ async fn binding(
         .await?;
     let mut slot = None;
     let result = observe(&base, server, request, incoming, || {
-        slot = linear.and_then(|state| state.lock().unwrap().sent(server));
+        slot = linear.and_then(|state| state.lock().unwrap().sent(local, server));
     })
     .await;
     let mapped = result.as_ref().ok().copied();
@@ -302,13 +302,15 @@ async fn binding(
             if let Some(linear) = linear {
                 let mut state = linear.lock().unwrap();
                 if e.linear_current(state.ufrag()) {
-                    for candidate in state.candidates(slot, mapped, registered)? {
+                    for candidate in state.candidates(local, slot, mapped, registered)? {
                         e.emit(Event::Candidate(
                             e.handle.pair,
                             candidate,
                             Some(piik_channel_core::wire::CandidateOrigin::Linear),
                         ));
                     }
+                } else {
+                    state.retire();
                 }
             }
             Ok(())
@@ -407,7 +409,7 @@ mod tests {
             .await?;
         let local = base.local;
         let generation = seed.ufrag().unwrap().to_owned();
-        let linear = Arc::new(Mutex::new(linear::Linear::new(seed)));
+        let linear = Arc::new(Mutex::new(linear::Linear::new(generation.clone())));
         let mut servers = Vec::new();
         for _ in 0..4 {
             servers.push(UdpSocket::bind("127.0.0.1:0").await?);
@@ -510,6 +512,138 @@ mod tests {
         runtime.close().await;
         drop(base);
         UdpSocket::bind(local).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ordinary_discovery_elects_one_complete_ipv4_base() -> Result<()> {
+        use crate::peer::{server_udp::ServerUdp, tests::support::endpoint};
+        use piik_channel_core::wire::CandidateOrigin;
+
+        const WAIT: Duration = Duration::from_secs(2);
+        for first_step in [Some(0), None, Some(1)] {
+            let bind = "127.0.0.1:0".parse()?;
+            let fixed = ServerUdp::bind(&[(bind, None), (bind, None)])?;
+            let runtime = Runtime::new(Some(fixed));
+            let (peer, mut events) = endpoint(&runtime, Uuid::new_v4()).await?;
+            let bases = peer
+                .call(|engine| {
+                    engine.linear_enabled = true;
+                    engine
+                        .sockets
+                        .iter()
+                        .map(|socket| {
+                            Ok(Base {
+                                socket: socket.clone(),
+                                local: socket.local_addr()?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()
+                })
+                .await?;
+            let Some(Event::Candidate(_, seed, None)) = events.recv().await else {
+                anyhow::bail!("ordinary base missing")
+            };
+            assert_eq!(seed.addr(), bases[0].local);
+            let generation = seed.ufrag().unwrap().to_owned();
+            let locals = [bases[0].local, bases[1].local];
+            let mut servers = Vec::new();
+            let mut configured = IceServer::default();
+            for _ in 0..3 {
+                let server = UdpSocket::bind(bind).await?;
+                configured
+                    .urls
+                    .push(format!("stun:{}", server.local_addr()?));
+                servers.push(server);
+            }
+            let config = Config::new(bases, &urls(&[configured]), Some(generation.clone()));
+            let mut discovery = tokio::spawn(gather(peer.clone(), config));
+
+            let mut requests = [[None; 2]; 3];
+            for (server, requests) in servers.iter().zip(&mut requests) {
+                for _ in &locals {
+                    let mut bytes = [0; 1024];
+                    let (len, from) =
+                        tokio::time::timeout(WAIT, server.recv_from(&mut bytes)).await??;
+                    let mut request = Message::new();
+                    request.unmarshal_binary(&bytes[..len])?;
+                    let base = locals.iter().position(|local| *local == from).unwrap();
+                    assert!(requests[base].replace(request.transaction_id).is_none());
+                }
+            }
+
+            let winner = "203.0.113.2".parse()?;
+            let mut predicted = Vec::new();
+            for base in if first_step == Some(0) {
+                [0, 1]
+            } else {
+                [1, 0]
+            } {
+                let (ip, start, step) = if base == 0 {
+                    let Some(step) = first_step else { continue };
+                    ("203.0.113.1".parse()?, 41000, step)
+                } else {
+                    (winner, 40000, 2)
+                };
+                // Literal STUN URLs become ready in configured order. Replies
+                // arrive in reverse order on each base.
+                for index in (0..3).rev() {
+                    let mut response = Message::new();
+                    response.build(&[
+                        Box::new(BINDING_SUCCESS),
+                        Box::new(requests[index][base].unwrap()),
+                        Box::new(XorMappedAddress {
+                            ip,
+                            port: start + index as u16 * step,
+                        }),
+                    ])?;
+                    servers[index].send_to(&response.raw, locals[base]).await?;
+                }
+                if base == 1 && first_step != Some(0) {
+                    // Observe the second base's batch before allowing any
+                    // qualifying replies from the other base.
+                    tokio::time::timeout(WAIT, async {
+                        while predicted.len() < 16 {
+                            let event = events.recv().await.context("candidate stream closed")?;
+                            if let Event::Candidate(_, candidate, Some(CandidateOrigin::Linear)) =
+                                event
+                            {
+                                predicted.push(candidate);
+                            }
+                        }
+                        Ok::<_, anyhow::Error>(())
+                    })
+                    .await??;
+                }
+            }
+            if first_step.is_some() {
+                tokio::time::timeout(WAIT, &mut discovery).await??;
+            } else {
+                discovery.abort();
+                assert!(discovery.await.unwrap_err().is_cancelled());
+            }
+            while let Ok(event) = events.try_recv() {
+                if let Event::Candidate(_, candidate, Some(CandidateOrigin::Linear)) = event {
+                    predicted.push(candidate);
+                }
+            }
+            assert_eq!(predicted.len(), 16, "first base step {first_step:?}");
+            assert!(predicted.iter().all(|candidate| {
+                candidate.addr().ip() == winner && candidate.ufrag() == Some(generation.as_str())
+            }));
+            assert_eq!(
+                predicted
+                    .iter()
+                    .map(|candidate| candidate.addr().port())
+                    .collect::<HashSet<_>>(),
+                (1..=8)
+                    .map(|n| 40000 - n * 2)
+                    .chain((1..=8).map(|n| 40004 + n * 2))
+                    .collect()
+            );
+            peer.close().await?;
+            runtime.close().await;
+        }
         Ok(())
     }
 

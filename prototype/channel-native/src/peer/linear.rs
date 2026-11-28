@@ -1,4 +1,4 @@
-//! One batch of hypotheses from the existing discovery work on one real base.
+//! One pair-wide batch of hypotheses from a real IPv4 base.
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, SocketAddrV4};
 use str0m::Candidate;
@@ -9,31 +9,72 @@ struct Sample {
 }
 
 pub(super) struct Linear {
-    base: Candidate,
+    ufrag: String,
+    cohorts: Option<HashMap<SocketAddr, Cohort>>,
+}
+
+impl Linear {
+    pub fn new(ufrag: String) -> Self {
+        Self {
+            ufrag,
+            cohorts: Some(HashMap::new()),
+        }
+    }
+
+    pub fn ufrag(&self) -> &str {
+        &self.ufrag
+    }
+
+    pub fn sent(&mut self, local: SocketAddr, server: SocketAddr) -> Option<usize> {
+        self.cohorts
+            .as_mut()?
+            .entry(local)
+            .or_insert_with(Cohort::new)
+            .sent(server)
+    }
+
+    pub fn candidates(
+        &mut self,
+        local: SocketAddr,
+        slot: Option<usize>,
+        mapped: Option<SocketAddr>,
+        registered: Option<Candidate>,
+    ) -> anyhow::Result<Vec<Candidate>> {
+        let Some(cohort) = self
+            .cohorts
+            .as_mut()
+            .and_then(|cohorts| cohorts.get_mut(&local))
+        else {
+            return Ok(vec![]);
+        };
+        let candidates = cohort.candidates(slot, mapped, registered)?;
+        if !candidates.is_empty() {
+            self.retire();
+        }
+        Ok(candidates)
+    }
+
+    pub fn retire(&mut self) {
+        self.cohorts = None;
+    }
+}
+
+struct Cohort {
     samples: Option<Vec<Sample>>,
     templates: HashMap<IpAddr, Candidate>,
 }
 
-impl Linear {
-    pub fn new(base: Candidate) -> Self {
+impl Cohort {
+    fn new() -> Self {
         Self {
-            base,
             samples: Some(Vec::with_capacity(3)),
             templates: HashMap::new(),
         }
     }
 
-    pub fn local(&self) -> SocketAddr {
-        self.base.local()
-    }
-
-    pub fn ufrag(&self) -> &str {
-        self.base.ufrag().unwrap_or_default()
-    }
-
     // Called once per original transaction, immediately after its first
     // successful UDP send. Completion order cannot replace this cohort.
-    pub fn sent(&mut self, server: SocketAddr) -> Option<usize> {
+    fn sent(&mut self, server: SocketAddr) -> Option<usize> {
         let samples = self.samples.as_mut()?;
         if samples.len() == 3 || samples.iter().any(|sample| sample.server == server) {
             return None;
@@ -48,7 +89,7 @@ impl Linear {
 
     // RTC exposes the registered candidate only on first insertion. Keep one
     // template per observed IP until this single base's cohort resolves.
-    pub fn candidates(
+    fn candidates(
         &mut self,
         slot: Option<usize>,
         mapped: Option<SocketAddr>,
@@ -142,10 +183,7 @@ mod tests {
 
     #[test]
     fn fixed_sent_cohort_keeps_response_order_and_one_batch() {
-        let mut base = Candidate::host("192.0.2.1:41000".parse().unwrap(), "udp").unwrap();
-        base.set_ufrag("current");
-        let mut linear = Linear::new(base.clone());
-        assert_eq!(linear.ufrag(), "current");
+        let mut linear = Cohort::new();
         let servers: Vec<SocketAddr> = (1..=4)
             .map(|port| SocketAddr::from(([192, 0, 2, 2], port)))
             .collect();
@@ -164,7 +202,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert!(linear.resolved(slots[0], address(40000)).is_empty());
-        let mut failed = Linear::new(base);
+        let mut failed = Cohort::new();
         for server in &servers[..3] {
             failed.sent(*server);
         }

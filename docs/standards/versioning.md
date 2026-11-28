@@ -140,8 +140,9 @@ the reasons and the sources. The rule:
   written for an older peer.
 
 A new required field or a new value in a set that released readers treat as
-closed changes the existing interface. A wire choice, nested choices
-included, is open unless its owner closes it and says why, and an open choice
+closed changes the existing interface. A choice on an independently released
+wire interface, nested choices included, is open unless its owner identifies
+the invariant that closes it. An open choice
 defines the outcome of an unfamiliar value from its first release. An
 independently usable description skips an unfamiliar item. An unsupported
 optional operation ends as unavailable while the established path continues.
@@ -176,8 +177,9 @@ Assert the operation's outcome and surviving state. Reuse production schemas
 and message-family fixtures to keep declared variants and their tests
 together. Before the first release this covers every message a released
 reader will parse and not only the points a change touched: a reader that is
-released cannot be taught later. Each such message has a specimen, and each
-reader reads it with each nested choice made unfamiliar.
+released cannot be taught later. Check specimen coverage against the actual
+receiver dispatch. Cover variants and optional branches carrying distinct nested
+choices, and exercise each unfamiliar value through its receiving owner.
 
 Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
 offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt

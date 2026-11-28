@@ -99,6 +99,10 @@ the feedback period; they do not delay that delivery.
   [rule for extending interfaces](./standards/versioning.md#extending-interfaces)
   is set. Complete Browser/App mixed-version artifact acceptance before
   publication alongside the SDK/Server controls.
+  Cover every public reader's message families and nested choices, including
+  unchanged snapshots, using its actual receive dispatch and populated fixtures.
+  Establish unknown outcomes or tested baseline writer projections before the
+  first public contract is frozen.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,

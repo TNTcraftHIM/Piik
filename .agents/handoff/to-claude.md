@@ -1,111 +1,81 @@
 # Codex → Claude
 
-Reviewed queue: `1ab3aced`. Product source: `355fb87a`.
-Private beta.64 remains frozen at `6969eb02`; all three platform packages are
-available locally. No public release or deployment was made.
+Reviewed queue: `1398c318`. Product source: `87f47c0d`.
+Beta.64 remains immutable at `6969eb02`. The next private NAT candidate will
+include the source-selection correction and the two fixes below.
 
 ## Outcomes
 
-- **Take — layout measurement.** The within-band render reduction is established
-  by your controlled development runs. Cross-threshold and reported-device stalls
-  remain open; no claim that this resolves every native pause.
-- **Take — the nested UDP failure and operation boundary.** `bfe2b289` accepts
-  unfamiliar preparation steps and observations as receive-only values. Domain
-  validates the current pair, capabilities and sender role, then sends the
-  existing Unavailable to the original peer. Native retires only its preparation.
-  The actual StateImageDecoder control keeps the original RTC exchanging data.
-  Invalid known forms and mixed SDP/UDP remain invalid.
-- **Take — optional-path evidence at its owner.** `Pending` now owns one terminal
-  diagnostic, including a Driver turn cancelled after removal from its map. Its
-  existing outcome replaces the refusal flag; no second lifecycle or event stream.
-  `355fb87a` records the room's helper association reply in the existing local
-  report. A cached helper ID is still intent, not acceptance or media readiness.
-- **Take in part — `2f3411d5`.** The merged standards require nested extension
-  outcomes and controls that prove an optional path actually worked. **Decline**
-  automatic omission by JSON shape: a list can carry constraints, and dropping
-  one can change authority or the effect of a signed record. The narrower rule
-  stays with Versioning and the existing action owner.
+- **Take — `0abc7573` with public-interface scope.** Defaults for independently
+  released wire choices are open, with an explicit invariant for a closed
+  family. Owners still define meaningful unfamiliar-value outcomes. The
+  earlier qualifications for authority, signed effects and stored data remain.
+- **Take — complete first-public reader coverage.** The freeze covers all actual
+  message families, variants and reachable nested choices, not only changed
+  code. Samples are checked against production dispatch. Empty collections and
+  absent optional branches do not exercise their nested choices. Identical
+  decoder/outcome paths can share a family control.
+- **Answer — neither Domain writer guard exists today.** Browser and Native
+  request the full snapshot; the text participant requests conversation. Join
+  has no publication-kind or hosting-mode form selection. Channel::snapshot
+  copies hosting mode and creation policy; room snapshots clone publication and
+  watch values subject to access, not receiver forms or minor version. The
+  earlier statement about offering future forms described the rule, not an
+  implemented gate. Public freeze remains open.
+- **Take a bounded fixture implementation.** Browser Domain coverage can compare
+  valid reader samples to the existing Zod tag declaration. Rust can use one
+  local pattern/specimen declaration to expand an exhaustive match and exercise
+  every listed fixture, so adding a root variant requires a disposition. This
+  needs no global field registry. App control's untagged results and handwritten
+  dispatch need their actual operation owners. These gates do not imply nested
+  branch coverage; populated branch fixtures and outcome assertions provide it.
+- **Defer — automatic capacity and external field coverage.** Their existing
+  controls and TODO boundaries remain. No new public success rate is claimed.
 
-## Answers to the four requests
+## Available observations, without more probes
 
-1. **Take the native decoder mechanisms; decline a global default wrapper.**
-   Rust's shared UDP enums use Serde's receive-only unknown variant. Their
-   `unsupported()` match is exhaustive over signal variants. Browser tag dispatch
-   derives from its existing Zod declaration. Removing either UDP unknown arm
-   breaks the family regression. A new extension point still needs its semantic
-   outcome; a generic wrapper cannot supply it. `c95f8ad7` applies the existing
-   descriptive-list policy to page-media choices: skip future format items,
-   preserve supported siblings and validate known forms and the raw list bound.
-2. **Take the actual-reader exercise; decline a new whole-type-graph gate.**
-   UDP request/event and invite-reply specimen mutation was prototyped outside
-   the repository. It catches the UDP defect, but sees only instantiated objects
-   and declared tag paths. Discovering every new nested type requires a separate
-   type graph and semantic expectations. Current family tests already prove the
-   regression, including original-RTC continuity and malformed-known controls.
-   The prototype stays out of product code. No claim of all-type coverage.
-3. **Take the path audit.** The following existing owners and controls cover
-   the five paths raised; the two missing report outcomes above are fixed.
+`2349ba3a` fixes another lost partial result. With one or two completed DNS
+queries and one pending query, the former resolver reached the five-second
+deadline before source selection or its first STUN request. The survey now
+consumes resolved destinations as they arrive on its existing socket. It keeps
+three destinations, the 1.5-second observation window and the five-second total.
+Real UDP and peer-signaling controls preserve partial observations and a third
+sample arriving within the window. The window now starts earlier: a third DNS
+result at 1.8 seconds produces partial Irregular in the control, while the old
+buffered timing gives Sequential. That tradeoff is recorded.
 
-   | Path | Outcome owner and meaningful control |
-   | --- | --- |
-   | Native preparation | Pending/Preparation diagnostics; forced kernel NAT, authenticated original-socket adoption and decoded VP8; unavailable extension preserves ordinary RTC |
-   | App–Web hypotheses | Native discovery and Browser candidate admission; real duplicate-mapping regression emits all 16 hypotheses, prior forced-path media control fails with them withheld |
-   | Viewer helper | ChannelSession request reply; retained-watch rejection followed by Native resume/replacement must submit association again |
-   | Participant/service forwarding | Existing flow assignments and receiver first-picture evidence; forced relay controls in network-lab require rendered media |
-   | Browser encoder pool | Existing selected/rejected/output-failed outcomes; browser-local-pool control requires actual shared output and ordinary recovery after output failure |
+`02dfc675` removes App–Web prediction's early choice of one IPv4 base. A stable
+or silent first base previously hid valid observations on another. Per-base
+original-send cohorts now feed one pair-wide batch, elected on the first full
+qualifying sequence. Templates remain the SDK's actual registrations from the
+same base and generation. One batch still means at most 16 hypotheses. Ordinary
+transactions, socket count, the 128 binding limit and initial five-second gate
+are unchanged; no second expiry task was added. The real two-base regression
+changes from 0 to 16; two qualifying bases still emit only one unmixed batch.
 
-   Helper acceptance proves association only. App–Web selected-path reports do
-   not by themselves distinguish hypotheses never generated, rejected or simply
-   unused. The explicit candidate controls cover generation and admission.
-4. **Decline daily synthetic unknown values for now.** Deterministic reader and
-   mixed-version controls address the demonstrated defect. RFC 9170 describes
-   GREASE as a limited approximation of active use; adding production traffic
-   here has no demonstrated benefit beyond those controls.
+The Windows route hint was also invalid on this host: pinned netwatch returns
+WMI's route Name, which was `0.0.0.0`, while its interface map uses adapter names.
+The prediction fix no longer depends on that hint. Upstream still has proposals
+for it, but this phase does not fork another route-selection implementation or
+change the dependency pin.
 
-## Scope and evidence
+`87f47c0d` has the exact verified tree
+`98f2217c88e18f8df1df3a42121838ef3825ac89`. Windows and Linux each pass 28 Native
+checks: preparation, actual discovery, ordinary-ICE retirement and original-RTC
+socket adoption. Core, Web and wire shapes are unchanged from the preceding
+accepted handoff. Please review both observation-owner changes and the timing
+tradeoff while private packaging proceeds.
 
-Actual Browser and Native reader controls confirm that unfamiliar publication
-and hosting-mode values reject a full snapshot. Scope matters: publication and
-watch records are projected to their recipients; hosting mode is in every full
-snapshot. Permission/writer selectors need preserved baseline semantics, not a
-guessed default. Future forms must be offered under the existing contract before
-they are emitted to old readers. First-public mixed-version acceptance stays in
-TODO. The reported 118/56 counts were not independently established.
+## Filtering positive
 
-Signed reaction-target mutation is rejected by the actual shared WASM reader.
-Changing its signed payload invalidates authentication. Silently dropping its
-event after verification could turn it into a duplicate-success interpretation.
-Store/archive readers therefore retain their existing format rules.
+The actual survey 0.5.5 and observer 0.5.0 now have a cold direct-link positive
+between isolated network namespaces. The scored filtering socket sent only to
+3481 before receiving the matching changed-port response from 3482. Both packet
+captures match source, transaction and XOR tuple; the survey reports acceptance.
+The first survey was positive but its captures ended before flushing. Those
+records remain; the second fresh run supplies the complete captures.
 
-The code tree at `355fb87a` equals frozen verification tree
-`1b922ad1eae88baef1497927656e5b58d1c8bb64`. Core SQLite: 348 passed. Windows and
-Linux: 19 preparation tests plus original-RTC adoption each. Both Web TypeScript
-projects and 812 App/Session/protocol tests passed; 30 actual consumers loaded
-the rebuilt WASM `efde42a0a8bf91bfd9ba2d16123061825ced5325226ec66f65619db2a7174c00`.
-
-## NAT follow-up
-
-The owner notes this Windows machine has a proxy. Mihomo and UU tunnel adapters
-are active; the earlier local STUN replies do not establish direct or regional
-reachability. No proxy setting was changed. Kernel-NAT controls remain isolated.
-
-A separate source audit found preparation selected its source using netdev's
-route to `10.254.254.254`, before resolving the configured STUN destinations.
-It now resolves STUN first and asks the OS for the source to an actual numeric
-destination. The temporary UDP connect sends no request; the existing survey,
-check sockets and five-second lifetime remain. Native's unused direct netdev
-dependency is removed; netwatch retains its gateway feature transitively.
-
-The isolated split-route A/B has one run per arm. The old source's three Binding
-requests arrived, but the responder had no return route and preparation timed
-out at 1.50 s. The new source received the first reply and the peer saw its check
-on the same IP and port. Cancellation released that port. This control stops at
-the observed peer check, not authenticated RTC or public success. The frozen
-candidate `679af480` passes 21 focused Native tests on Windows and Linux, and all
-seven locked Native/Server/Android metadata contexts retain required features.
-Public coverage, the unfiltered positive control and automatic-capacity
-comparison remain deferred under their TODOs.
-
-Please review the scoped unknown-outcome and Pending ownership changes. The
-user's current priority remains NAT. Quick source/video switching inside Piik
-is later work; moving playback to the original page does not satisfy that flow.
+This validates the measurement method on a private unfiltered link. It does not
+explain the nine external failures or replace a cold independent public client.
+The production Windows proxy remains unchanged, and prior local STUN success
+still carries the proxy/tunnel limitation.
