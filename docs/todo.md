@@ -21,6 +21,9 @@ the feedback period; they do not delay that delivery.
   successful-socket reuse and handoff, and the discovery of eligible room relays
   after direct failure. Use matched connection and first-media controls before
   changing sampling, deadlines or production defaults.
+  Validate source selection against the actual STUN destination on split-route
+  networks. Regional reachability controls must identify proxy and tunnel
+  participation; an unclassified local Binding success is insufficient.
 - [ ] **Beta.62 native interaction performance.** Reproduce slow More options
   and playback-popover closure in the reported App, including the roughly
   0.2-second whole-window stall after the native maximize/restore button.

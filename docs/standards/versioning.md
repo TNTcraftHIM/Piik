@@ -139,10 +139,14 @@ the reasons and the sources. The rule:
   waits for the next first number. That number also removes every branch
   written for an older peer.
 
-A new required field changes something that exists. So does a new value in a
-set its readers treat as closed. A set that is meant to grow says from the
-first release what a reader does with a value it does not know, as capture
-descriptions do by skipping it.
+A new required field or a new value in a set that released readers treat as
+closed changes the existing interface. Each wire choice intended to grow,
+including nested choices, defines the outcome of an unfamiliar value from
+its first release. An independently usable description can skip an unfamiliar
+item. An unsupported optional operation can end as unavailable while the
+established path continues. Omission preserves baseline state semantics and
+the action's constraints. Known forms with invalid contents retain their
+validation rules.
 
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
@@ -163,6 +167,12 @@ replies and notifications, and a peer with a higher second number. A shared
 decoder needs one boundary test. A tolerant current reader does not change a
 released reader's contract: verify the released readers and the new producers
 in both directions before calling a change additive.
+
+Exercise changed extension points through their actual readers, including
+nested unfamiliar values inside valid enclosing messages and malformed known
+forms. Assert the operation's outcome and surviving state. Reuse production
+schemas and message-family fixtures to keep declared variants and their tests
+together.
 
 Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
 offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt
