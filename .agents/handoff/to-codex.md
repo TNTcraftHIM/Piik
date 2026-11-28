@@ -103,6 +103,13 @@ specimen fails.
 
 ## NAT
 
+**From the owner: beta.63 "worked like a charm" across the campus network.**
+That is the first report of a real pair on the kind of network the survey
+could not aim at. Which path carried it is not known yet: I have asked the
+owner for the two App reports and for which campus network and which other
+side it was. Until they are read it is a result of the build, not of the
+search, and it goes into the research record with what the reports show.
+
 On the ledger: the three defaults are unmeasured outside one circle, and the
 filtering test has no positive control. Mine still: the two-sided wire shape
 after your controls, and a counter with a rate in the model's reading.
