@@ -2,7 +2,10 @@
 use super::NativeEvent;
 use crate::diagnostics::{rtc_pair, MappingKind, PreparationChecks, PreparationOutcome, PreparationStep, RtcPairEvent};
 use anyhow::{bail, ensure, Result};
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{
+    stream::{self, FuturesUnordered},
+    Stream, StreamExt,
+};
 use piik_channel_core::wire::UdpObservation as Observation;
 use piik_channel_core::{
     udp::StunServer,
@@ -11,7 +14,7 @@ use piik_channel_core::{
 use rtc_shared::{TaggedBytesMut, TransportContext, TransportProtocol};
 use rtc_stun::{
     agent::StunEvent,
-    client::{ClientBuilder, TaggedMessage},
+    client::{Client, ClientBuilder, TaggedMessage},
     fingerprint::FINGERPRINT,
     integrity::MessageIntegrity,
     message::{Getter, Message, Setter, TransactionId, BINDING_REQUEST, BINDING_SUCCESS},
@@ -45,14 +48,30 @@ const RANDOM_PACKET_INTERVAL: Duration = Duration::from_millis(2);
 // they do not queue another pool behind the current pair's deadline.
 static RANDOM_PREPARATIONS: Semaphore = Semaphore::const_new(2);
 
-async fn survey_source(servers: &[SocketAddrV4]) -> Result<Ipv4Addr> {
+async fn survey_source(
+    pair: Uuid,
+    mut servers: impl Stream<Item = SocketAddrV4> + Unpin,
+) -> Result<(Ipv4Addr, SocketAddrV4)> {
+    let mut server = servers
+        .next()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("no distinct IPv4 STUN destination available"))?;
+    rtc_pair(
+        pair,
+        RtcPairEvent::Preparation { step: PreparationStep::LocalAddress },
+    );
     // UDP connect selects a route to a numeric destination without sending a request.
     let route = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
-    for server in servers {
-        if route.connect(*server).await.is_err() { continue; }
-        if let SocketAddr::V4(local) = route.local_addr()? {
-            return Ok(*local.ip());
+    loop {
+        if route.connect(server).await.is_ok() {
+            if let SocketAddr::V4(local) = route.local_addr()? {
+                return Ok((*local.ip(), server));
+            }
         }
+        let Some(next) = servers.next().await else {
+            break;
+        };
+        server = next;
     }
     bail!("no IPv4 route to a configured STUN destination")
 }
@@ -160,24 +179,22 @@ async fn negotiate(
     );
     let servers = resolve_servers(servers, |server| async move {
         tokio::net::lookup_host((server.host, server.port)).await
-    })
-    .await?;
-    rtc_pair(
-        pair,
-        RtcPairEvent::Preparation {
-            step: PreparationStep::LocalAddress,
-        },
-    );
-    let local = survey_source(&servers).await?;
-    let (survey, remote) = exchange_observations(pair, initiator, local, servers, &commands, &mut incoming, deadline).await?;
+    });
+    let (survey, remote) = exchange_observations(
+        pair, initiator, servers, &commands, &mut incoming, deadline,
+    ).await?;
     survey.check(remote, &commands, &mut incoming).await
 }
 
 async fn exchange_observations(
-    pair: Uuid, initiator: bool, local: Ipv4Addr, servers: Vec<SocketAddrV4>,
-    commands: &mpsc::Sender<NativeEvent>, incoming: &mut mpsc::Receiver<UdpSignal>, deadline: Instant,
+    pair: Uuid,
+    initiator: bool,
+    servers: impl Stream<Item = SocketAddrV4>,
+    commands: &mpsc::Sender<NativeEvent>,
+    incoming: &mut mpsc::Receiver<UdpSignal>,
+    deadline: Instant,
 ) -> Result<(Survey, Observation)> {
-    let (observation, retained) = observe(pair, local, servers, deadline).await?;
+    let (local, observation, retained) = observe(pair, servers, deadline).await?;
     let (secret, remote) = if initiator {
         let mut secret = [0; 32];
         getrandom::fill(&mut secret)
@@ -249,42 +266,40 @@ pub(super) fn signal(pair: Uuid, udp: UdpSignal) -> NativeEvent {
     })
 }
 
-async fn resolve_servers<F, A>(
+fn resolve_servers<F, A>(
     servers: Vec<StunServer>,
-    lookup: impl Fn(StunServer) -> F,
-) -> Result<Vec<SocketAddrV4>>
+    lookup: impl FnMut(StunServer) -> F,
+) -> impl Stream<Item = SocketAddrV4>
 where
     F: std::future::Future<Output = std::io::Result<A>>,
     A: IntoIterator<Item = SocketAddr>,
 {
-    let mut queries: FuturesUnordered<_> = servers
+    let queries: FuturesUnordered<_> = servers
         .into_iter()
         .take(super::MAX_ICE_CANDIDATES)
         .map(lookup)
         .collect();
-    let mut selected = Vec::with_capacity(3);
-    while let Some(result) = queries.next().await {
-        let Ok(addresses) = result else { continue };
-        // Each authority contributes one distinct IPv4 destination, as before.
-        if let Some(address) = addresses.into_iter().find_map(|address| match address {
-            SocketAddr::V4(address)
-                if !address.ip().is_unspecified()
-                    && !address.ip().is_multicast()
-                    && !address.ip().is_broadcast()
-                    && !selected.contains(&address) =>
-            {
-                Some(address)
-            }
-            _ => None,
-        }) {
-            selected.push(address);
-            if selected.len() == 3 {
-                break;
+    stream::unfold((queries, Vec::with_capacity(3)), |(mut queries, mut selected)| async move {
+        while let Some(result) = queries.next().await {
+            let Ok(addresses) = result else { continue };
+            // Each authority contributes at most one distinct IPv4 destination.
+            if let Some(address) = addresses.into_iter().find_map(|address| match address {
+                SocketAddr::V4(address)
+                    if !address.ip().is_unspecified()
+                        && !address.ip().is_multicast()
+                        && !address.ip().is_broadcast()
+                        && !selected.contains(&address) => Some(address),
+                _ => None,
+            }) {
+                selected.push(address);
+                if selected.len() == 3 {
+                    queries.clear();
+                }
+                return Some((address, (queries, selected)));
             }
         }
-    }
-    ensure!(!selected.is_empty(), "no distinct IPv4 STUN destination available");
-    Ok(selected)
+        None
+    })
 }
 
 /// This task prepares one extra candidate on an authorized, live pair.
@@ -323,26 +338,23 @@ impl Preparation {
 }
 async fn observe(
     pair: Uuid,
-    local: Ipv4Addr,
-    servers: Vec<SocketAddrV4>,
+    servers: impl Stream<Item = SocketAddrV4>,
     expires: Instant,
-) -> Result<(Observation, Option<UdpSocket>)> {
+) -> Result<(Ipv4Addr, Observation, Option<UdpSocket>)> {
+    tokio::pin!(servers);
+    let (local, first) = survey_source(pair, &mut servers).await?;
     rtc_pair(
         pair,
         RtcPairEvent::Preparation {
             step: PreparationStep::Survey,
         },
     );
-    ensure!(
-        (1..=3).contains(&servers.len())
-            && servers.iter().enumerate().all(|(index, address)| !servers[..index].contains(address)),
-        "one to three distinct STUN destinations required"
-    );
     let deadline = expires
         .min(Instant::now() + Duration::from_millis(1500));
     let socket = timeout_at(deadline.into(), UdpSocket::bind((local, 0))).await??;
     let mut observations = [None; 3];
-    match timeout_at(deadline.into(), bindings(&socket, &servers, &mut observations)).await {
+    let destinations = stream::iter([first]).chain(servers);
+    match timeout_at(deadline.into(), bindings(&socket, destinations, &mut observations)).await {
         Ok(result) => result?,
         Err(elapsed) if observations.iter().all(Option::is_none) => return Err(elapsed.into()),
         Err(_) => {}
@@ -356,10 +368,10 @@ async fn observe(
         });
         let first = replies.next().ok_or_else(|| anyhow::anyhow!("no usable observed endpoint"))?;
         if replies.any(|other| other.port() != first.port()) {
-            return Ok((Observation::Irregular { address: *first.ip() }, None));
+            return Ok((local, Observation::Irregular { address: *first.ip() }, None));
         }
         let observed = Observation::Observed { address: *first.ip(), port: first.port() };
-        return Ok((observed, Some(socket)));
+        return Ok((local, observed, Some(socket)));
     };
     let step = i32::from(c.port()) - i32::from(b.port());
     let observation = if a == b && b == c {
@@ -380,7 +392,7 @@ async fn observe(
         Observation::Irregular { address: *c.ip() }
     };
     // The public peer target is checked when supplied by signaling.
-    Ok((observation, matches!(observation, Observation::Stable { .. }).then_some(socket)))
+    Ok((local, observation, matches!(observation, Observation::Stable { .. }).then_some(socket)))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -734,21 +746,16 @@ async fn recv_datagram(socket: &UdpSocket, bytes: &mut [u8]) -> std::io::Result<
 
 async fn bindings(
     socket: &UdpSocket,
-    remotes: &[SocketAddrV4],
+    mut servers: impl Stream<Item = SocketAddrV4> + Unpin,
     observations: &mut [Option<SocketAddrV4>; 3],
 ) -> Result<()> {
     let local = socket.local_addr()?;
-    let mut clients = remotes.iter().map(|remote| {
-        let mut client = ClientBuilder::new().build(Instant::now(), local, (*remote).into(), TransportProtocol::UDP)?;
-        let mut request = Message::new();
-        request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
-        client.handle_write(TaggedMessage { now: Instant::now(), message: request })?;
-        Ok(Some(client))
-    }).collect::<Result<Vec<_>>>()?;
+    let mut clients: Vec<(SocketAddrV4, Option<Client>)> = Vec::with_capacity(3);
+    let mut servers_done = false;
     loop {
         let mut next_timeout = None;
-        // Send in configuration order; reply order must not change the observed sequence.
-        for (slot, observation) in clients.iter_mut().zip(observations.iter_mut()) {
+        // Each destination sends before another is admitted, so replies fill slots in first-send order.
+        for ((_, slot), observation) in clients.iter_mut().zip(observations.iter_mut()) {
             let Some(client) = slot else { continue };
             if let Some(event) = client.poll_event() {
                 if let StunEvent::Message(message) = event {
@@ -768,19 +775,34 @@ async fn bindings(
             let deadline = client.poll_timeout().ok_or_else(|| anyhow::anyhow!("STUN transaction ended"))?;
             next_timeout = Some(next_timeout.map_or(deadline, |previous: Instant| previous.min(deadline)));
         }
-        let Some(deadline) = next_timeout else { return Ok(()) };
+        if servers_done && next_timeout.is_none() {
+            return Ok(());
+        }
         let mut buffer = [0; 1024];
         tokio::select! {
-            _ = sleep_until(deadline.into()) => {
+            remote = servers.next(), if !servers_done => {
+                let Some(remote) = remote else {
+                    servers_done = true;
+                    continue;
+                };
                 let now = Instant::now();
-                for client in clients.iter_mut().flatten() {
+                let mut client = ClientBuilder::new().build(now, local, remote.into(), TransportProtocol::UDP)?;
+                let mut request = Message::new();
+                request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
+                client.handle_write(TaggedMessage { now, message: request })?;
+                clients.push((remote, Some(client)));
+                servers_done = clients.len() == observations.len();
+            },
+            _ = async { sleep_until(next_timeout.unwrap().into()).await }, if next_timeout.is_some() => {
+                let now = Instant::now();
+                for client in clients.iter_mut().filter_map(|(_, client)| client.as_mut()) {
                     client.handle_timeout(now)?;
                 }
             },
-            result = recv_datagram(socket, &mut buffer) => {
+            result = recv_datagram(socket, &mut buffer), if next_timeout.is_some() => {
                 let (n, peer) = result?;
-                if let Some(client) = remotes.iter().position(|remote| SocketAddr::V4(*remote) == peer)
-                    .and_then(|index| clients[index].as_mut()) {
+                if let Some(client) = clients.iter_mut().find(|(remote, _)| SocketAddr::V4(*remote) == peer)
+                    .and_then(|(_, client)| client.as_mut()) {
                     let _ = client.handle_read(TaggedBytesMut { now: Instant::now(),
                         transport: TransportContext { local_addr: local, peer_addr: peer, ecn: None, transport_protocol: TransportProtocol::UDP },
                         message: buffer[..n].into() });
@@ -795,6 +817,18 @@ mod tests {
     use super::*;
     use anyhow::Context;
     use std::collections::HashSet;
+    use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
+
+    struct PendingLookup(Arc<AtomicUsize>);
+    impl Drop for PendingLookup {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    fn fixture_servers(names: &[&str]) -> Vec<StunServer> {
+        names.iter().map(|name| StunServer { host: name.to_string(), port: 3478 }).collect()
+    }
 
     #[tokio::test]
     async fn completed_checks_can_handoff_after_deadline_only_to_the_same_pair() -> Result<()> {
@@ -924,30 +958,9 @@ mod tests {
     #[tokio::test]
     async fn preparation_dns_fallback_does_not_wait_for_failed_or_stalled_authorities() -> Result<()>
     {
-        use std::sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
-        };
-        struct PendingLookup(Arc<AtomicUsize>);
-        impl Drop for PendingLookup {
-            fn drop(&mut self) {
-                self.0.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-        let servers = |names: &[&str]| {
-            names
-                .iter()
-                .map(|name| StunServer {
-                    host: name.to_string(),
-                    port: 3478,
-                })
-                .collect()
-        };
         let cancelled = Arc::new(AtomicUsize::new(0));
-        let selected = tokio::time::timeout(
-            Duration::from_secs(5),
-            resolve_servers(
-                servers(&["failed", "stalled", "one", "alias", "two", "three"]),
+        let resolving = resolve_servers(
+                fixture_servers(&["failed", "stalled", "one", "alias", "three"]),
                 |server| {
                     let cancelled = cancelled.clone();
                     async move {
@@ -957,28 +970,22 @@ mod tests {
                                 let _pending = PendingLookup(cancelled);
                                 std::future::pending::<std::io::Result<Vec<SocketAddr>>>().await
                             }
-                            name => Ok(vec![SocketAddr::from((
-                                match name {
-                                    "one" | "alias" => [192, 0, 2, 1],
-                                    "two" => [192, 0, 2, 2],
-                                    _ => [192, 0, 2, 3],
-                                },
-                                server.port,
-                            ))]),
+                            name => Ok(match name {
+                                "one" => vec![SocketAddr::from(([192, 0, 2, 1], server.port))],
+                                "alias" => vec![SocketAddr::from(([192, 0, 2, 1], server.port)),
+                                    SocketAddr::from(([192, 0, 2, 2], server.port))],
+                                _ => vec![SocketAddr::from(([192, 0, 2, 3], server.port))],
+                            }),
                         }
                     }
                 },
-            ),
-        )
-        .await??;
-        assert_eq!(
-            selected.iter().map(|address| *address.ip()).collect::<Vec<_>>(),
-            [
-                Ipv4Addr::new(192, 0, 2, 1),
-                Ipv4Addr::new(192, 0, 2, 2),
-                Ipv4Addr::new(192, 0, 2, 3),
-            ]
-        );
+            );
+        tokio::pin!(resolving);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            for index in 1..=3 {
+                assert_eq!(resolving.next().await, Some(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, index), 3478)));
+            }
+        }).await?;
         assert_eq!(
             cancelled.load(Ordering::SeqCst),
             1,
@@ -986,32 +993,28 @@ mod tests {
         );
 
         for usable in 0..=2 {
-            let configured = servers(&["0", "1", "2"]);
+            let configured = fixture_servers(&["0", "1", "2"]);
             let resolved = resolve_servers(configured, |server| async move {
                 let index: u8 = server.host.parse().unwrap();
                 if index >= usable {
                     return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
                 }
                 Ok(vec![SocketAddr::from(([192, 0, 2, index + 1], server.port))])
-            }).await;
-            if usable == 0 {
-                assert!(resolved.is_err());
-            } else {
-                let expected: Vec<_> = (0..usable)
-                    .map(|index| SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, index + 1), 3478))
-                    .collect();
-                assert_eq!(resolved?, expected);
-            }
+            }).collect::<Vec<_>>().await;
+            let expected: Vec<_> = (0..usable)
+                .map(|index| SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, index + 1), 3478))
+                .collect();
+            assert_eq!(resolved, expected);
         }
 
-        let mut resolving = Box::pin(resolve_servers(servers(&["one", "two", "three"]), |_| {
+        let mut resolving = Box::pin(resolve_servers(fixture_servers(&["one", "two", "three"]), |_| {
             let cancelled = cancelled.clone();
             async move {
                 let _pending = PendingLookup(cancelled);
                 std::future::pending::<std::io::Result<Vec<SocketAddr>>>().await
             }
         }));
-        assert!(futures_util::poll!(resolving.as_mut()).is_pending());
+        assert!(futures_util::poll!(resolving.next()).is_pending());
         drop(resolving);
         assert_eq!(
             cancelled.load(Ordering::SeqCst),
@@ -1024,7 +1027,8 @@ mod tests {
     #[tokio::test]
     async fn survey_source_follows_the_stun_destination() -> Result<()> {
         let destination = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478);
-        assert_eq!(survey_source(&[destination]).await?, Ipv4Addr::LOCALHOST);
+        assert_eq!(survey_source(Uuid::new_v4(), stream::iter([destination])).await?,
+            (Ipv4Addr::LOCALHOST, destination));
         Ok(())
     }
 
@@ -1919,11 +1923,14 @@ mod tests {
         let mut addresses = Vec::new();
         let mut servers = tokio::task::JoinSet::new();
         let (sources, mut seen_sources) = mpsc::channel(3);
-        for (index, delay) in [400, 600, 400].into_iter().enumerate() {
+        let (release_third, third) = tokio::sync::oneshot::channel();
+        let mut release_third = Some(release_third);
+        for (index, delay) in [600, 0, 0].into_iter().enumerate() {
             let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
             let SocketAddr::V4(address) = socket.local_addr()? else { unreachable!() };
             addresses.push(address);
             let sources = sources.clone();
+            let release = if index == 0 { release_third.take() } else { None };
             servers.spawn(async move {
                 let mut bytes = [0; 1024];
                 let (n, peer) = socket.recv_from(&mut bytes).await?;
@@ -1952,12 +1959,29 @@ mod tests {
                 other.send_to(&valid.raw, peer).await?;
                 tokio::time::sleep(Duration::from_millis(delay)).await;
                 socket.send_to(&valid.raw, peer).await?;
+                if let Some(release) = release {
+                    // Leave both started clients time to finish before the third DNS result.
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let _ = release.send(());
+                }
                 Ok::<_, anyhow::Error>(())
             });
         }
+        let mut third = Some(third);
+        let destinations = resolve_servers(fixture_servers(&["0", "1", "2"]), |server| {
+            let index = server.host.parse::<usize>().unwrap();
+            let address = addresses[index];
+            let ready = if index == 2 { third.take() } else { None };
+            async move {
+                if let Some(ready) = ready {
+                    ready.await.map_err(std::io::Error::other)?;
+                }
+                Ok([address.into()])
+            }
+        });
         let started = Instant::now();
-        let (observation, retained) = observe(Uuid::new_v4(), Ipv4Addr::LOCALHOST,
-            addresses, started + Duration::from_secs(5)).await?;
+        let (_, observation, retained) = observe(Uuid::new_v4(),
+            destinations, started + Duration::from_secs(5)).await?;
         assert!(matches!(observation, Observation::Sequential { port: 42004, step: 2, .. }));
         assert!(retained.is_none());
         let first = seen_sources.recv().await.context("first observation source")?;
@@ -2026,7 +2050,7 @@ mod tests {
                 drop(silent.pop());
             }
             let result = observe(
-                Uuid::new_v4(), Ipv4Addr::LOCALHOST, addresses,
+                Uuid::new_v4(), stream::iter(addresses),
                 Instant::now() + Duration::from_secs(5),
             ).await;
             if conflicting_ips {
@@ -2034,7 +2058,7 @@ mod tests {
                 while let Some(result) = responders.join_next().await { std::net::UdpSocket::bind(result??)?; }
                 continue;
             }
-            let (observation, retained) = result?;
+            let (_, observation, retained) = result?;
             let mut usable_ports = ports.into_iter().flatten().filter(|port| *port >= 1024);
             let port = usable_ports.next().unwrap();
             if usable_ports.any(|other| other != port) {
@@ -2064,24 +2088,122 @@ mod tests {
 
     #[tokio::test]
     async fn survey_timeout_releases_the_shared_observation_socket() -> Result<()> {
-        let mut servers = Vec::new();
-        let mut addresses = Vec::new();
-        for _ in 0..3 {
+        for abort in [false, true] {
             let server = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
-            let SocketAddr::V4(address) = server.local_addr()? else { unreachable!() };
-            addresses.push(address);
-            servers.push(server);
+            let address = server.local_addr()?;
+            let cancelled = Arc::new(AtomicUsize::new(0));
+            let lookup_drops = cancelled.clone();
+            let destinations = resolve_servers(fixture_servers(&["ready", "stalled"]), move |server| {
+                let guard = (server.host == "stalled").then(|| PendingLookup(lookup_drops.clone()));
+                async move {
+                    if let Some(_guard) = guard { std::future::pending().await }
+                    else { Ok([address]) }
+                }
+            });
+            let task = tokio::spawn(observe(Uuid::new_v4(), destinations,
+                Instant::now() + Duration::from_secs(5)));
+            let mut bytes = [0; 1024];
+            let (_, client) = tokio::time::timeout(Duration::from_secs(5), server.recv_from(&mut bytes)).await??;
+            if abort {
+                task.abort();
+                assert!(task.await.expect_err("survey was cancelled").is_cancelled());
+            } else {
+                let error = task.await?.expect_err("silent STUN must time out");
+                assert!(error.downcast_ref::<tokio::time::error::Elapsed>().is_some());
+            }
+            assert_eq!(cancelled.load(Ordering::SeqCst), 1);
+            std::net::UdpSocket::bind(client)?;
         }
-        let task = tokio::spawn(observe(Uuid::new_v4(), Ipv4Addr::LOCALHOST,
-            addresses, Instant::now() + Duration::from_secs(5)));
+        Ok(())
+    }
+
+    async fn reply_with_mapping(socket: UdpSocket, port: u16) -> Result<SocketAddr> {
         let mut bytes = [0; 1024];
-        let (_, client) = servers[0].recv_from(&mut bytes).await?;
-        let error = match task.await? {
-            Ok(_) => bail!("silent STUN servers must not complete the observation"),
-            Err(error) => error,
-        };
-        assert!(error.downcast_ref::<tokio::time::error::Elapsed>().is_some());
-        std::net::UdpSocket::bind(client)?;
+        let (n, peer) = socket.recv_from(&mut bytes).await?;
+        let mut request = Message { raw: bytes[..n].to_vec(), ..Default::default() };
+        request.decode()?;
+        let mut response = Message::new();
+        response.build(&[
+            Box::new(BINDING_SUCCESS),
+            Box::new(request.transaction_id),
+            Box::new(XorMappedAddress { ip: Ipv4Addr::new(203, 0, 113, 5).into(), port }),
+        ])?;
+        socket.send_to(&response.raw, peer).await?;
+        Ok(peer)
+    }
+
+    #[tokio::test]
+    async fn partial_dns_results_reach_peer_exchange_and_late_dns_can_change_classification() -> Result<()> {
+        for (ready, third_is_late, buffered) in [(1, false, false), (2, false, false), (2, true, false), (2, true, true)] {
+            let mut addresses = Vec::new();
+            let mut responders = tokio::task::JoinSet::new();
+            for index in 0..3 {
+                let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+                addresses.push(socket.local_addr()?);
+                if index < ready || (index == 2 && third_is_late) {
+                    let port = 42000 + if third_is_late { 2 * index as u16 } else { 0 };
+                    responders.spawn(reply_with_mapping(socket, port));
+                }
+            }
+            let cancelled = Arc::new(AtomicUsize::new(0));
+            let destinations = resolve_servers(fixture_servers(&["0", "1", "2"]), |server| {
+                let index = server.host.parse::<usize>().unwrap();
+                let address = addresses[index];
+                let cancelled = cancelled.clone();
+                async move {
+                    if index >= ready {
+                        let _guard = PendingLookup(cancelled);
+                        if !third_is_late { return std::future::pending().await; }
+                        tokio::time::sleep(Duration::from_millis(1800)).await;
+                    }
+                    Ok([address])
+                }
+            });
+
+            let pair = Uuid::new_v4();
+            let (commands, mut events) = mpsc::channel(1);
+            let (answers, mut incoming) = mpsc::channel(1);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let exchange = async {
+                if buffered {
+                    // Model the previous scheduling by waiting for DNS before starting the survey.
+                    let addresses = destinations.collect::<Vec<_>>().await;
+                    exchange_observations(pair, true, stream::iter(addresses), &commands, &mut incoming, deadline).await
+                } else {
+                    exchange_observations(pair, true, destinations, &commands, &mut incoming, deadline).await
+                }
+            };
+            let answer = async {
+                let Some(NativeEvent::Command(Command::Signal { pair_id, payload })) = events.recv().await else {
+                    bail!("expected preparation offer");
+                };
+                assert_eq!(pair_id, pair);
+                let Some(UdpSignal::Offer { observation, .. }) = payload.udp else {
+                    bail!("expected observation in offer");
+                };
+                match (third_is_late, buffered, observation) {
+                    (false, false, Observation::Observed { port: 42000, .. })
+                    | (true, false, Observation::Irregular { .. })
+                    | (true, true, Observation::Sequential { port: 42004, step: 2, .. }) => {}
+                    _ => panic!("unexpected observation for the DNS timing: {observation:?}"),
+                }
+                answers.send(UdpSignal::Answer { observation }).await?;
+                Ok(())
+            };
+            let ((survey, _), ()) = timeout_at(deadline.into(), async { tokio::try_join!(exchange, answer) }).await??;
+            let expected_replies = if buffered { 3 } else { ready };
+            let client = responders.join_next().await.context("missing STUN response")???;
+            for _ in 1..expected_replies {
+                assert_eq!(responders.join_next().await.context("missing STUN response")???, client);
+            }
+            responders.shutdown().await;
+            assert_eq!(survey.preparation.local, Ipv4Addr::LOCALHOST);
+            assert_eq!(survey.retained.as_ref().map(UdpSocket::local_addr).transpose()?,
+                (!third_is_late).then_some(client));
+            assert_eq!(cancelled.load(Ordering::SeqCst), 3 - ready);
+            drop(survey);
+            std::net::UdpSocket::bind(client)?;
+        }
         Ok(())
     }
 
@@ -2102,26 +2224,10 @@ mod tests {
                     unreachable!()
                 };
                 addresses.push(address);
-                tasks.push(tokio::spawn(async move {
-                    let mut bytes = vec![0; 2048];
-                    let (n, peer) = socket.recv_from(&mut bytes).await?;
-                    let mut request = Message::new();
-                    request.raw = bytes[..n].to_vec();
-                    request.decode()?;
-                    let mut response = Message::new();
-                    response.build(&[
-                        Box::new(BINDING_SUCCESS),
-                        Box::new(request.transaction_id),
-                        Box::new(XorMappedAddress {
-                            ip: Ipv4Addr::new(203, 0, 113, 5).into(),
-                            port,
-                        }),
-                    ])?;
-                    socket.send_to(&response.raw, peer).await?;
-                    Ok::<_, anyhow::Error>(())
-                }));
+                tasks.push(tokio::spawn(reply_with_mapping(socket, port)));
             }
-            let (observation,retained)=observe(Uuid::new_v4(),Ipv4Addr::LOCALHOST,addresses,Instant::now()+Duration::from_secs(3)).await?;
+            let (_, observation, retained) = observe(Uuid::new_v4(), stream::iter(addresses),
+                Instant::now() + Duration::from_secs(3)).await?;
             match (name, observation) {
                 ("increasing", Observation::Sequential { step: 2, .. })
                 | ("decreasing", Observation::Sequential { step: -2, .. })
