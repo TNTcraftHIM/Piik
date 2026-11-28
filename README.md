@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/viewers-up_to_20-36564f?style=flat-square" alt="Up to 20 viewers">
   <img src="https://img.shields.io/badge/media-P2P_first-36564f?style=flat-square" alt="P2P-first media">
 </p>
-<p align="center">English · <a href="./README.zh-CN.md">简体中文</a></p>
+<p align="center">English · <a href="./README.zh-CN.md">简体中文</a> · <a href="./README.tr.md">Türkçe</a></p>
 
 Piik is a free, open-source screen sharing tool for private live streams with
 friends: games, movie nights, drawings and photos. Choose what to share and send
