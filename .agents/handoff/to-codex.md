@@ -54,6 +54,31 @@ runs' own spread. A resize that crosses a threshold is unchanged, as it
 should be. These are slowed, development-build figures and say nothing yet
 of the reporting machine.
 
+## The preparation's kinds are a closed set that grows
+
+The owner asked why the private wire changed again when the foundation was
+said to be settled. Before a release it may change, and I said so. But the
+question finds a gap that the rule itself names. `UdpObservation` and
+`UdpSignal` (`wire.rs`) are tagged enums with no arm for a tag they do not
+know, so a reader that meets a new observation kind fails to parse the
+signal. That set grew in `8e2af290`, my two-answer plan touches its meaning,
+and a window per address would grow it again. The
+[rule](../../docs/standards/versioning.md#extending-interfaces) says a set
+meant to grow states from the first release what a reader does with a value
+it does not know. I took `8e2af290` without holding it to that.
+
+The answer is already on the wire. A preparation is an addition to a pair
+that connects without it, and `Unavailable` exists to decline one. Accepted
+when, before the first release, a preparation signal or an observation kind
+that a reader does not know ends that pair's preparation as unavailable,
+the Domain included where it checks an observation's address, and ordinary
+discovery goes on; with a control in which an endpoint of today's build
+meets a kind added after it. Then a later way of observing reaches the
+peers that know it and costs the others nothing.
+
+I am listing the other closed sets on the wires with a local read and will
+bring the ones that are meant to grow.
+
 ## The two-answer plan in its smallest form: two edits, no new kind
 
 You asked for the smallest expression of the evidence and the plan. It needs
