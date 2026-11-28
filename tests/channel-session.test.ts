@@ -8008,6 +8008,7 @@ const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(n
 function channelEncodingFixture() {
   vi.spyOn(encodingOutput, "supportsBrowserEncoding").mockReturnValue(true);
   const clones: MediaStreamTrack[] = [], carriers: MediaStreamTrack[] = [], claimed: RTCRtpSender[] = [];
+  const pipes: ReadableStreamDefaultController<RTCEncodedVideoFrame>[] = [];
   let rejectClaim = false;
   const source = () => {
     const track = Object.assign(remoteTrack("video"), { enabled: true, contentHint: "detail",
@@ -8028,7 +8029,7 @@ function channelEncodingFixture() {
     Object.assign(transceiver.sender, { createEncodedStreams: () => {
       claimed.push(transceiver.sender as unknown as RTCRtpSender);
       if (rejectClaim) { rejectClaim = false; throw new DOMException("sender claim refused", "InvalidStateError"); }
-      return { readable: new ReadableStream<RTCEncodedVideoFrame>(), writable: new WritableStream<RTCEncodedVideoFrame>() };
+      return { readable: new ReadableStream<RTCEncodedVideoFrame>({ start(controller) { pipes.push(controller); } }), writable: new WritableStream<RTCEncodedVideoFrame>() };
     } });
     return transceiver;
   });
@@ -8046,7 +8047,7 @@ function channelEncodingFixture() {
     members.push(member);
     return member.handle;
   });
-  return { source, clones, carriers, claimed, members, rejectNextClaim: () => { rejectClaim = true; } };
+  return { source, clones, carriers, claimed, members, pipes, rejectNextClaim: () => { rejectClaim = true; } };
 }
 
 test("room metrics read each PC once and follow current selected flows without mixing publications", async () => {
@@ -9231,6 +9232,35 @@ test("pooled carriers retain the logical source and pending offer across replace
     expect(first.stop).not.toHaveBeenCalled(); expect(next.stop).not.toHaveBeenCalled(); expect(voice.stop).not.toHaveBeenCalled();
   } finally { transport.close(); videoPool.dispose(); }
   for (const track of [...pool.clones, ...pool.carriers]) expect(track.stop).toHaveBeenCalled();
+});
+
+test("a relay flow reacquires a live encoded output after its idle sender pipe fails", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool(), source = pool.source();
+  const failed = vi.fn(), outgoingFailed = vi.fn();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send() {},
+    receive() {}, connected() {}, roomData() {}, failed, outgoingFailed });
+  const screen = { kind: "screen" as const, stream: remoteStream("screen", [source]), profile: QUALITY_PROFILES["1080p30"] };
+  const project = (available: boolean) => transport.setOutgoing(new Map([
+    ["relay", { ...screen, stream: available ? screen.stream : null }], ["sibling", screen],
+  ]));
+  try {
+    project(true);
+    const [first, sibling] = pool.members;
+    project(false);
+    pool.pipes[0].error(new Error("idle encoder pipe failed"));
+    await vi.waitFor(() => expect(first.encoded.track.stop).toHaveBeenCalled());
+    project(true);
+    await vi.waitFor(() => expect(pool.members).toHaveLength(3));
+    const successor = pool.members[2];
+    expect(successor.encoded).not.toBe(first.encoded);
+    await expect(successor.configure()).resolves.toBe(true);
+    expect(sibling.handle.dispose).not.toHaveBeenCalled();
+    expect(source.stop).not.toHaveBeenCalled();
+    expect(failed).not.toHaveBeenCalled();
+    expect(outgoingFailed).not.toHaveBeenCalled();
+  } finally { transport.close(); videoPool.dispose(); }
 });
 
 test.each(["carrier", "source"])("retiring an in-flight %s releases its pending wait and preserves sibling senders", async operation => {
