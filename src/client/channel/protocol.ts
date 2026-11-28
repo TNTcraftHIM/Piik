@@ -61,7 +61,7 @@ const viewSourceSchema = z.object({ kind: z.enum(["screen", "watch"]), id });
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
-  audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(CHANNEL_SESSION_LIMIT),
+  audience: z.array(z.object({ sessionId: id, state: shortWireKey })).max(CHANNEL_SESSION_LIMIT),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
   publicationBaseSchema.extend({ kind: z.literal("screen"), predecessor: viewSourceSchema.optional(), directLimit: z.number().int().min(1).max(MAX_RELAY_CAPACITY).optional(), videoSettings: videoSettingsSchema.optional(), source: screenSourceSchema, title: identityNameSchema.nullable() }),

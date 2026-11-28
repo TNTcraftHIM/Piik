@@ -83,6 +83,14 @@ pub(crate) enum RetirementReason {
     EventFailed,
     DriverShutdown,
 }
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TransportFailure {
+    SendConsentUnavailable,
+    SendSourceUnavailable,
+    RtcOutputFailed,
+    DeadlineWaitFailed,
+}
 #[derive(Clone, Copy, Default, Serialize)]
 pub(crate) struct PreparationChecks {
     pub pool_opened: usize,
@@ -132,6 +140,9 @@ pub(crate) enum RtcPairEvent {
     IceConnected,
     IceDisconnected,
     TransportConnected,
+    TransportFailed {
+        reason: TransportFailure,
+    },
     TransportClosed,
     SelectedPair {
         ipv6: bool,
@@ -163,6 +174,37 @@ pub fn app_retired(owner: Uuid, page: Option<Uuid>, reason: &'static str) {
     );
 }
 
+/// A bounded summary from the local Windows presentation loop.
+#[cfg(all(feature = "capture", windows))]
+pub fn window_loop_lateness(
+    window_ms: u128,
+    samples: u32,
+    max_ms: u128,
+    at_least_16_ms: u32,
+    at_least_50_ms: u32,
+    at_least_100_ms: u32,
+) {
+    let mut state = RECORDER.0.lock().unwrap();
+    let Some(buffer) = state.buffer.as_mut() else {
+        return;
+    };
+    let message = serde_json::json!({
+        "event": "window_loop_lateness",
+        "window_ms": window_ms,
+        "samples": samples,
+        "max_ms": max_ms,
+        "at_least_16_ms": at_least_16_ms,
+        "at_least_50_ms": at_least_50_ms,
+        "at_least_100_ms": at_least_100_ms,
+    });
+    buffer.push(
+        &Record::builder()
+            .level(log::Level::Info)
+            .args(format_args!("{message}"))
+            .build(),
+        "piik.app",
+    );
+}
 /// The selected sound scope is useful even when capture succeeds without an error.
 #[cfg(all(feature = "capture", windows))]
 pub(crate) fn system_audio_source(process: Option<(u32, bool)>) {
@@ -591,6 +633,14 @@ mod tests {
                 reason: RetirementReason::ProjectionRemoved,
             },
         );
+        for reason in [
+            TransportFailure::SendConsentUnavailable,
+            TransportFailure::SendSourceUnavailable,
+            TransportFailure::RtcOutputFailed,
+            TransportFailure::DeadlineWaitFailed,
+        ] {
+            recorder.rtc_pair(first, RtcPairEvent::TransportFailed { reason });
+        }
         let state = recorder.0.lock().unwrap();
         let buffer = state.buffer.as_ref().unwrap();
         let snapshot = Snapshot {
@@ -615,7 +665,7 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(events.len(), 10);
+        assert_eq!(events.len(), 14);
         assert!(events
             .iter()
             .all(|event| event["level"] == "INFO" && event["target"] == "piik.rtc"));
@@ -654,6 +704,17 @@ mod tests {
             details[9],
             serde_json::json!({"pair":pair_alias(first),"event":{"stage":"retirement_started","reason":"projection_removed"}})
         );
+        for (record, reason) in details[10..].iter().zip([
+            "send_consent_unavailable",
+            "send_source_unavailable",
+            "rtc_output_failed",
+            "deadline_wait_failed",
+        ]) {
+            assert_eq!(
+                *record,
+                serde_json::json!({"pair":pair_alias(first),"event":{"stage":"transport_failed","reason":reason}})
+            );
+        }
         for raw in [first.to_string(), second.to_string()] {
             assert!(!text.contains(&raw));
         }

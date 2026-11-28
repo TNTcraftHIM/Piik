@@ -23,14 +23,16 @@ the feedback period; they do not delay that delivery.
   changing sampling, deadlines or production defaults.
   Regional reachability controls must identify proxy and tunnel
   participation; an unclassified local Binding success is insufficient.
-- [ ] **Beta.62 native interaction performance.** Reproduce slow More options
-  and playback-popover closure in the reported App, including the roughly
-  0.2-second whole-window stall after the native maximize/restore button.
-  Compare input delay, resize/layout work and native presentation with the
-  Browser baseline; a fast menu-open preview does not clear WebView.
+- [ ] **Beta.62 native interaction performance.** Verify host-owned title-bar
+  gestures on the affected setup during More options, playback-popover closure
+  and native maximize/restore. Verify the opt-in window-loop timing report with
+  an actual delayed event and normal shutdown. Compare host queue delay with
+  renderer frames when investigating any remaining stall.
 - [ ] **Native caption visual acceptance.** Verify the integrated caption's
   materials against the underlying page in both themes on the matching Windows
   package, including modal surfaces and maximize/restore.
+  Restore touch dragging and the native caption context menu with host-owned
+  gestures; keep CSS drag regions disabled.
 - [ ] **Beta.62 missing chat image thumbnails.** Trace a reported message's
   inline preview, media-clear watermark, readable image and render binding.
   Identify whether older history, newly sent images or both are affected.

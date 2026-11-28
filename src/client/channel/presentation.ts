@@ -58,9 +58,8 @@ export interface AudiencePerson {
   name: string;
   avatar?: string;
 }
-export interface ScreenAudiencePerson extends AudiencePerson { state: "preparing" | "active" | "failed" }
-
-export type ParticipantViewing = ScreenAudiencePerson["state"] | "joined";
+export type ParticipantViewing = "preparing" | "active" | "failed" | "joined";
+export interface ScreenAudiencePerson extends AudiencePerson { state: ParticipantViewing }
 export interface ParticipantActivity {
   sharing: boolean;
   viewing?: ParticipantViewing;
@@ -80,6 +79,10 @@ export const viewingAppearance = {
 
 export function participantViewingLabel(state: ParticipantViewing, t: Copy["t"]): string {
   return t(viewingAppearance[state].label);
+}
+
+function screenAudienceViewing(state: string): ParticipantViewing {
+  return Object.hasOwn(viewingAppearance, state) ? state as ParticipantViewing : "joined";
 }
 
 function watchViewerState(watch: WatchActivity, sessionId: string, local?: LocalWatchPresentation): ParticipantViewing {
@@ -108,7 +111,9 @@ export function roomSessionViewing(screens: readonly ChannelPublication[], watch
   for (const screen of screens) {
     if (!subscriptions.includes(screen.id)) continue;
     const viewer = screen.audience.find(entry => entry.sessionId === sessionId);
-    if (viewer && takesViewingPriority(viewer.state, result)) result = viewer.state;
+    if (!viewer) continue;
+    const viewing = screenAudienceViewing(viewer.state);
+    if (takesViewingPriority(viewing, result)) result = viewing;
   }
   for (const watch of watches) {
     if (watch.sessionId === sessionId || !watch.viewerSessionIds.includes(sessionId)) continue;
@@ -145,7 +150,7 @@ function roomActivities(state: ChannelSnapshot, roomId: string, local?: LocalWat
   for (const publication of state.publications) {
     if (publication.roomId !== roomId || publication.kind !== "screen") continue;
     person(publication.userId).sharing = true;
-    for (const viewer of publication.audience) view(viewer.sessionId, viewer.state);
+    for (const viewer of publication.audience) view(viewer.sessionId, screenAudienceViewing(viewer.state));
   }
   for (const watch of state.watchActivities) {
     if (watch.roomId !== roomId) continue;
@@ -188,7 +193,8 @@ export function screenAudience(state: ChannelSnapshot, publication: ChannelPubli
     if (!user || user.id === publication.userId) continue;
     // Signaling can disconnect while an established media watch continues.
     const previous = people.get(user.id);
-    if (takesViewingPriority(entry.state, previous?.state)) people.set(user.id, { userId: user.id, name: user.name, avatar: user.avatar ?? undefined, state: entry.state });
+    const viewing = screenAudienceViewing(entry.state);
+    if (takesViewingPriority(viewing, previous?.state)) people.set(user.id, { userId: user.id, name: user.name, avatar: user.avatar ?? undefined, state: viewing });
   }
   return [...people.values()];
 }

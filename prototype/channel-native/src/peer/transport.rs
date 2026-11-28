@@ -1,7 +1,7 @@
 //! One owned sans-I/O pump. Room/flow policy and bounded producers remain outside it.
 use super::metrics::StreamCounters;
 use super::{server_udp::ServerUdp, Event};
-use crate::diagnostics::{rtc_pair, RtcPairEvent};
+use crate::diagnostics::{rtc_pair, RtcPairEvent, TransportFailure};
 use crate::media::{
     MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport, MAX_AU, MAX_AU_PACKETS,
     MAX_PACKET_DESCRIPTOR,
@@ -681,7 +681,7 @@ impl Runtime {
                         if let Err(error) = result {
                             log::error!("Native deadline wait failed: {error}");
                             for engine in engines.values_mut() {
-                                engine.fail();
+                                engine.fail(TransportFailure::DeadlineWaitFailed);
                             }
                             break;
                         }
@@ -2024,16 +2024,17 @@ impl Engine {
         if std::net::UdpSocket::bind(source)
             .is_err_and(|error| error.kind() == std::io::ErrorKind::AddrNotAvailable)
         {
-            self.fail();
+            self.fail(TransportFailure::SendSourceUnavailable);
         }
     }
 
-    fn fail(&mut self) {
+    fn fail(&mut self, reason: TransportFailure) {
         self.nat64.take();
         if matches!(self.state.load(Ordering::Acquire), state if state == PeerState::Failed as u8 || state == PeerState::Closed as u8)
         {
             return;
         }
+        self.trace_pair(RtcPairEvent::TransportFailed { reason });
         self.source_error = None;
         self.rtc.disconnect();
         self.state.store(PeerState::Failed as u8, Ordering::Release);
@@ -2115,7 +2116,7 @@ impl Engine {
                     if PeerState::established(self.state.load(Ordering::Acquire))
                         && !self.rtc.has_send_consent()
                     {
-                        self.fail();
+                        self.fail(TransportFailure::SendConsentUnavailable);
                         continue;
                     }
                     self.deadline = at;
@@ -2198,7 +2199,7 @@ impl Engine {
                 Ok(Output::Event(event)) => self.event(event),
                 Err(error) => {
                     eprintln!("Native str0m output: {error}");
-                    self.fail();
+                    self.fail(TransportFailure::RtcOutputFailed);
                     self.deadline = Instant::now() + Duration::from_secs(3600);
                     break;
                 }
@@ -2228,7 +2229,7 @@ impl Engine {
                 }
                 if state.is_disconnected() {
                     if !self.rtc.has_send_consent() {
-                        self.fail();
+                        self.fail(TransportFailure::SendConsentUnavailable);
                     } else if PeerState::established(self.state.load(Ordering::Acquire)) {
                         self.state
                             .store(PeerState::Disconnected as u8, Ordering::Release);

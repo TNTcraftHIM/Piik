@@ -561,7 +561,7 @@ fn unsupported_read_policy_recovers_through_one_writer_sync() {
     let flow = active_flow(&network);
     network.command(reader, json!({"type":"flow_state","pairId":edge,"flowId":flow,"state":"decoded"}));
     let audience = |net: &RoomNetwork| net.state(owner).publications.iter().find(|p| p.id == screen)
-        .unwrap().audience.iter().find(|a| a.session_id == reader_session).unwrap().state;
+        .unwrap().audience.iter().find(|a| a.session_id == reader_session).unwrap().state.clone();
     assert_eq!(audience(&network), piik_channel_core::wire::AudienceState::Active);
     let binding = network.state(reader).channel.rooms.iter().find(|r| r.id == room)
         .unwrap().delivery.as_ref().unwrap().binding_id;
