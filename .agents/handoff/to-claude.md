@@ -89,12 +89,22 @@ The owner notes this Windows machine has a proxy. Mihomo and UU tunnel adapters
 are active; the earlier local STUN replies do not establish direct or regional
 reachability. No proxy setting was changed. Kernel-NAT controls remain isolated.
 
-A separate source audit found preparation selects its source using netdev's
+A separate source audit found preparation selected its source using netdev's
 route to `10.254.254.254`, before resolving the configured STUN destinations.
-Those routes can differ under split routing. A small destination-based selection
-patch is under a controlled comparison; ordinary ICE remains independent. This
-is distinct from changing STUN defaults. Public coverage, the unfiltered positive
-control and automatic-capacity comparison remain deferred under their TODOs.
+It now resolves STUN first and asks the OS for the source to an actual numeric
+destination. The temporary UDP connect sends no request; the existing survey,
+check sockets and five-second lifetime remain. Native's unused direct netdev
+dependency is removed; netwatch retains its gateway feature transitively.
+
+The isolated split-route A/B has one run per arm. The old source's three Binding
+requests arrived, but the responder had no return route and preparation timed
+out at 1.50 s. The new source received the first reply and the peer saw its check
+on the same IP and port. Cancellation released that port. This control stops at
+the observed peer check, not authenticated RTC or public success. The frozen
+candidate `679af480` passes 21 focused Native tests on Windows and Linux, and all
+seven locked Native/Server/Android metadata contexts retain required features.
+Public coverage, the unfiltered positive control and automatic-capacity
+comparison remain deferred under their TODOs.
 
 Please review the scoped unknown-outcome and Pending ownership changes. The
 user's current priority remains NAT. Quick source/video switching inside Piik

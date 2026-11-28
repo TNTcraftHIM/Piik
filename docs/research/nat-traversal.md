@@ -418,6 +418,16 @@ stable, increasing, decreasing and irregular classifications retained their
 meaning. This establishes the scheduling benefit in that control, not worldwide
 service reachability.
 
+Preparation selects its local source using the OS route to a resolved STUN
+destination. The temporary UDP connect sends no request; the survey and later
+checks bind the resulting address. In an isolated split-route control, the
+former fixed private lookup selected a source to which the STUN responder had
+no return route. All three requests arrived, but preparation timed out after
+1.50 seconds. Destination-based selection received the first reply and reused
+that socket for the peer check. Cancellation released its port. This establishes
+the source-selection correction; proxy routing and public peer reachability
+remain properties of the actual network.
+
 If DNS resolution finishes with fewer than three destinations or a STUN
 transaction does not answer, preparation still uses the valid observations.
 One response or equal partial replies supply an unclassified measured endpoint.
