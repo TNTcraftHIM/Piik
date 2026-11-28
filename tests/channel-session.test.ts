@@ -14835,6 +14835,105 @@ test('local provider preparation failure releases only its reader and candidate,
   expect(dispose).toHaveBeenCalledOnce();
 });
 
+test.each(["preparation", "withdrawal"] as const)("a retired forwarding %s cannot stop the replacement page reader", async phase => {
+  localProviderVideo();
+  const choice = { id: crypto.randomUUID(), displayURL: "https://fixture.test/next.mp4", name: "Next", format: "file" as const };
+  let active: WatchByteSource | null = null;
+  const replacementGrant = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
+  const { session, socket, page, candidateId, commit, request } = await websiteSourceSelection(async () =>
+    ({ choices: [choice], indexedCandidates: [], byteSource: active }));
+  commit.mockRestore();
+  const nextId = crypto.randomUUID();
+  const oldGrant = { ...replacementGrant, resourceId: crypto.randomUUID() };
+  let rejectOld!: (error: Error) => void;
+  let withdrawalRequest!: Record<string, unknown>;
+  const defaultRequest = request.getMockImplementation()!;
+  request.mockImplementation(command => {
+    const scoped = command as { type: string; candidateId?: string; resourceId?: string };
+    if (command.type === "page_media_prepare") {
+      if (scoped.candidateId === nextId) return Promise.resolve(replacementGrant);
+      if (phase === "withdrawal") {
+        active = oldGrant;
+        return Promise.resolve(oldGrant);
+      }
+      return new Promise((_resolve, reject) => { rejectOld = reject; });
+    }
+    if (command.type === "page_select" && scoped.resourceId === replacementGrant.resourceId) {
+      // The Native App promotes the candidate and retires the pending reader in the active slot.
+      active = replacementGrant;
+      if (phase === "preparation") rejectOld(new Error("watch_source_retired"));
+      else ack(withdrawalRequest, { type: "error", code: "watch_unavailable" });
+    }
+    if (command.type === "page_media_stop" && scoped.candidateId === undefined) active = null;
+    return defaultRequest(command);
+  });
+  const ack = (command: Record<string, unknown>, result: object = { type: "done" }) =>
+    socket.receive({ type: "reply", roomId: "first", requestId: command.requestId, result });
+  async function confirmStart(count: number) {
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(count));
+    const start = socket.sent.findLast(command => command.type === "start_watch")!;
+    project(start);
+    ack(start, { type: "watch_ready", serverTime: 1000 });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "update_watch" && command.id === start.id)).toBe(true));
+    const update = socket.sent.findLast(command => command.type === "update_watch" && command.id === start.id)!;
+    ack(update);
+    return start;
+  }
+  function project(start: Record<string, unknown>) {
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...state,
+      sessions: [...state.sessions.filter(value => value.id !== replacementGrant.sessionId),
+        { ...state.sessions[0], id: replacementGrant.sessionId }],
+      watchActivities: [{ id: start.id, roomId: "first", sessionId: "endpoint", userId: "self",
+        viewerSessionIds: [], source: start.source, playback: start.playback, byteSource: start.byteSource }],
+    } });
+  }
+  try {
+    const opening = session.selectWatchPage("first", candidateId, undefined, false, "original-page");
+    const old = await confirmStart(1);
+    await opening;
+
+    let forwarding: Promise<unknown> | undefined;
+    if (phase === "preparation") {
+      forwarding = session.setWatchByteSource(String(old.id), choice.id).catch(error => error);
+      await vi.waitFor(() => expect(rejectOld).toBeTypeOf("function"));
+    } else {
+      const enabling = session.setWatchByteSource(String(old.id), choice.id);
+      await vi.waitFor(() => expect(socket.sent.some(command => command.type === "set_watch_byte_source" && command.byteSource)).toBe(true));
+      const enabled = socket.sent.findLast(command => command.type === "set_watch_byte_source")!;
+      project({ ...old, byteSource: oldGrant });
+      ack(enabled);
+      await enabling;
+    }
+    vi.stubGlobal("window", new EventTarget());
+    page.receive({ type: "page_share_requested", pageId: page.id });
+    page.receive({ type: "page_candidates", pageId: page.id, url: page.url, candidates: [
+      { pageURL: page.url, id: candidateId, title: "Current", url: null, duration: 60 },
+      { pageURL: page.url, id: nextId, title: "Next", url: null, duration: 60 },
+    ] });
+    expect(await session.selectWatchPage("first", nextId, undefined, false, "choose-source")).toBe(false);
+    const switching = session.selectWatchForwardSource("first", choice.id);
+    if (phase === "withdrawal") {
+      // The old request reaches the same writer after the replacement starts.
+      await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "start_watch")).toHaveLength(2));
+      forwarding = session.setWatchByteSource(String(old.id), null).catch(error => error);
+      withdrawalRequest = socket.sent.findLast(command => command.type === "set_watch_byte_source" && command.byteSource === null)!;
+      expect(withdrawalRequest.id).toBe(old.id);
+    }
+    const next = await confirmStart(2);
+    await switching;
+    expect(next).toMatchObject({ replaceId: old.id, byteSource: replacementGrant });
+    if (phase === "preparation") {
+      const rollback = socket.sent.findLast(command => command.type === "set_watch_byte_source" && command.id === old.id);
+      if (rollback) ack(rollback, { type: "error", code: "watch_unavailable" });
+    }
+    await expect(forwarding).resolves.toMatchObject({ message: phase === "preparation" ? "watch_source_retired" : "watch_unavailable" });
+    expect(session.getSnapshot().watchPlayers.has(String(old.id))).toBe(false);
+    expect(session.getSnapshot().watchPlayers.get(String(next.id))?.media.retainedByteSource).toEqual(replacementGrant);
+    expect(active).toEqual(replacementGrant);
+  } finally { session.close(); }
+});
+
 test('closing forwarding settings during direct preparation releases the reader and keeps the original page', async () => {
   const { session, page, socket, dispose, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   await page.select(candidateId, true);
