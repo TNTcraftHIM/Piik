@@ -171,6 +171,9 @@ with the activity's ID. Its byte format chooses an implemented reader.
 New codecs may use these forms when the receiver supports them. Different
 playback semantics use a distinct request and a requested state form.
 
+Encoding degradation priorities select executable adaptation behavior and are
+fixed in the baseline. Codec choice remains with capture and media negotiation.
+
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
 observations remain descriptions. Page-media observers dispatch the DOM event

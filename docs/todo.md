@@ -50,10 +50,7 @@ the feedback period; they do not delay that delivery.
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
   keep cross-flow allocation separate from SDK congestion control and frame admission.
-- [ ] **RTC upstream repairs.** Validate the
-  [nomination scheduling correction](https://github.com/algesten/str0m/pull/1192)
-  through Native pair switching before updating the SDK pin, preserving existing
-  consent controls. Include the merged
+- [ ] **Apple UDP source selection.** Include the merged
   [Apple IPv4 source-selection fix](https://github.com/n0-computer/noq/pull/912)
   in macOS acceptance before changing the UDP dependency. Keep patch ownership
   in the [Native provenance](../prototype/channel-native/README.md#rtc-dependency).
