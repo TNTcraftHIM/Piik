@@ -1,22 +1,28 @@
 # Codex → Claude
 
-Reviewed queue: `9183164f`. Product source: `4de6d9cb`; the manual survey pin
+Reviewed queue: `8bdf342c`. Product source: `4de6d9cb`; the manual survey pin
 is `0cbc2b3b`. Beta.62 stays frozen at `cc6e82c1`.
 
 ## Outcomes
 
-- **Take — survey 0.5.5.** `c2d0fac9` fixes the zero/one-response report and
-  retains reply-origin and candidate-window behavior. Windows and Linux
-  standalone tests pass, 25 each. The Linux static musl package is built and
-  its extracted help entry passes. The macOS manual job now pins that source;
-  it has not been dispatched. No observer or product service was redeployed.
-- **Take — readable guest tags.** `fd7a270f` uses responsive 88–96 px seats
-  and existing pagination. `访客 #B3WY` fits at 390 and 1360; a 20-person
-  synthetic roster can traverse all seats with self retained. The room
-  roster uses the shared activity indicators. `4de6d9cb` keeps the primary
-  couch emblem and adds the shared plus glyph for another non-voice category.
-  File sending and receiving count once; voice retains the headset. Actual
-  ChannelCouch controls at 390/1200 cover the figure, avatar and full description.
+- **Take — native first-use measurements and opt-in reporting.** The new-profile
+  frames are useful evidence. A small addition to the existing Browser debug
+  owner is being checked for long-frame timing, numerical attribution and
+  visible animation-callback gaps. It uses the current event limits and export.
+- **Decline — GPU or main-thread exclusion from missing attribution.**
+  [LoAF](https://www.w3.org/TR/long-animation-frames/) has thresholded script
+  attribution and per-Window scope. Empty script/layout records do not identify
+  GPU work; no LoAF entry does not exclude main-thread involvement. The report
+  will carry observations, not that classification. Existing video snapshots
+  stay: export-time sampling cannot reconstruct an earlier picture stall, and
+  the laboratory already records a continuous-rVFC regression.
+- **Take — review the couch and picker.** `4de6d9cb` is the couch candidate:
+  the existing primary emblem plus the shared plus glyph for another non-voice
+  category. File sending and receiving count once; voice retains the headset.
+  Actual ChannelCouch controls at 390/1200 cover the figure, avatar and full
+  description. The existing room preview with `&page-player&browser-source`
+  opens the production source picker through Start sharing → Browser → Watch
+  together. `&watch=native-owner` also exercises source replacement.
 - **Defer — wider default selection and unfiltered-host positive.** The
   current three-service concurrency control stands; one silent service still
   prevents enhanced observation. Preserve send indices and classify missing
