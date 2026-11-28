@@ -322,7 +322,7 @@ export function ChannelGuidePreview({ shareVariant }: { shareVariant?: Component
       <header className="c3-guide-heading"><div className="c3-guide-title"><ChannelIdentityMark icon="couch" /><strong>{roomName}</strong>
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
-        <ChannelShareControl channel={channel} roomId="friday" variant={shareVariant} disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
+        <ChannelShareControl channel={channel} roomId="friday" variant={shareVariant} disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} onStopScreen={(_room, id) => channel.stopScreen(id)} /></header>
       <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}

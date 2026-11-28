@@ -232,6 +232,7 @@ export class ChannelSession {
     request: command => this.request(command),
     write: command => this.write(command),
     report: error => this.patch({ error }),
+    restoreChanged: () => this.patch({}),
     failures: roomOpenFailures => this.patch({ roomOpenFailures }),
   });
   private app: ChannelApp | undefined;
@@ -413,7 +414,7 @@ export class ChannelSession {
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     const errorRoomId = "error" in patch ? patch.errorRoomId : this.view.errorRoomId;
-    this.view = { ...this.view, ...patch, pending, errorRoomId, waitingWatchPages: new Set(this.waitingWatchPages.keys()), watchPlayers: new Map(this.watchPlayers()), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+    this.view = { ...this.view, ...patch, hostingRestoreFailure: this.hosting.restoreFailure, pending, errorRoomId, waitingWatchPages: new Set(this.waitingWatchPages.keys()), watchPlayers: new Map(this.watchPlayers()), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
       appPort: this.app?.connected ? this.app.port : undefined,
       backgroundVoiceShortcuts: this.app?.connected ? this.app.backgroundVoiceShortcuts : undefined,
       externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
@@ -603,9 +604,7 @@ export class ChannelSession {
       void this.syncAppWatching(resumed);
       void this.resumeWatches();
       const socket = this.socket, current = () => this.socket === socket && this.view.sessionId === event.sessionId && !this.closed;
-      void this.hosting.restore(event.sessionId, current, skipRestoreRoom).catch(error => {
-        if (current()) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
-      });
+      void this.hosting.restore(event.sessionId, current, skipRestoreRoom);
       if (resumed) {
         this.media.resync();
         this.attachments.resume();
@@ -3628,7 +3627,7 @@ export class ChannelSession {
       this.retireWatch(publicationId);
       this.refreshActivity();
     } else await Promise.all([this.app?.stopCapture(publicationId), this.retireScreenPublication(publicationId)]);
-  });
+  }, false);
 
   private async retireScreenPublication(publicationId: string): Promise<void> {
     const browser = this.local.get(publicationId);

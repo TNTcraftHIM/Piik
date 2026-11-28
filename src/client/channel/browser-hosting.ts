@@ -11,6 +11,7 @@ export interface HostingSession {
   request(command: ChannelCommand): Promise<void>;
   write(command: ChannelCommand): void;
   report(error: string): void;
+  restoreChanged(): void;
   /** Publishes the stored rooms this Browser could not open, and why. */
   failures(failures: ReadonlyMap<string, RoomOpenFailure>): void;
 }
@@ -33,6 +34,8 @@ export class BrowserHosting {
   private readonly rooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private failed: ReadonlyMap<string, RoomOpenFailure> = new Map();
   private cleanup: Promise<void> = Promise.resolve();
+
+  restoreFailure?: string;
 
   constructor(private readonly session: HostingSession) {}
 
@@ -99,6 +102,21 @@ export class BrowserHosting {
    * serves. `current` holds while the connection and session that asked are live.
    */
   async restore(sessionId: string, current: () => boolean, skipRoom?: string): Promise<void> {
+    try {
+      await this.restoreStoredRooms(sessionId, current, skipRoom);
+      if (current()) this.setRestoreFailure();
+    } catch (error) {
+      if (current()) this.setRestoreFailure(error instanceof Error ? error.message : "storage_failed");
+    }
+  }
+
+  private setRestoreFailure(failure?: string): void {
+    if (failure === this.restoreFailure) return;
+    this.restoreFailure = failure;
+    this.session.restoreChanged();
+  }
+
+  private async restoreStoredRooms(sessionId: string, current: () => boolean, skipRoom?: string): Promise<void> {
     if (typeof indexedDB === "undefined") return;
     await this.cleanup;
     if (!current()) return;
@@ -213,6 +231,7 @@ export class BrowserHosting {
 
   /** Releases this session's local writers. The channel retires its bindings on leave or expiry. */
   release(): void {
+    this.setRestoreFailure();
     const hosts = [...this.rooms.values()];
     this.rooms.clear();
     if (this.failed.size) {

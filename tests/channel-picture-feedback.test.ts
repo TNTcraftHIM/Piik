@@ -11,7 +11,7 @@ test("picture feedback follows live publications across room views and reconnect
   const container = Object.assign(new EventTarget(), { nodeType: 1, tagName: "DIV", ownerDocument });
   const root = createRoot(container as unknown as HTMLElement);
   let action!: ReturnType<typeof useKeyedSettingsAction>;
-  function Page(props: { owner: string; rows: { id: string }[]; room: string }) {
+  function Page(props: { owner: string; rows?: { id: string }[]; room: string }) {
     action = useKeyedSettingsAction(props.owner, props.rows);
     return null;
   }
@@ -21,6 +21,17 @@ test("picture feedback follows live publications across room views and reconnect
   const fail = async () => { throw new Error("picture_failed"); };
   try {
     const ids = Array.from({ length: 16 }, (_, index) => String(index));
+    await act(() => root.render(createElement(Page, { owner: "page", room: "a" })));
+    await act(() => action.run("sourceA", fail, "A"));
+    await act(() => root.render(createElement(Page, { owner: "page", room: "b" })));
+    await act(() => action.run("sourceB", fail));
+    await act(() => action.run("sourceA", fail, "renamed"));
+    expect(action.errors.get("sourceA")).toEqual({ code: "picture_failed", label: "renamed" });
+    expect([...action.errors.keys()].sort()).toEqual(["sourceA", "sourceB"]);
+    await act(() => action.run("sourceB", async () => {}));
+    expect([...action.errors.keys()]).toEqual(["sourceA"]);
+    await act(() => action.clearError("sourceA"));
+    expect(action.errors.size).toBe(0);
     await render(ids);
     await act(async () => { await Promise.all(ids.map(id => action.run(id, fail))); });
     await render(ids, "b");

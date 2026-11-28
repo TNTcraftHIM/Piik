@@ -16,7 +16,7 @@ test("hosts released by an ended session finish closing before the next session 
   const request = vi.fn(async () => {});
   const owner = new BrowserHosting({
     view: () => ({ state: { channel: { id: "channel", rooms: [room] } }, self: { id: "self" } }) as unknown as ChannelView,
-    socket: () => null, request, write: () => {}, report: () => {}, failures: () => {},
+    socket: () => null, request, write: () => {}, report: () => {}, restoreChanged: () => {}, failures: () => {},
   });
   await owner.restore("ended", () => true);
   expect(owner.host(room.id)).toBe(released);
@@ -37,7 +37,7 @@ test("a room has one host: a host registered over another closes the one it repl
   const host = () => ({ roomId: room.id, summary: () => room, close: vi.fn(async () => {}) });
   const first = host(), second = host();
   const owner = new BrowserHosting({
-    view: () => ({}) as unknown as ChannelView, socket: () => null, request: async () => {}, write: () => {}, report: () => {}, failures: () => {},
+    view: () => ({}) as unknown as ChannelView, socket: () => null, request: async () => {}, write: () => {}, report: () => {}, restoreChanged: () => {}, failures: () => {},
   });
   await owner.register(room.id, first as never, () => {});
   await owner.register(room.id, second as never, () => {});
@@ -53,7 +53,7 @@ test("committed room media cleanup reports cache failure separately and skips re
   const rooms = [host, other].map(({ roomId: id }) => ({ id, delivery: { bindingId: id, hostSessionId: id === "owned" ? "local" : "other" } }));
   const owner = new BrowserHosting({
     view: () => ({ sessionId: "local", state: { channel: { rooms } } }) as unknown as ChannelView,
-    socket: () => null, request: async () => {}, write: () => {}, report: () => {}, failures: () => {},
+    socket: () => null, request: async () => {}, write: () => {}, report: () => {}, restoreChanged: () => {}, failures: () => {},
   });
   for (const room of [host, other]) {
     await owner.register(room.roomId, room as never, () => {});
@@ -75,7 +75,7 @@ test("a close that fails does not stop hosting from being restored", async () =>
     openExisting: vi.fn().mockResolvedValueOnce(failing).mockResolvedValueOnce(reopened) } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const owner = new BrowserHosting({
     view: () => ({ state: { channel: { id: "channel", rooms: [room] } }, self: { id: "self" } }) as unknown as ChannelView,
-    socket: () => null, request: async () => {}, write: () => {}, report: () => {}, failures: () => {},
+    socket: () => null, request: async () => {}, write: () => {}, report: () => {}, restoreChanged: () => {}, failures: () => {},
   });
   await owner.restore("ended", () => true);
   owner.release();

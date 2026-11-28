@@ -35,11 +35,13 @@ export function useSettingsAction(open = true, owner?: unknown): { error: string
   return { error, run, clearError: () => setError(null) };
 }
 
-/** Keep results for live entities whose controls can unmount while an action runs. */
-export function useKeyedSettingsAction(owner: string, rows: readonly { id: string }[]): {
-  errors: ReadonlyMap<string, string>; run(key: string, work: (reportError: () => boolean) => Promise<unknown>): Promise<void>; clearError(key: string): void;
+type ActionFailure = { code: string; label?: string };
+
+/** A surface owns keyed results; optional rows limit them to entities still present. */
+export function useKeyedSettingsAction(owner: string, rows?: readonly { id: string }[]): {
+  errors: ReadonlyMap<string, ActionFailure>; run(key: string, work: (reportError: () => boolean) => Promise<unknown>, label?: string): Promise<void>; clearError(key: string): void;
 } {
-  const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
+  const [errors, setErrors] = useState<ReadonlyMap<string, ActionFailure>>(new Map());
   const lifetime = useRef<object | null>(null);
   useLayoutEffect(() => {
     lifetime.current = {};
@@ -49,6 +51,7 @@ export function useKeyedSettingsAction(owner: string, rows: readonly { id: strin
   const liveRows = useRef(rows);
   useLayoutEffect(() => {
     liveRows.current = rows;
+    if (!rows) return;
     setErrors(previous => {
       const retained = Array.from(previous).filter(([key]) => rows.some(row => row.id === key));
       return retained.length === previous.size ? previous : new Map(retained);
@@ -60,15 +63,15 @@ export function useKeyedSettingsAction(owner: string, rows: readonly { id: strin
     next.delete(key);
     return next;
   }), []);
-  const run = useCallback(async (key: string, work: (reportError: () => boolean) => Promise<unknown>) => {
+  const run = useCallback(async (key: string, work: (reportError: () => boolean) => Promise<unknown>, label?: string) => {
     const current = lifetime.current;
     if (!current) return;
     clearError(key);
-    const reportError = () => lifetime.current !== current || !liveRows.current.some(row => row.id === key);
+    const reportError = () => lifetime.current !== current || liveRows.current?.some(row => row.id === key) === false;
     try { await work(reportError); }
     catch (error) {
       const failure = settingsActionFailure(error);
-      if (!reportError() && failure) setErrors(previous => new Map(previous).set(key, failure));
+      if (!reportError() && failure) setErrors(previous => new Map(previous).set(key, { code: failure, label }));
     }
   }, [clearError]);
   return { errors, run, clearError };

@@ -102,6 +102,7 @@ export const en: Record<CopyKey, string> = {
   "room.relay.followDefault": "Follow room default",
   "room.create.appHostedNote": "App hosts this room while it’s running.",
   "room.create.browserHostedNote": "Hosted by this page. The room pauses when this page closes.",
+  "room.hosting.restoreFailed": "Couldn't reopen this browser's rooms",
   "room.hosting.server": "The site server hosts this room.",
   "room.hosting.creatorDevice": "This room is hosted on its creator’s device.",
   "room.create.serverHostedNote": "The server hosts this room, so people can use it while you’re away.",

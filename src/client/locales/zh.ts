@@ -100,6 +100,7 @@ export const zh = {
   "room.relay.followDefault": "跟随房间默认",
   "room.create.appHostedNote": "App 运行时托管这个房间。",
   "room.create.browserHostedNote": "由此网页托管，关闭网页后房间暂停。",
+  "room.hosting.restoreFailed": "未能重新打开此浏览器托管的房间",
   "room.hosting.server": "房间由站点服务器托管。",
   "room.hosting.creatorDevice": "房间由创建者的设备托管。",
   "room.create.serverHostedNote": "房间由服务器托管。你离开后，其他人仍能使用房间。",

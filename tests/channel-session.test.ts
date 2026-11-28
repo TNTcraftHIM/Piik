@@ -6148,8 +6148,12 @@ test.each(["room_already_hosted", "room_creation_restricted", "storage_failed"])
     expect(conflict.room).toMatchObject({ id: "first" });
     resumed.receive({ type: "reply", requestId: conflict.requestId, result: { type: "error", code: denial } });
     if (denial === "storage_failed") {
-      await vi.waitFor(() => expect(session.getSnapshot().error).toBe(denial));
+      await vi.waitFor(() => expect(session.getSnapshot().hostingRestoreFailure).toBe(denial));
       expect(resumed.sent.filter(command => command.type === "host_register")).toEqual([conflict]);
+      const updated = session.updateDomain({ name: "Updated" });
+      resumed.receive({ type: "reply", requestId: resumed.sent.at(-1)!.requestId, result: { type: "done" } });
+      await updated;
+      expect(session.getSnapshot().hostingRestoreFailure).toBe(denial);
       return;
     }
     await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "host_register")).toHaveLength(2));
@@ -18330,4 +18334,20 @@ test.each(['while disconnected', 'before withdrawal confirmation'] as const)('or
     expect(dispose).not.toHaveBeenCalled();
   } finally { session.close(); }
   expect(dispose).toHaveBeenCalledOnce();
+});
+test("stop failure after browsing another room belongs to caller", async () => {
+  const { session, socket } = await setup();
+  const id = crypto.randomUUID();
+  try {
+    const publishing = session.publish("screen", "first", remoteStream("A", [remoteTrack("video")]), { publicationId: id });
+    socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } });
+    await publishing;
+    const rejected = expect(session.stopScreen(id)).rejects.toThrow("not_publication_owner");
+    const stop = socket.sent.at(-1)!;
+    expect(stop.type).toBe("unpublish");
+    session.browse("second");
+    socket.receive({ type: "reply", requestId: stop.requestId, result: { type: "error", code: "not_publication_owner" } });
+    await rejected;
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
 });

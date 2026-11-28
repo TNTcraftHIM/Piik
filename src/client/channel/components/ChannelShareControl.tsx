@@ -99,9 +99,10 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
 }
 
 /** The picker closes before a start runs and this control can unmount with it, so a mounted owner supplies startAction. */
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, variant, publicationActions, compactCaption, disabled, openRequested, onPickerRequestHandled, onWatch, startAction }: {
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, variant, publicationActions, compactCaption, disabled, openRequested, onPickerRequestHandled, onWatch, startAction, onStopScreen }: {
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; variant?: "split"; publicationActions?: ReactNode; compactCaption?: boolean; disabled: boolean;
   openRequested?: boolean; onPickerRequestHandled?(): void; onWatch(): void;
+  onStopScreen(roomId: string, publicationId: string): Promise<void>;
   startAction: ReturnType<typeof useSettingsAction>;
 }) {
   const { t } = useCopy();
@@ -395,9 +396,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </div>
     {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`) || channel.sourceSelectionCommitting(roomId)}
       onStop={() => {
-        const stopping = externalInput.state === "live"
-          ? channel.stopScreen(externalInput.publicationId) : channel.cancelExternalScreen(roomId);
-        void stopping.then(() => setExternalOpen(false)).catch(() => {});
+        const close = () => setExternalOpen(false);
+        if (externalInput.state === "live") { close(); void onStopScreen(roomId, externalInput.publicationId); }
+        else void channel.cancelExternalScreen(roomId).then(close).catch(() => {});
       }} onClose={() => setExternalOpen(false)} />}
   </>;
 }
