@@ -101,6 +101,40 @@ with one specimen for each message a reader parses, it is the list of these
 sets that stays true, and it needs no type graph: a message without a
 specimen fails.
 
+## The App's window: its name selects where it should drag
+
+From the owner, on beta.63: stalls for no reason are still serious, and
+"when some text is selected in the client, dragging the client is especially
+hard". The second has a cause that reproduces in the App built from this
+tree, 1120 wide, through the page's own mouse events:
+
+- The top bar is the window's drag region and its text is selectable
+  (`user-select: auto`).
+- Every tooltip wrapper in it is taken out of the region
+  (`native-window.css:32`), the room's name among them, 113 to 193, whose
+  tooltip only shows a clipped name. With the controls, 469 of the bar's
+  1,120 pixels do not drag, and the window's own buttons take 176 more.
+- A press on the name and a move selects `周五小聚`; the window does not
+  move. A press on the selected name and a move starts a drag of the text
+  (`dragstart`), and the window does not move.
+
+So the place a person grabs a window by, its title, selects text, and once
+text is selected it drags text. Moving the window by code is not slowed by
+a selection (80 steps, about 1 ms each, whatever is selected), so this is
+the gesture and not the repositioning. Electron's guide gives the remedy for
+the first half:
+[disable text selection in a draggable region](https://www.electronjs.org/docs/latest/tutorial/custom-window-interactions).
+
+Accepted when, in the integrated window, the bar's text cannot be selected,
+a press and a move on the room's or the site's name moves the window, real
+controls still take their clicks, and a selection elsewhere in the page
+changes nothing about dragging by the bar; shown with a real pointer on
+Windows. What the name's tooltip gave, the full name when clipped, needs
+another place there or goes.
+
+The stalls for no reason stay open. The owner is on beta.63, which has the
+timing report, and I have asked for a Web report exported after one.
+
 ## NAT
 
 **From the owner: beta.63 "worked like a charm" across the campus network.**
