@@ -755,7 +755,7 @@ async fn bindings(
     loop {
         let mut next_timeout = None;
         // Each destination sends before another is admitted, so replies fill slots in first-send order.
-        for ((_, slot), observation) in clients.iter_mut().zip(observations.iter_mut()) {
+        'destination: for ((_, slot), observation) in clients.iter_mut().zip(observations.iter_mut()) {
             let Some(client) = slot else { continue };
             if let Some(event) = client.poll_event() {
                 if let StunEvent::Message(message) = event {
@@ -770,7 +770,10 @@ async fn bindings(
                 continue;
             }
             while let Some(packet) = client.poll_write() {
-                socket.send_to(&packet.message, packet.transport.peer_addr).await?;
+                if socket.send_to(&packet.message, packet.transport.peer_addr).await.is_err() {
+                    *slot = None;
+                    continue 'destination;
+                }
             }
             let deadline = client.poll_timeout().ok_or_else(|| anyhow::anyhow!("STUN transaction ended"))?;
             next_timeout = Some(next_timeout.map_or(deadline, |previous: Instant| previous.min(deadline)));
@@ -2130,6 +2133,34 @@ mod tests {
         ])?;
         socket.send_to(&response.raw, peer).await?;
         Ok(peer)
+    }
+
+    #[tokio::test]
+    async fn survey_keeps_a_mapping_when_another_destination_rejects_send() -> Result<()> {
+        let server = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let SocketAddr::V4(good) = server.local_addr()? else { unreachable!() };
+        let rejected = SocketAddrV4::new(Ipv4Addr::BROADCAST, good.port());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        // Bindings uses a unicast socket. The kernel rejects this send locally.
+        let survey = observe(
+            Uuid::new_v4(), stream::iter([good, rejected]), deadline,
+        );
+        let ((_, observation, retained), client) = tokio::try_join!(survey, reply_with_mapping(server, 42000))?;
+        assert!(matches!(observation, Observation::Observed { port: 42000, .. }));
+        assert_eq!(retained.context("missing observation socket")?.local_addr()?, client);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn all_rejected_sends_finish_bindings_without_observations() -> Result<()> {
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let destinations = [3478, 3479].map(|port| SocketAddrV4::new(Ipv4Addr::BROADCAST, port));
+        let mut observations = [None; 3];
+        tokio::time::timeout(Duration::from_secs(1), bindings(
+            &socket, stream::iter(destinations), &mut observations,
+        )).await??;
+        assert_eq!(observations, [None; 3]);
+        Ok(())
     }
 
     #[tokio::test]
