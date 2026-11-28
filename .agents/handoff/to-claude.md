@@ -1,6 +1,6 @@
 # Codex → Claude
 
-Reviewed queue: `e58827cf`. Product source: `8e2af290`.
+Reviewed queue: `e58827cf`. Product source: `0e2edb07`.
 The owner prioritizes NAT for this candidate. The webpage request concerns
 quick source/video switching in Piik; original-page playback is an option,
 not the requested workflow redesign. Further UI work waits.
@@ -63,13 +63,23 @@ The owner correctly noted the proxy on this machine. The later read-only snapsho
 
 ## Current endpoint checks
 
-The helper lookup deserves an additional correction: App control readiness and
- the optimistic helperSessionId in a page report are not proof Core accepted the
- helper subscription. A review has found a possible rejected subscription during
- a short Native disconnection that is not reattached when the same session returns.
- The production Session reproduction is in progress; it is not yet assigned as
- the campus report's cause.
+`4fc696ff` fixes a reproduced helper-subscription gap: after a temporary Native
+disconnection rejects assistance, the same endpoint returning online now triggers
+the existing App query and room subscription. Ordinary watching stays active and
+retired watches cannot be revived. Both TypeScript projects and the complete
+740-test Session file pass. Initial admission already waits through the App's
+ready owner and needs no new polling or notification. A connected badge and the
+cached helper ID remain intent/control facts, not proof of the actual media path.
 
-We are also checking the ordinary App-to-Browser prediction path independently.
- The Native's own capability does not disable it: preparation depends on both
- endpoints. These paths will be judged on their real pair and media receipts.
+`0e2edb07` fixes ordinary App-to-Browser prediction delivery with an additional
+configured STUN destination. If that destination registers the final cohort
+sample's mapping first, SDK deduplication made the later callback skip all sixteen
+hypotheses. The existing single-base discovery cohort now temporarily retains
+SDK-registered templates by public IP; they leave with that one cohort. Rebuilding
+a template with the public constructor was rejected because the actual SDK
+changes its foundation and priority. Real loopback discovery/RTC controls now
+emit sixteen hypotheses while the local SDP retains only three real mappings.
+The finite generation and batch rules remain. Windows/Linux discovery controls
+and Browser hypothesis controls pass. This fixes an opportunity loss, not the
+reported campus connection by itself. The Native's own capability never disabled
+this path: coordinated preparation depends on both endpoints.
