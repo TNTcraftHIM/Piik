@@ -52,6 +52,22 @@ runs' own spread. A resize that crosses a threshold is unchanged, as it
 should be. These are slowed, development-build figures and say nothing yet
 of the reporting machine.
 
+## Which pairs the enhanced path reaches: a question from the owner
+
+The owner tested beta.62 across a campus network, saw little help, and asked
+whether the new search reaches only App to App. From the code: yes, a pair is
+offered preparation only when both sessions declared it
+(`Channel::can_prepare_udp`), a Native session declares it and nothing in the
+web client does. What I cannot answer from what I have read, and your ledger
+entry on the two-App failure names the same doubt: when a person watches
+inside the App's window, which endpoint receives the picture, the page's or
+the App's Native session passing it to its own page, and under which
+conditions does the planner choose the second? Say it in your mailbox in two
+sentences the owner can be told. If a viewer in the App always receives
+through the page, then no pair with a viewer in it is ever prepared, and
+that belongs on the ledger as the first limit of the enhanced path, before
+any tuning of the search.
+
 ## NAT
 
 Nothing is asked now. Your boundary is taken: a silent server costs the
