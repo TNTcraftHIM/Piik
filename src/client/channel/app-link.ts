@@ -785,11 +785,20 @@ export class ChannelApp {
     this.onCaptureControlsChanged(publicationId);
   }
 
-  async setCapturePaused(publicationId: string, paused: boolean): Promise<void> {
-    const captureId = this.captures.get(publicationId)?.id;
+  private async editCapture(publicationId: string, command: AppCommand): Promise<void> {
+    const captureId = this.captureId(publicationId);
     if (!captureId) throw new Error("capture_unavailable");
-    await this.request({ type: "capture_paused", publicationId, captureId, paused });
-    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+    try {
+      await this.request({ ...command, publicationId, captureId });
+    } catch (error) {
+      if (!this.connected || this.captureId(publicationId) === captureId) throw error;
+      throw new DOMException("Capture replaced", "AbortError");
+    }
+    if (this.captureId(publicationId) !== captureId) throw new DOMException("Capture replaced", "AbortError");
+  }
+
+  setCapturePaused(publicationId: string, paused: boolean): Promise<void> {
+    return this.editCapture(publicationId, { type: "capture_paused", paused });
   }
 
   async setCaptureDirectLimit(publicationId: string, limit: number | null): Promise<void> {
@@ -797,21 +806,15 @@ export class ChannelApp {
     await this.request({ type: "capture_direct_limit", publicationId, limit });
   }
 
-  async setCaptureTitle(publicationId: string, title: string | null): Promise<void> {
-    const captureId = this.captures.get(publicationId)?.id;
-    if (!captureId) throw new Error("capture_unavailable");
-    await this.request({ type: "capture_title", publicationId, captureId, title });
-    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture replaced", "AbortError");
+  setCaptureTitle(publicationId: string, title: string | null): Promise<void> {
+    return this.editCapture(publicationId, { type: "capture_title", title });
   }
 
-  async setCaptureQuality(publicationId: string, profile: QualityProfile): Promise<void> {
-    const captureId = this.captures.get(publicationId)?.id;
-    if (!captureId) throw new Error("capture_unavailable");
-    await this.request({ type: "capture_video_settings", publicationId, captureId, settings: {
+  setCaptureQuality(publicationId: string, profile: QualityProfile): Promise<void> {
+    return this.editCapture(publicationId, { type: "capture_video_settings", settings: {
       width: profile.resolution.width, height: profile.resolution.height, fps: profile.maxFramerate, bitrate: profile.maxBitrate,
       degradationPreference: profile.degradationPreference,
     } });
-    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
   async commitCapture(publicationId: string, captureId: string): Promise<void> {
