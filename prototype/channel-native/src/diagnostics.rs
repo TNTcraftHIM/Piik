@@ -82,6 +82,17 @@ pub(crate) enum RetirementReason {
     EventFailed,
     DriverShutdown,
 }
+#[derive(Clone, Copy, Default, Serialize)]
+pub(crate) struct PreparationChecks {
+    pub pool_opened: usize,
+    pub pool_primed: usize,
+    pub search_targets_sent: usize,
+    pub checks_sent: usize,
+    pub authenticated_reply: bool,
+    pub ready_sent: bool,
+    pub ready_received: bool,
+}
+
 #[derive(Clone, Copy, Serialize)]
 #[serde(tag = "stage", rename_all = "snake_case")]
 pub(crate) enum RtcPairEvent {
@@ -101,6 +112,10 @@ pub(crate) enum RtcPairEvent {
     },
     PreparationFinished {
         outcome: PreparationOutcome,
+    },
+    PreparationChecksFinished {
+        #[serde(flatten)]
+        checks: PreparationChecks,
     },
     TransportCreated,
     PairSetupFailed,
@@ -436,6 +451,32 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preparation_checks_summary_serializes_reviewed_fields() {
+        let event = RtcPairEvent::PreparationChecksFinished {
+            checks: PreparationChecks {
+                pool_opened: 64,
+                pool_primed: 13,
+                checks_sent: 13,
+                ready_sent: true,
+                ..PreparationChecks::default()
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            serde_json::json!({
+                "stage": "preparation_checks_finished",
+                "pool_opened": 64,
+                "pool_primed": 13,
+                "search_targets_sent": 0,
+                "checks_sent": 13,
+                "authenticated_reply": false,
+                "ready_sent": true,
+                "ready_received": false,
+            })
+        );
+    }
+
     #[cfg(all(feature = "capture", windows))]
     #[test]
     fn capture_samples_keep_sources_and_stage_counts_separate() {
