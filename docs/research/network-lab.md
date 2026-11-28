@@ -517,7 +517,7 @@ at 15.792 s. Source frames continued advancing. Each fully instrumented arm
 ran once and recovered to source-direct playback. These observations locate
 the delay between offline signaling and flow retirement; they do not identify
 a particular timer or establish a typical recovery time. Both arms lost the
-control connection. Media-only loss with signaling alive remains unmeasured.
+control connection. The following control retains signaling during media loss.
 
 An additional instrumented hard exit measured a 16.119 s frame gap. The source
 and viewer observed RTC `disconnected` at 6.064 and 7.251 s. The first failure
@@ -539,6 +539,36 @@ candidate when the old path recovered, and respected zero forwarding capacity.
 Those controls were simulated. The experiment used a private fixture envelope,
 not a production wire change; Native, subtrees and other network conditions
 remain outside this measurement.
+
+### Media Loss With Signaling Alive
+
+Four isolated Chromium 152 sessions used the beta.66 Server and Web/WASM from
+`9a55f859`. B shared through A to C; a fourth participant stayed in the lobby.
+The fixture first verified presented media on B→A→C. It then dropped either
+that screen's RTP/RTX or all A–C UDP for 40 seconds. B–C was already checking;
+its blocked directions were opened within 16 ms of installing the fault.
+The three participants retained their signaling sockets and completed six
+rounds of ordinary requests.
+
+| One run per fault | B–C connected, sampled upper bound | B–C sending video observed | Room selected B–C | C presented its first direct frame |
+| --- | ---: | ---: | ---: | ---: |
+| Screen RTP/RTX only | 0.156 s | 1.154 s | 6.852 s | 6.897 s |
+| A–C UDP | 0.159 s | 1.156 s | 6.635 s | 6.705 s |
+
+The source kept encoding in both runs. With only screen packets dropped, the
+old ICE connection stayed connected and its data channel completed six echo
+rounds. With UDP blocked, the old pair first reported disconnected at 7.586 s
+and failed at about 17.59 s, after the direct picture was already presented.
+These runs demonstrate a switch before terminal ICE failure when a pending
+alternate becomes usable. They do not isolate a stalled-picture detector.
+
+The Viewer compares candidates every two seconds and requires three passing
+quality windows plus presentation readiness. The traces place most of the
+wait between candidate transmission and route selection, but do not record
+candidate reception, decoding or every readiness report. They cannot assign
+all of that wait to one stage. Host candidates, explicit private routes and
+disabled mDNS hiding isolate this control from public NAT and proxy behavior.
+The times describe these samples, not a recovery bound.
 
 ### File forwarding during a room call
 

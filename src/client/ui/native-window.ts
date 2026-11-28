@@ -15,8 +15,8 @@ declare global {
 export const nativeBookmarkWindow = window.piikNativeWindow === "system"
   && location.pathname === "/client" && new URLSearchParams(location.search).has("bookmarks");
 
-// The Windows host supplies this capability. Content only describes appearance
-// and the slot reserved for the separately trusted window controls.
+// The Windows host supplies these capabilities. Content requests bar gestures
+// and describes appearance and the slot for the separately trusted caption controls.
 
 /** What a press on a window's bar means: the first one moves the window, the second maximizes. */
 export function barGesture(event: MouseEvent, bar: string, controls: string): "drag" | "maximize" | null {
