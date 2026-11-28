@@ -152,8 +152,11 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   useLayoutEffect(() => {
     const previous = lastArrival.current;
     const ready = !hidden && !loadingHistory && history?.atLatest === true;
-    lastArrival.current = { scope: conversationScope, seq: messages.at(-1)?.seq ?? 0, ready };
-    if (!ready || !previous?.ready || previous.scope !== conversationScope || !reading.current.following || !log.current) return;
+    const latest = messages.at(-1)?.seq ?? 0;
+    lastArrival.current = { scope: conversationScope, seq: latest, ready };
+    // Reading a computed style here forces a style pass right after React's writes, so only an arrival pays for it.
+    if (!ready || !previous?.ready || previous.scope !== conversationScope || latest <= previous.seq
+      || !reading.current.following || !log.current) return;
     const duration = motionDuration(log.current, "surface");
     if (!duration) return;
     for (const row of log.current.querySelectorAll<HTMLElement>("[data-message-seq]")) {
