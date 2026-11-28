@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { stubTransferStorage } from "./fixtures/transfer-storage";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelAttachments } from "../src/client/channel/attachments";
@@ -1121,9 +1122,11 @@ test.each(["cancel", "revoke"])("a retired download cannot retain its OPFS file 
 
 test("small and animated images retain their original file and send a separate thumbnail", async () => {
   const files = setup();
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 2048, maxAttachmentsPerMessage: 8, maxRetainedBytes: 4096, maxRetainedFiles: 8, maxInlineImageBytes: 1024, maxInlineImageEdge: 1280 }),
-    attachment_media_type: (bytes: Uint8Array) => bytes[0] === 71 ? "image/gif" : "image/png",
+    attachment_media_type: core.attachment_media_type,
     AttachmentHash: class { update() {} finish() { return "a".repeat(64); } },
   } as never);
   const decode = vi.fn(async () => {});
@@ -1132,14 +1135,35 @@ test("small and animated images retain their original file and send a separate t
   vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({ drawImage() {} }),
     toBlob: (callback: BlobCallback) => callback(thumbnail) }) });
   try {
-    const selected = [new File(["GIF89a"], "tiny.gif"), new File(["PNG", new Uint8Array(1024)], "large.png")]
+    const selected = [
+      new File([Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64")], "tiny.gif"),
+      new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64")],
+        "mislabelled.png", { type: "image/jpeg" }),
+    ]
       .map(file => ({ file, id: crypto.randomUUID() }));
     const prepared = await files.describe(selected);
+    expect(prepared.map(entry => entry.attachment.mediaType)).toEqual(["image/gif", "image/png"]);
     for (const [i, image] of prepared.entries()) {
       expect(image.file).toBe(selected[i].file);
       expect(image.attachment.size).toBe(selected[i].file.size);
       expect(image.inlineImage).toEqual({ original: false, mediaType: "image/webp", width: 1280, height: 640, data: btoa(await thumbnail.text()) });
     }
+    const generic = new File(["document"], "scan.bin", { type: "image/x-piik-test" });
+    const [described] = await files.describe([{ id: crypto.randomUUID(), file: generic }]);
+    expect(described.attachment.mediaType).toBe(generic.type);
+    expect(described.inlineImage).toBeUndefined();
+    expect(described.file).toBe(generic);
+    files.confirmed(key.roomId, { ...message, attachments: [described.attachment] }, [described]);
+    const save = vi.spyOn(downloads, "downloadBlob").mockImplementation(() => {});
+    await files.download({ ...key, attachmentId: described.id }, described.attachment);
+    expect(save.mock.calls[0].slice(0, 2)).toEqual([generic, generic.name]);
+    const fallback = await files.describe([
+      { id: crypto.randomUUID(), file: new File(["document"], "untagged.bin") },
+      { id: crypto.randomUUID(), file: new File(["document"], "mislabelled.gif", { type: "image/gif" }) },
+      { id: crypto.randomUUID(), file: new File(["abc"], "note.txt", { type: "text/plain; charset=utf-8" }) },
+    ]);
+    expect(fallback.map(entry => entry.attachment.mediaType)).toEqual(["application/octet-stream", "application/octet-stream", "text/plain"]);
+    expect(fallback.every(entry => !entry.inlineImage)).toBe(true);
     decode.mockRejectedValue(new Error("invalid_image"));
     expect((await files.describe(selected)).every(entry => entry.inlineImage === undefined)).toBe(true);
   } finally { files.reset(); vi.unstubAllGlobals(); }

@@ -569,7 +569,7 @@ window.runBrowserRoomCheck = async () => {
         check(grantedAgain.projection.views[guestSession], "resetting an invitation preserves an existing user's grant");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
-    const file: SentResult["message"]["attachments"][number] = { id: crypto.randomUUID(), name: "file.bin", size: 3, mediaType: "application/octet-stream",
+    const file: SentResult["message"]["attachments"][number] = { id: crypto.randomUUID(), name: "file.bin", size: 3, mediaType: "image/x-piik-test",
       sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" };
     const [first, second] = await Promise.all([send("Original", "first", [file]), send("Second", "second")]);
     check(first.inserted && first.message.seq === 1 && second.message.seq === 2, "serialized room order");
@@ -724,6 +724,11 @@ window.runBrowserRoomCheck = async () => {
     const receiptView = JSON.stringify({ channel: { rooms: [{ id: host.roomId, authorized: true, available: true,
       delivery: { hostSessionId: session, bindingId } }] }, sessions: [{ id: session, signingKey }] });
     const verifiedReply = (reply: object) => JSON.parse(verify_conversation(signer.sign(session, JSON.stringify(reply)), peerSession, receiptView));
+    const earlier = (await host.dispatchPeer(peerPacket({ type: "history", before: 3 }), Date.now())).replies;
+    const mixedPage = verifiedReply(earlier[0]).record;
+    check(mixedPage.type === "history_page" && mixedPage.messages.length === 2
+      && mixedPage.messages[0].attachments[0]?.mediaType === file.mediaType && mixedPage.messages[1].text === "Second",
+      "signed history preserves the unfamiliar original type and its neighboring message");
     check(JSON.stringify(verifiedReply(confirmation)) === JSON.stringify({ role: "record", ...confirmation }), "Rust verifies typed reply");
     try { await host.dispatchPeer({ ...packet, payload: packet.payload + " " }, Date.now()); throw new Error("tampered signature accepted"); }
     catch (error) { check(String(error).includes("invalid_conversation_signature"), "tampered request rejected before storage"); }

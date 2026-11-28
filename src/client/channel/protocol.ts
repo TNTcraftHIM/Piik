@@ -67,9 +67,15 @@ export const publicationSchema = z.discriminatedUnion("kind", [
   publicationBaseSchema.extend({ kind: z.literal("screen"), predecessor: viewSourceSchema.optional(), directLimit: z.number().int().min(1).max(MAX_RELAY_CAPACITY).optional(), videoSettings: videoSettingsSchema.optional(), source: screenSourceSchema, title: identityNameSchema.nullable() }),
   publicationBaseSchema.extend({ kind: z.literal("voice"), directLimit: z.never().optional(), videoSettings: z.never().optional(), source: z.never().optional(), title: z.never().optional(), audience: z.array(z.never()).max(0) }),
 ]);
+// RFC 6838 section 4.2 type/subtype names. Inline renditions have their own decoder contract.
+export const attachmentMediaTypeSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9!#$&^_.+\-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+\-]{0,126}$/);
+const rasterMediaTypeSchema = z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+export function canPreviewImage(mediaType: string): boolean {
+  return rasterMediaTypeSchema.options.some(type => type === mediaType.toLowerCase());
+}
 export const attachmentSchema = z.object({
   id, name: z.string().min(1).max(240), size: z.number().int().nonnegative().safe(),
-  mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/octet-stream"]),
+  mediaType: attachmentMediaTypeSchema,
   sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
 });
 export const fileKeySchema = z.object({ roomId: id, messageSeq: z.number().int().positive(), attachmentId: id });
@@ -79,7 +85,7 @@ export const filePlanSchema = z.object({
 });
 export const MAX_MESSAGE_CODE_POINTS = 2000;
 const mentionSchema = z.object({ userId: id, start: z.number().int().nonnegative(), end: z.number().int().positive() });
-export const inlineImageSchema = z.object({ data: z.string(), mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+export const inlineImageSchema = z.object({ data: z.string(), mediaType: rasterMediaTypeSchema,
   original: z.boolean(), width: z.number().int().positive(), height: z.number().int().positive() });
 export type ImageRendition = z.infer<typeof inlineImageSchema>;
 export const messageSchema = z.object({

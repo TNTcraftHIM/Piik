@@ -28,6 +28,16 @@ const decode = (decoder: ChannelEventDecoder, event: unknown) => {
   return decoder.decode(JSON.parse(text), new TextEncoder().encode(text).byteLength);
 };
 
+it("retains an unfamiliar original type in a file plan and rejects malformed names", () => {
+  const attachment = { id: crypto.randomUUID(), name: "sample.bin", size: 3, mediaType: "image/x-piik-test", sha256: "a".repeat(64) };
+  const files = [{ roomId: "room", messageSeq: 1, attachment, authorId: crypto.randomUUID(),
+    sourceId: null, upstream: null, downstream: [], receiving: false }];
+  const event = { type: "state", state: { ...snapshot(), files } };
+  expect(decode(new ChannelEventDecoder(), event)).toMatchObject({ state: { files } });
+  attachment.mediaType = "image/";
+  expect(() => decode(new ChannelEventDecoder(), event)).toThrow();
+});
+
 it("decodes a wire specimen for every declared Domain event kind", async () => {
   const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });

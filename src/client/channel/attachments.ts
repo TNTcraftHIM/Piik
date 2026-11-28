@@ -3,7 +3,7 @@ import { downloadBlob, type DownloadOutcome, type DownloadProgress } from "../li
 import { FileStore, sameContent, type FileScope, type FileRetentionLimits, type RetainedFile, type SavedReceipt } from "./file-store";
 import { loadRoomHosting } from "./hosting";
 import type { AttachmentHash, FileDelivery } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
-import { attachmentSchema, fileKeyString, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair, type ImageRendition } from "./protocol";
+import { attachmentMediaTypeSchema, attachmentSchema, canPreviewImage, fileKeyString, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair, type ImageRendition } from "./protocol";
 import { VisibleFileAvailability } from "./file-availability";
 import { inlineImageFile, prepareInlineImage } from "./image-preview";
 import { openTransferStorage, type TransferStorage } from "./transfer-storage";
@@ -501,9 +501,14 @@ export class ChannelAttachments {
     let inlineBytes = 0;
     const totalBytes = files.reduce((total, entry) => total + entry.file.size, 0);
     let hashedBytes = 0, reportedPercent = 0;
-    const mediaTypes = await Promise.all(files.map(async entry => module.attachment_media_type(new Uint8Array(await entry.file.slice(0, 12).arrayBuffer()))));
+    const mediaTypes = await Promise.all(files.map(async ({ file }) => {
+      const detected = module.attachment_media_type(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
+      if (canPreviewImage(detected)) return detected;
+      const declared = attachmentMediaTypeSchema.safeParse(file.type.split(";", 1)[0].trim());
+      return declared.success && !canPreviewImage(declared.data) ? declared.data : "application/octet-stream";
+    }));
     preparation.throwIfAborted();
-    let remainingImages = mediaTypes.filter(type => type.startsWith("image/")).length;
+    let remainingImages = mediaTypes.filter(canPreviewImage).length;
     for (const [index, entry] of files.entries()) {
       let hash: AttachmentHash | null = new module.AttachmentHash();
       try {
@@ -526,7 +531,7 @@ export class ChannelAttachments {
         const mediaType = mediaTypes[index];
         preparation.throwIfAborted();
         let inlineImage: ImageRendition | undefined;
-        if (mediaType.startsWith("image/")) {
+        if (canPreviewImage(mediaType)) {
           const budget = Math.floor((limits.maxInlineImageBytes - inlineBytes) / remainingImages--);
           inlineImage = await prepareInlineImage(entry.file, mediaType, budget, limits.maxInlineImageEdge, preparation);
           preparation.throwIfAborted();

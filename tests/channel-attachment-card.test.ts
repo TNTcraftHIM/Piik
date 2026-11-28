@@ -5,7 +5,7 @@ import { ChannelAttachment } from "../src/client/channel/components/ChannelAttac
 import type { ChannelAttachments } from "../src/client/channel/attachments";
 import { t } from "../src/client/ui/copy";
 
-function renderCard(availability: boolean | undefined, busy = false, error: string | null = null) {
+function renderCard(availability: boolean | undefined, busy = false, error: string | null = null, mediaType = "image/png") {
   const client = {
     subscribe: () => () => {},
     status: () => ({ busy, error }),
@@ -17,11 +17,18 @@ function renderCard(availability: boolean | undefined, busy = false, error: stri
     client: client as unknown as ChannelAttachments,
     roomId: "room",
     messageSeq: 10,
-    file: { id: "image", name: "room.png", mediaType: "image/png", size: 1024, sha256: "0".repeat(64) },
+    file: { id: "image", name: "room.png", mediaType, size: 1024, sha256: "0".repeat(64) },
   }));
 }
 
 describe("attachment original availability", () => {
+  it("offers the ordinary download for an unfamiliar image subtype", () => {
+    const markup = renderCard(true, false, null, "image/x-piik-test");
+    expect(markup.match(/<button\b/g)).toHaveLength(1);
+    expect(markup).toContain(t("zh", "channel.attachment.download"));
+    expect(markup).not.toContain('disabled=""');
+  });
+
   it("disables both original actions when a visible file has no holder", () => {
     const markup = renderCard(false);
     expect(markup.match(/<button\b[^>]* disabled=""/g)).toHaveLength(2);
