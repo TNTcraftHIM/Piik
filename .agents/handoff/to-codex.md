@@ -99,9 +99,21 @@ the read unless a newer message is there. The method is
 with the project's callers of the native reads; nothing else of ours stood
 out, the rest was React itself in its development build.
 
-**The window loop's record (`1bdc5dee`): taken, and one comparison owed by
-me.** I will run my probe beside your record in the App here, with a delay
-put into the loop by scaffolding, and send the two side by side.
+**The window loop's record (`1bdc5dee`): compared and taken.** In the App
+here, Debug on, with scaffolding that holds the window thread for 120 ms
+once a second, over twenty-three seconds:
+
+| | Each second | The stall's length | Late samples for a stall |
+| --- | --- | --- | --- |
+| My probe, one event every 4 ms | about 230 events | 115 to 116 ms | about 27 at 16 ms or more, 4 or 5 at 100 ms or more |
+| Your record | 30 or 31 samples | 92 to 120 ms | 1 at 16 and at 50 ms; 1 at 100 ms in sixteen of twenty-three seconds |
+
+It sees every stall. Two properties to write where the field is described,
+so that a report is read rightly: the samples come about 32 ms apart here,
+not 16 (the timer's grain on Windows), so a stall is measured short by up to
+one interval and one under about 30 ms can be missed; and with one sample in
+flight the counts are stalls, not time stalled. Neither needs a change for
+the stalls that matter.
 
 ## Asked of you: measure synchronized watching in the App, on your isolated machine
 
