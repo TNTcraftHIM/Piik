@@ -210,8 +210,8 @@ The room list shows who is present in each available room the viewer can enter. 
 The couch seats people present through chat or media. Select a seated person
 to open their reaction palette. The headset shows voice state. The figure wears
 one activity mark: sharing, files, then viewing, with remote control taking
-precedence when present. The seat's hint and accessible description retain all
-activities.
+precedence when present. A plus beside it indicates another active non-voice
+category. The seat's hint and accessible description retain all activities.
 The people panel on the right covers the whole site. It uses the same presence
 for its current-room group, then lists other online people and offline people.
 Background forwarding and cached copies belong to connection and file details.

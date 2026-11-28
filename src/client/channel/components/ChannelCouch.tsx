@@ -86,11 +86,13 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const badges = personActivityBadges(activity, copy);
     const primary = badges[0];
     const labels = badges.map(badge => badge.label);
+    if (person.collaboration) labels.unshift(t("remote.participant.control"));
     if (voice) labels.unshift(personVoiceLabel(voice, copy));
     const details = labels.length ? joinSentences(copy.lang, labels) : undefined;
     const inner = <>
       <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
-        avatar={person.avatar} voice={voice} collaboration={person.collaboration} activity={primary?.status ?? primary?.icon} />
+        avatar={person.avatar} voice={voice} collaboration={person.collaboration} activity={primary?.status ?? primary?.icon}
+        additionalActivity={badges.length > (person.collaboration ? 0 : 1)} />
       <span className="lr-pawn-name">{name}</span>
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;

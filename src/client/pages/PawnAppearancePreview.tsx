@@ -9,6 +9,7 @@ import "./pawn-appearance-preview.css";
 const SAMPLES: { label: [string, string]; state: PawnState }[] = [
   { label: ["未参与控制", "Not controlling"], state: {} },
   { label: ["协作中", "Collaborating"], state: { collaboration: true } },
+  { label: ["分享与观看", "Sharing and watching"], state: { activity: "cast", additionalActivity: true } },
   { label: ["仅语音", "Voice only"], state: { voice: { microphone: true } } },
   { label: ["语音与协作", "Voice and control"], state: { voice: { microphone: true }, collaboration: true } },
   { label: ["闭麦，协作中", "Muted, collaborating"], state: { voice: { microphone: false }, collaboration: true } },

@@ -87,12 +87,12 @@ test.each([
 });
 
 test.each([
-  { collaboration: false, sharing: true, sendingFiles: true, emblem: "cast", size: 14 },
-  { collaboration: false, sharing: false, sendingFiles: true, emblem: "fileTransfer", size: 14 },
-  { collaboration: false, sharing: false, sendingFiles: false, emblem: "loader", size: 14 },
-  { collaboration: true, sharing: true, sendingFiles: true, emblem: "mouse", size: 15 },
+  { collaboration: false, sharing: true, sendingFiles: true, emblem: "cast", size: 14, additional: true },
+  { collaboration: false, sharing: false, sendingFiles: true, emblem: "fileTransfer", size: 14, additional: true },
+  { collaboration: false, sharing: false, sendingFiles: false, emblem: "loader", size: 14, additional: false },
+  { collaboration: true, sharing: true, sendingFiles: true, emblem: "mouse", size: 15, additional: true },
 ] as const)("compact couch wears $emblem while describing every activity from one control", ({
-  collaboration, sharing, sendingFiles, emblem, size,
+  collaboration, sharing, sendingFiles, emblem, size, additional,
 }) => {
   setCopy({ lang: "en" });
   const html = renderToStaticMarkup(createElement(ChannelCouch, {
@@ -106,9 +106,11 @@ test.each([
   expect(html).toContain('aria-label="A friend"');
   expect(html).toContain("--voice-level:");
   const description = ["Joined voice", "Microphone on", "Listening paused",
+    ...(collaboration ? ["Participating in remote control"] : []),
     ...(sharing ? ["Sharing"] : []), ...(sendingFiles ? ["Sending and receiving files"] : []), "Connecting picture"];
   expect(html).toContain(`aria-description="${description.join("; ")}"`);
   expect(html).not.toContain("c3-couch-activity");
   expect(html).toContain('data-emblem=""');
   expect(html.match(/class="lr-person-emblem".*?(<svg\b.*?<\/svg>)/s)?.[1]).toBe(glyph(emblem, size));
+  expect(html.includes(glyph("plus", 10))).toBe(additional);
 });
