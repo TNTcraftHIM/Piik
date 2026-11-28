@@ -79,14 +79,68 @@ handled a periodic posted event, as counts above a few thresholds and the
 worst for each second, with nothing recorded when Debug is off; so that the
 next report from a user's machine shows a stalled window thread by itself.
 
-**Still to measure with the same probe, from four local reads** (reports
-beside my probes; candidates, not findings): a mounted watch page is
-reparented to its own window when a popover opens over its slot and back
-when it closes; each response of a watched page is read on the window thread
-with synchronous header reads, and forwarding reads cookies for each origin
-request there; a room render on every `patch`, including the empty ones
-(`useChannel` subscribes to the whole view). I am taking synchronized
-watching next, its layout and operation logic with it, as the owner asked.
+## Asked of you: measure synchronized watching in the App, on your isolated machine
+
+The owner decided this one: the App's Native session opens UDP on the
+machine's interfaces once a pair exists, and this machine must not do that,
+so the live measurement is yours and the reading and the fixes stay mine.
+Four local reads name three suspects in synchronized watching, none of them
+measured (candidates, not findings):
+
+1. A mounted watch page is moved to its own window when a popover opens over
+   its slot and moved back when it closes (`use-watch-page-slot.ts`,
+   `page.rs` near 173 and 186).
+2. Each response of a watched page is read on the window thread with
+   synchronous header reads, and a forwarded source reads cookies there for
+   each origin request (`page_media.rs`, `page.rs` near 609 and 655).
+3. The whole room renders on every `patch`, the empty ones included
+   (`useChannel` subscribes to the whole view; one render of the room is 17
+   to 25 ms on a fast desktop).
+
+**Instrument.** The lateness of the window loop. Until the opt-in record
+above exists, this is all the scaffolding is, in `app_windows.rs`, never
+committed:
+
+```rust
+// in ServiceEvent:        Probe(std::time::Instant),
+// before events.run_return, when PIIK_PROBE_UI_LATENCY is set:
+let probe = events.create_proxy();
+std::thread::spawn(move || loop {
+    std::thread::sleep(std::time::Duration::from_millis(4));
+    if probe.send_event(ServiceEvent::Probe(std::time::Instant::now())).is_err() { break; }
+});
+// first thing in the loop's closure:
+if let Event::UserEvent(ServiceEvent::Probe(sent)) = &event {
+    let late = sent.elapsed().as_millis();
+    if late >= 6 { eprintln!("PROBE {late}"); }
+    return;
+}
+```
+
+A stall of n ms leaves about n/4 late events in a row and the worst one is
+its length. Beside it, the page's own long animation frames from the report
+you built.
+
+**Scene.** A site and two members on your isolated machine, the sharer in
+the App. The watched page is one that changes its document all the time, as
+video sites do: a `<video>` with a two-minute file and a script that appends
+and removes a line twenty times a second. The video is mounted in the room.
+
+**Phases, ten seconds or five repetitions each:**
+
+| Phase | What it tests |
+| --- | --- |
+| Watching, nobody touches anything, with `a2985b39` and with it undone | the candidate reports, before and after |
+| A popover opened and closed over the mounted page, five times | suspect 1; say also whether the picture blinks or pauses |
+| The same with the page not mounted (its own window) | the control for suspect 1 |
+| Steady playback from the site directly, and forwarded through the App | suspect 2 |
+| Maximize and restore with the page mounted, three times | resize with a mounted WebView |
+| A count of `patch` calls for each second while watching, by caller, and how many carry nothing | suspect 3 |
+
+**Accepted when** your mailbox has, for each phase, the number of late
+events, the worst lateness and the page's long frames, as a table, with the
+build named. I read it and fix what it shows; if a phase shows nothing, that
+suspect is closed.
 
 ## NAT
 
