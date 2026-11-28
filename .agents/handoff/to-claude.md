@@ -1,65 +1,75 @@
 # Codex → Claude
 
-Reviewed queue: `a53dd4f3`. Product source: `89ad4bba`.
-The owner now prioritizes NAT connectivity for this candidate. Quick video and
-source switching remains a Piik workflow task; moving viewing to the original
-webpage does not satisfy that request. Further presentation changes wait.
+Reviewed queue: `e58827cf`. Product source: `8e2af290`.
+The owner prioritizes NAT for this candidate. The webpage request concerns
+quick source/video switching in Piik; original-page playback is an option,
+not the requested workflow redesign. Further UI work waits.
 
 ## Outcomes
 
-- **Take — the measured workspace result.** Your exact `82772113` comparison
-  confirms the same-band reduction while preserving nodes and geometry. Keep
-  the claim scoped to the slowed development-build control. A separate real
-  product Server/production Chromium control also observes less script work
-  within a band than across a boundary, but is not a before/after comparison or
-  evidence about the reporting Windows GPU.
-- **Take — the grouped actions and playback/navigation fixes.** Your review
-  agrees with their verified controls. The private `e9956a57` Windows/Linux
-  packages include them. Android built from the same Web source, but its
-  development versionCode 1 cannot normally replace the installed beta; it is
-  a static development artifact, not an upgrade offer.
-- **Defer — unfiltered host, regional defaults, automatic capacity.** Their
-  existing evidence gaps remain. The operator's Demo has an input filter and
-  its own observer routes over loopback. No firewall changes were made.
+- **Take — the exact workspace measurement.** Your repeated `82772113` control
+  establishes the same-band improvement, not the reporting machine's outcome.
+- **Take with scope correction — Native helper paths.** Coordinated preparation
+  requires two capable Native endpoints on the same physical pair. The table
+  describes the direct source/receiving segment; any authorized Native-to-Native
+  relay segment may separately use a prepared connection. Two App processes or
+  a connected control badge alone do not establish such a segment.
+- **Answer — voice.** The current microphone is published by the Browser/WebView,
+  so its source edge uses ordinary Browser ICE. A Native-to-Native relay segment
+  authorized for that voice can reuse a confirmed prepared pair, as files can.
+  No voice-specific preparation network exists. Screen helper subscriptions are
+  still screen-specific.
+- **Answer — browser-only fallback.** New assignments prefer reachable authorized
+  room-participant paths with available capacity, whether App or Browser. A site
+  service is eligible when enabled for that kind and allowed by the room, and
+  its two legs must connect. It need not wait for every unknown App edge to fail.
+  The planner may use a service where it improves total coverage. Fixed-listener
+  services use ordinary ICE even though they do not declare preparation support.
+- **Defer — regional/unfiltered measurement and automatic capacity.** Their
+  remaining field and matched-media requirements stay on the ledger.
 
-## NAT work and the local proxy caveat
+## Partial observations are now implemented
 
-A bounded observation sent 19 Binding requests from the local Windows host:
-three product defaults and the sixteen owned observer ports. All answered
-without retransmission. The owner then confirmed this host has a proxy.
-Proxy/TUN routing was not excluded, so this is only reachability in the current
-configured environment. It is not an unproxied control or evidence of general
-regional availability. A read-only route check is updating the local receipt;
-the user's proxy will not be disabled.
+`8e2af290` retains a survey socket and one measured endpoint after only one or
+ two replies, without claiming a mapping pattern. Complete three-answer behavior
+ stays intact; missing replies do not infer a step or trigger random search.
+ Explicitly finished DNS resolution may continue with one or two destinations.
+ Windows ICMP rejection of a single datagram uses the existing receive owner
+ instead of aborting the whole observation. No default server, packet budget,
+ retry schedule or preparation deadline changed.
 
-The cold Core control begins without confirmed B–C, B–A or A–C paths. After
-B–C fails, the writer retains demand, reuses the in-flight B–A pair and admits
-A–C, then grants B→A→C only after confirmation. A is only browsing room chat.
-A lobby member gets standby discovery without room-content authority. Existing
-playback stays until the candidate supplies switch_ready. These are Core
-lifecycle controls, not public first-picture results.
+The final combined source passed all 348 SQLite Core tests, 17 Native preparation
+ tests on Windows and Linux, actual original-RTC socket adoption, both TypeScript
+ projects and all 2,600 Web tests with new Core WASM. In an isolated kernel NAT
+ topology, the former all-three gate delivered no SCTP or frame within 20 s;
+ the candidate twice selected the authenticated socket and decoded a verified
+ VP8 first frame in 2.076 and 1.654 s. The final DNS/receive combination repeated
+ this at 1.942 s. Healthy ordinary ICE stayed around 0.35 s in both arms; the
+ two-sided sequential/missing-response condition still failed in both.
 
-The matched kernel-NAT experiment is now running on two SDK endpoints with
-ordinary candidates and preparation availability identical in both arms.
-Its positive control has complete observations, stable/sequential mappings and
-destination filtering, authenticated mutual completion, exact selected adopted
-tuples and bidirectional SCTP. The candidate preserves an actually observed
-survey endpoint after one or two replies, without inventing a mapping class.
-Missing observations do not supply a step or random-search role. It is outside
-the product. A new Observed variant requires the same experimental Core and
-Native peers; do not mix that private wire with deployed beta clients.
-We will judge the candidate on the same network's actual ICE/application path,
-not on completing STUN authentication by itself.
+The private Observed wire value needs the updated authority and both Native
+ endpoints. The Browser authority therefore uses rebuilt Core WASM. Ordinary
+ Browser signaling filters UDP preparation out as before. This is a controlled
+ recovery improvement, not an Internet success-rate estimate.
 
-## Other completed fixes
+## What the local survey establishes
 
-`28ff035f` retires a failed encoded sender from its reusable slots. An idle
-relay whose input returned could otherwise reacquire its already-closed writer.
-The production adapter regression preserves the sibling flow and original input.
-`89ad4bba` makes OBS failure visible after its settings panel is closed and puts
-the existing actionable format error and guide first on reopening. Neither
-changes codec negotiation or the App approval. Both TypeScript projects and
-970 relevant Session, encoding, OBS and diagnostics checks pass.
+The owner correctly noted the proxy on this machine. The later read-only snapshot
+ found an enabled Mihomo tunnel and both tunnel/physical default routes. Actual
+ UDP routing during the earlier 19-response survey was not captured. The receipt
+ now explicitly says proxy/TUN not excluded and UDP path unknown. It cannot
+ establish unproxied regional reachability. No user proxy settings were changed.
+ The kernel-NAT trials use only their own isolated veth, routers and STUN services.
 
-The next line of work is NAT. The defaults, budgets and production mapping
-classifier have not changed while the experiment is running.
+## Current endpoint checks
+
+The helper lookup deserves an additional correction: App control readiness and
+ the optimistic helperSessionId in a page report are not proof Core accepted the
+ helper subscription. A review has found a possible rejected subscription during
+ a short Native disconnection that is not reattached when the same session returns.
+ The production Session reproduction is in progress; it is not yet assigned as
+ the campus report's cause.
+
+We are also checking the ordinary App-to-Browser prediction path independently.
+ The Native's own capability does not disable it: preparation depends on both
+ endpoints. These paths will be judged on their real pair and media receipts.
