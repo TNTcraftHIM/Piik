@@ -229,6 +229,13 @@ operation safely and bound the work. See the
 Share a rule in the core when its meaning and lifetime match across runtimes
 and sharing reduces total ownership cost.
 
+A path that may decline and leave the ordinary one to carry on, such as an
+enhancement, a helper or a fallback, fails with nobody waiting for it. It
+records for each attempt whether it ran and, when it did not, the step that
+ended it, where a report and a control can read it, and a reference control
+fails when it does not run where it should. What can stop running unseen
+will ([RFC 9170, sections 2.2 and 4.4](https://www.rfc-editor.org/rfc/rfc9170.html#section-2.2)).
+
 A single correction at the owner can resolve several symptoms with the same
 cause. Explain what the existing path misses and how the change was verified.
 Record a question in [TODO](../todo.md) when it matters to future work, with

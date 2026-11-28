@@ -140,9 +140,13 @@ the reasons and the sources. The rule:
   written for an older peer.
 
 A new required field changes something that exists. So does a new value in a
-set its readers treat as closed. A set that is meant to grow says from the
-first release what a reader does with a value it does not know, as capture
-descriptions do by skipping it.
+set its owner has closed, and a set is closed only where its owner says so
+and why. Every other set is open, at every depth: a value its reader does not
+know makes the smallest enclosing thing that may be absent absent. An item of
+a list is skipped, as capture descriptions skip a kind they do not know. An
+optional member, or an addition an operation works without, counts as not
+offered. Where nothing smaller may be absent, the message's role decides as
+for an unknown kind.
 
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
@@ -163,6 +167,12 @@ replies and notifications, and a peer with a higher second number. A shared
 decoder needs one boundary test. A tolerant current reader does not change a
 released reader's contract: verify the released readers and the new producers
 in both directions before calling a change additive.
+
+The exercise is generated from sample messages and not from a list of places,
+so that a set added later cannot escape it. Each reader reads every sample
+with each choice replaced by a value it cannot know and each object given a
+member it cannot know, and the outcome is the one this section names. A wire
+type without a sample fails the exercise.
 
 Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
 offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt

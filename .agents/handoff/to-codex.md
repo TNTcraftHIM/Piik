@@ -54,30 +54,65 @@ runs' own spread. A resize that crosses a threshold is unchanged, as it
 should be. These are slowed, development-build figures and say nothing yet
 of the reporting machine.
 
-## The preparation's kinds are a closed set that grows
+## What can stop unseen will: one rule, a default and an exercise
 
 The owner asked why the private wire changed again when the foundation was
-said to be settled. Before a release it may change, and I said so. But the
-question finds a gap that the rule itself names. `UdpObservation` and
-`UdpSignal` (`wire.rs`) are tagged enums with no arm for a tag they do not
-know, so a reader that meets a new observation kind fails to parse the
-signal. That set grew in `8e2af290`, my two-answer plan touches its meaning,
-and a window per address would grow it again. The
-[rule](../../docs/standards/versioning.md#extending-interfaces) says a set
-meant to grow states from the first release what a reader does with a value
-it does not know. I took `8e2af290` without holding it to that.
+said to be settled, and then asked for the cause under it and a remedy that
+is general. Two things this week have one cause.
 
-The answer is already on the wire. A preparation is an addition to a pair
-that connects without it, and `Unavailable` exists to decline one. Accepted
-when, before the first release, a preparation signal or an observation kind
-that a reader does not know ends that pair's preparation as unavailable,
-the Domain included where it checks an observation's address, and ordinary
-discovery goes on; with a control in which an endpoint of today's build
-meets a kind added after it. Then a later way of observing reaches the
-peers that know it and costs the others nothing.
+- `UdpObservation` and `UdpSignal` (`wire.rs`) are tagged enums with no arm
+  for a tag they do not know. The set grew in `8e2af290` and its older
+  readers fail the whole signal. ADR-0017 already said extensions must be
+  exercised; the exercise was a list of places, and a set nested inside a
+  signal was not on it. I took `8e2af290` without holding it to the rule.
+- The enhanced path declines and lets ordinary discovery carry on. Six
+  defects that kept it from running were found only after the owner said it
+  helped little: the serial observation, the handoff, the all-three gate,
+  the helper not asked again, the hypotheses skipped, and no record of
+  where an attempt ended.
 
-I am listing the other closed sets on the wires with a local read and will
-bring the ones that are meant to grow.
+Both are things allowed to not happen, with nobody waiting for them, and
+neither was used or watched. [RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)
+is about exactly this: mechanisms that are not used are the ones that fail,
+and the visibility of errors decides whether exercising them works.
+
+On my line the standards now say it, for you to correct:
+
+- [Versioning](../../docs/standards/versioning.md#extending-interfaces):
+  every set is open unless its owner closes it and says why; a value its
+  reader does not know makes the smallest enclosing thing that may be absent
+  absent, a list's item, an optional member, an addition an operation works
+  without, and otherwise the message by its role; and the exercise is
+  generated from sample messages, every choice replaced and every object
+  given a member, at every reader, a wire type without a sample failing.
+- [Engineering](../../docs/standards/engineering.md#failure-boundaries): a
+  path that may decline records for each attempt whether it ran and what
+  ended it, and a reference control fails when it does not run where it
+  should.
+
+Asked of you, as the build of that rule and in your own order:
+
+1. **The default.** One way to declare a choice on a wire, in the core and
+   in the web client, that carries its unknown arm, so that an open set is
+   what a new type gets without anyone remembering. A closed set is a
+   marked exception with its reason.
+2. **The exercise.** The generated run above in the ordinary suite. Accepted
+   when adding a closed enum to a wire type turns it red the same day, and
+   when the preparation's signal read by today's build with a kind added
+   after it ends as unavailable while ordinary discovery goes on.
+3. **The paths that may decline.** A list of them with, for each, where an
+   attempt's outcome is recorded and which control fails when it does not
+   run: the preparation, the one-sided hypotheses, the viewer's helper, a
+   relay through a participant or a service, and the ones I do not know.
+4. **Your judgement on one thing I did not write into the standard:**
+   whether private builds should also send a value nobody knows wherever the
+   rule lets it be ignored, as QUIC does with reserved versions
+   ([RFC 9000, section 6.3](https://www.rfc-editor.org/rfc/rfc9000.html#section-6.3)),
+   so that builds of different ages use the rule daily. RFC 9170 calls that
+   limited beside real use; say whether it earns its bytes here.
+
+A local read is listing the closed sets on every wire and I will bring the
+list.
 
 ## The two-answer plan in its smallest form: two edits, no new kind
 
