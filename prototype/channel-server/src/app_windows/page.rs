@@ -214,6 +214,8 @@ struct Page {
     original_page: bool,
     picker_document: Option<u64>,
     pending: BTreeMap<Uuid, Pending>,
+    /// The catalog the room was last told.
+    reported: Option<Value>,
 }
 impl Page {
     fn selected_view(&self) -> Uuid {
@@ -250,7 +252,12 @@ impl Page {
             let enabled = self.picker_document.is_some() && self.candidates.values().any(|candidate| candidate.view == *key);
             view.caption.share_picker(enabled);
         }
-        self.emit(candidate_catalog(self.id, self.selected_view(), &self.requested_url, &self.candidates, &page_urls));
+        let catalog = candidate_catalog(self.id, self.selected_view(), &self.requested_url, &self.candidates, &page_urls);
+        // A site's document changes all the time and its bridge reports each batch of changes.
+        // The room renders its whole page for every catalog it is told, so it is told a changed one.
+        if catalog_changed(&mut self.reported, &catalog) {
+            self.emit(catalog);
+        }
     }
     fn request(&mut self, candidate_id: Option<Uuid>, selecting: bool, patch: Option<page::Patch>, reply: Reply) {
         self.pending.retain(|_, pending| !pending.reply.is_closed());
@@ -869,6 +876,7 @@ impl Pages {
             original_page: false,
             picker_document: None,
             pending: BTreeMap::new(),
+            reported: None,
         })
     }
     pub fn message(&mut self, view_key: Uuid, body: &str) {
@@ -1064,6 +1072,15 @@ fn page_reply_error(error: &str) -> &'static str {
 fn media_candidate_id(candidates: &BTreeMap<Uuid, Candidate>, view: Uuid, frame: Uuid, media: Uuid) -> Option<Uuid> {
     candidates.iter().find_map(|(id, candidate)|
         (candidate.view == view && candidate.frame == frame && candidate.source.media == media).then_some(*id))
+}
+
+/// Whether `catalog` differs from the one last reported, which it then replaces.
+fn catalog_changed(reported: &mut Option<Value>, catalog: &Value) -> bool {
+    if reported.as_ref() == Some(catalog) {
+        return false;
+    }
+    *reported = Some(catalog.clone());
+    true
 }
 
 fn candidate_catalog(
@@ -1758,6 +1775,25 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
 #[cfg(test)]
 mod candidate_tests {
     use super::*;
+
+    #[test]
+    fn the_room_is_told_a_catalog_once_and_again_when_its_page_address_changes() {
+        let (page, view, candidate) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let candidates = BTreeMap::from([(candidate, Candidate {
+            view, frame: Uuid::new_v4(), ancestors: vec![],
+            source: report(Uuid::new_v4(), "https://media.example/a.mp4"),
+        })]);
+        let at = |url: &str| candidate_catalog(page, view, "https://site.example/", &candidates, &BTreeMap::from([(view, url.to_string())]));
+        let mut reported = None;
+        assert!(catalog_changed(&mut reported, &at("https://site.example/one")));
+        // The bridge reports every batch of document changes; the same catalog is not told again.
+        for _ in 0..5 {
+            assert!(!catalog_changed(&mut reported, &at("https://site.example/one")));
+        }
+        // The same candidates on another address of their page are a change: the room shows that address.
+        assert!(catalog_changed(&mut reported, &at("https://site.example/two")));
+        assert!(!catalog_changed(&mut reported, &at("https://site.example/two")));
+    }
     fn report(media: Uuid, url: &str) -> ReportedCandidate {
         ReportedCandidate {
             media,
