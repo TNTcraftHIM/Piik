@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/viewers-up_to_20-36564f?style=flat-square" alt="最多 20 位观众">
   <img src="https://img.shields.io/badge/media-P2P_first-36564f?style=flat-square" alt="优先使用 P2P 连接">
 </p>
-<p align="center"><a href="./README.md">English</a> · 简体中文</p>
+<p align="center"><a href="./README.md">English</a> · 简体中文 · <a href="./README.tr.md">Türkçe</a></p>
 
 Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一起看电影、展示绘画或分享照片。
 选择画面，把邀请链接发给朋友，对方用浏览器即可观看。也支持自部署，搭建自己的 Piik 站点。
