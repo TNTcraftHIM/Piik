@@ -243,9 +243,11 @@ describe("Native sharing capabilities", () => {
       ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string; kind: "screen"; source: { kind: "screen" } }[], voice: [], watchActivities: [], watchSubscriptions: [] },
     };
     const render = (settings = false) => {
-      // Open the real picker with the same completed targets response on each render.
-      vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
-        .mockReturnValueOnce([false, vi.fn()])
+      // Replay the capture picker state in hook order for this static render.
+      vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]) // Source picker open
+        .mockReturnValueOnce([false, vi.fn()]) // Other sources requested
+        .mockReturnValueOnce([settings, vi.fn()]) // Share settings open
+        .mockReturnValueOnce([false, vi.fn()]) // External input open
         .mockReturnValueOnce([sources, vi.fn()]);
       return renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel: channel as unknown as ChannelController,
         roomId: "room", publicationId: channel.ownedScreens.has("mine") ? "mine" : undefined, disabled: false }));
@@ -1000,8 +1002,9 @@ it("keeps forwarding settings reachable for main playback with a retained Page s
     watchPlayers: new Map([["watch", { video: {}, media: { page: {}, retainedByteSource: source } }]]),
   } as unknown as ChannelController;
   const render = () => {
-    vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([true, vi.fn()]);
-    return renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
+    // Open share settings while leaving the source picker and its request closed.
+    vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([true, vi.fn()]);
+    return renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", watchActivityId: activity.id, disabled: false }));
   };
   expect(render()).toContain('aria-label="Stop forwarding"');
   activity.byteSource = null;

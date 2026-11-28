@@ -25,7 +25,7 @@ import { useTheaterMode } from "../components/living/use-theater-mode";
 import { ChannelSettingsDialog, ChannelSettingsError } from "../channel/components/ChannelSettingsDialog";
 import { useKeyedSettingsAction, useSettingsAction } from "../ui/use-settings-action";
 import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
-import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
+import { ChannelShareControl, WatchSourceDialog, type WatchReplacement } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
@@ -90,7 +90,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const { t, lang } = useCopy();
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
   const [appWatchId, setAppWatchId] = useState<string | null>(null);
-  const [watchRoomId, setWatchRoomId] = useState<string | null>(null);
+  const [watchSource, setWatchSource] = useState<{ roomId: string; replacingActivityId?: string; onOtherSources?(): void } | null>(null);
+  const watchRoomId = watchSource?.roomId;
+  const watchCommitting = !!watchRoomId && channel.sourceSelectionCommitting(watchRoomId);
+  const openWatchSource = (roomId: string, replacement?: WatchReplacement) => setWatchSource({
+    roomId, replacingActivityId: replacement?.activityId, onOtherSources: replacement?.onOtherSources,
+  });
   const preparingShare = useRef<object | null>(null);
   const { pane: mobilePane, navigate: setMobilePane, track } = useRoomPane();
   const selectRoom = useCallback((id: string) => {
@@ -104,9 +109,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }, [selectRoom]);
   useEffect(() => {
     const open = (event: Event) => {
-      const roomId = (event as CustomEvent<string>).detail;
+      const { roomId, activityId } = (event as CustomEvent<{ roomId: string; activityId: string }>).detail;
       selectRoom(roomId);
-      setWatchRoomId(roomId);
+      setWatchSource({ roomId, replacingActivityId: activityId });
     };
     window.addEventListener("piik-watch-source-picker", open);
     return () => window.removeEventListener("piik-watch-source-picker", open);
@@ -114,11 +119,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   useEffect(() => { preparingShare.current = null; }, [selected]);
   useEffect(() => { if (pickerRoom && pickerRoom !== selected) setPickerRoom(null); }, [selected, pickerRoom]);
   useEffect(() => {
-    if (watchRoomId && watchRoomId !== selected && !channel.sourceSelectionCommitting(watchRoomId)) {
+    if (watchRoomId && watchRoomId !== selected && !watchCommitting) {
       void channel.cancelScreenSelection(watchRoomId).catch(() => {});
-      setWatchRoomId(null);
+      setWatchSource(null);
     }
-  }, [selected, watchRoomId, channel.cancelScreenSelection]);
+  }, [selected, watchRoomId, watchCommitting, channel.cancelScreenSelection]);
   useEffect(() => () => { preparingShare.current = null; }, []);
   const { state, self, sessionId, connection, pending, streams } = channel;
   const roomRemoval = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId]));
@@ -483,7 +488,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         browserSource, pending: busy("watch-video", activity.id), disabled: !connected,
         onPeer: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, "peer", report)); },
         onDirect: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, "direct", report)); } } : undefined,
-      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} startAction={shareStart} onStopScreen={stopScreen} />,
+      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} watchActivityId={activity.id}
+        onWatch={replacement => openWatchSource(activity.roomId, replacement)} compact disabled={!available} startAction={shareStart} onStopScreen={stopScreen} />,
       actionFailure: sourceAction.errors.get(`watch:${activity.id}`)?.code, clearActionFailure: () => sourceAction.clearError(`watch:${activity.id}`),
       hidden: activity.roomId !== roomId,
       paused: activity.playback.paused, player, available,
@@ -556,7 +562,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       <div ref={voiceSlot} className="c3-room-slot" />
       {room?.authorized && (stopOwnShare ? <Btn icon="stop" size="compact" tone="danger" title="host.stop"
         cap={phone || roomListCompact ? undefined : "host.stop"} disabled={!connected} busy={busy("stop", ownShareId)} onClick={stopOwnShare} />
-        : <ChannelShareControl variant="split" compact={phone || roomListCompact} channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)}
+        : <ChannelShareControl variant="split" compact={phone || roomListCompact} channel={channel} roomId={roomId} onWatch={() => openWatchSource(roomId)}
             disabled={!connected || !room.available} openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} startAction={shareStart} onStopScreen={stopScreen} />)}
       {chatInBar && chatToggle}
     </div>
@@ -571,7 +577,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <WatchEmbedPreview media={media} busy={false} onCancel={cancel} />
       </ChannelSettingsDialog>;
     })}
-    {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
+    {watchSource && <WatchSourceDialog key={`source:${watchSource.roomId}:${watchSource.replacingActivityId ?? ""}`}
+      channel={channel} roomId={watchSource.roomId} replacing={!!watchSource.replacingActivityId}
+      onOtherSources={watchSource.onOtherSources} onClose={() => setWatchSource(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
     {channel.hostingRestoreFailure && <div className="c3-notice is-error"><Glyph name="alert" size={20} />
@@ -730,7 +738,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             audience: state ? screenAudience(state, publication, channel.profiles) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) ? (publicationActions: ReactNode, compactCaption: boolean) => <ChannelShareControl channel={channel} publicationActions={publicationActions} compactCaption={compactCaption}
-              roomId={publication.roomId} publicationId={publication.id} onWatch={() => setWatchRoomId(publication.roomId)} compact
+              roomId={publication.roomId} publicationId={publication.id} onWatch={() => openWatchSource(publication.roomId)} compact
               disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} startAction={shareStart} onStopScreen={stopScreen} /> : undefined,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
