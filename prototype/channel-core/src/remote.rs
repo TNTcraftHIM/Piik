@@ -225,9 +225,7 @@ impl RemoteRoom {
                     self.summary.id.clone(),
                     RoomReply {
                         context,
-                        result: RoomResult::Error {
-                            code: "room_context_changed".into(),
-                        },
+                        result: RoomResult::Unknown,
                     },
                 )),
                 _ => None,

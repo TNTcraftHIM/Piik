@@ -480,8 +480,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         } else {
             assert_eq!(replies.len(), 1, "{case} left its room request pending");
             assert!(
-                matches!(replies[0], (target, Event::Reply { room_id: Some(id), result: ReplyResult::Error { code }, .. })
-                if *target == reader && id == room_id && code == "room_context_changed")
+                matches!(replies[0], (target, Event::Reply { room_id: Some(id), result: ReplyResult::Unknown, .. }) if *target == reader && id == room_id)
             );
         }
         let late = review_host_turn(&mut core, owner, room_id, delayed);
@@ -668,7 +667,7 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
     );
     assert!(!stopped.close.contains(&c));
     assert!(stopped.events.iter().any(|(target,e)| *target==c && matches!(e,
-        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Error { code } } if id=="entry" && code=="room_context_changed")));
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Unknown } if id=="entry")));
 }
 
 #[test]
