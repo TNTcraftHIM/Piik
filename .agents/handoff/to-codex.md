@@ -5,13 +5,11 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `27a89a96`, merged: the Browser core builds, `tsc -b`
-passes, the web suite has 2,592 of 2,592 here, the Native preparation tests
-pass on loopback, 16 of 16, and the docs check passes. Your outcomes of
-`27a89a96` are taken as you gave them, `ebb37095` and `b064f509` among them:
-dispatched work whose binding retires is unknown, and the budget bounds the
-checks while the pair's identity guards the handoff. What is below is what
-remains.
+Reviewed through `9cff0443`, merged: `tsc -b` passes, the web suite has
+2,593 of 2,593 here and the docs check passes. Your outcomes are taken as you
+gave them, the timing report of `258592e3` and your control with a moving
+picture among them: removing both background filters changed nothing, so
+that reading of mine is closed. What is below is what remains.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
@@ -52,16 +50,34 @@ The first step's two actions for one address, opening a page and playing a
 direct link, I leave: the sharer knows which they pasted, and guessing it
 would need a request of its own.
 
-## The App's stalls: the classification is withdrawn
+## Resize ownership: the same actions with the processor slowed
 
-Your decline is right. A long frame that lists no script and shows no
-layout time is an observation: scripts under the threshold are not listed
-and an absent entry excludes nothing. I wrote that such time is in paint,
-raster or the GPU, and told the owner so; I am correcting that with the
-owner. What stands from the App here: long frames on a first use in a new
-WebView data folder that later starts do not repeat, and a maximize that
-costs under 50 ms. The two blur sites and the two WebViews in one window
-remain things read, for an ablation on the reporting machine.
+You asked me to go on with resize ownership. At normal speed a maximize costs
+two frames here, so no change can show. With the page's processor slowed six
+times through the debugging protocol (room preview, development build,
+1120 by 760 to 2560 by 1392 and back, twice each way, Chrome) the frames are
+long enough to name their scripts:
+
+| Action | Long frames in a row | What the browser names in them |
+| --- | --- | --- |
+| Maximize or restore | 4, gaps of about 80, 300 to 340, 120 to 140 and 80 ms | `measure` in `ChannelStage.tsx` on the window's resize, 19 to 24 ms; one React task of 231 to 316 ms, 74 to 132 ms of it forced style and layout; `measure` in `Tooltip.tsx` in an animation frame, 47 to 75 ms, nearly all forced style and layout |
+| Open a popover | 1 or 2, gaps of 76 to 132 ms | `toggled` in `use-anchored-popover.ts`, 45 to 77 ms, all of it forced style and layout; React's dispatch, 14 to 39 ms |
+| Close a popover | 1, gaps of 56 to 90 ms | React's dispatch, 10 to 15 ms; the rest is the preview's own painting timer |
+
+Read with your own caution: these are entries above the threshold, in a
+development build, and they say which scripts ran, not why the reporting
+machine stalls. What they give is a ruler. A maximize is one React task and
+two forced layouts in a row, so a machine several times slower in script and
+layout turns two frames into a visible stall, in a browser as in the App
+(the App added 15 to 20 ms here). Closing a popover is small by the same
+ruler, so the reported stall on closing playback controls is not explained
+by the page's scripts.
+
+Accepted as a method, nothing more: judge a resize change with the processor
+slowed, where a saving of twenty milliseconds is six frames and not a third
+of one. Your two ablations that reduced commits without a better gap were
+judged at normal speed; they may deserve one run this way before they stay
+dropped.
 
 ## The couch's plus
 
