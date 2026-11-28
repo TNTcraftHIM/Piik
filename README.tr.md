@@ -33,7 +33,7 @@ Piik, arkadaşlarınızla özel canlı yayınlar (oyunlar, film geceleri, çizim
 - **Önce doğrudan bağlantılar.** Medya mümkün olduğunda katılımcılar arasında doğrudan iletilir (P2P). Kendi barındırdığınız bir sunucu, yedek olarak otomatik medya yönlendirme (SFU) sağlayabilir.
 - **Kontrolü sizde olan odalar.** Bir ev sahibi ve en fazla 20 izleyici için davetler, oda kodları ve isteğe bağlı oda parolaları.
 - **Birlikte konuşun ve sohbet edin.** Oda sesli sohbetine katılın, mesaj ve tepki gönderin veya ekran üstü sohbeti etkinleştirin.
-- **Kontrolü arkadaşlarınıza devredin.** Bir Uygulama penceresini veya ekranını paylaşın ve uzaktan kontrolü onaylayın. Arkadaşlarınızın paylaşılan klavye/fare veya desteklenen oyun kumandalarıyla birlikte oynamasına izin verin; kontrolü istediğiniz zaman geri alın. [Kurulum kılavuzu](./docs/guide/remote-control.md).
+- **Kontrolü arkadaşlarınıza devredin.** Piik App ile bir pencereyi veya ekranı paylaşın ve uzaktan kontrolü onaylayın. Arkadaşlarınızın paylaşılan klavye/fare veya desteklenen oyun kumandalarıyla birlikte oynamasına izin verin; kontrolü istediğiniz zaman geri alın. [Kurulum kılavuzu](./docs/guide/remote-control.md).
 - **Esnek izleme.** Açık ve koyu temalar, oynatma kontrolleri, resim içinde resim (PiP) ve bağlantı topolojisi görünümü.
 - **Bir site barındırmak için tek program.** Web arayüzü, oda yönetimi ve isteğe bağlı medya yönlendirme tek pakette sunulur.
 
