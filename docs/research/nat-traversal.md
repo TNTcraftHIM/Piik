@@ -212,7 +212,7 @@ dependency outcomes; they are not counted as decoded-media successes.
 This supports the 1,024-target budget without extending preparation time or
 adding sockets. A survey that has already consumed three seconds can leave room
 for only about 745 checks, so the target budget is a ceiling, not a promise to
-send all of them. Parallel survey remains a separate comparison.
+send all of them.
 
 The search divides ports 1,024–65,535 into 1,024 strata of 63 ports. It visits
 strata in bit-reversed order with a random rotation and draws an independent,
@@ -400,11 +400,24 @@ request in 3 of 11 and 1 of 9 measurable runs. The two former defaults nearer
 to these networks answered at 39 and 36 ms, but one of them left both
 requests unanswered in 9 of the 24 runs that ask twice, while another port
 of the same host answered. The third present default, on port 443, was never
-asked. The observation asks its three servers one after another under one
-limit of 1.5 seconds and needs all three, so what the survey can say of that
-limit ends at two servers.
+asked. The report does not measure all three services together.
 Physical two-sided runs are what would settle either reading;
 [TODO](../todo.md) retains them.
+
+The product sends its three observation transactions from one socket in
+configuration order and waits for their replies together. One receive owner
+matches each source and transaction; classification uses send order rather
+than arrival order. The existing STUN client owns retransmission and the
+1.5-second observation deadline is unchanged. In an owned Windows loopback
+control with response delays of 400, 600 and 400 ms and the middle request
+dropped once, the serial baseline timed out at 1.51 seconds; concurrent
+observation completed in 905 ms on Windows and 902 ms on Linux.
+Wrong-source and wrong-transaction packets did
+not supply samples, silent servers timed out and released the socket, and
+stable, increasing, decreasing and irregular classifications retained their
+meaning. This establishes the scheduling benefit in that control, not worldwide
+service reachability. A silent configured server still prevents this three-sample
+observation from completing; ordinary ICE discovery remains independent.
 
 ### External Forwarding And Participant Relays
 
