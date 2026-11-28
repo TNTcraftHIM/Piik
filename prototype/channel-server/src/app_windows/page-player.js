@@ -74,7 +74,6 @@
     }
     return entry.resource;
   };
-  let reported;
   const report = () => {
     if (timer !== undefined) return;
     timer = setTimeout(() => {
@@ -83,7 +82,7 @@
       const previous = [...elements.keys()];
       discoverVideos();
       const removed = previous.filter(id => !elements.has(id));
-      const candidates = [...elements].map(([media, entry]) => {
+      send({ kind: 'candidates', removed, candidates: [...elements].map(([media, entry]) => {
         const { video } = entry;
         const observed = resource(entry);
         let url = null;
@@ -93,13 +92,7 @@
         const title = video.getAttribute('aria-label') || video.title || document.title || location.hostname;
         return { media, resource: observed, revision: entry.revision, title: title.match(/^.{0,256}/su)[0].toWellFormed(), url,
           duration: Number.isFinite(video.duration) ? video.duration : null };
-      });
-      // A site's document changes all the time. The same list sent again costs the App's window
-      // thread a catalog and the room page a whole render for every batch, about twelve a second.
-      const next = JSON.stringify([location.href, removed, candidates]);
-      if (next === reported) return;
-      reported = next;
-      send({ kind: 'candidates', removed, candidates });
+      }) });
     }, 80);
   };
   const discoverVideos = () => {
