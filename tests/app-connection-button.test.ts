@@ -199,6 +199,22 @@ describe("shared App connection entry", () => {
 describe("Native sharing capabilities", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("shows failed OBS input while the settings dialog is closed", () => {
+    setCopy({ lang: "en" });
+    let input = { state: "error", error: "external_video_format_unsupported" };
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, pending: new Set(), appConnected: true,
+      browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined,
+      nativeCaptureSelection: () => undefined, externalInput: () => input,
+    } as unknown as ChannelController;
+    const render = () => renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {},
+      startAction: idleStart, channel, roomId: "room", disabled: false, onWatch() {} }));
+    expect(render()).toContain('aria-label="OBS input failed"');
+    expect(render()).not.toContain('aria-label="Waiting for OBS"');
+    input = { state: "waiting", error: "" };
+    expect(render()).toContain('aria-label="Waiting for OBS"');
+    expect(render()).not.toContain('aria-label="OBS input failed"');
+  });
+
   it.each(["picker", "preparing"] as const)("Browser preparation exposes %s as a live status with a scoped Cancel", phase => {
     setCopy({ lang: "en" });
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, pending: new Set(["screen:room"]), appConnected: false,

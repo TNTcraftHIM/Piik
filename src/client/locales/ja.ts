@@ -266,6 +266,7 @@ export const ja = {
   "screen.switchRoomSource": "{room}のソースを切り替え",
   "screen.screenSharing": "画面共有",
   "screen.obsWaiting": "OBS を待っています",
+  "screen.obsFailed": "OBS の入力に失敗しました",
   "screen.shareSettingsHelp": "{room}での自分の共有に適用します。",
   "screen.shareSettingsNext": "次回の共有開始時に使用します。",
   "screen.obsQualityHelp": "映像と音声は OBS で設定します。配信は各視聴者の状況に応じて調整されます。",

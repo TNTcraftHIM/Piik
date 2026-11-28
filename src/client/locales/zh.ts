@@ -318,6 +318,7 @@ export const zh = {
   "screen.switchRoomSource": "切换{room}的分享源",
   "screen.screenSharing": "分享画面",
   "screen.obsWaiting": "等待 OBS",
+  "screen.obsFailed": "OBS 输入失败",
   "screen.shareSettingsHelp": "调整你在{room}中的分享。",
   "screen.shareSettingsNext": "用于你接下来开始的分享。",
   "screen.obsQualityHelp": "画质和声音在 OBS 中设置，观众的接收画质仍会自动适配。",

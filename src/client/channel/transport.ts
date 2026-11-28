@@ -630,7 +630,7 @@ export class ChannelTransport {
           const sender = binding.sender;
           const current = () => [...this.sending].find(([, output]) => output.senders.some(binding => binding.sender === sender));
           slot.encoded = new BrowserEncodingOutput(sender, () => {
-            this.mediaSlots.delete(slots);
+            slots.senders = slots.senders.filter(candidate => candidate.sender !== sender);
             const flow = current();
             if (flow) this.failOutput(flow[0], flow[1]);
           }, { get flowId() { return current()?.[0]; } });
