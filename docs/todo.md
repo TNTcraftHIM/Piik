@@ -31,6 +31,9 @@ the feedback period; they do not delay that delivery.
 - [ ] **Native caption visual acceptance.** Verify the integrated caption's
   materials against the underlying page in both themes on the matching Windows
   package, including modal surfaces and maximize/restore.
+  Verify title dragging with a real Windows pointer, including when page text
+  elsewhere is selected. Confirm the host enables the intended non-client
+  regions; Browser CSS checks alone do not establish window movement.
 - [ ] **Beta.62 missing chat image thumbnails.** Trace a reported message's
   inline preview, media-clear watermark, readable image and render binding.
   Identify whether older history, newly sent images or both are affected.

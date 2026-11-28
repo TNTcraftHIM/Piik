@@ -13,6 +13,7 @@ html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, 
   position: sticky;
   top: 0;
   app-region: drag;
+  user-select: none;
 }
 html[data-piik-native-window] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
   --muted: var(--ink);
@@ -29,6 +30,8 @@ html[data-piik-native-window] .lr-app:has(> .lr-top) > main { flex: 1; min-heigh
 html[data-piik-native-window] .lr-app > .lr-client-launch { place-items: safe center; }
 html[data-piik-native-window] .lr-app > .lr-top { flex: none; width: 100%; margin-inline: 0; }
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
-  :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap) { app-region: no-drag; }
+  :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap.is-disabled-trigger) { app-region: no-drag; }
+html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
+  :is(input, textarea, [popover], dialog) { user-select: text; }
 html[data-piik-native-window="integrated"]:has(:fullscreen)
-  :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { app-region: no-drag; }
+  :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { app-region: no-drag; user-select: auto; }
