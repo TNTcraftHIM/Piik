@@ -80,12 +80,14 @@ impl Caption {
                     "ready" => ServiceEvent::CaptionReady(id),
                     "minimize" => ServiceEvent::Caption(id, WindowAction::Minimize),
                     "maximize" => ServiceEvent::Caption(id, WindowAction::Maximize),
+                    "drag" if standalone => ServiceEvent::Caption(id, WindowAction::Drag),
                     "close" => ServiceEvent::Caption(id, WindowAction::Close),
                     _ => return,
                 };
                 let _ = events.send_event(event);
             })
             .build_as_child(window)?;
+        super::disable_drag_regions(&view);
         view.load_html(
             &CAPTION
                 .replace("__PIIK_PALETTE__", PALETTE)
@@ -175,6 +177,11 @@ pub(super) fn apply(window: &Window, action: &WindowAction) {
     match action {
         WindowAction::Minimize => window.set_minimized(true),
         WindowAction::Maximize => window.set_maximized(!window.is_maximized()),
+        WindowAction::Drag => {
+            if window.fullscreen().is_none() {
+                let _ = window.drag_window();
+            }
+        }
         WindowAction::Close => {
             unreachable!("Close is routed by the exact window's lifecycle owner")
         }

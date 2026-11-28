@@ -10,10 +10,10 @@ __PIIK_PANEL__
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--paper); color: var(--ink); font: 15px/1.5 system-ui; }
-button { font-family: inherit; cursor: pointer; app-region: no-drag; }
+button { font-family: inherit; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
 .c3-settings-dialog { position: static; width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
-.c3-settings-dialog-heading { align-items: center; padding-block: 8px; app-region: drag; }
+.c3-settings-dialog-heading { align-items: center; padding-block: 8px; user-select: none; }
 .c3-settings-dialog-heading .lr-btn { flex: none; }
 .permission-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; letter-spacing: -.03em; }
 .permission-brand > svg { width: 28px; height: 28px; }
@@ -88,6 +88,12 @@ document.addEventListener('keydown', event => {
 });
 window.updateAppearance(request.theme, request.language);
 deny.focus({ preventScroll: true });
+// The host moves the window; a CSS drag region would load its window thread.
+document.querySelector('.c3-settings-dialog-heading').addEventListener('mousedown', event => {
+  if (event.button !== 0 || event.detail !== 1 || event.target.closest('button')) return;
+  event.preventDefault();
+  window.ipc.postMessage('drag');
+});
 window.ipc.postMessage('ready');
 </script>
 </html>

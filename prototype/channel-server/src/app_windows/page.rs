@@ -1226,6 +1226,7 @@ fn page_view(
             }
         })
         .build_as_child(&window)?;
+    super::disable_drag_regions(&view);
     super::download::install(&view, None, None)?;
     let caption = caption::Caption::new(&window, &view, events.clone(), &controls, true)?;
     caption.title("Piik · Video");

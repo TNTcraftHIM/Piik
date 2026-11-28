@@ -17,6 +17,13 @@ export const nativeBookmarkWindow = window.piikNativeWindow === "system"
 
 // The Windows host supplies this capability. Content only describes appearance
 // and the slot reserved for the separately trusted window controls.
+
+/** What a press on a window's bar means: the first one moves the window, the second maximizes. */
+export function barGesture(event: MouseEvent, bar: string, controls: string): "drag" | "maximize" | null {
+  const target = event.target instanceof Element ? event.target : null;
+  if (event.button !== 0 || event.detail > 2 || !target?.closest(bar) || target.closest(controls)) return null;
+  return event.detail === 2 ? "maximize" : "drag";
+}
 if (window.piikNativeWindow) {
   const root = document.documentElement;
   root.dataset.piikNativeWindow = window.piikNativeWindow;
@@ -84,6 +91,17 @@ if (window.piikNativeWindow && window.ipc) {
       ? ["class", "hidden", "data-layout", "data-theme", "lang", "open", "data-modal-material"]
       : ["data-theme", "lang", "open", "data-modal-material"] });
   if (integrated) {
+    // The host moves the window. WebView2 recomputes a CSS drag region on the App's window
+    // thread after each layout change and answers each pointer move over it there, which stalls
+    // every window of the App; so the bar is ordinary content that asks on a press.
+    const barControls = "button,a,input,select,textarea,[role=button],[popover],dialog,.lr-comic-tip-wrap.is-disabled-trigger";
+    addEventListener("mousedown", event => {
+      const gesture = document.fullscreenElement ? null : barGesture(event, headers, barControls);
+      if (!gesture) return;
+      // The system's move loop takes the release, so the page must not start a gesture of its own.
+      event.preventDefault();
+      ipc.postMessage(JSON.stringify({ kind: gesture }));
+    });
     addEventListener("resize", schedule);
     addEventListener("scroll", schedule, { capture: true, passive: true });
     document.addEventListener("fullscreenchange", schedule);

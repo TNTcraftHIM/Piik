@@ -9,14 +9,14 @@ __PIIK_MODAL_BACKDROP__
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { color: var(--ink); font: 12px system-ui; display: flex; align-items: center; user-select: none; }
-body[data-standalone] { background: var(--wall); app-region: drag; }
+body[data-standalone] { background: var(--wall); }
 body[data-panel] { background: var(--paper); }
 .title { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 16px 8px; font-weight: 600; }
 body[data-standalone] .title { display: block; flex: 1; }
 html[data-modal-material] body[data-standalone]::before { content: ""; position: fixed; inset: 0; pointer-events: none; }
-.controls { position: relative; display: flex; flex: none; gap: 3px; padding: 0 7px; app-region: no-drag; }
+.controls { position: relative; display: flex; flex: none; gap: 3px; padding: 0 7px; }
 html[data-modal-material="image"] .controls { color: var(--primary-ink); }
-button { app-region: no-drag; width: 38px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
+button { width: 38px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
 button[data-action="share"] { width: auto; padding-inline: 12px; }
 button[hidden] { display: none; }
 button:hover { background: var(--control-hover); }
@@ -30,7 +30,15 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 const controls = __PIIK_WINDOW_CONTROLS__;
 let language = 'en';
 let maximized = false;
-if (window.piikCaptionStandalone) document.body.dataset.standalone = '';
+if (window.piikCaptionStandalone) {
+  document.body.dataset.standalone = '';
+  // The host moves the window; a CSS drag region would load its window thread.
+  addEventListener('mousedown', event => {
+    if (event.button !== 0 || event.detail > 2 || event.target.closest('.controls')) return;
+    event.preventDefault();
+    window.ipc.postMessage(event.detail === 2 ? 'maximize' : 'drag');
+  });
+}
 const actions = ['minimize', 'maximize', 'close'];
 if (!window.piikCaptionStandalone) actions.unshift('bookmarks');
 for (const action of actions) {
