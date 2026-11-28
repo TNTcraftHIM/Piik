@@ -66,6 +66,10 @@ On a stable origin, the same browser profile can reuse its saved credential if t
 
 The room records text, replies, reactions and the attachment's name, type, size, digest and optional bounded thumbnail. The thumbnail is message metadata. It follows the message's access and history export in both modes, with separate removal through [room maintenance](#room-maintenance). Each room's existing writer persists it. The receiving device can display it with history even when the original is unavailable.
 
+The original's MIME essence describes its format independently of preview
+support. A thumbnail is validated by its own raster format, attachment binding
+and limits; its availability does not imply that the device can preview the original.
+
 An original is obtained from an eligible live holder or an explicitly saved local copy. The sender announces the attachment to the room. A recipient can fetch it over peer edges or an authorized server relay's reliable file channel. Intermediates use bounded buffers until the selected ranges are delivered. The room creator's role alone assigns no relay traffic. Offering transit spends bandwidth, while durable originals remain with file holders or an external provider. The [routing proposal](./channel-forwarding-plan.md#server-transit-by-payload) owns which traffic the service admits.
 [Jami group file transfers](https://jami.net/swarm-file-transfers/)
 

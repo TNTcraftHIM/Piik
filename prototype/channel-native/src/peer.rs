@@ -701,7 +701,7 @@ struct Pair {
     answer: Option<Signal>,
     negotiate: bool,
     ignore_offer: bool,
-    candidates: Vec<Candidate>,
+    candidates: Vec<String>,
     remote: HashMap<String, Uuid>,
     // Receiving tasks outlive encoded-format generations on the same track.
     latest: HashMap<TrackKey, Uuid>,
@@ -2360,7 +2360,7 @@ impl Driver {
                 )
                 .await?;
             for c in p.candidates.drain(..) {
-                let _ = p.pc.add_signaled_candidate(c).await;
+                let _ = p.pc.add_candidate(c).await;
             }
             if let Some(description) = answer {
                 let answer = Self::local_signal(p, exchange, description);
@@ -2383,11 +2383,13 @@ impl Driver {
             self.reconcile_receivers(id).await?;
             self.refresh_outputs().await;
         } else if let Some(c) = signal.candidate {
-            if !p.ignore_offer {
+            // Native admits ordinary ICE only, including before the first remote description.
+            if !p.ignore_offer && c.origin.is_none() {
+                let candidate = c.candidate.unwrap_or_default();
                 if p.pc.remote_description().await {
-                    let _ = p.pc.add_signaled_candidate(c).await;
+                    let _ = p.pc.add_candidate(candidate).await;
                 } else if p.candidates.len() < MAX_ICE_CANDIDATES {
-                    p.candidates.push(c);
+                    p.candidates.push(candidate);
                 }
             }
         }
@@ -2844,7 +2846,7 @@ impl Driver {
                         }
                     }
                     for candidate in std::iter::once(candidate).chain(mapped) {
-                        let candidate = signal_candidate(candidate, origin);
+                        let candidate = signal_candidate(candidate, origin.clone());
                         self.send(Command::Signal {
                             pair_id: id,
                             payload: Signal {
@@ -3568,12 +3570,12 @@ fn signal_candidate(
     origin: Option<piik_channel_core::wire::CandidateOrigin>,
 ) -> Candidate {
     Candidate {
-        origin,
         username_fragment: c.ufrag().map(str::to_owned),
         candidate: Some(c.to_sdp_string()),
         // Hypotheses are trickled outside SDP; the SDK's actual BUNDLE mid is
         // not an empty string. Use the standard first m-line index instead.
         sdp_mid: origin.is_none().then(String::new),
+        origin,
         sdp_m_line_index: Some(0),
     }
 }

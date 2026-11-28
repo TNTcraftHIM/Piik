@@ -41,6 +41,17 @@ pub const ATTACHMENT_LIMITS: AttachmentLimits = AttachmentLimits {
     max_retained_bytes: 256 * 1024 * 1024,
     max_retained_files: 256,
 };
+// RFC 6838 section 4.2 defines each type/subtype name as 1–127 ASCII bytes.
+fn valid_media_type(value: &str) -> bool {
+    let valid_name = |name: &str| {
+        let bytes = name.as_bytes();
+        (1..=127).contains(&bytes.len())
+            && bytes[0].is_ascii_alphanumeric()
+            && bytes.iter().all(|byte| byte.is_ascii_alphanumeric() || b"!#$&-^_.+".contains(byte))
+    };
+    value.split_once('/').is_some_and(|(kind, subtype)| valid_name(kind) && valid_name(subtype))
+}
+
 impl AttachmentDescriptor {
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.id.is_nil()
@@ -48,14 +59,7 @@ impl AttachmentDescriptor {
             || self.name.chars().count() > 240
             || self.name.chars().any(char::is_control)
             || self.size > ATTACHMENT_LIMITS.max_file_bytes
-            || !matches!(
-                self.media_type.as_str(),
-                "image/png"
-                    | "image/jpeg"
-                    | "image/gif"
-                    | "image/webp"
-                    | "application/octet-stream"
-            )
+            || !valid_media_type(&self.media_type)
             || self.sha256.len() != 64
             || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
         {
@@ -79,8 +83,7 @@ impl AttachmentHash {
     }
 }
 
-/// Only recognized raster formats receive image MIME types. Everything else is
-/// downloaded as bytes, regardless of a supplied extension or Content-Type.
+/// Recognize raster signatures for image previews.
 pub fn sniff_media_type(bytes: &[u8]) -> &'static str {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         "image/png"
@@ -114,6 +117,12 @@ mod tests {
             sha256: sha256_hex(b"abc"),
         };
         assert!(file.validate().is_ok());
+        for mime in ["image/x-piik-test", "application/Vnd.Example+json"] {
+            assert!(AttachmentDescriptor { media_type: mime.into(), ..file.clone() }.validate().is_ok());
+        }
+        for mime in ["image", "/png", "image/", "image/*", "image/png\n", &format!("text/{}", "x".repeat(128))] {
+            assert_eq!(AttachmentDescriptor { media_type: mime.into(), ..file.clone() }.validate(), Err("invalid_attachments"));
+        }
         assert_eq!(
             AttachmentDescriptor {
                 sha256: "abc".into(),

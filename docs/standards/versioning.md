@@ -151,10 +151,28 @@ dropped: its request is refused as unsupported, or its record stays unknown.
 Omission preserves baseline state semantics and the action's constraints.
 Known forms with invalid contents retain their validation rules.
 
+A labeled ICE candidate carries a hypothesis. Candidate origins use 1 to 64 ASCII
+letters, digits, underscores or hyphens. The Domain forwards the label on an
+assigned pair. A receiver skips a candidate whose origin it does not support
+and continues processing the other signaling fields and ordinary ICE.
+
 Screen source kinds are open capture-origin keys of 1–64 ASCII letters,
 digits, underscores or hyphens. Readers preserve their spelling. The
 screen and voice publication classes are closed because they determine
 authorization, subscriptions and forwarding budgets.
+
+Baseline Domain snapshots fix hosting mode, room creation policy and room
+access. They describe writer eligibility, permitted room creation and the
+access rule applied with room grants. Same-major additions must preserve
+their effective meaning for baseline readers in welcome and later state.
+
+Watch source kinds and clocks are closed: they choose the player and stay
+with the activity's ID. Its byte format chooses an implemented reader.
+New codecs may use these forms when the receiver supports them. Different
+playback semantics use a distinct request and a requested state form.
+
+Encoding degradation priorities select executable adaptation behavior and are
+fixed in the baseline. Codec choice remains with capture and media negotiation.
 
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live

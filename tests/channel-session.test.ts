@@ -824,7 +824,7 @@ test("the site overview does not select a room or load its history", async () =>
   } finally { session.close(); }
 });
 
-test("Native-only signals preserve the socket and its pending command through later state and RTC", async () => {
+test("unsupported peer signals preserve the socket and its pending command through later state and RTC", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket } = await setup();
@@ -849,8 +849,14 @@ test("Native-only signals preserve the socket and its pending command through la
     expect(session.getSnapshot().state?.channel.name).toBe("Updated");
     const [pc] = RoomPeerConnection.instances;
     const exchangeId = crypto.randomUUID();
-    signal({ exchangeId, description: { type: "offer", sdp: "test offer" }, extension: 1 });
-    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("test offer"));
+    const hint = { origin: "future-Hint", candidate: "unsupported hint", usernameFragment: "current" };
+    signal({ candidate: hint });
+    signal({ candidate: { candidate: "ordinary" } });
+    signal({ exchangeId, description: { type: "offer", sdp: "test offer" }, candidate: hint });
+    await vi.waitFor(() => expect(pc.addIceCandidate).toHaveBeenCalledTimes(1));
+    expect(pc.addIceCandidate).toHaveBeenCalledWith({ candidate: "ordinary" });
+    expect(pc.remoteDescription?.sdp).toBe("test offer");
+    expect(pc.close).not.toHaveBeenCalled();
     expect(settled).toBe(false);
     socket.receive({ type: "reply", requestId: request.requestId, result: { type: "done" } });
     await saving;
@@ -7576,6 +7582,7 @@ class RoomPeerConnection extends EventTarget {
   receivers: RTCRtpReceiver[] = [];
   getStats = vi.fn(async (): Promise<RTCStatsReport> => new Map() as RTCStatsReport);
   close = vi.fn(() => { this.connectionState = "closed"; });
+  addIceCandidate = vi.fn(async (_candidate: RTCIceCandidateInit) => {});
   constructor() { super(); RoomPeerConnection.instances.push(this); }
   createDataChannel(label: string, options: RTCDataChannelInit) {
     const channel = new RoomDataChannel(label, options); this.channels.push(channel); return channel;

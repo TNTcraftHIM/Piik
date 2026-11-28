@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../../ui/icons";
 import { joinItems, useCopy } from "../../ui/copy";
-import type { ChannelAttachment as Attachment, ImageRendition } from "../protocol";
+import { canPreviewImage, type ChannelAttachment as Attachment, type ImageRendition } from "../protocol";
 import { attachmentDownloadDocument, type ChannelAttachments, fileSize, isNativeSavePending } from "../attachments";
+import { loadRoomHosting } from "../hosting";
 import { inlineImageFile } from "../image-preview";
 import { ChannelAction } from "./ChannelAction";
 import { Btn } from "../../components/living/primitives";
@@ -91,7 +92,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     const current = { request: new AbortController(), url: null as string | null };
     resource.current = current;
     setPreview(null); setPreviewBusy(false); setPreviewError(null); setImageOpen(false); setOriginalUrl(null);
-    if (inlineImage !== undefined && file.mediaType.startsWith("image/")) {
+    if (inlineImage !== undefined && canPreviewImage(inlineImage.mediaType)) {
       try { current.url = URL.createObjectURL(inlineImageFile(inlineImage, file.name)); setPreview(current.url); }
       catch { setPreviewError("image_decode_failed"); }
     }
@@ -107,9 +108,12 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     const request = current.request;
     try {
       const verified = await client.content(key, file, request.signal, inlineImage);
+      const runtime = await loadRoomHosting();
+      const sniffed = runtime.attachment_media_type(new Uint8Array(await verified.slice(0, 12).arrayBuffer()));
       if (request.signal.aborted) return;
+      if (sniffed !== file.mediaType.toLowerCase()) throw new Error("image_decode_failed");
       const image = new Image();
-      const candidate = URL.createObjectURL(verified);
+      const candidate = URL.createObjectURL(verified.slice(0, verified.size, sniffed));
       const discard = () => {
         image.removeAttribute("src");
         URL.revokeObjectURL(candidate);
@@ -134,7 +138,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     setOriginalUrl(null);
     setPreviewBusy(false);
   }
-  const isImage = file.mediaType.startsWith("image/");
+  const isImage = canPreviewImage(file.mediaType);
   const imageDescription = !originalShown && inlineImage ? t("channel.attachment.thumbnail") : undefined;
   const originalStatus = unavailable ? t("channel.attachment.sourceUnavailable") : undefined;
   const previewMessage = channelErrorPresentation(previewError, t, preview ? "channel.attachment.originalUnavailable" : "channel.attachment.previewFailed").message;
@@ -203,7 +207,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     }} /></button>}
     {imageOpen && dialogUrl && <ChannelImageDialog src={dialogUrl} name={file.name} description={previewBusy ? undefined : imageStatus}
       progress={previewBusy ? <TransferProgress label={progressLabel} accessibleLabel={labelForFile(progressLabel)} bytes={progressBytes} /> : undefined}
-      original={!originalShown ? { busy: previewBusy, disabled: unavailable, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
+      original={isImage && !originalShown ? { busy: previewBusy, disabled: unavailable, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
       onClose={() => { cancelPreview(); setImageOpen(false); }} />}
     {cardStatus && <small role="status">{cardStatus}</small>}
   </div>;

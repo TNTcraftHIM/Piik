@@ -4814,10 +4814,29 @@ fn linear_ice_candidate_provenance_requires_its_generation() {
             valid
         );
     }
-    assert!(serde_json::from_value::<Signal>(json!({"candidate":{
-        "candidate":candidate,"origin":"observed","usernameFragment":"current"
-    }}))
-    .is_err());
+    for origin in [json!(""), json!("future hint"), json!("x".repeat(65)), json!(3)] {
+        assert!(serde_json::from_value::<Signal>(json!({"candidate":{
+            "candidate":candidate,"origin":origin,"usernameFragment":"current"
+        }})).is_err());
+    }
+
+    let mut network = preparation_network(preparation_ice());
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (host_session, _) = prepare_capable_join(&mut network, host);
+    let (viewer_session, _) = prepare_capable_join(&mut network, viewer);
+    let room = network.create(host, RoomAccess::Public, false);
+    join_room_interests(&mut network, viewer, &room);
+    let original = pair(&network, viewer, host_session);
+    let payload = json!({"candidate":{"candidate":candidate,"origin":"future-Hint","usernameFragment":"current"}});
+    let send = |id| json!({"type":"signal","pairId":id,"payload":payload});
+    let effects = network.command(viewer, send(original.id));
+    assert!(effects.events.iter().any(|(to, event)| *to == host && matches!(event,
+        Event::Signal { pair_id, from_session_id, payload: delivered } if *pair_id == original.id
+            && *from_session_id == viewer_session && serde_json::to_value(delivered).unwrap() == payload)));
+    let rejected = network.command(viewer, send(Uuid::new_v4()));
+    assert!(rejected.events.is_empty());
+    assert!(rejected.close.is_empty());
 }
 
 #[test]

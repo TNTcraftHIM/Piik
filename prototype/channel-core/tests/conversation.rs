@@ -129,7 +129,13 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
                     inline_images: Default::default(),
                     text: "Works without ICE".into(),
                     nonce: "one-write".into(),
-                    attachments: vec![],
+                    attachments: vec![piik_channel_core::AttachmentDescriptor {
+                        id: Uuid::new_v4(),
+                        name: "sample.bin".into(),
+                        size: 3,
+                        media_type: "image/x-piik-test".into(),
+                        sha256: piik_channel_core::attachment::sha256_hex(b"abc"),
+                    }],
                 },
             },
         )
@@ -270,7 +276,8 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
     assert_eq!(replies.len(), 1);
     assert!(matches!(replies[0].content(), ConversationRecord::HistoryPage { parts, messages, .. }
-        if parts == &["inlineImages"] && messages.len() == 1 && messages[0].message.id == confirmed.unwrap()));
+        if parts == &["inlineImages"] && messages.len() == 1 && messages[0].message.id == confirmed.unwrap()
+            && messages[0].message.attachments[0].media_type == "image/x-piik-test"));
     rejected(
         &mut network,
         outsider,

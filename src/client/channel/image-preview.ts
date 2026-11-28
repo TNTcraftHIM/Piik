@@ -1,4 +1,4 @@
-import type { ImageRendition } from "./protocol";
+import { canPreviewImage, type ImageRendition } from "./protocol";
 
 export function imageBytes(data: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(data), character => character.charCodeAt(0));
@@ -14,7 +14,7 @@ function encoded(bytes: Uint8Array): string {
 
 export async function prepareInlineImage(file: File, mediaType: string, budget: number, maxEdge: number, signal?: AbortSignal): Promise<ImageRendition | undefined> {
   signal?.throwIfAborted();
-  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mediaType) || budget < 1) return undefined;
+  if (!canPreviewImage(mediaType) || budget < 1) return undefined;
   const image = new Image();
   const url = URL.createObjectURL(file.slice(0, file.size, mediaType));
   let preparedCanvas: HTMLCanvasElement | undefined;

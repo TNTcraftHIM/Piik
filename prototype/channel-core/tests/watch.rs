@@ -29,6 +29,30 @@ fn ready(effects: piik_channel_core::Effects, time: u64) {
 fn error(effects: piik_channel_core::Effects, code: &str) {
     assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::Reply { room_id: Some(_), result: ReplyResult::Error{code:c}, .. }|Event::Error { code:c, .. } | Event::Reply { result: ReplyResult::Error { code:c }, .. } if c==code)));
 }
+#[deny(unreachable_patterns)]
+fn assert_baseline_watch(activity: &piik_channel_core::wire::WatchActivity) {
+    use piik_channel_core::wire::{WatchFormat, WatchSource, WatchTimeline};
+
+    let wire = serde_json::to_value(activity).unwrap();
+    let kind = match &activity.source {
+        WatchSource::Media { .. } => "media",
+        WatchSource::Website { .. } => "website",
+    };
+    let timeline = match activity.playback.timeline {
+        WatchTimeline::Media => "media",
+        WatchTimeline::Program => "program",
+    };
+    assert_eq!(wire["source"]["kind"], kind);
+    assert_eq!(wire["playback"]["timeline"], timeline);
+    if let Some(source) = &activity.byte_source {
+        let format = match source.format {
+            WatchFormat::File => "file",
+            WatchFormat::Hls => "hls",
+            WatchFormat::Dash => "dash",
+        };
+        assert_eq!(wire["byteSource"]["format"], format);
+    }
+}
 #[test]
 fn program_timeline_is_required_and_stays_with_the_activity() {
     let (mut net, owner, viewer, room) = setup();
@@ -37,6 +61,7 @@ fn program_timeline_is_required_and_stays_with_the_activity() {
     command["playback"]["timeline"] = json!("program");
     command["playback"]["position"] = json!(1794744006.0);
     ready(net.command_at(owner, command.clone(), 2000), 2000);
+    assert_baseline_watch(&net.state(viewer).watch_activities[0]);
     net.command(
         viewer,
         json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct"}),
@@ -209,6 +234,7 @@ fn opaque_website_bytes_do_not_require_an_original_page_locator() {
     command["source"] = json!({"kind":"website"});
     command["byteSource"] = source.clone();
     ready(net.command_at(owner, command, 2000), 2000);
+    assert_baseline_watch(&net.state(viewer).watch_activities[0]);
     ready(net.command_at(viewer, json!({"type":"join_watch","roomId":room,"id":id,"mode":"peer"}), 3000), 3000);
     assert_eq!(serde_json::to_value(&net.state(viewer).watch_activities[0].source).unwrap(), json!({"kind":"website"}));
     assert_eq!(serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(), source);
@@ -428,6 +454,7 @@ fn start_retry_preserves_later_forwarding_settings_after_initial_provider_retire
     initial["byteSource"] =
         json!({"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"hls"});
     ready(net.command_at(owner, initial.clone(), 2000), 2000);
+    assert_baseline_watch(&net.state(viewer).watch_activities[0]);
     net.command(
         viewer,
         json!({"type":"join_watch","roomId":room,"id":activity,"mode":"direct"}),
@@ -437,6 +464,7 @@ fn start_retry_preserves_later_forwarding_settings_after_initial_provider_retire
     net.command(owner, json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":updated_bytes}));
     net.command(owner, json!({"type":"update_watch","roomId":room,"id":activity,"playback": {"timeline":"media","position":30,"paused":true,"rate":1,"anchorTime":3000}}));
     ready(net.command_at(owner, initial.clone(), 4000), 4000);
+    assert_baseline_watch(&net.state(viewer).watch_activities[0]);
     assert_eq!(
         serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(),
         updated_bytes

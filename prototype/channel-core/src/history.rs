@@ -236,7 +236,6 @@ impl MessageDraft {
             let bytes = Base64::decode_vec(&image.data).map_err(|_| "invalid_inline_images")?;
             total += bytes.len();
             if total > ATTACHMENT_LIMITS.max_inline_image_bytes
-                || attachment.media_type == "application/octet-stream"
                 || image.media_type == "application/octet-stream"
                 || crate::attachment::sniff_media_type(&bytes) != image.media_type
                 || (!allow_legacy_images
@@ -250,7 +249,7 @@ impl MessageDraft {
             if (image.original
                 && (!same_digest
                     || bytes.len() as u64 != attachment.size
-                    || image.media_type != attachment.media_type))
+                    || !image.media_type.eq_ignore_ascii_case(&attachment.media_type)))
                 || (!allow_legacy_images && same_digest)
             {
                 return Err("invalid_inline_images");
@@ -556,13 +555,13 @@ mod inline_tests {
     use super::*;
     use base64ct::{Base64, Encoding};
     #[test]
-    fn inline_images_require_matching_image_descriptions_and_a_message_budget() {
+    fn inline_images_require_an_attachment_and_a_message_budget() {
         let bytes = b"GIF89aoriginal-gif-bytes";
         let file = AttachmentDescriptor {
             id: Uuid::new_v4(),
             name: "image.gif".into(),
             size: bytes.len() as u64,
-            media_type: "image/gif".into(),
+            media_type: "image/GIF".into(),
             sha256: crate::attachment::sha256_hex(bytes),
         };
         let check = |files, images| {
@@ -655,7 +654,8 @@ mod inline_tests {
             "an animated original can have a static thumbnail"
         );
         let original = AttachmentDescriptor {
-            media_type: "image/png".into(),
+            name: "document.pdf".into(),
+            media_type: "application/pdf".into(),
             size: 4_000_000,
             sha256: "a".repeat(64),
             ..file.clone()
@@ -666,7 +666,7 @@ mod inline_tests {
                 BTreeMap::from([(file.id, preview.clone())])
             )
             .is_ok(),
-            "a display rendition does not pretend to have the original's digest or size"
+            "a document can carry an independently validated raster thumbnail"
         );
         for invalid in [
             ImageRendition {
