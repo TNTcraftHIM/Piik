@@ -6,7 +6,7 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { microphoneLevelFill } from "../../room-voice/MicrophoneLevel";
 
 export interface PawnVoice { microphone: boolean; deafened?: boolean; level?: number }
-export interface PawnState { voice?: PawnVoice; collaboration?: boolean; host?: boolean; activity?: GlyphName }
+export interface PawnState { voice?: PawnVoice; collaboration?: boolean; host?: boolean; activity?: GlyphName; additionalActivity?: boolean }
 
 /** The accepted A silhouette, shared with the explanatory cast. */
 export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
@@ -26,7 +26,7 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
   </>;
 }
 
-function PawnAdornment({ voice, collaboration, activity, host, avatar }: PawnState & { avatar?: boolean }) {
+function PawnAdornment({ voice, collaboration, activity, additionalActivity, host, avatar }: PawnState & { avatar?: boolean }) {
   const emblem = collaboration ? "mouse" : activity;
   // Keep the last worn symbol visible during its exit.
   const [lastEmblem, setLastEmblem] = useState(emblem);
@@ -59,14 +59,18 @@ function PawnAdornment({ voice, collaboration, activity, host, avatar }: PawnSta
     <g className="lr-person-emblem" color={avatar ? "var(--ink)" : undefined}>
       {avatar && <circle cx="10" cy="48" r="7" fill="var(--paper)" stroke="none" />}
       <g transform={avatar ? `translate(4.5 42.5)${pointer ? " rotate(-45 5.5 5.5)" : ""}`
-        : pointer ? "translate(16.5 32.5) rotate(-45 7.5 7.5)" : "translate(17 33)"}>
+        : pointer ? `translate(${additionalActivity ? 13.5 : 16.5} 32.5) rotate(-45 7.5 7.5)` : `translate(${additionalActivity ? 14 : 17} 33)`}>
         {drawn && <Glyph name={drawn} size={avatar ? 11 : pointer ? 15 : 14} />}
       </g>
+      {additionalActivity && <g transform={avatar ? "translate(14 43)" : "translate(27 35)"}>
+        {avatar && <circle cx="5" cy="5" r="4.5" fill="var(--paper)" stroke="none" />}
+        <Glyph name="plus" size={10} />
+      </g>}
     </g>
   </g>;
 }
 
-export function PawnSvg({ color, host, identity, voice, collaboration, activity, avatar, centered }: PawnState & {
+export function PawnSvg({ color, host, identity, voice, collaboration, activity, additionalActivity, avatar, centered }: PawnState & {
   color: string; identity?: string; avatar?: string; centered?: boolean;
 }) {
   const avatarClip = useId();
@@ -95,7 +99,7 @@ export function PawnSvg({ color, host, identity, voice, collaboration, activity,
           preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} onError={() => setFailedAvatar(picture)} />
         {host && <HostMark x={18} y={frameTop} width={12} />}
       </> : <PersonShape host={host} />}
-      <PawnAdornment host={host} voice={voice} collaboration={collaboration} activity={activity} avatar={!!picture} />
+      <PawnAdornment host={host} voice={voice} collaboration={collaboration} activity={activity} additionalActivity={additionalActivity} avatar={!!picture} />
     </g></g>
   </svg>;
 }

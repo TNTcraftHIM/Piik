@@ -21,20 +21,12 @@ the feedback period; they do not delay that delivery.
   0.2-second whole-window stall after the native maximize/restore button.
   Compare input delay, resize/layout work and native presentation with the
   Browser baseline; a fast menu-open preview does not clear WebView.
-- [ ] **Beta.62 workspace polish.** Align the first chat content and room mark,
-  room-card disclosure and selection, header identity and invitation spacing.
-  Preserve readable default guest labels on the couch and match native caption
-  materials to the underlying page in both themes.
-  The room roster shows each person's current activities. Evaluate a readable
-  couch treatment for simultaneous activities while keeping voice accessories
-  and the primary activity prominent.
-- [ ] **Beta.62 controls and overlays.** Replace the remaining browser-owned
-  delete confirmations with shared Piik dialogs. Restore double-click fullscreen
-  and room-card return to chat without ending media. Verify sidebar tooltip
-  placement and reaction visibility through scrolling, touch and popup dismissal.
-- [ ] **Beta.62 missing image thumbnails.** Trace a reported message's inline
-  preview, media-clear watermark, readable image and render binding. Existing
-  preview decoding works; the affected message's data is not yet identified.
+- [ ] **Native caption visual acceptance.** Verify the integrated caption's
+  materials against the underlying page in both themes on the matching Windows
+  package, including modal surfaces and maximize/restore.
+- [ ] **Beta.62 missing chat image thumbnails.** Trace a reported message's
+  inline preview, media-clear watermark, readable image and render binding.
+  Identify whether older history, newly sent images or both are affected.
 - [ ] **Beta.62 webpage startup latency.** The reported source eventually played
   after a long wait. Identify its original-site or App-forwarded path and locate
   the initial read, connection and first-picture delays without interrupting it.

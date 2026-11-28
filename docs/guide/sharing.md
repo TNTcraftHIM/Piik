@@ -55,19 +55,19 @@ If Piik reports an unsupported video format, stop streaming, select **NV12** und
 
 In a 3.0 test room, select **Start sharing → Browser → Watch together** and paste a direct video URL or the page address from your browser’s address bar.
 
-- **Direct video link.** If you have a playable video link, select **Play direct video URL**.
-- **YouTube or peertube.tv video.** For a supported YouTube link or a single public on-demand video on peertube.tv, select **Watch together**, play the preview, then confirm with **Select video**. Viewers open the same video in their browsers.
-- **Sync video on its webpage.** In the Windows Piik App, select **Open webpage and select video**. Sign in if needed, start the video, then return to Piik and choose **Sync video on its webpage** beside that player's card. Viewers select **Open webpage and select video** in the Windows App, then sign in if needed and select the matching video. Each device streams from the original website and follows the sharer's play, pause and position.
-- **Share a source the App finds.** After opening the webpage and starting the video, select **Choose playback source** beside the player's card if available. Otherwise, select the card itself to look for sources. A complete video file or supported HLS stream with a direct link offers **Share this video**. Viewers select **Watch** in the room using a supported browser. For **Share this video**, they try the original website first. If playback fails and **Receive from sharer** is available, they can use it to receive the video from the sharer's App. If a source offers **Forward through App**, the sharer's App reads the original video and uses the sharer's upload bandwidth.
+- **Direct video link.** If you have a playable video link, select **Start watching together**.
+- **YouTube or peertube.tv video.** For a supported YouTube link or a single public on-demand video on peertube.tv, select **Select video**, play the preview, then select **Start watching together**. Viewers open the same video in their browsers.
+- **Share a webpage video.** In the Windows Piik App, select **Open webpage and select video**. Sign in if needed, start the video, then return to Piik. If Piik finds several videos, select the one you want. When it finds only one, Piik prepares it automatically. If needed, open **Choose playback source** to change the source or pick video and audio tracks. Select **Start watching together** when ready.
+- **Choose how viewers watch.** With **Sync video on its webpage**, viewers open the same page in the Windows App, sign in if needed, select the matching video and confirm with **Watch together**. Each device loads from the site and follows the sharer's playback. If Piik offers a source that plays directly from the site, viewers can select **Watch** in a supported browser. When **Receive from sharer** is available, they can switch to receiving from the sharer's App, which uses the sharer's upload bandwidth.
 
 Direct links can point to video files, supported HLS streams or static DASH (`.mpd`) streams without DRM.
 
 **Sync video on its webpage** syncs playback of the selected video only. If the website reloads media in that player, synchronization continues. Forwarding the replacement requires selecting its source again. To show the rest of the page, choose **Browser → Share a screen** and share the browser tab.
 
 In the App's webpage window, **Share…** reopens source selection for that page.
-Choose the next video and its sharing method. Cancelling leaves the current share running.
+Choose the next video and select **Switch video**. Cancelling leaves the current share running.
 
-If you're already watching a shared webpage video in the Windows App, open **Playback settings → Open webpage and select video** to use the website's player. The current video keeps playing while you choose. Select the player to switch, or close the chooser to keep watching in Piik. When the source supports direct playback, use **Playback settings → Play directly from website** to return to Piik's player. If a player preview opens, press Play in it to switch.
+If you're already watching a shared webpage video in the Windows App, open **Playback settings → Open webpage and select video** to use the website's player. The current video keeps playing while you choose. Select the matching player and confirm with **Watch together**, or close the chooser to keep watching in Piik. When the source supports direct playback, use **Playback settings → Play directly from website** to return to Piik's player. If a player preview opens, press Play in it to switch.
 
 When viewers play directly from the site, each device loads the video independently. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.
 

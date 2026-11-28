@@ -14668,13 +14668,14 @@ test.each([false, true])('indexed sharing explicitly prepares video with optiona
   } finally { session.close(); }
 });
 
-test('rejected indexed start retires its prepared page without a separate attachment', async () => {
+test('rejected indexed start releases its reader and keeps the page open for retry', async () => {
   localProviderVideo();
   const video = indexedInspection('video');
   vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
   commit.mockRestore();
   const hide = vi.spyOn(page, 'hide');
+  const stop = vi.spyOn(page, 'stopMedia');
   vi.spyOn(page, 'prepareMedia').mockResolvedValue({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
   try {
     await session.selectWatchPage('first', candidateId);
@@ -14685,12 +14686,17 @@ test('rejected indexed start retires its prepared page without a separate attach
     socket.receive({ type: 'reply', roomId: 'first', requestId: start.requestId, result: { type: 'error', code: 'watch_source_unavailable' } });
     await rejected;
     expect(hide).not.toHaveBeenCalled();
-    expect(dispose).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(dispose).not.toHaveBeenCalled();
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
-    expect(session.watchPage('first')).toBeUndefined();
+    expect(session.watchPage('first')?.watchSources?.candidateId).toBe(candidateId);
+    expect(session.sourceSelectionCommitting('first')).toBe(false);
     expect(socket.sent.some(command => command.type === 'stop_watch' && command.id === start.id)).toBe(true);
     expect(socket.sent.some(command => command.type === 'update_watch')).toBe(false);
     expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+    await session.cancelScreenSelection('first');
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.watchPage('first')).toBeUndefined();
   } finally { session.close(); }
 });
 
@@ -15262,7 +15268,7 @@ test('committing a portable webpage source retires its original page only after 
   } finally { session.close(); }
 });
 
-test.each(['media readiness', 'room confirmation'] as const)('portable failure at %s retires its Page and candidate without stopping the incumbent', async failure => {
+test.each(['media readiness', 'room confirmation'] as const)('portable failure at %s retains the Page for retry without stopping the incumbent', async failure => {
   const { session, page, socket, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const releasePage = vi.spyOn(page, 'close');
   const originalVideo = new WatchTestVideo(), candidateVideo = new WatchTestVideo();
@@ -15290,14 +15296,19 @@ test.each(['media readiness', 'room confirmation'] as const)('portable failure a
     }
     await rejected;
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_patch', patch: { paused: true } }), expect.any(AbortSignal));
-    expect(releasePage).toHaveBeenCalledOnce();
-    expect(dispose).toHaveBeenCalledOnce();
+    expect(releasePage).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
     expect(candidateVideo.src).toBe('');
-    expect(session.watchPage('first')).toBeUndefined();
+    expect(session.watchPage('first')?.candidates.map(candidate => candidate.id)).toContain(candidateId);
+    expect(session.sourceSelectionCommitting('first')).toBe(false);
     expect(session.getSnapshot().watchPlayers.get('retained-watch')).toBe(incumbent);
     expect(incumbentClose).not.toHaveBeenCalled();
     expect(originalVideo.src).toBe('https://media.test/current.mp4');
     expect(socket.sent.filter(command => command.type === 'stop_watch').map(command => command.id)).toEqual(activityId ? [activityId] : []);
+    await session.cancelScreenSelection('first');
+    expect(releasePage).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.watchPage('first')).toBeUndefined();
   } finally { session.close(); }
 });
 
@@ -17693,8 +17704,11 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     await failure;
     expect(dispose).not.toHaveBeenCalled();
     expect(page.selectedCandidateId).toBe(candidateId);
-    next.receive({ type: "page_share_requested", pageId: next.id });
-    const replacement = select(mode, next, otherId);
+    expect(session.watchPage("first")?.pageId).toBe(next.id);
+    expect(session.getSnapshot().watchPlayers.has(old.id as string)).toBe(true);
+    const replacement = mode === "forward"
+      ? session.selectWatchForwardSource("first", session.watchPage("first")!.watchSources!.choices[0].id)
+      : session.selectWatchBrowserSource("first", null);
     const start = await confirm(3);
     await replacement;
     expect(start.replaceId).toBe(old.id);

@@ -1045,3 +1045,35 @@ fn leaving_retired_screen_cancels_only_the_callers_pending_handoff() {
     assert_eq!(net.state(viewer).watch_activities[0].predecessor, None);
     assert_eq!(net.state(other).watch_activities[0].predecessor, Some(ViewSource::Screen(screen)));
 }
+
+#[test]
+fn retiring_host_after_watch_commit_reports_unknown_to_requester() {
+    use piik_channel_core::{host::RoomResult, wire::{Command, Request}};
+    let (mut net, owner, viewer, room) = setup();
+    let request = Request::parse(&start(&room, Uuid::new_v4()).to_string()).unwrap();
+    let dispatched = net.authority.handle(viewer, request, 2000);
+    let input = dispatched.events.into_iter().find_map(|(_, event)| match event {
+        Event::HostInput { input, .. } => Some(input),
+        _ => None,
+    }).unwrap();
+    let output = net.host_turn(&room, input);
+    assert!(matches!(output.reply.as_ref().unwrap().result, RoomResult::WatchReady { .. }));
+    let update = Request::parse(&json!({"type":"update_room","roomId":room,"name":"Renamed","requestId":"manage"}).to_string()).unwrap();
+    let management = net.authority.handle(owner, update, 2000);
+    assert!(management.events.iter().any(|(_, event)| matches!(event, Event::HostInput { .. })));
+    let stopped = net.authority.handle(owner, Request {
+        request_id: None,
+        command: Command::HostStop { room_id: room.clone(), binding_id: output.binding_id },
+    }, 2001);
+    assert!(stopped.events.iter().any(|(target, event)| *target == viewer && matches!(event,
+        Event::Reply { request_id, result: ReplyResult::Unknown, .. } if request_id == "start")));
+    assert!(stopped.events.iter().any(|(target, event)| *target == owner && matches!(event,
+        Event::Reply { request_id, result: ReplyResult::Unknown, .. } if request_id == "manage")));
+    let late = net.authority.handle(owner, Request {
+        request_id: None, command: Command::HostOutput { room_id: room.clone(), output },
+    }, 2002);
+    assert!(!late.events.iter().any(|(target, event)| *target == viewer && matches!(event, Event::Reply { .. })));
+    let retry = net.command_at(viewer, start(&room, Uuid::new_v4()), 2003);
+    assert!(retry.events.iter().any(|(target, event)| *target == viewer && matches!(event,
+        Event::Reply { request_id, result: ReplyResult::Error { .. }, .. } if request_id == "start")));
+}

@@ -2143,9 +2143,7 @@ impl Channel {
                     result: if current {
                         completion.unwrap()
                     } else {
-                        RoomResult::Error {
-                            code: "room_context_changed".into(),
-                        }
+                        RoomResult::Unknown
                     },
                 }
             })

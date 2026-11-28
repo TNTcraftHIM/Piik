@@ -750,8 +750,9 @@ responder publishes its observations only in the Answer. After mutual completion
 the Runtime admits the socket, reader and candidates in one pump turn before
 polling that same RTC. Pair identity, ICE credentials, DTLS certificate
 and logical room/media leases remain unchanged; the SDK owns nomination.
-Preparation has its existing five-second lifetime. Failure, refusal or a full
-preparation queue retires that work without failing ordinary ICE. The Native
+Preparation must reach mutual completion within five seconds. The current
+authorized RTC then owns the completed socket's handoff. Failure, refusal or a
+full preparation queue retires that work without failing ordinary ICE. The Native
 connection keeps its ordinary twenty-second ceiling, while channel discovery
 and room-operation deadlines retain their own scopes. With a common STUN-only
 configuration, a connected ordinary path ends preparation. Where TURN is configured

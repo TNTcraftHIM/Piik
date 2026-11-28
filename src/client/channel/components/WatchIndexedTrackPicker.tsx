@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useCopy } from "../../ui/copy";
+import type { CopyKey } from "../../locales/zh";
 import { ChannelAction } from "./ChannelAction";
 import { Btn } from "../../components/living/primitives";
 import { Glyph } from "../../ui/icons";
@@ -19,9 +20,9 @@ export function resolveWatchTrack<T extends { id: string }>(choices: readonly T[
 }
 
 /** Only a unique usable track is a default; metadata never guesses a pairing. */
-export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm, onRetry }: {
+export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback, confirmLabel, onConfirm, onRetry }: {
   onRetry?: () => Promise<void>;
-  choices: readonly WatchIndexedChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
+  choices: readonly WatchIndexedChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean; confirmLabel?: CopyKey;
   onConfirm(videoId: string, audioId?: string): void;
 }) {
   const { t } = useCopy();
@@ -34,11 +35,11 @@ export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback,
         value?.language && value.language !== "und" ? value.language : undefined,
         value?.channels ? t("watch.forward.channels", { count: String(value.channels) }) : undefined,
         value?.codec, value ? formatMediaTime(value.duration) : undefined].filter(Boolean).join(" · ") };
-  })} disabled={disabled} busy={busy} mainPlayback={mainPlayback} onConfirm={onConfirm} onRetry={onRetry} />;
+  })} disabled={disabled} busy={busy} mainPlayback={mainPlayback} confirmLabel={confirmLabel} onConfirm={onConfirm} onRetry={onRetry} />;
 }
 
 export function WatchMpdSourcePicker({ choices, onInspect, onConfirm, ...props }: {
-  choices: readonly WatchMpdChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
+  choices: readonly WatchMpdChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean; confirmLabel?: CopyKey;
   onInspect(choiceId: string, signal: AbortSignal): Promise<unknown>;
   onConfirm(selection: NativePageMpdSelection): void;
 }) {
@@ -56,7 +57,7 @@ export function WatchMpdSourcePicker({ choices, onInspect, onConfirm, ...props }
 }
 
 function WatchMpdTrackPicker({ choice, onConfirm, ...props }: {
-  choice: WatchMpdChoice; disabled?: boolean; busy?: boolean; mainPlayback?: boolean; onConfirm(selection: NativePageMpdSelection): void;
+  choice: WatchMpdChoice; disabled?: boolean; busy?: boolean; mainPlayback?: boolean; confirmLabel?: CopyKey; onConfirm(selection: NativePageMpdSelection): void;
 }) {
   const { lang, t } = useCopy();
   const tracks = choice.catalog?.tracks.map(track => {
@@ -79,9 +80,9 @@ function WatchMpdTrackPicker({ choice, onConfirm, ...props }: {
   </section>;
 }
 
-function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm, onRetry }: {
+function WatchTrackPicker({ choices, disabled, busy, mainPlayback, confirmLabel, onConfirm, onRetry }: {
   onRetry?: () => Promise<void>;
-  choices: readonly TrackChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
+  choices: readonly TrackChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean; confirmLabel?: CopyKey;
   onConfirm(videoId: string, audioId?: string): void;
 }) {
   const { t } = useCopy();
@@ -125,7 +126,7 @@ function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm, on
           void onRetry().finally(() => setRetrying(active => active === onRetry ? null : active));
         }} />}
     </div>}
-    <Btn icon="share" tone="primary" title="watch.forward.confirmTracks" cap="watch.forward.confirmTracks" busy={busy}
+    <Btn icon="share" tone="primary" title={confirmLabel ?? "watch.forward.confirmTracks"} cap={confirmLabel ?? "watch.forward.confirmTracks"} busy={busy}
       disabled={disabled || busy || !selectedVideo || !videoOnly && !selectedAudio}
       onClick={() => { if (selectedVideo) onConfirm(selectedVideo.id, selectedAudio?.id); }} />
     <details className="c3-settings-details"><summary>{t("watch.forward.trackOptions")}</summary>
