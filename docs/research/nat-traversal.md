@@ -330,13 +330,11 @@ move in bursts, since every subscriber's traffic to them shares one.
 Two results follow, both counted in memory with filtering by address and
 port and no packet sent.
 
-**The order of a search.** A pool of sockets that all send to one endpoint is
-a run of neighbouring ports on such a NAT, and a search that combs the range
-evenly at every length reaches a run of n within about 65,536 / n packets
-wherever it began. The form first proposed here, the 16-bit count with its
-bits reversed from a random start, does that and no more: its first 1,024
-ports lie 64 apart, so a pool whose ports are an even distance apart is missed
-by half of the starts or more. The
+**The order of a search.** A counter shared by the pool can produce neighbouring
+ports, making early range coverage useful. The first proposal used the 16-bit
+count with its bits reversed from a random start. Its raw 1,024-port prefix
+lies 64 apart before reserved ports are excluded, so a pool whose ports are an
+even distance apart is missed by half of the starts or more. The
 [product's search](#random-mapping-collision-control) keeps the comb and
 draws one port inside each of its 1,024 steps. With 256 sockets and 1,024
 packets, 4,000 trials a row:
