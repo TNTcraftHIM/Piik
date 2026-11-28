@@ -92,14 +92,14 @@ impl IceServerUrl {
 pub(super) struct Config {
     pub(super) bases: Vec<Base>,
     urls: Vec<IceServerUrl>,
-    linear: Option<Mutex<linear::Linear>>,
+    linear: Option<Arc<Mutex<linear::Linear>>>,
 }
 impl Config {
     pub fn new(bases: Vec<Base>, urls: &[IceServerUrl], linear: Option<Candidate>) -> Self {
         Self {
             bases,
             urls: urls.iter().filter(|url| !url.is_turn).cloned().collect(),
-            linear: linear.map(|base| Mutex::new(linear::Linear::new(base))),
+            linear: linear.map(|base| Arc::new(Mutex::new(linear::Linear::new(base)))),
         }
     }
 }
@@ -256,7 +256,7 @@ async fn binding(
     handle: Transport,
     base: Base,
     server: SocketAddr,
-    linear: Option<&Mutex<linear::Linear>>,
+    linear: Option<&Arc<Mutex<linear::Linear>>>,
 ) -> Result<()> {
     let local = base.local;
     let mut request = Message::new();
@@ -285,33 +285,29 @@ async fn binding(
     })
     .await;
     let mapped = result.as_ref().ok().copied();
-    // The actor callback must own its input. The observation owner stays inside
-    // this gather future and supplies only a bounded result to that callback.
-    let (generation, targets) = linear
-        .map(|state| {
-            let mut state = state.lock().unwrap();
-            (state.ufrag().to_owned(), state.resolved(slot, mapped))
-        })
-        .unwrap_or_default();
+    let linear = linear.cloned();
     handle
         .call(move |e| {
             e.discovery_routes.remove(&transaction);
-            if let Some(mapped) = mapped {
-                if let Some(candidate) = e
+            let registered = match mapped {
+                Some(mapped) => e
                     .rtc
                     .add_local_candidate(Candidate::server_reflexive(mapped, local, "udp")?)
-                    .cloned()
-                {
-                    e.emit(Event::Candidate(e.handle.pair, candidate.clone(), None));
-                    if !targets.is_empty() && e.linear_current(&generation) {
-                        for target in targets {
-                            let candidate = linear::hypothesis(&candidate, target)?;
-                            e.emit(Event::Candidate(
-                                e.handle.pair,
-                                candidate,
-                                Some(piik_channel_core::wire::CandidateOrigin::Linear),
-                            ));
-                        }
+                    .cloned(),
+                None => None,
+            };
+            if let Some(candidate) = &registered {
+                e.emit(Event::Candidate(e.handle.pair, candidate.clone(), None));
+            }
+            if let Some(linear) = linear {
+                let mut state = linear.lock().unwrap();
+                if e.linear_current(state.ufrag()) {
+                    for candidate in state.candidates(slot, mapped, registered)? {
+                        e.emit(Event::Candidate(
+                            e.handle.pair,
+                            candidate,
+                            Some(piik_channel_core::wire::CandidateOrigin::Linear),
+                        ));
                     }
                 }
             }
@@ -411,9 +407,9 @@ mod tests {
             .await?;
         let local = base.local;
         let generation = seed.ufrag().unwrap().to_owned();
-        let linear = Mutex::new(linear::Linear::new(seed));
+        let linear = Arc::new(Mutex::new(linear::Linear::new(seed)));
         let mut servers = Vec::new();
-        for _ in 0..3 {
+        for _ in 0..4 {
             servers.push(UdpSocket::bind("127.0.0.1:0").await?);
         }
         let mut bindings = Vec::new();
@@ -439,7 +435,8 @@ mod tests {
             bindings.push(binding);
         }
         // Deliberately reverse completion; only original sends define the order.
-        for index in (0..3).rev() {
+        // The fourth server shares the first mapping and replies before that sample.
+        for index in (0..4).rev() {
             let (transaction, from) = requests[index];
             let mut response = Message::new();
             response.build(&[
@@ -447,13 +444,11 @@ mod tests {
                 Box::new(transaction),
                 Box::new(XorMappedAddress {
                     ip: "203.0.113.1".parse()?,
-                    port: 40000 + index as u16,
+                    port: 40000 + (index % 3) as u16,
                 }),
             ])?;
             servers[index].send_to(&response.raw, from).await?;
-        }
-        for result in futures_util::future::join_all(bindings).await {
-            result?;
+            bindings.pop().unwrap().await?;
         }
         let emitted: Vec<_> = std::iter::from_fn(|| events.try_recv().ok())
             .filter_map(|event| match event {

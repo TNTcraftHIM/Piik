@@ -686,11 +686,12 @@ export class ChannelSession {
         this.write({ type: "join_watch", roomId: room.id, id: activity.id, mode: null });
     }
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
-    // Native can replace its Domain endpoint while this page's App control stays connected.
+    // Native can resume or replace its Domain endpoint while App control stays connected.
     const refreshHelper = !restoring && this.app?.connected
-      && [...this.watching.values()].some(watch => watch.helperSessionId && !state.sessions.some(endpoint => endpoint.id === watch.helperSessionId))
       && state.sessions.some(endpoint => endpoint.userId === userId && endpoint.online
-        && !this.view.state?.sessions.some(previous => previous.id === endpoint.id && previous.online));
+        && !this.view.state?.sessions.some(previous => previous.id === endpoint.id && previous.online)
+        && [...this.watching.values()].some(({ helperSessionId }) => helperSessionId
+          && (helperSessionId === endpoint.id || !state.sessions.some(other => other.id === helperSessionId && other.online))));
     const readByRoom = this.readMarkers.project(state.channel.id, userId, state.channel.rooms);
     for (const [id, capture] of this.local) {
       if (capture.admitted && !state.publications.some(publication => publication.id === id)) {

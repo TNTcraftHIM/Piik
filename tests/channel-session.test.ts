@@ -2096,9 +2096,9 @@ test.each(["friend", "self"])("Browser watching stays available while the connec
   } finally { session.close(); }
 });
 
-test("a retained watch re-associates an App endpoint after its current admission becomes ready", async () => {
+test.each(["replacement", "resume"])("a retained watch re-associates an App endpoint after its current admission becomes ready (%s)", async mode => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
-  const previous = crypto.randomUUID(), current = crypto.randomUUID();
+  const previous = crypto.randomUUID(), current = mode === "resume" ? previous : crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: previous, roomIds: [] });
   const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
@@ -2117,12 +2117,15 @@ test("a retained watch re-associates an App endpoint after its current admission
     expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
     socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } }); await watching;
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", helperSessionId: previous }));
-    socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } });
-
-    state.sessions = state.sessions.filter(endpoint => endpoint.id !== previous);
+    // Admission can drop between the local description and the room command.
+    socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId,
+      result: mode === "resume" ? { type: "error", code: "helper_unavailable" } : { type: "done" } });
+    if (mode === "resume") state.sessions = state.sessions.map(endpoint => endpoint.id === previous ? { ...endpoint, online: false } : endpoint);
+    else state.sessions = state.sessions.filter(endpoint => endpoint.id !== previous);
     socket.receive({ type: "state", state });
     let ready!: (value: { sessionId: string; roomIds: string[] }) => void;
     description.mockImplementationOnce(() => new Promise(resolve => { ready = resolve; }));
+    state.sessions = state.sessions.filter(endpoint => endpoint.id !== current);
     state.sessions.push({ id: current, userId: "self", online: true, signingKey: testSigningKey, ...PRODUCT_VERSION });
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(description).toHaveBeenCalledTimes(2));

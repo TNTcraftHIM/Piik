@@ -1,5 +1,6 @@
 //! One batch of hypotheses from the existing discovery work on one real base.
-use std::net::{SocketAddr, SocketAddrV4};
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr, SocketAddrV4};
 use str0m::Candidate;
 
 struct Sample {
@@ -10,6 +11,7 @@ struct Sample {
 pub(super) struct Linear {
     base: Candidate,
     samples: Option<Vec<Sample>>,
+    templates: HashMap<IpAddr, Candidate>,
 }
 
 impl Linear {
@@ -17,6 +19,7 @@ impl Linear {
         Self {
             base,
             samples: Some(Vec::with_capacity(3)),
+            templates: HashMap::new(),
         }
     }
 
@@ -43,11 +46,35 @@ impl Linear {
         Some(slot)
     }
 
-    pub fn resolved(
+    // RTC exposes the registered candidate only on first insertion. Keep one
+    // template per observed IP until this single base's cohort resolves.
+    pub fn candidates(
         &mut self,
         slot: Option<usize>,
         mapped: Option<SocketAddr>,
-    ) -> Vec<SocketAddrV4> {
+        registered: Option<Candidate>,
+    ) -> anyhow::Result<Vec<Candidate>> {
+        if self.samples.is_none() {
+            return Ok(vec![]);
+        }
+        if let Some(candidate) = registered {
+            self.templates.insert(candidate.addr().ip(), candidate);
+        }
+        let targets = self.resolved(slot, mapped);
+        if self.samples.is_some() {
+            return Ok(vec![]);
+        }
+        let templates = std::mem::take(&mut self.templates);
+        let Some(template) = mapped.and_then(|addr| templates.get(&addr.ip())) else {
+            return Ok(vec![]);
+        };
+        targets
+            .into_iter()
+            .map(|target| hypothesis(template, target))
+            .collect()
+    }
+
+    fn resolved(&mut self, slot: Option<usize>, mapped: Option<SocketAddr>) -> Vec<SocketAddrV4> {
         let Some(slot) = slot else {
             return vec![];
         };
