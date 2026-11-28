@@ -295,7 +295,6 @@ pub struct Prepared {
     #[cfg(test)]
     checks: PreparationChecks,
     pair: Uuid,
-    expires: Instant,
     socket: UdpSocket,
     remote: SocketAddrV4,
 }
@@ -659,6 +658,7 @@ impl Survey {
                     }
                 }
             };
+            ensure!(Instant::now() < deadline, "pair preparation retired");
             drop(reads);
             let socket = sockets.swap_remove(index);
             drop(sockets);
@@ -666,7 +666,6 @@ impl Survey {
                 #[cfg(test)]
                 checks: *checks,
                 pair: preparation.pair,
-                expires: preparation.expires,
                 socket,
                 remote: selected.unwrap(),
             })
@@ -677,10 +676,7 @@ impl Prepared {
     /// Call only after mutual success on this still-current authorized pair.
     /// The consuming socket goes to the existing PC; the tuple becomes a remote ICE candidate.
     pub fn commit(self, current_pair: Uuid) -> Result<(std::net::UdpSocket, SocketAddrV4)> {
-        ensure!(
-            self.pair == current_pair && Instant::now() < self.expires,
-            "pair preparation retired"
-        );
+        ensure!(self.pair == current_pair, "pair preparation retired");
         Ok((self.socket.into_std()?, self.remote))
     }
 }
@@ -769,6 +765,31 @@ mod tests {
     use super::*;
     use anyhow::Context;
     use std::collections::HashSet;
+
+    #[tokio::test]
+    async fn completed_checks_can_handoff_after_deadline_only_to_the_same_pair() -> Result<()> {
+        let pair = Uuid::new_v4();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let [(current, current_addr), (retired, retired_addr)] =
+            loopback_winners_until(pair, deadline, false).await?;
+        sleep_until(deadline.into()).await;
+        assert!(Instant::now() >= deadline);
+        let (socket, remote) = current.commit(pair)?;
+        assert_eq!(socket.local_addr()?, current_addr);
+        assert_eq!(SocketAddr::V4(remote), retired_addr);
+
+        assert!(retired.commit(Uuid::new_v4()).is_err());
+        UdpSocket::bind(retired_addr).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn late_peer_completion_cannot_handoff() -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let result = loopback_winners_until(Uuid::new_v4(), deadline, true).await;
+        assert!(matches!(result, Err(error) if error.to_string() == "pair preparation retired"));
+        Ok(())
+    }
 
     #[tokio::test]
     async fn cancelled_search_exports_only_reviewed_check_facts() -> Result<()> {
@@ -1927,11 +1948,20 @@ mod tests {
 
 #[cfg(test)]
 pub(super) async fn loopback_winners(pair: Uuid) -> Result<[(Prepared, SocketAddr); 2]> {
-    async fn survey(pair: Uuid) -> Result<(Survey, SocketAddrV4)> {
+    loopback_winners_until(pair, Instant::now() + Duration::from_secs(5), false).await
+}
+
+#[cfg(test)]
+async fn loopback_winners_until(
+    pair: Uuid,
+    deadline: Instant,
+    delay_completion: bool,
+) -> Result<[(Prepared, SocketAddr); 2]> {
+    async fn survey(pair: Uuid, deadline: Instant) -> Result<(Survey, SocketAddrV4)> {
         let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let SocketAddr::V4(address) = socket.local_addr()? else { unreachable!() };
         Ok((Survey {
-            preparation: Preparation::new(pair, [29; 32], Ipv4Addr::LOCALHOST, Instant::now() + Duration::from_secs(5))?,
+            preparation: Preparation::new(pair, [29; 32], Ipv4Addr::LOCALHOST, deadline)?,
             observation: Observation::Stable { address: *address.ip(), port: address.port() },
             retained: Some(socket),
         }, address))
@@ -1942,13 +1972,28 @@ pub(super) async fn loopback_winners(pair: Uuid) -> Result<[(Prepared, SocketAdd
         input.send(UdpSignal::Complete).await?;
         Ok(())
     }
-    let (a, a_addr) = survey(pair).await?;
-    let (b, b_addr) = survey(pair).await?;
+    let (a, a_addr) = survey(pair, deadline).await?;
+    let (b, b_addr) = survey(pair, deadline).await?;
     let (a_tx, a_rx) = mpsc::channel(4);
     let (b_tx, b_rx) = mpsc::channel(4);
     let (a_in, mut a_msgs) = mpsc::channel(4);
     let (b_in, mut b_msgs) = mpsc::channel(4);
     let (a, b, (), ()) = tokio::try_join!(a.check_target(b_addr, &a_tx, &mut a_msgs),
-        b.check_target(a_addr, &b_tx, &mut b_msgs), signal_complete(pair, a_rx, b_in), signal_complete(pair, b_rx, a_in))?;
+        b.check_target(a_addr, &b_tx, &mut b_msgs), async {
+            if delay_completion {
+                // Let the peer finish its checks but hold mutual completion across
+                // the real deadline before Tokio can poll the timeout again.
+                let mut a_rx = a_rx;
+                let Some(NativeEvent::Command(Command::Signal { pair_id, payload })) =
+                    a_rx.recv().await else { bail!("missing signal") };
+                ensure!(pair_id == pair && matches!(payload.udp, Some(UdpSignal::Complete)));
+                tokio::time::pause();
+                std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+                b_in.send(UdpSignal::Complete).await?;
+                Ok(())
+            } else {
+                signal_complete(pair, a_rx, b_in).await
+            }
+        }, signal_complete(pair, b_rx, a_in))?;
     Ok([(a, a_addr.into()), (b, b_addr.into())])
 }
