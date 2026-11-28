@@ -16,6 +16,7 @@ const guideSections = {
   offline: ["troubleshooting", "chat-or-history-will-not-load", "聊天或历史记录加载不出来"],
   picture: ["troubleshooting", "when-video-will-not-connect", "画面连接不上"],
   capture: ["troubleshooting", "app-windows-or-screens-are-missing", "app-找不到窗口或屏幕"],
+  obs: ["sharing", "share-video-and-audio-from-obs", "用-obs-分享画面和声音"],
   webpage: ["sharing", "watch-a-webpage-video-together", "一起看网页视频"],
   gamepad: ["remote-control", "gamepads", "手柄"],
   attachment: ["troubleshooting", "an-attachment-will-not-open-or-download", "附件打不开或下载不了"],

@@ -128,6 +128,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, watchActiv
   const captureRequest = channel.nativeCaptureRequest(roomId);
   const selectedNative = channel.nativeCaptureSelection(roomId);
   const externalInput = channel.externalInput(roomId);
+  const externalInputFailed = externalInput?.state === "error" || !!externalInput?.error;
   const sharing = watchActivityId ? undefined : channel.state?.publications.find(publication => publication.kind === "screen" &&
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
   const watching = watchActivityId ? channel.state?.watchActivities.find(activity =>
@@ -317,8 +318,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, watchActiv
     <span className="c3-share-feedback" data-publication-actions={hasPublicationActions || undefined}><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
     {variant === "split" ? <span className={split ? "lr-btn-split" : "c3-share-unpaired"}>{sourceControl}{settingsControl}</span>
       : <>{hasPublicationActions ? <span ref={inlineActions} className="c3-share-inline-actions" /> : sourceControl}{settingsControl}</>}
-    {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
-      quiet onClick={() => setExternalOpen(true)} />}
+    {externalInput && <ChannelAction icon={externalInputFailed ? "alert" : "cast"}
+      label={externalInputFailed ? t("screen.obsFailed") : externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
+      quiet hasPopup="dialog" onClick={() => setExternalOpen(true)} />}
     </span>
     {preparation ? <span className="c3-share-wait" role="status" aria-live="polite">
       <span>{t(preparation === "picker" ? "host.capture.chooseInSystem" : "host.capture.preparingPicture")} {t("host.capture.cancelPreparationHint")}</span>

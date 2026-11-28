@@ -9,7 +9,8 @@
 .c3-share-failure > .c3-settings-error { margin: 0; }
 .c3-watch-forward-settings { padding: 16px 18px; }
 .c3-external-input, .c3-external-input-field { display: grid; gap: 10px; min-width: 0; }
-.c3-external-input p { margin: 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.c3-external-input p { margin: 0; font-size: 12px; line-height: 1.7; }
+.c3-external-input p:not(.c3-settings-error) { color: var(--muted); }
 .c3-external-input-field label { font-size: 12px; font-weight: 650; }
 .c3-external-input-field > div { display: flex; gap: 8px; min-width: 0; }
 .c3-external-input-field input { min-width: 0; flex: 1; }

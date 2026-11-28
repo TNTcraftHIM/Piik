@@ -320,6 +320,7 @@ export const en: Record<CopyKey, string> = {
   "screen.switchRoomSource": "Switch source in {room}",
   "screen.screenSharing": "Screen sharing",
   "screen.obsWaiting": "Waiting for OBS",
+  "screen.obsFailed": "OBS input failed",
   "screen.shareSettingsHelp": "Changes apply to your share in {room}.",
   "screen.shareSettingsNext": "Used when you start your next share.",
   "screen.obsQualityHelp": "Configure picture and sound in OBS. Delivery still adapts to each viewer.",

@@ -267,6 +267,7 @@ export const ko = {
   "screen.switchRoomSource": "{room}에서 소스 전환",
   "screen.screenSharing": "화면 공유",
   "screen.obsWaiting": "OBS 기다리는 중",
+  "screen.obsFailed": "OBS 입력 실패",
   "screen.shareSettingsHelp": "{room}에서 내 공유에 적용돼요.",
   "screen.shareSettingsNext": "다음에 공유를 시작할 때 사용해요.",
   "screen.obsQualityHelp": "화면과 소리는 OBS에서 설정하세요. 각 시청자에 맞춘 전송 조정은 계속돼요.",

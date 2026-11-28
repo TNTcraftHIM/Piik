@@ -266,6 +266,7 @@ export const zhHant = {
   "screen.switchRoomSource": "切換{room}的分享來源",
   "screen.screenSharing": "分享畫面",
   "screen.obsWaiting": "等待 OBS",
+  "screen.obsFailed": "OBS 輸入失敗",
   "screen.shareSettingsHelp": "調整你在{room}中的分享。",
   "screen.shareSettingsNext": "用於你接下來開始的分享。",
   "screen.obsQualityHelp": "畫質和聲音在 OBS 中設定，觀眾的接收畫質仍會自動調整。",

@@ -129,6 +129,7 @@ test.each(["zh", "en"] as const)("OBS actual format reaches one %s alert and cle
       const html = renderToStaticMarkup(createElement(ChannelExternalInput, { input, busy: false, onStop() {}, onClose() {} }));
       expect(html).toContain("High 10"); expect(html).toContain("6e0034"); expect(html).toContain("5.2");
       expect(html).toContain("NV12");
+      expect(html).toContain(lang === "zh" ? "sharing.zh-CN.md#用-obs-分享画面和声音" : "sharing.md#share-video-and-audio-from-obs");
       expect(html.match(/role="alert"/g)).toHaveLength(1);
       expect(html).not.toContain("external_video_format_unsupported");
       expect(app.connected).toBe(true); expect(app.hasCapture(independent)).toBe(true);
