@@ -977,20 +977,8 @@ impl Runtime {
         } else {
             None
         };
-        // Reuse this snapshot's route fact; no extra interface probe is needed.
-        // Platforms without it keep the first ordinary IPv4 base as fallback.
-        let default_ipv4 = interfaces.as_ref().and_then(|state| {
-            let interface = state
-                .interfaces
-                .get(state.default_route_interface.as_ref()?)?;
-            interface
-                .addrs()
-                .map(|address| address.addr())
-                .find(|address| address.is_ipv4())
-        });
         let mut has_ipv6 = false;
         let mut bases = Vec::new();
-        let mut linear_base = None;
         for socket in &sockets {
             let local = socket.local_addr()?;
             let candidates = host_candidates(
@@ -1007,12 +995,6 @@ impl Runtime {
                     continue;
                 };
                 has_ipv6 |= address.is_ipv6() && !address.ip().is_loopback();
-                if linear
-                    && address.is_ipv4()
-                    && (linear_base.is_none() || Some(address.ip()) == default_ipv4)
-                {
-                    linear_base = Some(candidate.clone());
-                }
                 if bases.len() < super::MAX_ICE_CANDIDATES {
                     bases.push(discovery::Base {
                         socket: socket.clone(),
@@ -1036,6 +1018,7 @@ impl Runtime {
                 .refresh_host_candidates(monitor, socket, seen)
         });
         let shared_hosts = bases.iter().filter(|b| handle.shares(&b.socket)).map(|b| b.local).collect();
+        let linear_ufrag = linear.then(|| rtc.direct_api().local_ice_credentials().ufrag);
         let engine = Engine {
             #[cfg(test)]
             test_drop_stun: false,
@@ -1089,7 +1072,7 @@ impl Runtime {
                 Box::new(engine),
                 (!local_input).then(|| {
                     (
-                        discovery::Config::new(bases, &urls, linear_base),
+                        discovery::Config::new(bases, &urls, linear_ufrag),
                         turn::Setup {
                             urls,
                             ready: turn_ready,
