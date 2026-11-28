@@ -10,6 +10,7 @@ import { applyTheme, currentTheme, subscribeTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
 import { useLayerHistory } from "../../ui/layer-history";
+import { reloadFromRoomLayer } from "../../channel/use-room-pane";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { diagnosisGuide } from "../../ui/diagnosis";
 import { Btn } from "./primitives";
@@ -81,7 +82,7 @@ export function BrowserDiagnosticsButton({ quiet, size, restoreFocus }: Pick<Com
     text={debugTitle} place="below" align="end">{debugButton}</Tooltip>
     {confirming && <ChannelConfirmDialog title={t("debug.start")} question={t("debug.startConfirm")}
       icon="cpu" label={t("debug.start")} onClose={() => { setConfirming(false); window.requestAnimationFrame(() => restoreFocus?.()); }}
-      onConfirm={() => window.location.assign(withBrowserDebug(window.location.href, true))} />}
+      onConfirm={() => reloadFromRoomLayer(withBrowserDebug(window.location.href, true))} />}
   </>;
 }
 

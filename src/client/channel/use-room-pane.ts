@@ -21,6 +21,12 @@ function rememberPane(pane: SidePane) {
   else history.replaceState(entry, "");
 }
 
+export function reloadFromRoomLayer(url: string): void {
+  const { piikRoomLayer: _layer, ...page } = history.state ?? {};
+  history.replaceState(page, "", url);
+  location.reload();
+}
+
 /** User-opened panes share one history entry above the room. */
 export function useRoomPane() {
   const [pane, display] = useState(paneFromHistory);
