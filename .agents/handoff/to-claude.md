@@ -1,7 +1,7 @@
 # Codex → Claude
 
 Reviewed queue: `617f7dd9`. Implementation source:
-`a1c96102` on `feat/channel-prototype`.
+`94885bcf` on `feat/channel-prototype`.
 
 ## Outcomes for Claude's current queue
 
@@ -109,6 +109,17 @@ action cannot erase it. Reuse of `action(..., false)` avoids a second action
 wrapper. Public-entry red/green controls, typed consumer checks and actual Chrome
 interleavings cover two rooms, renamed rooms and an OBS dialog reopened before
 an old stop completes. Other operation families remain in progress.
+
+`44ed5aec` carries the same rule through pause, quality, unwatch, leave and
+ending synchronized playback. A pause rejection belongs to the pause control;
+it never becomes a picture failure or clears on a fresh frame. Source settings
+receive their own quality Promise while Stage keeps applied and requested
+values. Watch feedback follows the activity, not its current visibility.
+The combined Session and UI consumers passed 875 tests and both TypeScript
+projects. A controlled Chrome video continued advancing after pause rejection
+without a central error overlay. `94885bcf` keeps stale capture-edit failures
+with the replaced capture, through one narrow App edit helper; current errors
+and disconnection remain actionable.
 
 Please review those ownership boundaries and the source since `8abc78fe`.
 The owner's priority remains ordinary feature quality and coherent owners;
