@@ -11,23 +11,28 @@ use std::hash::{BuildHasher, Hasher};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs, UdpSocket};
 use std::time::{Duration, Instant};
 
-/// Observers reachable from most networks, the product's defaults first. Several answer on two
-/// ports of one address, which shows whether a mapping follows the destination's port.
+/// Public observers. The first [`PRODUCT_DEFAULTS`] are the servers the product asks by default,
+/// in its order: its observation needs every one of them to answer, so a report says how many
+/// did from this network. Several of the others answer on two ports of one address, which shows
+/// whether a mapping follows the destination's port.
 /// `stun.chat.bilibili.com:3479` is left out: in seven field surveys it alone reported an address
-/// other than the one every other observer saw, the port being the same.
+/// other than the one every other observer saw, the port being the same. `stun.qq.com:3478` is
+/// left out: it answered none of thirty-five surveys.
 const OBSERVERS: [&str; 11] = [
     "stun.cloudflare.com:3478",
+    "stun.l.google.com:19302",
+    "stun.nextcloud.com:443",
     "stun.miwifi.com:3478",
     "stun.chat.bilibili.com:3478",
-    "stun.l.google.com:19302",
     "stun.cloudflare.com:53",
     "stun.l.google.com:3478",
-    "stun.qq.com:3478",
     "stun.hitv.com:3478",
     "stun.douyucdn.cn:18000",
     "stun.miwifi.com:3479",
     "stun.douyucdn.cn:18001",
 ];
+/// How many of [`OBSERVERS`], from the first, the product asks by default.
+const PRODUCT_DEFAULTS: usize = 3;
 /// A server of our own, `piik-nat-observer` on a run of ports of one address. The public servers
 /// do not answer from elsewhere (six networks, none let such an answer in, open ones among them),
 /// and none offers many ports of one address: this one answers from its next port when asked,
@@ -308,7 +313,24 @@ fn main() {
             elsewhere.push(*observer.ip());
         }
     }
-    report(&survey, &observers, (asked, unasked), first_number, full);
+    let defaults_silent = public.then(|| silent_defaults(&observers));
+    report(&survey, &observers, Asked { asked, unasked, defaults_silent }, first_number, full);
+}
+
+/// The product's default servers that are not among the observers that answered. A name that did
+/// not resolve and a server that stayed silent both end the product's observation, so they are
+/// counted together.
+fn silent_defaults(observers: &[(String, SocketAddrV4)]) -> Vec<&'static str> {
+    OBSERVERS[..PRODUCT_DEFAULTS].iter().copied().filter(|name| observers.iter().all(|(known, _)| known != name)).collect()
+}
+
+/// What the first socket's questions came to, beside the observers that answered.
+struct Asked {
+    asked: usize,
+    /// Ports of our own server left alone after their run's first port stayed silent.
+    unasked: usize,
+    /// The product's default servers that gave no answer; `None` when no public server was asked.
+    defaults_silent: Option<Vec<&'static str>>,
 }
 
 /// The cursors of an allocator in one line: each with its last port, its step and how many mappings landed on it.
@@ -354,7 +376,7 @@ fn read_address(samples: &[Sample], observers: &[(String, SocketAddrV4)]) {
     }
 }
 
-fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], (asked, unasked): (usize, usize), first: u16, full: bool) {
+fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], Asked { asked, unasked, defaults_silent }: Asked, first: u16, full: bool) {
     // Each public address seen gets a letter, in the order seen.
     let addresses = &survey.addresses;
     let letter = |address: &Ipv4Addr| {
@@ -379,6 +401,10 @@ fn report(survey: &Survey, observers: &[(String, SocketAddrV4)], (asked, unasked
     // A silent first port shows only that it did not answer: the rest of its run was not asked.
     let left = if unasked > 0 { format!(", {unasked} more not asked after their run's first port stayed silent") } else { String::new() };
     println!("observers answered: {} of {} asked{left}; requests answered {}, unanswered {}", observers.len(), asked, survey.answered, survey.unanswered);
+    if let Some(silent) = defaults_silent {
+        let missing = if silent.is_empty() { String::new() } else { format!("; no answer from {}", silent.join(", ")) };
+        println!("product's default servers answered: {} of {PRODUCT_DEFAULTS}{missing}", PRODUCT_DEFAULTS - silent.len());
+    }
     // Which observers are one address, by number: names alone do not say, since two names can be
     // one address and one name can be two. The replay reads its destinations from this line.
     let mut grouped: Vec<Ipv4Addr> = Vec::new();
@@ -508,6 +534,14 @@ mod tests {
             }
         });
         address
+    }
+
+    #[test]
+    fn a_default_server_that_did_not_answer_is_named() {
+        let answered = |names: &[&str]| -> Vec<(String, SocketAddrV4)> { names.iter().map(|name| (name.to_string(), SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1))).collect() };
+        assert!(silent_defaults(&answered(&OBSERVERS)).is_empty());
+        assert_eq!(silent_defaults(&answered(&[OBSERVERS[0], OBSERVERS[1], OBSERVERS[4]])), [OBSERVERS[2]]);
+        assert_eq!(silent_defaults(&answered(&["own1:3481"])).len(), PRODUCT_DEFAULTS);
     }
 
     #[test]
