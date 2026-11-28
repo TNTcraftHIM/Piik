@@ -57,13 +57,25 @@ import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { useClientNavigationTarget } from "../channel/client-navigation";
 import { readRoomPreferences, saveRoomPreferences, type RoomLayout } from "../lib/room-preferences";
-import { useElementWidth } from "../lib/use-element-width";
+import { useElementWidthLayout } from "../lib/use-element-width";
 import type { ChannelController } from "../channel/types";
 import { canReceivePeerWatch } from "../channel/watch-media";
 import "../channel/bootstrap";
 import "./channel-living.css";
 
 type Companion = "chat" | "people" | "none";
+
+function workspaceLayout(width: number) {
+  const phone = width <= 600;
+  return {
+    phone,
+    // The narrowest phone wraps the room heading and has room for the chat toggle there.
+    chatInBar: phone && width > 370,
+    roomListFits: width >= 900,
+    picturesFitWithChat: width >= 1080,
+    picturesFitWithRoomList: width >= 1560,
+  };
+}
 
 export function ChannelPage() {
   const [selected, setSelected] = useState(selectedRoom);
@@ -132,18 +144,14 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const creationPolicy = state && self ? roomCreationPolicyFor(state.channel, self.id) : "owner_only";
   const canCreateRoom = creationPolicy !== "owner_only";
   const ownerDocument = useSurfaceDocument();
-  const [workspaceElement, workspaceWidth] = useElementWidth(ownerDocument?.documentElement.clientWidth);
+  const [workspaceElement, workspace] = useElementWidthLayout(() => ownerDocument?.documentElement.clientWidth ?? 640, workspaceLayout);
+  const { phone, chatInBar } = workspace;
   useLayoutEffect(() => {
     if (!ownerDocument) return;
     const root = ownerDocument.documentElement;
     root.setAttribute("data-living-room", "");
     return () => root.removeAttribute("data-living-room");
   }, [ownerDocument]);
-  const phone = workspaceWidth <= 600;
-  // Where chat's toggle stands: with people in the room's heading, except on a phone whose heading is one line.
-  // Its heading has no room there, and its conversation opens just above my bar. The narrowest phones wrap the
-  // heading to a second line, which has the room again.
-  const chatInBar = phone && workspaceWidth > 370;
   const minimal = layout === "minimal";
   const bar = phone || minimal;
   const [roomListFolded, setRoomListFolded] = useState(() => readRoomPreferences("roomListFolded"));
@@ -312,7 +320,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }, [roomId, mine.map(source => source.id).join(","), watches.map(source => source.id).join(",")]);
   const hasPictures = visibleScreens.length > 0;
   const chatHasToggle = hasPictures || minimal;
-  const roomListForced = bar || workspaceWidth < 900 || (hasPictures && workspaceWidth < 1560);
+  const roomListForced = bar || !workspace.roomListFits || (hasPictures && !workspace.picturesFitWithRoomList);
   const roomListRail = !bar && (roomListFolded || roomListForced);
   const roomListOpen = roomListForced && mobilePane === "rooms";
   const roomListCompact = roomListRail && !roomListOpen;
@@ -336,7 +344,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     }
   }, [roomListForced, phone, mobilePane, companionChoice, chatHasToggle, setMobilePane]);
 
-  const defaultCompanion = !minimal && (!hasPictures || (phone ? visibleScreens.length === 1 : workspaceWidth >= 1080)) ? "chat" : "none";
+  const defaultCompanion = !minimal && (!hasPictures || (phone ? visibleScreens.length === 1 : workspace.picturesFitWithChat)) ? "chat" : "none";
   const baseCompanion = companionChoice ?? defaultCompanion;
   const companionPane = phone && (mobilePane === "people" || mobilePane === "chat") ? mobilePane : baseCompanion;
   const roomToolOpen = toolSurface.open && (!toolSurface.mode || toolSurface.mode === "panel");
