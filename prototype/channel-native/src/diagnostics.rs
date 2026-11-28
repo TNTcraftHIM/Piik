@@ -54,6 +54,7 @@ pub(crate) enum PreparationStep {
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MappingKind {
+    Observed,
     Stable,
     Sequential,
     Irregular,

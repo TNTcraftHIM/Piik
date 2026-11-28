@@ -404,8 +404,8 @@ asked. The report does not measure all three services together.
 Physical two-sided runs are what would settle either reading;
 [TODO](../todo.md) retains them.
 
-The product sends its three observation transactions from one socket in
-configuration order and waits for their replies together. One receive owner
+The product sends its observation transactions from one socket and waits for
+their replies together. One receive owner
 matches each source and transaction; classification uses send order rather
 than arrival order. The existing STUN client owns retransmission and the
 1.5-second observation deadline is unchanged. In an owned Windows loopback
@@ -416,8 +416,27 @@ Wrong-source and wrong-transaction packets did
 not supply samples, silent servers timed out and released the socket, and
 stable, increasing, decreasing and irregular classifications retained their
 meaning. This establishes the scheduling benefit in that control, not worldwide
-service reachability. A silent configured server still prevents this three-sample
-observation from completing; ordinary ICE discovery remains independent.
+service reachability.
+
+If DNS resolution finishes with fewer than three destinations, or only one or
+two STUN transactions answer, preparation can retain its socket and a measured
+endpoint. This is an observation without a mapping classification. All received
+public addresses must agree; only three complete replies can establish the
+existing sequential hypothesis. A single rejected UDP datagram does not discard
+other replies on the shared socket. The destination, packet and time budgets
+remain unchanged, and ordinary ICE discovery continues independently.
+
+In a matched two-endpoint kernel-NAT control, one side preserved its port and
+the other allocated sequentially, both with destination filtering. The third
+STUN service was silent only for the port-preserving side. The former all-three
+requirement delivered no application data or frame within 20 seconds. The
+partial-observation candidate twice selected its authenticated socket on the
+original RTC, delivered bidirectional SCTP, and decoded the first synthetic VP8
+frame in 2.076 and 1.654 seconds. Both versions retained ordinary ICE at about
+0.35 seconds when both sides preserved ports. Both failed when both sides
+allocated sequentially and both lacked the third reply. These controls used
+isolated routing and STUN services; they do not estimate public-network success.
+The private signal change requires matching updated authority and Native builds.
 
 ### External Forwarding And Participant Relays
 

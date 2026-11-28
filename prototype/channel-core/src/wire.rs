@@ -711,6 +711,10 @@ pub enum UdpSignal {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum UdpObservation {
+    Observed {
+        address: std::net::Ipv4Addr,
+        port: u16,
+    },
     Stable {
         address: std::net::Ipv4Addr,
         port: u16,
@@ -727,7 +731,8 @@ pub enum UdpObservation {
 impl UdpObservation {
     pub fn address(&self) -> std::net::Ipv4Addr {
         match *self {
-            Self::Stable { address, .. }
+            Self::Observed { address, .. }
+            | Self::Stable { address, .. }
             | Self::Sequential { address, .. }
             | Self::Irregular { address } => address,
         }
@@ -744,7 +749,7 @@ impl UdpObservation {
             return false;
         }
         match *self {
-            Self::Stable { port, .. } => port >= 1024,
+            Self::Observed { port, .. } | Self::Stable { port, .. } => port >= 1024,
             Self::Sequential { port, step, .. } => {
                 port >= 1024
                     && step != 0
@@ -759,7 +764,7 @@ impl UdpObservation {
             return None;
         }
         let port = match *self {
-            Self::Stable { port, .. } => port,
+            Self::Observed { port, .. } | Self::Stable { port, .. } => port,
             Self::Sequential { port, step, .. } => (i32::from(port) + 4 * i32::from(step)) as u16,
             Self::Irregular { .. } => return None,
         };

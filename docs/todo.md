@@ -359,8 +359,7 @@ the feedback period; they do not delay that delivery.
   proposes a pool made between two observations, published as a window per
   address. Compare it under the present deadline. Run a physical pair across
   a network with a counter per destination on the present search order and
-  default servers. A configured STUN server that resolves and stays silent
-  ends the observation: measure the three default servers from several
+  default servers. Measure partial-observation recovery and the defaults from several
   regions after the survey reports missing defaults even with zero or one
   response. Then compare a wider bounded set that keeps each request's index
   and treats a step across a gap as unknown.

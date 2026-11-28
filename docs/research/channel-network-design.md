@@ -744,8 +744,14 @@ hypotheses; fixed Server listeners and coordinated Native preparation do not
 generate them. The limit bounds added targets, not the SDK's connectivity checks.
 
 Coordinated UDP preparation starts beside ordinary ICE on one authorized physical
-pair. Both capable Native endpoints survey concurrently; each still queries its
-three STUN destinations in order. The Offer owns the shared secret, and the
+pair. Both capable Native endpoints survey concurrently, using up to three
+resolved STUN destinations and preserving send order. One or two valid replies
+retain the survey socket and one observed endpoint without claiming a mapping
+pattern. Such an endpoint can participate in the existing authenticated check
+with an observed, stable or fully observed sequential peer. Partial observations
+do not supply a step or qualify for random-port search. Conflicting public
+addresses end preparation. Ordinary ICE continues independently.
+The Offer owns the shared secret, and the
 responder publishes its observations only in the Answer. After mutual completion,
 the Runtime admits the socket, reader and candidates in one pump turn before
 polling that same RTC. Pair identity, ICE credentials, DTLS certificate
