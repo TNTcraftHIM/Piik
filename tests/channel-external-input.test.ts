@@ -163,3 +163,27 @@ test("unknown profile remains numeric and a generic error ignores unrelated form
   expect(channelErrorPresentation("external_video_format_unsupported", copy, undefined,
     { ...format, levelIdc: 0 }).message).toContain("level_idc=0");
 });
+test("capture controls distinguish replaced, current and disconnected requests", async () => {
+  const { app, socket } = await setup();
+  try {
+    const publicationId = crypto.randomUUID();
+    await arm(app, socket, publicationId);
+    const live = () => socket.receive({ type: "external_input_state", publicationId, state: "live",
+      captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(), codec: "h264" });
+    live();
+    const controls = [app.setCapturePaused(publicationId, true), app.setCaptureTitle(publicationId, "title"),
+      app.setCaptureQuality(publicationId, DEFAULT_QUALITY_SETTINGS)];
+    const requests = socket.sent.slice(-3);
+    live();
+    for (const { id } of requests) socket.receive({ id, error: "capture_failed" });
+    const results = await Promise.allSettled(controls);
+    expect(results).toEqual(controls.map(() => ({ status: "rejected", reason: expect.objectContaining({ name: "AbortError" }) })));
+
+    const current = app.setCapturePaused(publicationId, true);
+    socket.receive({ id: socket.sent.at(-1)!.id, error: "capture_failed" });
+    await expect(current).rejects.toThrow("capture_failed");
+    const disconnected = app.setCapturePaused(publicationId, true);
+    socket.close();
+    await expect(disconnected).rejects.toThrow("app_disconnected");
+  } finally { app.close(); }
+});

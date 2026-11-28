@@ -2319,7 +2319,7 @@ export class ChannelSession {
       if (roomId) this.declinedSources.set(publicationId, roomId);
       this.refreshActivity();
       if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
-    });
+    }, false);
   };
   retryPicture = (publicationId: string, reportError: ReportError = true): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
     const current = this.sessionContext();
@@ -2400,7 +2400,7 @@ export class ChannelSession {
           await this.request({ type: "publish", publication: { id, roomId, kind: "screen", videoSettings: screenVideoSettings(profile) } });
         }),
         retire: id => this.retireScreenPublication(id),
-        remember: this.setQuality, begin: () => this.beginActionFeedback(),
+        remember: this.setQuality,
       });
       this.stages.set(roomId, stage);
     }
@@ -3108,8 +3108,8 @@ export class ChannelSession {
       this.patch({}); throw error;
     }
   }
-  leaveWatch = (id: string, reportError: ReportError = true): Promise<void> =>
-    this.action(`watch:${id}`, () => this.leaveWatchResource(id), reportError);
+  leaveWatch = (id: string): Promise<void> =>
+    this.action(`watch:${id}`, () => this.leaveWatchResource(id), false);
   private async leaveWatchResource(id: string): Promise<void> {
     const candidate = this.retirePendingWatchPlayer(id);
     const player = this.watchPlayer(id);
@@ -3139,8 +3139,8 @@ export class ChannelSession {
     void this.request(source.kind === "watch" ? { type: "join_watch", roomId, id: source.id, mode: null }
       : { type: "subscribe", publicationId: source.id, enabled: false }, undefined, roomId).catch(() => {});
   }
-  stopWatch = (id: string, reportError: ReportError = true): Promise<void> =>
-    this.action(`stop:${id}`, () => this.stopWatchResource(id, "stop-requested"), reportError);
+  stopWatch = (id: string): Promise<void> =>
+    this.action(`stop:${id}`, () => this.stopWatchResource(id, "stop-requested"), false);
   private async stopWatchResource(id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement"): Promise<void> {
     const player = this.watchPlayer(id);
     if (!player?.owner) {
@@ -3603,10 +3603,10 @@ export class ChannelSession {
       await this.action(`pause:${publicationId}`, async () => {
         try { await this.request(command, undefined, publication.roomId); }
         catch (error) { if (!(error instanceof Error) || error.message !== "disconnected") throw error; }
-      });
+      }, false);
     } else if (this.app?.screens.has(publicationId)) {
       if (this.view.connection !== "connected") throw new Error("disconnected");
-      await this.action(`pause:${publicationId}`, () => this.app!.setCapturePaused(publicationId, paused));
+      await this.action(`pause:${publicationId}`, () => this.app!.setCapturePaused(publicationId, paused), false);
     } else throw new Error("not_publication_owner");
   };
   stopScreen = (publicationId: string, successorWatchId?: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {

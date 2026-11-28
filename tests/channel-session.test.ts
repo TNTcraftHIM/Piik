@@ -4649,8 +4649,11 @@ test("Browser source output gain and bitrate survive replacement and close with 
     const rejectedMetadataResult = expect(rejectedMetadata).rejects.toThrow("room_unavailable");
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
       publication: { id: publication.id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
-    socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "error", code: "room_unavailable" } });
+    const qualityRequest = socket.sent.at(-1)!.requestId;
+    session.browse("second");
+    socket.receive({ type: "reply", requestId: qualityRequest, result: { type: "error", code: "room_unavailable" } });
     await rejectedMetadataResult;
+    expect(session.getSnapshot().error).toBeNull();
     expect(constraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
     expect(session.screenQuality(publication.id)?.applied).toEqual(liveProfile);
     session.setQuality(QUALITY_PROFILES["720p30"]);
@@ -5062,7 +5065,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const muting = session.setSourceAudio(publicationId, { muted: true });
     const muteCommand = app.sent.at(-1)!;
     expect(muteCommand).toMatchObject({ type: "capture_audio_settings", settings: { gain: 0 } });
-    app.receive({ id: firstChange.id, result: null });
+    app.receive({ id: firstChange.id, error: "superseded profile unavailable" });
     await vi.waitFor(() => expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(2));
     expect(app.sent.at(-1)).toMatchObject({ type: "capture_video_settings", publicationId, captureId,
       settings: { width: 1920, height: 1080, fps: 60, bitrate: requestedProfile.maxBitrate, degradationPreference: requestedProfile.degradationPreference } });
@@ -5079,9 +5082,11 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const liveProfile = session.screenQuality(publicationId)!.applied;
     expect(liveProfile).toMatchObject(requestedProfile);
     expect(session.getSnapshot().quality).toEqual(liveProfile);
+    const priorError = session.getSnapshot().error;
     const rejectedQuality = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
     app.receive({ id: app.sent.at(-1)!.id, error: "encoder unavailable" });
     await expect(rejectedQuality).rejects.toThrow("encoder unavailable");
+    expect(session.getSnapshot().error).toBe(priorError);
     expect(session.screenQuality(publicationId)).toEqual({ applied: liveProfile, requested: liveProfile });
     expect(session.getSnapshot().quality).toEqual(liveProfile);
     expect(session.getSnapshot().remoteControls.get(publicationId)).toBe(inputState);
@@ -13364,15 +13369,13 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.video).toBe(video);
     expect(video.src).toBe(url);
     expect(socket.sent.some(command => command.type === 'publish')).toBe(false);
-    let rowVisible = true;
-    const stopping = session.stopWatch(start.id as string, () => !rowVisible);
+    const stopping = session.stopWatch(start.id as string);
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
     session.browse('second');
-    rowVisible = false;
     const rejected = expect(stopping).rejects.toThrow();
     socket.receive({ type: 'reply', requestId: stop.requestId, result: { type: 'error', code: 'storage_failed' } });
     await rejected;
-    expect(session.getSnapshot().error).toBe('storage_failed');
+    expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
     await session['stopWatchResource'](start.id as string, 'media-closed');
     expect(socket.sent.filter(command => command.type === 'stop_watch')).toHaveLength(1);
@@ -13818,7 +13821,7 @@ test.each(["channel", "writer"])("local video leave clears its audience membersh
   } finally { session.close(); }
 });
 
-test.each(["room", "leave"])("watch retirement by %s cancels a viewer still waiting for the join reply", async cause => {
+test.each(["room", "leave", "leave denied after navigation"])("watch retirement by %s cancels a viewer still waiting for the join reply", async cause => {
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo();
   vi.stubGlobal("document", { createElement: () => video });
@@ -13830,12 +13833,20 @@ test.each(["room", "leave"])("watch retirement by %s cancels a viewer still wait
     socket.receive({ type: "state", state });
     const cancelled = expect(session.joinWatch(activity.id)).rejects.toMatchObject({ name: "AbortError" });
     const join = socket.sent.findLast(command => command.type === "join_watch")!;
-    if (cause === "leave") {
+    if (cause !== "room") {
       const leaving = session.leaveWatch(activity.id);
       const leave = socket.sent.findLast(command => command.type === "join_watch")!;
       expect(leave.mode).toBeNull();
-      socket.receive({ type: "reply", roomId: "first", requestId: leave.requestId, result: { type: "done" } });
-      await leaving;
+      if (cause === "leave") {
+        socket.receive({ type: "reply", roomId: "first", requestId: leave.requestId, result: { type: "done" } });
+        await leaving;
+      } else {
+        session.browse("second");
+        const rejected = expect(leaving).rejects.toThrow("request_timeout");
+        socket.receive({ type: "reply", roomId: "first", requestId: leave.requestId, result: { type: "error", code: "request_timeout" } });
+        await rejected;
+        expect(session.getSnapshot().error).toBeNull();
+      }
     } else socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
     expect(video.src).toBe("");
     expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
@@ -18349,5 +18360,26 @@ test("stop failure after browsing another room belongs to caller", async () => {
     socket.receive({ type: "reply", requestId: stop.requestId, result: { type: "error", code: "not_publication_owner" } });
     await rejected;
     expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test.each(["pause", "unwatch"])("%s failure belongs to the picture control", async operation => {
+  const { session, socket } = await setup();
+  const id = crypto.randomUUID();
+  try {
+    if (operation === "pause") {
+      const showing = session.publish("screen", "first", remoteStream("A", [remoteTrack("video")]), { publicationId: id });
+      const command = socket.sent.at(-1)!;
+      socket.receive({ type: "reply", requestId: command.requestId, result: { type: "done" } });
+      await showing;
+      socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [{ ...command.publication as object, audience: [], title: null, paused: false, sessionId: "endpoint", userId: "self" }] } });
+    }
+    socket.receive({ type: "error", code: "directory_storage_failed" });
+    const rejected = expect(operation === "pause" ? session.setScreenPaused(id, true) : session.unwatch(id)).rejects.toThrow("publication_unavailable");
+    const request = socket.sent.at(-1)!;
+    expect(request.type).toBe(operation === "pause" ? "set_paused" : "subscribe");
+    socket.receive({ type: "reply", requestId: request.requestId, result: { type: "error", code: "publication_unavailable" } });
+    await rejected;
+    expect(session.getSnapshot().error).toBe("directory_storage_failed");
   } finally { session.close(); }
 });

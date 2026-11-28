@@ -390,8 +390,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     },
     joinWatch: async (_id, mode = "direct", report) => { await watchFailure("watch-join", report); setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
     watchEmbedPreparation: () => undefined, cancelWatchPage: () => setPageSample(undefined),
-    leaveWatch: async (_id, report) => { setWatchPlayers(new Map()); await watchFailure("watch-leave", report); setWatchMode("available"); setPageSample(undefined); },
-    stopWatch: async (_id, report) => { setWatchPlayers(new Map()); await watchFailure("watch-stop", report); setWatchActivity(null); },
+    leaveWatch: async () => { setWatchPlayers(new Map()); await watchFailure("watch-leave", false); setWatchMode("available"); setPageSample(undefined); },
+    stopWatch: async () => { setWatchPlayers(new Map()); await watchFailure("watch-stop", false); setWatchActivity(null); },
     resumeWatch: async id => {
       const player = watchPlayers.get(id);
       if (!player) return;

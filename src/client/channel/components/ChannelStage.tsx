@@ -28,7 +28,7 @@ import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
-import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError } from "./ChannelSettingsDialog";
 import { useSettingsAction } from "../../ui/use-settings-action";
 import { ChannelDiagnosisHelp } from "../../components/ChannelDiagnosisHelp";
 import { diagnoseChannelFact, type ChannelDiagnosis } from "../../ui/diagnosis";
@@ -58,6 +58,20 @@ interface SourceAudioControl {
   level: number; muted: boolean; hasAudio: boolean; available: boolean; busy: boolean;
   canMute?: boolean;
   onChange(settings: { level?: number; muted?: boolean }): void;
+}
+
+function ScreenPauseControl({ source, onPause }: { source: ScreenStageSource; onPause: ChannelStageProps["onPause"] }) {
+  const { t } = useCopy();
+  const action = useSettingsAction(true, source.id);
+  return <><Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
+    title={{ text: source.pauseAvailable === false
+      ? t("screen.actionAfterReconnect", { action: t(source.paused ? "host.resume" : "host.pause") })
+      : t(source.paused ? "host.resume" : "host.pause") }} pressed={source.paused}
+    disabled={source.pauseAvailable === false || source.pausePending}
+    hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
+    onClick={() => { void action.run(() => onPause(source.id, !source.paused)); }} />
+    <ChannelSettingsError error={action.error} />
+  </>;
 }
 
 function SourceSound({ sound, title }: { sound: SourceAudioControl; title: string }) {
@@ -211,7 +225,7 @@ export interface ChannelStageProps {
   onWatch: (id: string) => void;
   onUnwatch: (id: string) => void;
   onRetryPicture?: (id: string) => void;
-  onPause: (id: string, paused: boolean) => void;
+  onPause: (id: string, paused: boolean) => Promise<void>;
   onStop: (id: string) => void;
   onPresentation?: ChannelActions["screenPresentation"];
   onInputPolicy: (publicationId: string, mode: RemoteControlMode, password?: string) => Promise<void>;
@@ -406,13 +420,7 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
               disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
               hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
               onClick={() => microphone.onEnabled(!microphone.enabled)} />}
-            <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
-              title={{ text: source.pauseAvailable === false
-                ? t("screen.actionAfterReconnect", { action: t(source.paused ? "host.resume" : "host.pause") })
-                : t(source.paused ? "host.resume" : "host.pause") }} pressed={source.paused}
-              disabled={source.pauseAvailable === false || source.pausePending}
-              hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
-              onClick={() => onPause(source.id, !source.paused)} />
+            <ScreenPauseControl source={source} onPause={onPause} />
           </>;
           return <article key={source.id} data-compact-caption={compactCaption || undefined} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={tileStyle}

@@ -161,8 +161,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }>({ focus: null, snapshot: state, sessionId, waitingWatches: channel.waitingWatchPages, waiting: [] });
   function setSourceView(focus: typeof sourceView.focus) { setView(previous => ({ ...previous, focus })); }
   function closeWaiting(id: string) {
-    if (channel.watchPlayers.has(id) || channel.waitingWatchPages?.has(id)) watchAction(id, report => channel.leaveWatch(id, report));
-    else if (state?.publications.some(p => p.id === id && p.kind === "screen") && channel.pending.has(`watch:${id}`)) run(channel.unwatch(id));
+    if (channel.watchPlayers.has(id) || channel.waitingWatchPages?.has(id)) watchAction(id, () => channel.leaveWatch(id));
+    else if (state?.publications.some(p => p.id === id && p.kind === "screen") && channel.pending.has(`watch:${id}`)) attemptPicture(id, () => channel.unwatch(id));
     setView(previous => ({ ...previous, waiting: previous.waiting.filter(source => source.id !== id) }));
   }
   if (sourceView.snapshot !== state || sourceView.sessionId !== sessionId || sourceView.waitingWatches !== channel.waitingWatchPages) {
@@ -427,10 +427,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   // A picture's Watch and Retry report here: its offer, tile, help dialog and picture panel can all go first.
   // A result this owner can no longer receive still reaches the banner. A lost connection ends both owners, as it
   // ends the banner's claim: the session drops a result whose socket has gone, and a reconnect starts clean.
-  const visibleWatches = watches.filter(activity => activity.roomId === roomId && !(phone && roomListOpen)
-    && (!theaterVisible || activity.id === focusedScreen));
   const sourceAction = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId, connected]), [
-    ...publications.map(publication => ({ id: `picture:${publication.id}` })), ...visibleWatches.map(activity => ({ id: `watch:${activity.id}` })),
+    ...publications.map(publication => ({ id: `picture:${publication.id}` })), ...watches.map(activity => ({ id: `watch:${activity.id}` })),
   ]);
   function watchAction(id: string, operation: (reportError: () => boolean) => Promise<void>) {
     void sourceAction.run(`watch:${id}`, operation);
@@ -443,6 +441,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const stopped = useKeyedSettingsAction(JSON.stringify([state?.channel.id, sessionId]));
   const stopScreen = (origin: string, publicationId: string) =>
     stopped.run(publicationId, () => channel.stopScreen(publicationId), nameOfRoom(origin));
+  const stopWatch = (origin: string, id: string) =>
+    stopped.run(id, () => channel.stopWatch(id), nameOfRoom(origin));
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
   const [hlsSupported, setHlsSupported] = useState(false);
   const inspectHls = stageWatches.some(activity => activity.sessionId !== sessionId && activity.byteSource?.format === "hls")
@@ -484,7 +484,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       paused: activity.playback.paused, player, available,
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
       onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, undefined, report)); },
-      onLeave: () => watchAction(activity.id, report => channel.leaveWatch(activity.id, report)), onStop: () => watchAction(activity.id, report => channel.stopWatch(activity.id, report)),
+      onLeave: () => watchAction(activity.id, () => channel.leaveWatch(activity.id)), onStop: () => stopWatch(activity.roomId, activity.id),
       onResume: () => channel.resumeWatch(activity.id), onPlayback: patch => channel.setWatchPlayback(activity.id, patch),
     };
   });
@@ -531,7 +531,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const ownShare = mine.find(source => source.roomId === roomId);
   const ownWatch = activeWatches.find(source => source.roomId === roomId && ownsWatch(source.id));
   const stopOwnShare = ownShare ? () => stopScreen(ownShare.roomId, ownShare.id)
-    : ownWatch ? () => run(channel.stopWatch(ownWatch.id)) : undefined;
+    : ownWatch ? () => stopWatch(ownWatch.roomId, ownWatch.id) : undefined;
   const ownShareId = ownShare?.id ?? ownWatch?.id;
   const identity = self && <div className="c3-identity">
       {(bar || !roomListCompact) && <PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />}
@@ -668,17 +668,19 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             const owned = watch ? ownsWatch(source.id) : channel.ownedScreens.has(source.id), title = ended ? source.title : watch ? watchTitle(source.source.url) : screenTitle(source, t);
             const viewing = !ended && !owned ? roomSessionViewing(watch ? [] : [source], watch ? [source] : [], state?.subscriptions ?? [], channel) : undefined;
             const appearance = viewing && viewingAppearance[viewing];
+            const failure = sourceAction.errors.get(`${watch ? "watch" : "picture"}:${source.id}`);
             return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : appearance?.icon ?? "eye"} size={17} />
-              <span><small>{ended ? t("screen.shareEnded", { name: source.name }) : owned ? t("channel.previewPage.stillSharing") : t(appearance?.label ?? "watch.joined")}</small>
-                <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span></span>
+              <div className="c3-activity-description"><small>{ended ? t("screen.shareEnded", { name: source.name }) : owned ? t("channel.previewPage.stillSharing") : t(appearance?.label ?? "watch.joined")}</small>
+                <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span>
+                {failure && <ChannelSettingsError error={failure.code} />}</div>
               <Btn icon="arrowLeft" quiet size="dense" title={{ text: t("channel.previewPage.returnToRoom", { value: nameOfRoom(source.roomId) }) }}
                 cap={{ text: t("channel.previewPage.return") }} onClick={() => showSource(source.roomId, source.id)} />
               <Btn icon={owned ? "stop" : "x"} quiet size="dense" tone={owned ? "danger" : undefined}
                 title={{ text: owned ? t("channel.previewPage.stopSharingSource", { title: title }) : t("channel.previewPage.stopWatchingSource", { title: title }) }}
                 busy={busy(owned ? "stop" : "watch", source.id)} disabled={busy(owned ? "stop" : "watch", source.id)}
                 onClick={() => ended ? closeWaiting(source.id) : watch
-                  ? watchAction(source.id, report => owned ? channel.stopWatch(source.id, report) : channel.leaveWatch(source.id, report))
-                  : owned ? stopScreen(source.roomId, source.id) : run(channel.unwatch(source.id))} />
+                  ? owned ? stopWatch(source.roomId, source.id) : watchAction(source.id, () => channel.leaveWatch(source.id))
+                  : owned ? stopScreen(source.roomId, source.id) : attemptPicture(source.id, () => channel.unwatch(source.id))} />
             </div>;
           })}
         </div>}
@@ -756,9 +758,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id) || busy("retry-picture", publication.id),
           })), ...watchSources, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id)).map(source => ({ ...source, hidden: source.roomId !== roomId, onClose: () => closeWaiting(source.id) }))]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
-            onWatch={id => { showSource(roomId, id); attemptPicture(id, reportError => channel.watch(id, reportError)); }} onUnwatch={id => run(channel.unwatch(id))}
+            onWatch={id => { showSource(roomId, id); attemptPicture(id, reportError => channel.watch(id, reportError)); }} onUnwatch={id => attemptPicture(id, () => channel.unwatch(id))}
             onRetryPicture={id => attemptPicture(id, reportError => channel.retryPicture(id, reportError))}
-            onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
+            onPause={channel.setScreenPaused}
             onStop={id => { void stopScreen(roomId, id); }} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
           <div ref={mainConversationHome} className="c3-room-slot" />
