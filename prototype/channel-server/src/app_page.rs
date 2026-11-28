@@ -184,6 +184,8 @@ pub enum ResourceRequest {
         page_id: Uuid,
         read_id: Uuid,
     },
+    #[serde(other)]
+    Unknown,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Patch {
