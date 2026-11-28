@@ -87,6 +87,18 @@ test("candidate batches fit Native IPC and explicitly remove the replaced elemen
   expect(batches.every(batch => batch.removed.includes(old))).toBe(true);
 });
 
+test("an unchanged candidate list is reported once however often the document changes", () => {
+  const bridge = candidateBridge(), video = ownedVideo(0);
+  bridge.setVideos([video]);
+  const sent = bridge.bodies.length;
+  for (let change = 0; change < 5; change += 1) { bridge.discover(); bridge.flush(); }
+  expect(bridge.bodies).toHaveLength(sent);
+  video.title = "Renamed";
+  bridge.discover(); bridge.flush();
+  expect(bridge.bodies).toHaveLength(sent + 1);
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "candidates", candidates: [{ title: "Renamed" }], removed: [] });
+});
+
 test("same element changes its resource without changing identity, and removing all elements emits the empty delta", () => {
   const bridge = candidateBridge(), video = ownedVideo(0);
   bridge.setVideos([video]);
