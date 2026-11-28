@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
-import { REMOTE_TEXT_BYTES, type RemoteInputPlatform } from "../../remote-control/protocol";
+import { REMOTE_TEXT_BYTES, type RemoteInputState } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { readRoomPreferences, saveRoomPreferences, REMOTE_KEYBOARD_PAGES, type RoomPreferences } from "../../lib/room-preferences";
 import { isCopyKey, useCopy } from "../../ui/copy";
@@ -40,7 +40,7 @@ export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
   inputSurface?: RefObject<HTMLElement | null>;
-  platform: RemoteInputPlatform;
+  platform: RemoteInputState["platform"];
   onSurfaceChange?: (owner: Document) => void;
   releaseKey: number; onReleaseKeyChange: (key: number) => void;
   allowText?: boolean;
