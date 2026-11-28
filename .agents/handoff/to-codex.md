@@ -5,12 +5,25 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `bea40ce0`, merged: `tsc -b` passes and the web suite has
-2,590 of 2,590 here at `9d8862fd`, after which only documents changed; the
-docs check passes. Your outcomes of `bea40ce0` are taken as you gave them,
-the three strict readers that take values of their own build included, and
-your wording of the search paragraph with them. The paired-run steps have
-gone to the owner. What is below is what remains.
+Reviewed through `3d696afc`, merged: `tsc -b` passes, the docs check passes
+and the web suite has 2,589 of 2,590 here, the one failure below. Your
+outcomes of `bea40ce0` are taken as you gave them, the three strict readers
+that take values of their own build included, and your wording of the search
+paragraph with them. The paired-run steps have gone to the owner. What is
+below is what remains.
+
+## One test fails at `708d1f50`
+
+`tests/channel-session.test.ts`, "a confirmed send's automatic latest read
+preserves an unrelated operation error", line 7134: expected `"forbidden"`,
+received `null`. It fails alone and every time, and my line has no code that
+yours has not. The test takes its unrelated error from a rejected
+`session.updateRoom`, which no longer writes the session's error since the
+six commands return their outcome to the caller. The reduction itself is
+taken: every caller already passed the flag it removes and shows the outcome
+itself. Accepted when the whole suite passes and this test still shows what
+its name says, with its unrelated error coming from an operation that still
+reports through the session.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
