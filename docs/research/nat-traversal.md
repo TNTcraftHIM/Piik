@@ -284,8 +284,13 @@ resume window. Its media result is supported by the same run's selected tuple,
 packet capture and decoded frames. Explicit participant Leave retired the other
 direction's target. These controls do not measure physical-network success rates.
 
-Current App-to-Browser production uses one existing IPv4 base and its concurrent
-STUN work. The later eight-socket pool and resource experiments remain isolated
+Current App-to-Browser production selects its one batch from complete same-base
+observations in the existing concurrent STUN work. A two-base RTC control
+reproduces zero hypotheses when the former preselected base has stable mappings;
+the candidate emits 16 from the other base's sequence. A silent first base also
+allows that batch. Two qualifying bases emit one batch without mixing their
+samples, and SDK mappings retain only the actual observations.
+The later eight-socket pool and resource experiments remain isolated
 candidates. Distinct STUN URLs or ports also
 do not guarantee distinct destination IPs; same-IP observations can conceal
 address-dependent mapping. [TODO](../todo.md) retains physical-network work.
@@ -313,8 +318,12 @@ addresses behaved differently.
 
 Filtering was measured on nine of them by asking the observer to answer from
 its next port on a socket that had sent only to the first: on all nine,
-nothing came in. No network has yet let such an answer in, so the test still
-lacks a positive control from a host without filtering.
+nothing came in. A subsequent isolated direct-link control with survey 0.5.5
+and observer 0.5.0 accepted the changed-port response. The scored socket had
+sent only to the primary port; captures at both ends matched the alternate
+source, transaction and mapped tuple. This validates the measurement path on
+that private link. A cold external positive and the location of losses in the
+nine field samples remain unestablished.
 
 Where each destination has its counter, the observer's sixteen ports showed
 what the public servers could not. Each even port and the odd one above it
@@ -428,8 +437,14 @@ that socket for the peer check. Cancellation released its port. This establishes
 the source-selection correction; proxy routing and public peer reachability
 remain properties of the actual network.
 
-If DNS resolution finishes with fewer than three destinations or a STUN
-transaction does not answer, preparation still uses the valid observations.
+DNS resolution and STUN transactions advance together on the survey socket.
+One or two resolved destinations remain usable when another lookup stalls.
+The 1.5-second observation window starts with the first routable destination,
+inside the existing five-second preparation lifetime. In the owned UDP control,
+a third DNS result after 1.8 seconds gives partial Irregular observations;
+waiting for all DNS results first still gives Sequential in that control.
+Earlier progress therefore trades away some late complete classifications.
+STUN transaction loss also preserves the valid observations.
 One response or equal partial replies supply an unclassified measured endpoint.
 Two differing mapped ports on one public IP qualify for the irregular/pool role;
 its peer can search from a retained measured endpoint. Only three complete replies
