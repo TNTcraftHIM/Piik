@@ -58,9 +58,9 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
 }
 
 /** Guide and room previews share local sample props, never a Session or backend. */
-export function useChannelGuideSample({ multiRoom = false, multiVoice = false, showSampleAttachment = false } = {}) {
+export function useChannelGuideSample({ multiRoom = false, multiVoice = false, showSampleAttachment = false, unnamedGuest = false } = {}) {
   const { lang } = useCopy(), zh = lang === "zh";
-  const [site, setSite] = useState<DomainSettings>({ name: "Friends", icon: "couch", askUnnamedMemberName: false });
+  const [site, setSite] = useState<DomainSettings>({ name: "Friends", icon: "couch", askUnnamedMemberName: unnamedGuest });
   const [settingsByRoom, setSettingsByRoom] = useState<Record<string, Partial<RoomSettings>>>({});
   const [forwardingLimit, setForwardingLimit] = useState(-1);
   const [appRelayLimit, setAppRelayLimit] = useState<number | null>(null);
@@ -68,7 +68,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     signal?.throwIfAborted();
     return { sessionId: appSessionId, relayOverride: appRelayLimit };
   }, [appRelayLimit]);
-  const [profile, setProfile] = useState<{ name: string; avatar: string | null }>({ name: "Ada", avatar: null });
+  const [profile, setProfile] = useState<{ name: string; avatar: string | null }>({ name: unnamedGuest ? "" : "Ada", avatar: null });
   const settings = settingsByRoom.friday ?? {};
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);

@@ -1,6 +1,6 @@
 //! Pair-scoped preparation only. ICE/DTLS/media remain owned by the existing PC.
 use super::NativeEvent;
-use crate::diagnostics::{rtc_pair, MappingKind, PreparationStep, RtcPairEvent};
+use crate::diagnostics::{rtc_pair, MappingKind, PreparationChecks, PreparationStep, RtcPairEvent};
 use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use piik_channel_core::wire::UdpObservation as Observation;
@@ -292,6 +292,8 @@ pub struct Survey {
     retained: Option<UdpSocket>,
 }
 pub struct Prepared {
+    #[cfg(test)]
+    checks: PreparationChecks,
     pair: Uuid,
     expires: Instant,
     socket: UdpSocket,
@@ -442,6 +444,20 @@ fn stratified_targets(
     }).collect()
 }
 
+struct CheckDiagnostics {
+    pair: Uuid,
+    checks: PreparationChecks,
+}
+
+impl Drop for CheckDiagnostics {
+    fn drop(&mut self) {
+        rtc_pair(
+            self.pair,
+            RtcPairEvent::PreparationChecksFinished { checks: self.checks },
+        );
+    }
+}
+
 impl Survey {
     pub async fn check(
         self,
@@ -518,6 +534,13 @@ impl Survey {
                 step: PreparationStep::Checks,
             },
         );
+        let is_pool = plan.random == Some(RandomRole::Pool);
+        let is_search = plan.random == Some(RandomRole::Search);
+        let mut diagnostics = CheckDiagnostics {
+            pair: preparation.pair,
+            checks: PreparationChecks::default(),
+        };
+        let checks = &mut diagnostics.checks;
         timeout_at(deadline.into(), async move {
             // Declared before sockets/readers: release capacity only after their
             // retirement, including cancellation of this entire future.
@@ -527,7 +550,12 @@ impl Survey {
             let mut selected = (plan.targets.len() == 1).then_some(plan.targets[0]);
             let mut sockets = Vec::new();
             if let Some(socket) = retained { sockets.push(socket); }
-            else { for _ in 0..if random { RANDOM_PORTS } else { 8 } { sockets.push(UdpSocket::bind((preparation.local, 0)).await?); } }
+            else {
+                for _ in 0..if random { RANDOM_PORTS } else { 8 } {
+                    sockets.push(UdpSocket::bind((preparation.local, 0)).await?);
+                    checks.pool_opened += usize::from(is_pool);
+                }
+            }
             let provider = rtc_crypto::default_provider()?;
             let key: String = preparation.secret.iter().map(|byte| format!("{byte:02x}")).collect();
             let integrity = MessageIntegrity::new_short_term_integrity_with_provider(key.clone(), provider.crypto());
@@ -540,17 +568,21 @@ impl Survey {
             }
             let mut requests_left = if random { RANDOM_REQUEST_BUDGET } else { CHECK_PACKET_BUDGET };
             let mut next_send = Instant::now();
-            if plan.random == Some(RandomRole::Pool) {
+            if is_pool {
                 // M mappings share one stable remote tuple before its N guesses.
                 for (socket, request) in sockets.iter().zip(&requests) {
                     sleep_until(next_send.into()).await;
                     socket.send_to(&request.raw, plan.targets[0]).await?;
+                    checks.pool_primed += 1;
+                    checks.checks_sent += 1;
                     requests_left -= 1;
                     next_send += RANDOM_PACKET_INTERVAL;
                 }
                 send(commands, preparation.pair, UdpSignal::Ready {}).await?;
-            } else if plan.random == Some(RandomRole::Search) {
+                checks.ready_sent = true;
+            } else if is_search {
                 ensure!(matches!(incoming.recv().await, Some(UdpSignal::Ready {})), "expected peer pool readiness");
+                checks.ready_received = true;
             }
             let mut reads: FuturesUnordered<_> = sockets.iter().enumerate().map(|(i,s)| receive(i,s)).collect();
             let start = Instant::now();
@@ -561,7 +593,7 @@ impl Survey {
             let probe_limit = if plan.random == Some(RandomRole::Search) { plan.targets.len() } else { RANDOM_PORTS };
             let mut replies_left = if random { RANDOM_REPLY_BUDGET } else { CHECK_PACKET_BUDGET };
             let mut triggered_left = if random { 8 } else { CHECK_PACKET_BUDGET };
-            let mut outgoing: VecDeque<(usize, SocketAddrV4, Vec<u8>)> = VecDeque::new();
+            let mut outgoing = VecDeque::new();
             let mut winner = None;
             let mut peer_complete = false;
             let index = loop {
@@ -572,20 +604,23 @@ impl Survey {
                     _ = sleep_until((start + Duration::from_millis(round * 100)).into()), if !random && round < 7 && requests_left > 0 => {
                         let target = selected.unwrap_or(plan.targets[round as usize % plan.targets.len()]);
                         for (index, request) in requests.iter().enumerate().take(requests_left) {
-                            outgoing.push_back((index, target, request.raw.clone()));
+                            outgoing.push_back((index, target, request.raw.clone(), true));
                             requests_left -= 1;
                         }
                         round += 1;
                     },
                     _ = sleep_until(next_send.into()), if !outgoing.is_empty() || random_probe => {
-                        let (index, target, bytes) = if let Some(packet) = outgoing.pop_front() { packet }
+                        let scheduled_probe = outgoing.is_empty();
+                        let (index, target, bytes, is_check) = if let Some(packet) = outgoing.pop_front() { packet }
                         else {
                             let index = if plan.random == Some(RandomRole::Pool) { probe } else { 0 };
                             let target = plan.targets[probe % plan.targets.len()];
                             probe += 1; requests_left -= 1;
-                            (index, target, requests[index].raw.clone())
+                            (index, target, requests[index].raw.clone(), true)
                         };
                         sockets[index].send_to(&bytes, target).await?;
+                        checks.checks_sent += usize::from(is_check);
+                        checks.search_targets_sent += usize::from(is_search && scheduled_probe);
                         next_send += if random { RANDOM_PACKET_INTERVAL } else { Duration::ZERO };
                     },
                     message = incoming.recv(), if !peer_complete => {
@@ -602,7 +637,7 @@ impl Survey {
                         let valid_response = message.typ == BINDING_SUCCESS && message.transaction_id == requests[index].transaction_id;
                         if selected.is_none() && (message.typ == BINDING_REQUEST || valid_response) {
                             selected = Some(peer);
-                            outgoing.retain(|(_, target, _)| *target == peer);
+                            outgoing.retain(|(_, target, _, _)| *target == peer);
                         }
                         if selected.is_none() { continue; }
                         if message.typ == BINDING_REQUEST && replies_left > 0 {
@@ -611,12 +646,13 @@ impl Survey {
                             response.build(&[Box::new(BINDING_SUCCESS), Box::new(message.transaction_id),
                                 Box::new(XorMappedAddress { ip: (*peer.ip()).into(), port: peer.port() })])?;
                             integrity.add_to(&mut response)?; FINGERPRINT.add_to(&mut response)?;
-                            outgoing.push_back((index, peer, response.raw));
+                            outgoing.push_back((index, peer, response.raw, false));
                             if winner.is_none() && requests_left > 0 && triggered_left > 0 {
                                 requests_left -= 1; triggered_left -= 1;
-                                outgoing.push_back((index, peer, requests[index].raw.clone()));
+                                outgoing.push_back((index, peer, requests[index].raw.clone(), true));
                             }
                         } else if valid_response && winner.is_none() {
+                            checks.authenticated_reply = true;
                             winner = Some(index);
                             send(commands, preparation.pair, UdpSignal::Complete).await?;
                         }
@@ -626,7 +662,14 @@ impl Survey {
             drop(reads);
             let socket = sockets.swap_remove(index);
             drop(sockets);
-            Ok(Prepared { pair: preparation.pair, expires: preparation.expires, socket, remote: selected.unwrap() })
+            Ok(Prepared {
+                #[cfg(test)]
+                checks: *checks,
+                pair: preparation.pair,
+                expires: preparation.expires,
+                socket,
+                remote: selected.unwrap(),
+            })
         }).await?
     }
 }
@@ -726,6 +769,90 @@ mod tests {
     use super::*;
     use anyhow::Context;
     use std::collections::HashSet;
+
+    #[tokio::test]
+    async fn cancelled_search_exports_only_reviewed_check_facts() -> Result<()> {
+        const CHILD: &str = "PIIK_CANCELLED_SEARCH_DIAGNOSTICS_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe()?)
+                .args([
+                    "--exact",
+                    "peer::preparation::tests::cancelled_search_exports_only_reviewed_check_facts",
+                ])
+                .env(CHILD, "1")
+                .output()?;
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            return Ok(());
+        }
+
+        crate::diagnostics::enable()?;
+        let pair = Uuid::new_v4();
+        let ip = Ipv4Addr::LOCALHOST;
+        let socket = UdpSocket::bind((ip, 0)).await?;
+        let port = socket.local_addr()?.port();
+        let peer = UdpSocket::bind((ip, 0)).await?;
+        let target = SocketAddrV4::new(ip, peer.local_addr()?.port());
+        let (commands, _events) = mpsc::channel(4);
+        let (_signal, mut incoming) = mpsc::channel(4);
+        let (waiting, entered) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let survey = Survey {
+                preparation: Preparation::new(pair, [73; 32], ip, Instant::now() + Duration::from_secs(5))?,
+                observation: Observation::Stable { address: ip, port },
+                retained: Some(socket),
+            };
+            let plan = ProbePlan {
+                targets: vec![target],
+                random: Some(RandomRole::Search),
+            };
+            let checks = survey.check_plan(plan, &commands, &mut incoming);
+            tokio::pin!(checks);
+            assert!(futures_util::poll!(&mut checks).is_pending());
+            let _ = waiting.send(());
+            checks.await
+        });
+        entered.await?;
+        task.abort();
+        assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+
+        let mut bytes = Vec::new();
+        crate::diagnostics::snapshot().unwrap()
+            .write_archive(&mut bytes, "test", "revision", "fixture")?;
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("events.ndjson")?, &mut text)?;
+        let mut summaries = Vec::new();
+        for line in text.lines() {
+            let row: serde_json::Value = serde_json::from_str(line)?;
+            if row["target"] == "piik.rtc" {
+                let entry: serde_json::Value = serde_json::from_str(row["message"].as_str().unwrap())?;
+                if entry["event"]["stage"] == "preparation_checks_finished" {
+                    summaries.push(entry);
+                }
+            }
+        }
+        assert_eq!(summaries, [serde_json::json!({
+            "pair": crate::diagnostics::pair_alias(pair),
+            "event": {
+                "stage": "preparation_checks_finished",
+                "pool_opened": 0,
+                "pool_primed": 0,
+                "search_targets_sent": 0,
+                "checks_sent": 0,
+                "authenticated_reply": false,
+                "ready_sent": false,
+                "ready_received": false,
+            }
+        })]);
+        assert!(!text.contains(&target.to_string()));
+        assert!(!text.contains(&ip.to_string()));
+        assert!(!text.contains(&pair.to_string()));
+        Ok(())
+    }
 
     #[tokio::test]
     async fn preparation_dns_fallback_does_not_wait_for_failed_or_stalled_authorities() -> Result<()>
@@ -1578,8 +1705,21 @@ mod tests {
             };
             peer.send(UdpSignal::Complete).await?;
         }
-        let (easy, _) = easy.await??.commit(pair)?;
-        let (hard, target) = hard.await??.commit(pair)?;
+        let easy = easy.await??;
+        let hard = hard.await??;
+        assert_eq!(hard.checks.pool_opened, RANDOM_PORTS);
+        assert_eq!(hard.checks.pool_primed, RANDOM_PORTS);
+        assert!(hard.checks.checks_sent >= RANDOM_PORTS);
+        assert_eq!(hard.checks.search_targets_sent, 0);
+        assert!(easy.checks.search_targets_sent <= sources.len());
+        assert!(easy.checks.checks_sent >= easy.checks.search_targets_sent.max(1));
+        assert!(hard.checks.ready_sent && !hard.checks.ready_received);
+        assert!(easy.checks.ready_received && !easy.checks.ready_sent);
+        for checks in [easy.checks, hard.checks] {
+            assert!(checks.authenticated_reply);
+        }
+        let (easy, _) = easy.commit(pair)?;
+        let (hard, target) = hard.commit(pair)?;
         assert_eq!(target, easy_address);
         assert_eq!(easy.local_addr()?, SocketAddr::V4(easy_address));
         let hard_address = hard.local_addr()?;

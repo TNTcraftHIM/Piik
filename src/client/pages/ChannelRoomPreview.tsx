@@ -51,6 +51,8 @@ const previewAppDiscovery: AppDiscovery = {
   health: async () => null, connect: async () => null, compatibilityIssue: () => null,
 };
 
+const previewHostMediaTargets: ChannelController["hostMediaTargets"] = async () => ["browser"];
+
 /** The production room view with local samples. No Session, device access or App discovery. */
 export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean }) {
   const mpdSample: WatchMpdChoice[] = new URLSearchParams(location.search).has("mpd-unavailable")
@@ -59,10 +61,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         id: "10000000-0000-4000-8000-000000000007", name: "Other film" },
         catalog: { ...mpdTracks[0].catalog!, sourceId: "10000000-0000-4000-8000-000000000008" } }] : [])];
   const { lang } = useCopy(), zh = lang === "zh";
+  const query = new URLSearchParams(location.search);
+  const unnamedGuest = query.has("unnamed-guest");
+  const nativePauseRejected = query.get("fails") === "pause";
   const sample = useChannelGuideSample({ multiRoom: true, multiVoice: new URLSearchParams(location.search).get("voice-rooms") === "2",
-    showSampleAttachment: new URLSearchParams(location.search).has("image") });
+    showSampleAttachment: query.has("image"), unnamedGuest });
   const rosterSample = firstUse ? null : new URLSearchParams(location.search).get("room-people");
-  const guestPreview = new URLSearchParams(location.search).has("guest");
+  const guestPreview = unnamedGuest || query.has("guest");
   const [roomCreationPolicy, setRoomCreationPolicy] = useState<RoomCreationPolicy>(() => {
     const requested = roomCreationPolicySchema.safeParse(new URLSearchParams(location.search).get("creation-policy"));
     return requested.success ? requested.data : "ordinary";
@@ -84,7 +89,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
   const [removedRooms, setRemovedRooms] = useState(new Set<string>());
   const extraRoomId = new URLSearchParams(location.search).has("managed-rooms") ? "a20d8954-55fd-4ef9-bc98-f9d50f955ef7" : null;
-  const [sharingRoom, setSharingRoom] = useState<string | null>(null);
+  const [sharingRoom, setSharingRoom] = useState<string | null>(nativePauseRejected ? "friday" : null);
   const [watchMode, setWatchMode] = useState(new URLSearchParams(location.search).get("watch") ?? "off");
   const watchOnly = new URLSearchParams(location.search).has("watch-only");
   const [watchActivity, setWatchActivity] = useState<WatchActivity | null>(() => {
@@ -101,7 +106,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   useAnchoredPopover(optionsTrigger, optionsPanel);
-  const users = sample.channel.state!.users.map((user, index) => ({ ...user, name: longNames && index < 2
+  const users = sample.channel.state!.users.map((user, index) => ({ ...user, name: longNames && index < 2 && !(unnamedGuest && index === 0)
     ? ["一起看电影的阿达和她的小伙伴们", "Benjamin watching with friends tonight"][index] : user.name }));
   const screenUsers = [users[1], users[2], users[0], ...users.slice(3)];
   const [selected, setSelected] = useState(() => invitedRoom === "studio" && roomCount > 1 ? invitedRoom : roomCount ? "friday" : ""), [count, setCount] = useState(() => {
@@ -253,6 +258,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     .map(user => `${user.id}-session`) : [];
   const watchSessions = watchActivity ? [watchActivity.sessionId, ...watchViewerSessionIds] : [];
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
+    id: unnamedGuest ? "sample-unnamed-guest" : sample.channel.state!.channel.id,
     ownerId: guestPreview ? "sample-bo" : sample.channel.state!.channel.ownerId, roomCreationPolicy,
     hostingMode: new URLSearchParams(location.search).has("hosted") ? "hosted" as const : "lightweight" as const,
     managedRoomIds: guestPreview ? [] : [...roomIds,
@@ -416,7 +422,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     },
     messagesByRoom,
     interactionsByRoom: sample.channel.interactionsByRoom,
-    ownedScreens, localScreens: ownedScreens,
+    ownedScreens, localScreens: nativePauseRejected ? new Set<string>() : ownedScreens,
+    hostMediaTargets: query.has("host-media") ? previewHostMediaTargets : sample.channel.hostMediaTargets,
     screenInputs: new Map(sampleInputs ? [[samplePictureId, sampleInputs]] : []), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
     browse: () => {}, sendMessage: sample.onSend,
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
@@ -436,7 +443,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); setTitles(previous => { const next = { ...previous }; delete next[id]; return next; }); sample.received(); },
     startScreen: async roomId => { actionFails("share"); setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
     startNativeScreen: async roomId => { actionFails("share"); setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
-    setScreenPaused: async () => sample.received(),
+    setScreenPaused: async () => {
+      if (nativePauseRejected) throw new Error("capture_unavailable");
+      sample.received();
+    },
     setScreenDirectLimit: async (id, limit) => {
       if (ownedScreens.has(id)) setDirectLimits(previous => ({ ...previous, [id]: limit }));
     },

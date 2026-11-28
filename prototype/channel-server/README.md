@@ -529,25 +529,25 @@ share ends the activity; closing a viewer's window only ends that viewer's watch
 
 ## App diagnostics
 
-On the App's local launcher page, enable **Help → Debug** before reproducing the
-problem. Return to **Help → App report** on that page to download the ZIP.
+On the App's local launcher page, enable **More options → Debug** before reproducing the
+problem. Return to **More options → App report** on that page to download the ZIP.
 This works on desktop and Android, including while the local domain is running.
 
 Diagnostics are off in each new App process. Enabling them retains bounded
 technical failures and capture configuration in memory until that process exits; restarting its local
 service does not clear them. Only an explicit export produces a report, containing
 build metadata and these records. Approved sites cannot read this process-wide
-report. Browser reports are separate downloads from the page's **Help** menu.
+report. Browser reports are separate downloads from the page's **More options** menu.
 UDP send failures are summarized against the most recent ICE path observation,
 separating other candidates and unresolved paths without retaining endpoint addresses.
 Windows shared-sound configuration records distinguish default-output, process-tree
 inclusion and process-tree exclusion, with the selected and Native process IDs.
 They contain no window titles, program paths, device identifiers or audio samples.
 
-A Browser page collects its own report only after **Help → Debug** or `?debug=1`;
+A Browser page collects its own report only after **More options → Debug** or `?debug=1`;
 this does not enable App or Server collection. The page keeps up to 8,192 events
 and 8 MiB of compact event data in memory, so reloading or closing it loses that
-history. **Help → Web report** downloads the report, which DevTools can also
+history. **More options → Web report** downloads the report, which DevTools can also
 produce with `await window.__PIIK_DEBUG__.export()`. Tokens, passwords, cookies,
 authorization headers, invitation grants, ICE credentials, SDP and private keys
 are filtered before export, but technical identifiers, IP addresses and device
@@ -561,6 +561,13 @@ count covers all encoder outputs attached to that source. Counting starts
 when both capture and diagnostics are active. When the source ends, its final
 counters appear under the same number in `events.ndjson`.
 
+Pair preparation records its existing stages and terminal outcome. A single
+check summary also records opened and primed pool sockets, sent checks and
+search targets, Ready sent and received, and a matched authenticated reply.
+Cancellation exports the counts reached so far. Pair aliases correlate the two
+reports without recording addresses, ports or credentials. These preparation
+facts do not establish which path ICE ultimately selected.
+
 ## UI previews
 
 The full room layout is the default. An empty site without a saved interface choice
@@ -572,7 +579,9 @@ Open `/__tooltip-preview` on the Vite service for the shared controls catalogue,
 including room management, invitations, App connection and error states.
 `/__tooltip-preview?channel-room` renders the production room view with local
 sample data. Add `&layout=minimal` for the minimal view, `&screens=4` for multiple pictures, `&no-rooms` for first-room
-creation, or `&empty-chat` for an empty conversation.
+creation, or `&empty-chat` for an empty conversation. `&fails=pause` rejects
+the pause action, `&unnamed-guest` opens the first-name prompt, and `&host-media`
+enables media cleanup through More options. These use the production controls.
 `/__tooltip-preview?channel-entry` shows the current first-use controls with local
 sample state; it does not change actual saved preferences.
 `/__tooltip-preview?channel-integrations` presents the text-client example and

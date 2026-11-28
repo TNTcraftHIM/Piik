@@ -7116,25 +7116,21 @@ test.each(["success", "failure"])("automatic browse history preserves another ac
   } finally { session.close(); }
 });
 
-test("a confirmed send's automatic latest read preserves an unrelated operation error", async () => {
+test("a confirmed send's automatic latest read preserves an unrelated session error", async () => {
   const { session, socket, peer } = await setup(1);
   try {
     await peer.history([message(2)], true);
     await peer.history([message(1)], false, true);
     const sending = session.sendMessage("first", "Hello 3");
     const chat = await peer.next();
-    const setting = session.updateRoom("second", { name: "Second", icon: "couch", access: "public", hidden: false });
-    const rejected = expect(setting).rejects.toThrow("forbidden");
-    const request = socket.sent.findLast(command => command.type === "update_room")!;
-    socket.receive({ type: "reply", requestId: request.requestId, result: { type: "error", code: "forbidden" } });
-    await rejected;
+    socket.receive({ type: "error", code: "directory_storage_failed" });
     peer.reply(chat, { type: "confirmed", message: message(3), inserted: true }); await sending;
     const history = await peer.next();
     expect(history).toMatchObject({ type: "history", roomId: "first" });
-    expect(session.getSnapshot().error).toBe("forbidden");
+    expect(session.getSnapshot().error).toBe("directory_storage_failed");
     peer.page(history, [message(3)]);
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
-    expect(session.getSnapshot().error).toBe("forbidden");
+    expect(session.getSnapshot().error).toBe("directory_storage_failed");
   } finally { session.close(); }
 });
 

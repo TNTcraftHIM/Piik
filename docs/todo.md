@@ -338,9 +338,9 @@ the feedback period; they do not delay that delivery.
   a network with a counter per destination on the present search order and
   default servers. A configured STUN server that resolves and stays silent
   ends the observation: measure the three default servers from several
-  regions with survey tool 0.5.4, which asks them first and names a silent
-  one, then compare a wider bounded set that keeps each request's index and
-  treats a step across a gap as unknown.
+  regions after the survey reports missing defaults even with zero or one
+  response. Then compare a wider bounded set that keeps each request's index
+  and treats a step across a gap as unknown.
   [Allocator controls](./research/nat-traversal.md#allocator-prediction-controls)
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before
