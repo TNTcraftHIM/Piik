@@ -43,7 +43,13 @@ const nativePageMpdTrackSchema = z.object({
   width: z.number().int().positive().safe().nullable(), height: z.number().int().positive().safe().nullable(),
   bandwidth: z.number().int().positive().safe().nullable(), frameRate: z.number().finite().positive().nullable(),
 });
-export const nativePageMpdCatalogSchema = z.object({ sourceId: z.uuid(), tracks: z.array(nativePageMpdTrackSchema).min(1) });
+const mpdCatalogTracksSchema = z.array(z.union([
+  nativePageMpdTrackSchema,
+  z.object({
+    kind: z.string().refine(kind => !Object.hasOwn(nativePageMpdTrackSchema.shape.kind.enum, kind)),
+  }).transform(() => null),
+])).transform(tracks => tracks.filter(track => track !== null)).refine(tracks => tracks.length > 0);
+export const nativePageMpdCatalogSchema = z.object({ sourceId: z.uuid(), tracks: mpdCatalogTracksSchema });
 export type NativePageMpdCatalog = z.infer<typeof nativePageMpdCatalogSchema>;
 export const nativePageMpdSelectionSchema = z.object({ sourceId: z.uuid(), videoId: z.uuid(), audioId: z.uuid().optional() })
   .strict().refine(value => value.videoId !== value.audioId);

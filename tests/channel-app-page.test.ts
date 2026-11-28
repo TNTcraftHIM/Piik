@@ -349,7 +349,7 @@ test("page media listings retain supported choices alongside future formats", as
   } finally { app.close(); }
 });
 
-test("MPD replies discard extra fields and reject unknown track kinds without retiring control", async () => {
+test("MPD replies keep selectable tracks alongside future kinds and validate known descriptions", async () => {
   const { app, socket } = await setup();
   try {
     const page = await openPage(app, socket), candidate = { id: crypto.randomUUID(), name: "Manifest", hostname: "media.test" };
@@ -359,8 +359,13 @@ test("MPD replies discard extra fields and reject unknown track kinds without re
     const missing = page.mediaSources(); socket.reply({ choices: [], indexedCandidates: [], byteSource: null });
     await expect(missing).rejects.toThrow();
     const catalog = mpdCatalog(), inspecting = page.inspectMpd(candidate.id, new AbortController().signal);
-    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture", tracks: catalog.tracks.map(track => ({ ...track, colorSpace: "bt709" })) });
+    const [video, audio] = catalog.tracks;
+    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture",
+      tracks: [{ ...video, colorSpace: "bt709" }, { kind: "text" }, audio] });
     await expect(inspecting).resolves.toEqual(catalog);
+    const malformed = page.inspectMpd(candidate.id, new AbortController().signal);
+    socket.reply({ ...catalog, tracks: [video, { kind: "audio" }] });
+    await expect(malformed).rejects.toThrow();
     const unknown = page.inspectMpd(candidate.id, new AbortController().signal);
     socket.reply({ ...catalog, tracks: [{ ...catalog.tracks[0], kind: "unknown" }] });
     await expect(unknown).rejects.toThrow();
