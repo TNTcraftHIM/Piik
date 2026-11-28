@@ -13,6 +13,7 @@ import { useLayerHistory } from "../../ui/layer-history";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { diagnosisGuide } from "../../ui/diagnosis";
 import { Btn } from "./primitives";
+import { ChannelConfirmDialog } from "../../channel/components/ChannelSettingsDialog";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
 
@@ -47,8 +48,9 @@ export function LedStrip({
 }
 
 /** Shared explicit opt-in/export action; starting diagnostics reloads the page. */
-export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<typeof Btn>, "quiet" | "size"> = {}) {
+export function BrowserDiagnosticsButton({ quiet, size, restoreFocus }: Pick<ComponentProps<typeof Btn>, "quiet" | "size"> & { restoreFocus?: () => void } = {}) {
   const { t } = useCopy();
+  const [confirming, setConfirming] = useState(false);
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
   const title = !browserDebugEnabled ? "debug.startHint" :
     debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint";
@@ -59,12 +61,11 @@ export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<ty
       title={title} disabled={debugExport === "busy"} busy={debugExport === "busy"}
       icon={!browserDebugEnabled ? "cpu" : debugExport === "failed" ? "alert" : "arrowDown"}
       cap={!browserDebugEnabled ? "debug.start" : debugExport === "failed" ? "common.retry" : "debug.export"}
-      onClick={() => {
+      hasPopup={browserDebugEnabled ? undefined : "dialog"}
+      onClick={event => {
         if (!browserDebugEnabled) {
-          // Start collection before connection owners attach their observers.
-          // Preserve the current route, access parameters and invitation fragment.
-          if (!window.confirm(t("debug.startConfirm"))) return;
-          window.location.assign(withBrowserDebug(window.location.href, true));
+          event?.currentTarget.focus({ preventScroll: true });
+          setConfirming(true);
           return;
         }
         setDebugExport("busy");
@@ -74,17 +75,21 @@ export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<ty
         });
       }} />
   );
-  return <Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
+  return <><Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
     tone={debugExport === "failed" ? "bad" : debugExport === "busy" ? "busy" : "off"}
     motion={debugExport === "failed" ? "still" : debugExport === "busy" ? "progress" : "demo"}
-    text={debugTitle} place="below" align="end">{debugButton}</Tooltip>;
+    text={debugTitle} place="below" align="end">{debugButton}</Tooltip>
+    {confirming && <ChannelConfirmDialog title={t("debug.start")} question={t("debug.startConfirm")}
+      icon="cpu" label={t("debug.start")} onClose={() => { setConfirming(false); window.requestAnimationFrame(() => restoreFocus?.()); }}
+      onConfirm={() => window.location.assign(withBrowserDebug(window.location.href, true))} />}
+  </>;
 }
 
 const webVersion = import.meta.env.VITE_PIIK_VERSION ?? "development";
 const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
   ? `https://github.com/TNTcraftHIM/Piik/releases/tag/${webVersion}` : null;
 
-function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; diagnosticControl?: React.ReactNode }) {
+function BrowserHelpContent({ active, diagnosticControl, restoreFocus }: { active: boolean; diagnosticControl?: React.ReactNode; restoreFocus(): void }) {
   const { lang, t } = useCopy();
   const guide = diagnosisGuide("troubleshooting", lang).fallback;
   return <div className="lr-help-content">
@@ -99,8 +104,8 @@ function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; di
             <Glyph name="book" size={16} /><span className="lr-cap">{t("help.troubleshooting")}</span>
           </a>
         </Tooltip>
-        {diagnosticControl === undefined ? <BrowserDiagnosticsButton size="compact" quiet /> : diagnosticControl}
       </>}
+      {diagnosticControl === undefined ? <BrowserDiagnosticsButton size="compact" quiet restoreFocus={restoreFocus} /> : active && diagnosticControl}
     </nav>
   </div>;
 }
@@ -136,7 +141,8 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
         </div>
         {personalControls}
         {maintenanceControls?.(open, () => trigger.current?.querySelector("button")?.focus())}
-        <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} />
+        <BrowserHelpContent active={open} diagnosticControl={diagnosticControl}
+          restoreFocus={() => trigger.current?.querySelector("button")?.focus()} />
       </div>
     </div>
   );

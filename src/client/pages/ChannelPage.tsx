@@ -291,6 +291,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const focusedScreen = sourceView.focus?.roomId === roomId ? sourceView.focus.focusedId : null;
   const theaterMode = useTheaterMode();
   const theaterVisible = theaterMode[0] && visibleScreens.some(source => source.id === focusedScreen);
+  function openRoomChat(id: string) {
+    selectRoom(id);
+    theaterMode[1](false);
+    setCompanionChoice("chat");
+  }
   const showSource = (sourceRoom: string, focusedId: string | null) => {
     onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room", sourceRoom);
   };
@@ -483,7 +488,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       hidden: activity.roomId !== roomId,
       paused: activity.playback.paused, player, available,
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
-      onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, undefined, report)); },
+      onRoom: () => openRoomChat(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); watchAction(activity.id, report => channel.joinWatch(activity.id, undefined, report)); },
       onLeave: () => watchAction(activity.id, () => channel.leaveWatch(activity.id)), onStop: () => stopWatch(activity.roomId, activity.id),
       onResume: () => channel.resumeWatch(activity.id), onPlayback: patch => channel.setWatchPlayback(activity.id, patch),
     };
@@ -606,7 +611,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       data-minimal={minimal || undefined} data-main-chat={mainChatOpen && room?.authorized || undefined} data-room-list-open={roomListOpen || undefined} data-overview={overview || undefined}
       data-companion={visibleCompanion}>
       <header className="c3-site-bar">{paneNavigation}<div className="c3-site-identity">
-        <button ref={siteHome} className="lr-btn is-compact is-quiet c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
+        <button ref={siteHome} className="lr-btn is-compact is-quiet c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}>
+            <span className="c3-site-home-baseline"><span className="c3-site-home-anchor"><BrandMark size={30} motion="once" /></span></span>
+        </button>
         <div className="c3-site-name">{self && self.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
           : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><span className="c3-site-name-readonly"><ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={22} /><strong>{state?.channel.name ?? "Piik"}</strong></span></Tooltip>}</div>
         {!connected && <LedStrip state={connection === "closed" ? "bad" : "busy"}
@@ -645,7 +652,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                   onDrag: () => setDraggedRoom({ id: value.id, available }), onEnd: () => setDraggedRoom(null),
                   onDrop: () => { if (activeDrag) reorderRoom(activeDrag.available, activeDrag.id, value.id); setDraggedRoom(null); },
                   onMove: direction => { const target = groupedRooms[index + direction]; if (target) reorderRoom(available, value.id, target.id); } } : undefined}
-                onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />),
+                onSelect={() => openRoomChat(value.id)} onManage={() => setManagedRoomId(value.id)} />),
             ])}
           </nav>
           {!roomListCompact && state && !rooms.length && <p className="c3-room-list-empty">{t("channel.previewPage.noRoomsAvailableYet")}</p>}
@@ -700,7 +707,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             </div></StageTv> : rooms.length ? <div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
               unread={roomHasUnread(value, channel.readByRoom[value.id])} unopened={channel.roomOpenFailures.has(value.id)}
-              onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div>
+              onSelect={() => openRoomChat(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div>
               : <div className="c3-first-room"><span className="c3-room-start-mark"><ChannelIdentityMark icon="couch" size={46} /></span>
                 <h2 id="c3-first-room-heading" tabIndex={-1}>{t(canCreateRoom ? "channel.previewPage.startWithARoom" : "channel.previewPage.noRoomsAvailableYet")}</h2>
                 <p>{t(canCreateRoom ? "channel.previewPage.firstRoomHint" : "channel.previewPage.ownerCreatesRooms")}</p>
@@ -718,7 +725,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <ChannelStage companion={visibleCompanion} layoutHome={!phone ? stageLayoutHome : undefined} theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
-            source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
+            source: publication.source, title: publication.title, onRoom: () => openRoomChat(publication.roomId),
             avatar: userProfile(state, channel.profiles, publication.userId)?.avatar ?? undefined,
             audience: state ? screenAudience(state, publication, channel.profiles) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),

@@ -26,8 +26,8 @@ export interface ChannelCouchPerson extends Partial<ParticipantActivity> {
   collaboration?: boolean;
 }
 
-const SEAT_WIDTH = 70;
-const MIN_SEAT_WIDTH = 48;
+const SEAT_WIDTH = 96;
+const MIN_SEAT_WIDTH = 88;
 const SEAT_GUTTER = 24;
 const noSubscription = () => () => {};
 const noSnapshot = () => null;
@@ -54,9 +54,8 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   const previewPerson = people.find(person => person.userId === avatarPreview?.userId);
   const width = Math.min(availableWidth, Math.max(144, people.length * SEAT_WIDTH + 2 * SEAT_GUTTER));
   const seatingWidth = width - 2 * SEAT_GUTTER;
-  const seats = Math.max(1, people.length * MIN_SEAT_WIDTH <= seatingWidth
-    ? people.length : Math.floor(seatingWidth / SEAT_WIDTH));
-  const seatWidth = Math.min(SEAT_WIDTH, Math.max(MIN_SEAT_WIDTH, (width - 2 * SEAT_GUTTER) / seats));
+  const seats = Math.max(1, Math.min(people.length, Math.floor(seatingWidth / MIN_SEAT_WIDTH)));
+  const seatWidth = Math.min(SEAT_WIDTH, Math.max(MIN_SEAT_WIDTH, seatingWidth / seats));
   const guestSeats = Math.max(1, seats - Number(Boolean(self)));
   const guestWidth = Math.min(others.length, guestSeats) * seatWidth;
   const overflow = others.length * seatWidth > guestWidth;

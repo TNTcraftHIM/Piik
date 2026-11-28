@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: cac7c7fa97553a90d51f5aa66effda3abd72b144
+          ref: c2d0fac94a40011f952e13a514e8f6ac654cbc6c
           persist-credentials: false
       - name: Build and check the standalone universal tool
         working-directory: prototype/nat
@@ -96,7 +96,7 @@ jobs:
           shasum -a 256 piik-nat-lab-macos-universal.tar.gz >> SHA256SUMS
       - uses: actions/upload-artifact@v7
         with:
-          name: piik-nat-lab-macos-universal-cac7c7fa
+          name: piik-nat-lab-macos-universal-c2d0fac9
           path: |
             ${{ runner.temp }}/nat-helper/piik-nat-lab-macos-universal.tar.gz
             ${{ runner.temp }}/nat-helper/build.txt

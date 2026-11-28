@@ -43,6 +43,9 @@ export function RoomQuickReactions({ id, trigger, person, identity, selfPeerId, 
       {identity ?? <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />}
     </div>
     <RoomReactionGrid reactionIds={personReactionIds(choices, person, selfPeerId)} canSend={canSend}
-      onSend={reaction => onSend(reaction, person.peerId === selfPeerId ? undefined : person.peerId)} compact={!expanded} />
+      onSend={reaction => {
+        panel.current?.hidePopover();
+        onSend(reaction, person.peerId === selfPeerId ? undefined : person.peerId);
+      }} compact={!expanded} />
   </div>;
 }

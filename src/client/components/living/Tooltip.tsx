@@ -382,6 +382,11 @@ export function Tooltip({
     // their inset without scrolling the page. Follow that owner's final layout.
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
     const observer = new view.ResizeObserver(schedulePick);
+    const anchor = wrapRef.current?.firstElementChild ?? wrapRef.current;
+    const visibility = new view.IntersectionObserver(entries => {
+      if (!entries.at(-1)?.isIntersecting) dismissPanel();
+    });
+    if (anchor) visibility.observe(anchor);
     for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const containsControls = (node: Node) => node instanceof view.Element
       && (node.matches(CONTROL_GROUP_SELECTOR) || node.querySelector(CONTROL_GROUP_SELECTOR) !== null);
@@ -403,6 +408,7 @@ export function Tooltip({
       view.cancelAnimationFrame(frame);
       observer.disconnect();
       movement.disconnect();
+      visibility.disconnect();
       controls.disconnect();
       viewport?.removeEventListener("resize", schedulePick);
       viewport?.removeEventListener("scroll", schedulePick);

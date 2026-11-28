@@ -213,3 +213,31 @@ test('a receiver pauses a provider that first reports playing after the stage hi
     expect((await media.read()).paused).toBe(true);
   } finally { media.close(); }
 });
+
+test('a paused owner publishes a small seek when the iframe reports its new position', async () => {
+  vi.useFakeTimers();
+  const { media, mount } = await setup();
+  const watch = new WatchPlayer('room', true, media, () => {});
+  try {
+    await mount();
+    const sdk = players[0];
+    sdk.fire('onReady');
+    sdk.playVideo();
+    sdk.pauseVideo();
+    watch.calibrate(5000, 0, 0);
+    await watch.ready();
+    const publish = vi.fn(async () => {});
+    watch.activate(publish);
+    const seek = vi.spyOn(sdk, 'seekTo').mockImplementation(() => {});
+    await watch.serialize(() => watch.editPlayback({ position: 1 }));
+    expect(seek).toHaveBeenCalledWith(1, true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(publish).not.toHaveBeenCalled();
+    sdk.position = 1;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(publish.mock.calls).toHaveLength(1);
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ position: 1, paused: true }));
+  } finally {
+    watch.close();
+  }
+});

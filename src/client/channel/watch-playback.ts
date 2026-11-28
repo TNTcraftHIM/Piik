@@ -230,9 +230,12 @@ export class WatchPlayer {
     this.observe(state); this.observedAt = now;
     if (this.owner) {
       // Some platform players expose time but no user-seek event. Reuse this observation turn.
-      if (this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
-        && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35))
-        void this.publish(true).catch(error => this.failMedia(error));
+      if (this.media.seekEvents === false && previous) {
+        const expected = previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate);
+        const moved = state.paused && previous.paused ? state.position !== previous.position
+          : state.readyState >= HAVE_FUTURE_DATA && Math.abs(state.position - expected) > (this.media.seekTolerance ?? 0.35);
+        if (moved) void this.publish(true).catch(error => this.failMedia(error));
+      }
       return true;
     }
     if (this.signal.aborted || state.readyState < 1 || !this.playback || this.offset === null) return false;

@@ -8,13 +8,11 @@ __PIIK_PALETTE__
 __PIIK_MODAL_BACKDROP__
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
-body { background: var(--wall); color: var(--ink); font: 12px system-ui; display: flex; align-items: center; user-select: none; }
-body[data-standalone] { app-region: drag; }
+body { color: var(--ink); font: 12px system-ui; display: flex; align-items: center; user-select: none; }
+body[data-standalone] { background: var(--wall); app-region: drag; }
 body[data-panel] { background: var(--paper); }
 .title { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 16px 8px; font-weight: 600; }
 body[data-standalone] .title { display: block; flex: 1; }
-/* The integrated caption already sits above the workspace's dialog backdrop. */
-html[data-modal-material] body:not([data-standalone]) { background: transparent; }
 html[data-modal-material] body[data-standalone]::before { content: ""; position: fixed; inset: 0; pointer-events: none; }
 .controls { position: relative; display: flex; flex: none; gap: 3px; padding: 0 7px; app-region: no-drag; }
 html[data-modal-material="image"] .controls { color: var(--primary-ink); }
@@ -47,14 +45,15 @@ share.hidden = true;
 share.onclick = () => window.ipc.postMessage('share');
 document.querySelector('.controls').prepend(share);
 window.sharePicker = enabled => { share.hidden = !enabled; };
-function render() {
-  document.documentElement.lang = language;
-  for (const button of document.querySelectorAll('button')) {
+function render(buttons = document.querySelectorAll('button')) {
+  for (const button of buttons) {
     const name = button.dataset.action === 'maximize' && maximized ? 'restore' : button.dataset.action;
     button.title = controls.labels[language][name === 'close' && window.piikCaptionStandalone ? 'closeWindow' : name];
     button.setAttribute('aria-label', button.title);
     if (name === 'share') { button.textContent = button.title; continue; }
+    if (button.firstElementChild?.dataset.icon === name) continue;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.dataset.icon = name;
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
     for (const geometry of controls.icons[name]) {
@@ -66,13 +65,22 @@ function render() {
   }
 }
 window.updateAppearance = (theme, lang, material) => {
-  if (material) document.documentElement.dataset.modalMaterial = material;
-  else delete document.documentElement.dataset.modalMaterial;
-  document.documentElement.dataset.theme = theme;
-  language = lang;
-  render();
+  const root = document.documentElement;
+  if (root.dataset.modalMaterial !== (material ?? undefined)) {
+    if (material) root.dataset.modalMaterial = material;
+    else delete root.dataset.modalMaterial;
+  }
+  if (root.dataset.theme !== theme) root.dataset.theme = theme;
+  if (language !== lang) {
+    root.lang = language = lang;
+    render();
+  }
 };
-window.updateMaximized = value => { maximized = value; render(); };
+window.updateMaximized = value => {
+  if (maximized === value) return;
+  maximized = value;
+  render([document.querySelector('[data-action="maximize"]')]);
+};
 window.usePanelSurface = () => { document.body.dataset.panel = ''; };
 window.updateTitle = value => { document.querySelector('.title').textContent = value; };
 render();

@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type PointerEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
@@ -11,6 +11,7 @@ import { navigateTabs } from "../../ui/tab-navigation";
 import { ChannelAction } from "./ChannelAction";
 import { channelErrorPresentation } from "../../components/error-presentation";
 import { useLayerHistory } from "../../ui/layer-history";
+import { useSettingsAction } from "../../ui/use-settings-action";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
@@ -68,6 +69,28 @@ export function ChannelSettingsDialog({ title, caption, compact = false, materia
     <div className="c3-settings-content">{children}</div>
     <ChannelSettingsError error={error} />
   </dialog>, ownerDocument.body);
+}
+
+export function ChannelConfirmDialog({ title, question, label, icon, danger, disabled, onClose, onConfirm }: {
+  title: string; question: string; label: string; icon: GlyphName; danger?: boolean; disabled?: boolean;
+  onClose(): void; onConfirm(): void | Promise<void>;
+}) {
+  const { t } = useCopy();
+  const { error, run } = useSettingsAction();
+  const [busy, setBusy] = useState(false);
+  return <ChannelSettingsDialog title={title} compact error={error} closeDisabled={busy} onClose={onClose}>
+    <div className="c3-settings-panels c3-confirm-dialog">
+      <p>{question}</p>
+      <div className="c3-form-actions">
+        <ChannelAction icon="x" quiet label={t("room.action.cancel")} disabled={busy} onClick={onClose} />
+        <ChannelAction icon={icon} danger={danger} primary={!danger} label={label} disabled={disabled} busy={busy}
+          onClick={() => {
+            setBusy(true);
+            void run(async () => { await onConfirm(); }, onClose).finally(() => setBusy(false));
+          }} />
+      </div>
+    </div>
+  </ChannelSettingsDialog>;
 }
 
 export function ChannelSettingsTabs<T extends string>({ id, label, tasks, selected, onSelect }: {

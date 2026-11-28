@@ -12,7 +12,7 @@
 .c3-couch-seat > .lr-comic-tip-wrap { width: 100%; min-width: 0; }
 .c3-couch-seat .lr-pawn { width: 100%; min-width: 44px; min-height: 44px; }
 .c3-couch-seat .lr-pawn > .lr-person { display: block; width: var(--c3-couch-figure-width); height: var(--c3-couch-figure-height); }
-.c3-couch-seat .lr-pawn-name { max-width: 100%; margin-top: 9px; font-size: 12px; }
+.c3-couch-seat .lr-pawn-name { max-width: calc(100% - 4px); margin-top: 9px; padding-inline: 4px; font-size: 12px; }
 .c3-couch-browse { position: absolute; top: 50px; }
 .c3-couch-browse.is-previous { left: calc(var(--control-compact-size) / -2); }
 .c3-couch-browse.is-next { right: calc(var(--control-compact-size) / -2); }
