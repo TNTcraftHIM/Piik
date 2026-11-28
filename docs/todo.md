@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-27
+Last reviewed: 2026-11-28
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -16,6 +16,11 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
+- [ ] **Current candidate priority: NAT connectivity.** Compare ordinary ICE
+  and enhanced preparation when a configured STUN service is silent. Verify
+  successful-socket reuse and handoff, and the discovery of eligible room relays
+  after direct failure. Use matched connection and first-media controls before
+  changing sampling, deadlines or production defaults.
 - [ ] **Beta.62 native interaction performance.** Reproduce slow More options
   and playback-popover closure in the reported App, including the roughly
   0.2-second whole-window stall after the native maximize/restore button.
@@ -67,6 +72,8 @@ the feedback period; they do not delay that delivery.
   the actual Native windows. After an explicit stop, verify the waiting tile,
   viewer dismissal and a separately started share that requires a new Watch
   action. Keep member-site field acceptance separate.
+  Revisit quick source and video switching in Piik after the current NAT work;
+  moving playback to the original webpage is not a substitute for that flow.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.
