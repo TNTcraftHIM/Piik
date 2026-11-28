@@ -1224,7 +1224,10 @@ fn control_request(text: &str) -> Result<std::result::Result<Request, Value>> {
         .and_then(Value::as_str)
         .filter(|id| !id.is_empty() && id.len() <= 256);
     let invalid = || json!({"id":id,"error":"invalid_request"});
-    if id.is_none() || !value["type"].is_string() {
+    if id.is_none()
+        || !value["type"].is_string()
+        || (value["type"] == "page_media_resource" && !value["action"].is_string())
+    {
         return Ok(Err(invalid()));
     }
     let request = match serde_json::from_str::<Request>(text) {
@@ -1232,7 +1235,10 @@ fn control_request(text: &str) -> Result<std::result::Result<Request, Value>> {
             serde_json::from_str::<Request<page::Operation>>(text).map(|page| Request {
                 id: page.id,
                 operation: match page.operation {
-                    page::Operation::Unknown => Operation::Unknown,
+                    page::Operation::Unknown
+                    | page::Operation::PageMediaResource(page::ResourceRequest::Unknown) => {
+                        Operation::Unknown
+                    }
                     operation => Operation::Page(operation),
                 },
             })
@@ -2266,6 +2272,7 @@ async fn connection(
                     }
                     Operation::Page(page::Operation::PageMediaResource(resource)) => {
                         match resource {
+                            page::ResourceRequest::Unknown => Err(anyhow!("unsupported")),
                             page::ResourceRequest::InspectMpd {
                                 page_id, candidate_id,
                                 choice_id,
@@ -5283,6 +5290,7 @@ fn actual_browser_mpd_commands_deserialize_at_app_boundary() {
         ($($command:expr => $resource:pat),+ $(,)?) => {{
             let _require_sample_for_each_variant = |request: &ResourceRequest| match request {
                 $($resource => (),)+
+                ResourceRequest::Unknown => (),
             };
             $(
                 let command = $command;
@@ -5304,9 +5312,17 @@ fn actual_browser_mpd_commands_deserialize_at_app_boundary() {
 
     let mut unknown = read.clone();
     unknown["action"] = json!("future_resource_action");
+    let parsed = control_request(&unknown.to_string()).unwrap().unwrap();
+    assert_eq!(parsed.id, "read");
+    assert!(matches!(parsed.operation, Operation::Unknown));
+
+    let mut missing_action = read.clone();
+    missing_action.as_object_mut().unwrap().remove("action");
+    let mut wrong_action_type = read.clone();
+    wrong_action_type["action"] = json!(2);
     let mut malformed = read;
     malformed.as_object_mut().unwrap().remove("resourceId");
-    for invalid in [unknown, malformed] {
+    for invalid in [missing_action, wrong_action_type, malformed] {
         assert!(matches!(
             control_request(&invalid.to_string()).unwrap(),
             Err(reply) if reply == json!({"id":"read","error":"invalid_request"})
