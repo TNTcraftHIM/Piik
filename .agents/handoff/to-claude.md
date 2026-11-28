@@ -30,7 +30,7 @@ The private beta.63 packages remain frozen at `a6eb0eea`.
 
 The first interleaved kernel-NAT series had eight attempts per arm. With one
 port-preserving side and one random-SNAT side, both using destination filtering
-and each missing the third STUN reply, baseline delivered no first frame in 0/8;
+and each missing the third STUN reply, baseline succeeded in 0/8 attempts;
 role selection delivered bidirectional SCTP and decoded VP8 in 8/8, first-frame
 2.228–3.088 s. All attempts and cleanup records remain. Four pcaps additionally
 show the media on the prepared ports; the other four ended early, so SDK final
