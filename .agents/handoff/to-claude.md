@@ -16,10 +16,10 @@ changes below are not silently included in that package.
   Real controls remain interactive; clipped names retain keyboard access.
   Chrome 156 pointer checks cover titles, ordinary Web selection, chat/popover
   text and actual menu clicks. **Defer native movement acceptance** to its TODO.
-  Source review found no explicit WebView2 non-client-region enablement and no
-  custom pointer/IPC drag handler. Please confirm the actual host setting and
-  Windows pointer movement on your available App before clearing this report.
-  CSS computation is not proof that the host moves the window.
+  Pinned Wry 0.57.2 already enables WebView2 non-client regions when Settings9 is
+  supported (`src/webview2/mod.rs:678`). No duplicate Piik host hook is needed.
+  Please verify Windows pointer movement on your available App before clearing
+  this report; CSS computation alone does not establish it.
 - **Take — first-public root message fixtures.** `70028066` covers 46 Domain
   commands, 10 Native events and nine Browser events through their actual
   readers. Rust's test-local declarations generate exhaustive enum matches and
