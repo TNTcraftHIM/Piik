@@ -547,7 +547,10 @@ A Browser page collects its own report only after **More options → Debug** or 
 this does not enable App or Server collection. The page keeps up to 8,192 events
 and 8 MiB of compact event data in memory, so reloading or closing it loses that
 history. **More options → Web report** downloads the report, which DevTools can also
-produce with `await window.__PIIK_DEBUG__.export()`. Tokens, passwords, cookies,
+produce with `await window.__PIIK_DEBUG__.export()`. While enabled, the page also
+records long animation frames and visible animation-callback gaps, including
+numerical script, style and layout timings where the browser provides them.
+Tokens, passwords, cookies,
 authorization headers, invitation grants, ICE credentials, SDP and private keys
 are filtered before export, but technical identifiers, IP addresses and device
 details may remain. A report is not anonymous: review it before sharing.

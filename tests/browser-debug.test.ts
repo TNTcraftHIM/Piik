@@ -20,6 +20,45 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it("exports numeric long-frame attribution and only measures callback gaps within one visible interval", async () => {
+    const page = browser();
+    const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    vi.stubGlobal("document", doc);
+    const request = vi.fn<(callback: FrameRequestCallback) => number>(() => 1);
+    const cancel = vi.fn();
+    Object.assign(page, { requestAnimationFrame: request, cancelAnimationFrame: cancel });
+    const disconnect = vi.fn(), observe = vi.fn();
+    vi.stubGlobal("PerformanceObserver", class {
+      static supportedEntryTypes = ["long-animation-frame"];
+      observe = observe;
+      disconnect = disconnect;
+      takeRecords = () => [{ startTime: 25, duration: 85, styleAndLayoutStart: 99, layoutDuration: 0,
+        scripts: [{ duration: 60, sourceURL: "private-script-path" }] }];
+    });
+    const debug = await import("../src/client/lib/debug");
+    const release = debug.installBrowserDebug();
+    const tick = (time: number) => request.mock.calls.at(-1)![0](time);
+    tick(20);
+    tick(90);
+    doc.visibilityState = "hidden";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    doc.visibilityState = "visible";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    tick(700);
+    const report = JSON.parse(await debug.exportBrowserDebug());
+    const samples = report.events.filter((entry: { scope: string }) => entry.scope === "performance");
+    expect(samples.map((entry: { details: object }) => entry.details)).toEqual([
+      { startElapsedMs: expect.any(Number), durationMs: 70 },
+      { startElapsedMs: expect.any(Number), durationMs: 85, attributedScripts: 1, attributedScriptMs: 60,
+        styleAndLayoutStartElapsedMs: expect.any(Number), styleDurationMs: null, layoutDurationMs: 0 },
+    ]);
+    release?.();
+    expect(cancel).toHaveBeenCalledTimes(2);
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(observe).toHaveBeenCalledWith({ type: "long-animation-frame" });
+    expect(JSON.parse(await debug.exportBrowserDebug()).events).toHaveLength(report.events.length);
+  });
+
   it.each(["frame", "timeout", "close"])("exports a visible playback sample on %s", async outcome => {
     browser();
     vi.useFakeTimers();
