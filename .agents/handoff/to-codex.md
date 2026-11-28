@@ -5,10 +5,10 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `f544d304`, merged: the Browser core builds, `tsc -b` passes,
-the web suite has 2,586 of 2,586 here and the docs check passes.
-The Native preparation tests ran here on loopback, 11 of 11. Your outcomes
-of `f544d304` are all taken as you gave them; what is below is what remains.
+Reviewed through `9d8862fd`, merged: `tsc -b` passes, the web suite has
+2,590 of 2,590 here and the docs check passes. The Native preparation tests ran
+here on loopback at `a1c96102`, 11 of 11. Your outcomes of `f544d304` are all
+taken as you gave them; what is below is what remains.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
@@ -76,12 +76,41 @@ measurable one of the two needed a second request, which by my estimate
 leaves the third server, the one nobody has measured from there, 600 to 750
 ms including its own losses.
 
-Accepted when the observation waits for the slowest of its three servers
-and not for their sum: the three requests leave the one socket in order and
-the answers are awaited together. The reading needs only the order in which
-the first packets leave, and a repeated request makes no new mapping. Or
-decline with a control from a far network that shows the sum inside the
-limit with one request repeated.
+**The observation must not hang on one outside server.** The owner asks
+whether the new list was chosen with reachability across the world in mind,
+Google's above all. It was not, by either of us: you took documented
+services and two runs from your machine, I checked thirteen networks of one
+circle. What is known beyond that: this exact endpoint, hard-coded in Tor's
+Snowflake, was lost to blocking in one country around 2019
+([OONI's issue](https://github.com/ooni/probe-engine/issues/243), read from
+its summary only), and it answered all 35 of our runs. So its reach changes
+over time, and where it fails it fails for everyone in a region, always.
+
+What the code does with that (`resolve_servers`, `observe`): every
+configured authority is resolved, the first three that resolve are asked one
+after another, and one that resolves and stays silent ends the observation.
+A longer list set by a host therefore helps only against a name that does
+not resolve; a poisoned name resolves. The canon has nothing depend on a
+service the project runs or rents, and a default that needs three outside
+services to answer in turn leans the other way.
+
+Accepted when a destination that stays silent costs the observation nothing
+but its packet: the requests to the configured destinations, up to a small
+bound of the observation's own (the present one is the 128 of ICE
+candidates), leave the one socket in order and are awaited together; the
+observation is complete with the first three answers; the reading is made
+from the positions in which the requests left, so a gap among the answers
+does not pass for a step. With all answering, the reading equals today's on
+your recorded controls. This replaces my narrower request to wait for the
+slowest of three, and it lets the default list be wider than three.
+
+And a design question, yours to answer from what the Server already has. An
+App-hosted site answers STUN itself on one port (`app_stun.rs`). Should the
+Server do so on three ports that are not neighbours, as the survey's
+observer does on sixteen? A site would then observe through itself, which
+every member reaches by definition, and outside servers would only add the
+second address, which one address cannot give: a mapping that follows the
+destination's address alone looks stable from three ports of one host.
 
 **Two facts for the record, nothing asked.** Cloudflare and Google answered
 through different addresses in every run on the hotspot with three addresses
@@ -117,6 +146,16 @@ restoration or by release; a stop's outcome stays with the page that asked,
 by publication and with the room's name, and does not pass through the
 session's one error. Both notices are announced through the shared error
 line. Nothing asked.
+
+## Control failures at their surface (`44ed5aec`, `94885bcf`)
+
+Read: taken, the same rule as the stop. One thing I could not look at: a
+rejected pause now puts the shared error line beside the pause button inside
+a picture's dense row of controls, and the preview has no way to show it.
+Accepted when the room preview can open that state, so that it can be
+rendered at 1360 and 390; I look at it then. The same holds for the prompt
+that asks a newcomer for a name and for the dialog that clears media: none
+of the preview's options opens either, so neither has been looked at.
 
 ## Interface
 
