@@ -14,7 +14,7 @@ import { FeedbackAudio } from "../src/client/channel/feedback-audio";
 import { channelErrorPresentation } from "../src/client/components/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
-import { listeningVoicePublications, screenDeliveryFailed } from "../src/client/channel/presentation";
+import { listeningVoicePublications, roomPeople, roomSessionViewing, screenAudience, screenDeliveryFailed } from "../src/client/channel/presentation";
 import { resolveRoomVoiceControls } from "../src/client/channel/voice-dock-controls";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
@@ -1982,6 +1982,45 @@ test("authority delivery results follow this page's watch intent and clear on cu
     expect(failed()).toBe(false);
     socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } });
     await stopping;
+  } finally { session.close(); }
+});
+
+test("unfamiliar screen audience readiness preserves the Domain connection and the existing watch", async () => {
+  const { session, socket } = await setup(1000, false);
+  const base = session.getSnapshot().state!;
+  const delivery = (readiness: string, name: string) => ({ ...base,
+    users: base.users.map(user => ({ ...user, name })),
+    publications: [{
+      id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", paused: false,
+      audience: [{ sessionId: "endpoint", state: readiness }], source: { kind: "screen", name: null }, title: null,
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]),
+    }],
+    subscriptions: ["screen"],
+  });
+  try {
+    socket.receive({ type: "state", state: delivery("preparing", "Me") });
+    const joining = session.watch("screen");
+    const subscribe = socket.sent.findLast(command => command.type === "subscribe")!;
+    socket.receive({ type: "reply", requestId: subscribe.requestId, result: { type: "done" } });
+    await joining;
+    socket.receive({ type: "state", state: delivery("active", "Me") });
+    expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
+
+    const close = vi.spyOn(socket, "close");
+    socket.receive({ type: "state", state: delivery("future-readiness_1", "Renamed") });
+    expect(close).not.toHaveBeenCalled();
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null, state: {
+      subscriptions: ["screen"], users: [{ name: "Renamed" }],
+      channel: { rooms: expect.arrayContaining([expect.objectContaining({ id: "first", authorized: true })]) },
+    } });
+    const state = session.getSnapshot().state!;
+    const screen = state.publications[0];
+    const local = { sessionId: "endpoint", watchPlayers: new Map() };
+    expect(screen.audience).toEqual([{ sessionId: "endpoint", state: "future-readiness_1" }]);
+    expect(screenDeliveryFailed(screen, local.sessionId)).toBe(false);
+    expect(screenAudience(state, screen)).toEqual([{ userId: "self", name: "Renamed", state: "joined" }]);
+    expect(roomPeople(state, "first")).toEqual([expect.objectContaining({ userId: "self", viewing: "joined" })]);
+    expect(roomSessionViewing(state.publications, state.watchActivities, state.subscriptions, local)).toBe("joined");
   } finally { session.close(); }
 });
 

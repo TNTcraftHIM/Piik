@@ -999,12 +999,29 @@ pub struct PublicationAudience {
     pub state: AudienceState,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+/// A viewer's observed delivery state, published alongside the subscription.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "String", rename_all = "snake_case")]
 pub enum AudienceState {
     Preparing,
     Active,
     Failed,
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl TryFrom<String> for AudienceState {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "preparing" => Ok(Self::Preparing),
+            "active" => Ok(Self::Active),
+            "failed" => Ok(Self::Failed),
+            key if short_wire_key(key) => Ok(Self::Other(value)),
+            _ => Err("invalid_audience_state"),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]

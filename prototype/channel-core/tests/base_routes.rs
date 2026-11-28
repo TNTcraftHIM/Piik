@@ -611,6 +611,7 @@ fn required_physical_repair_renews_only_retired_transport() {
                 .find(|viewer| viewer.session_id == receiver)
                 .unwrap()
                 .state
+                .clone()
         };
         let no_failed_delivery = |effects: piik_channel_core::Effects| {
             for (target, event) in effects.events {
@@ -5162,6 +5163,112 @@ fn subscribe_screen(network: &mut RoomNetwork, connection: Uuid, screen: Uuid) {
         connection,
         json!({"type":"subscribe","publicationId":screen,"enabled":true}),
     );
+}
+
+#[test]
+fn unfamiliar_screen_readiness_preserves_the_native_snapshot() {
+    use piik_channel_core::{
+        wire::Request,
+        wire_images::{StateImageDecoder, StateImageEncoder},
+    };
+
+    let mut network = RoomNetwork::new();
+    let [publisher, viewer] = [(); 2].map(|_| Uuid::new_v4());
+    let (source, _) = join(&mut network, publisher, None);
+    let (viewer_session, _) = join(&mut network, viewer, None);
+    let room = network.create(publisher, RoomAccess::Public, false);
+    browse(&mut network, viewer, &room, true);
+    let screen = publish(&mut network, publisher, &room, "screen");
+    subscribe_screen(&mut network, viewer, screen);
+    let edge = pair(&network, viewer, source).id;
+    connect(&mut network, [publisher, viewer], edge);
+    let (_, flow) = screen_input(&network, viewer, source, screen).unwrap();
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state","pairId":edge,"flowId":flow.id,"state":"decoded"}),
+    );
+    let before = serde_json::to_value(network.state(viewer)).unwrap();
+    assert_eq!(before["publications"][0]["audience"][0]["state"], "active");
+    assert!(
+        screen_input(&network, viewer, source, screen)
+            .unwrap()
+            .1
+            .selected
+    );
+
+    // Exercise the real HostOutput reader and Domain authority before the Native decoder.
+    let title = json!({"type":"set_title","publicationId":screen,"title":"Current screen"});
+    let input = network
+        .authority
+        .handle(publisher, Request::parse(&title.to_string()).unwrap(), 100)
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let output = network.host_turn(&room, input);
+    let mut host_output = json!({"type":"host_output","roomId":room,"output":output});
+    let audience = &mut host_output["output"]["projection"]["publications"][0]["audience"][0];
+    assert_eq!(audience["sessionId"], json!(viewer_session));
+    assert_eq!(audience["state"], "active");
+    audience["state"] = json!("future_readiness");
+
+    let effects = network.command(publisher, host_output);
+    let event = effects
+        .events
+        .into_iter()
+        .rev()
+        .find_map(|(recipient, event)| {
+            (recipient == viewer && matches!(event, Event::State { .. })).then_some(event)
+        })
+        .expect("Domain accepted and broadcast the host projection");
+    let frame = StateImageEncoder::default().encode(&event).unwrap();
+    let mut decoder = StateImageDecoder::default();
+    let decoded = decoder.decode(&frame).unwrap();
+    let Event::State { state } = &decoded else {
+        panic!("expected a Native state event")
+    };
+    let publication = &state.publications[0];
+    assert_eq!(publication.id, screen);
+    assert_eq!(
+        publication.screen.as_ref().unwrap().title.as_deref(),
+        Some("Current screen")
+    );
+    assert_eq!(publication.audience[0].session_id, viewer_session);
+    assert_eq!(
+        publication.audience[0].state,
+        AudienceState::Other("future_readiness".into())
+    );
+    let round_trip = serde_json::to_value(decoded).unwrap();
+    assert_eq!(round_trip, serde_json::from_str::<Value>(&frame).unwrap());
+    assert_eq!(round_trip["state"]["channel"], before["channel"]);
+    assert_eq!(round_trip["state"]["pairs"], before["pairs"]);
+    assert_eq!(
+        round_trip["state"]["subscriptions"],
+        before["subscriptions"]
+    );
+
+    for invalid in [
+        Some(json!(1)),
+        Some(json!("bad key")),
+        Some(json!("x".repeat(65))),
+        None,
+    ] {
+        let mut malformed = round_trip.clone();
+        let audience = &mut malformed["state"]["publications"][0]["audience"][0];
+        if let Some(invalid) = invalid {
+            audience["state"] = invalid;
+        } else {
+            audience.as_object_mut().unwrap().remove("state");
+        }
+        assert_eq!(
+            decoder.decode(&malformed.to_string()).err(),
+            Some("invalid_channel_event")
+        );
+    }
 }
 
 #[test]

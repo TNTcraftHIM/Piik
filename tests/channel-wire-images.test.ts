@@ -38,6 +38,14 @@ it("retains an unfamiliar original type in a file plan and rejects malformed nam
   expect(() => decode(new ChannelEventDecoder(), event)).toThrow();
 });
 
+it("rejects malformed or missing audience readiness", () => {
+  for (const state of [7, undefined, "", "not a wire key", "a".repeat(65)]) {
+    const publication = { id: "screen", roomId: "room", sessionId: "host", userId: "user", kind: "screen", paused: false,
+      source: { kind: "screen", name: null }, title: null, audience: [{ sessionId: "endpoint", state }] };
+    expect(() => decode(new ChannelEventDecoder(), { type: "state", state: { ...snapshot(), publications: [publication] } })).toThrow();
+  }
+});
+
 it("decodes a wire specimen for every declared Domain event kind", async () => {
   const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
