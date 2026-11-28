@@ -3945,7 +3945,6 @@ dependencies = [
  "n0-watcher",
  "ndk",
  "ndk-context",
- "netdev",
  "netwatch",
  "noq-udp",
  "objc2-app-kit",

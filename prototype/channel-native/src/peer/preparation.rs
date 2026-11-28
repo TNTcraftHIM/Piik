@@ -45,15 +45,16 @@ const RANDOM_PACKET_INTERVAL: Duration = Duration::from_millis(2);
 // they do not queue another pool behind the current pair's deadline.
 static RANDOM_PREPARATIONS: Semaphore = Semaphore::const_new(2);
 
-pub(super) async fn local_ipv4() -> Option<Ipv4Addr> {
-    // Preparation binds the OS-selected source address. Portmapper looks up the gateway.
-    let address = tokio::task::spawn_blocking(netdev::net::ip::get_local_ipaddr)
-        .await
-        .ok()??;
-    match address {
-        std::net::IpAddr::V4(ip) => Some(ip),
-        _ => None,
+async fn survey_source(servers: &[SocketAddrV4]) -> Result<Ipv4Addr> {
+    // UDP connect selects a route to a numeric destination without sending a request.
+    let route = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
+    for server in servers {
+        if route.connect(*server).await.is_err() { continue; }
+        if let SocketAddr::V4(local) = route.local_addr()? {
+            return Ok(*local.ip());
+        }
     }
+    bail!("no IPv4 route to a configured STUN destination")
 }
 
 pub(super) struct Pending {
@@ -154,15 +155,6 @@ async fn negotiate(
     rtc_pair(
         pair,
         RtcPairEvent::Preparation {
-            step: PreparationStep::LocalAddress,
-        },
-    );
-    let local = local_ipv4()
-        .await
-        .ok_or_else(|| anyhow::anyhow!("no default IPv4 interface for UDP preparation"))?;
-    rtc_pair(
-        pair,
-        RtcPairEvent::Preparation {
             step: PreparationStep::StunResolution,
         },
     );
@@ -170,6 +162,13 @@ async fn negotiate(
         tokio::net::lookup_host((server.host, server.port)).await
     })
     .await?;
+    rtc_pair(
+        pair,
+        RtcPairEvent::Preparation {
+            step: PreparationStep::LocalAddress,
+        },
+    );
+    let local = survey_source(&servers).await?;
     let (survey, remote) = exchange_observations(pair, initiator, local, servers, &commands, &mut incoming, deadline).await?;
     survey.check(remote, &commands, &mut incoming).await
 }
@@ -1023,20 +1022,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_interface_lookup_keeps_the_reactor_running() -> Result<()> {
-        let lookup = tokio::spawn(local_ipv4());
-        let timer = Instant::now();
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        ensure!(
-            timer.elapsed() < Duration::from_millis(500),
-            "interface lookup blocked the reactor"
-        );
-        eprintln!(
-            "preparation interface lookup: 100ms timer={}ms pending={}",
-            timer.elapsed().as_millis(),
-            !lookup.is_finished()
-        );
-        let _ = lookup.await?;
+    async fn survey_source_follows_the_stun_destination() -> Result<()> {
+        let destination = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478);
+        assert_eq!(survey_source(&[destination]).await?, Ipv4Addr::LOCALHOST);
         Ok(())
     }
 

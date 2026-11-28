@@ -1983,11 +1983,10 @@ async fn ordinary_connection_stops_preparation_only_on_stun_only_sites() -> Resu
         let (mut driver, mut events, mut commands, _stop) = driver();
         driver.session = Uuid::from_u128(2);
         driver.transport.test_binds = Some(&["[::1]:0"]);
-        let local_ipv4 = crate::peer::preparation::local_ipv4().await.context("IPv4 interface for scoped STUN servers")?;
         let mut servers = JoinSet::new();
         let mut urls = vec![];
         for _ in 0..3 {
-            let server = UdpSocket::bind((local_ipv4, 0)).await?;
+            let server = UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
             urls.push(format!("stun:{}", server.local_addr()?));
             servers.spawn(async move {
                 use rtc_stun::{message::{Message, BINDING_SUCCESS}, xoraddr::XorMappedAddress};
@@ -1999,7 +1998,7 @@ async fn ordinary_connection_stops_preparation_only_on_stun_only_sites() -> Resu
                     request.decode()?;
                     let mut reply = Message::new();
                     reply.build(&[Box::new(BINDING_SUCCESS), Box::new(request.transaction_id),
-                        Box::new(XorMappedAddress { ip: peer.ip(), port: peer.port() })])?;
+                        Box::new(XorMappedAddress { ip: std::net::Ipv4Addr::new(192, 0, 2, 1).into(), port: peer.port() })])?;
                     server.send_to(&reply.raw, peer).await?;
                 }
                 #[allow(unreachable_code)]
