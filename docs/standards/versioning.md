@@ -140,13 +140,15 @@ the reasons and the sources. The rule:
   written for an older peer.
 
 A new required field or a new value in a set that released readers treat as
-closed changes the existing interface. Each wire choice intended to grow,
-including nested choices, defines the outcome of an unfamiliar value from
-its first release. An independently usable description can skip an unfamiliar
-item. An unsupported optional operation can end as unavailable while the
-established path continues. Omission preserves baseline state semantics and
-the action's constraints. Known forms with invalid contents retain their
-validation rules.
+closed changes the existing interface. A wire choice, nested choices
+included, is open unless its owner closes it and says why, and an open choice
+defines the outcome of an unfamiliar value from its first release. An
+independently usable description skips an unfamiliar item. An unsupported
+optional operation ends as unavailable while the established path continues.
+A value that carries a constraint, an authority or a signed effect is never
+dropped: its request is refused as unsupported, or its record stays unknown.
+Omission preserves baseline state semantics and the action's constraints.
+Known forms with invalid contents retain their validation rules.
 
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
@@ -168,11 +170,14 @@ decoder needs one boundary test. A tolerant current reader does not change a
 released reader's contract: verify the released readers and the new producers
 in both directions before calling a change additive.
 
-Exercise changed extension points through their actual readers, including
-nested unfamiliar values inside valid enclosing messages and malformed known
-forms. Assert the operation's outcome and surviving state. Reuse production
-schemas and message-family fixtures to keep declared variants and their tests
-together.
+Exercise extension points through their actual readers, including nested
+unfamiliar values inside valid enclosing messages and malformed known forms.
+Assert the operation's outcome and surviving state. Reuse production schemas
+and message-family fixtures to keep declared variants and their tests
+together. Before the first release this covers every message a released
+reader will parse and not only the points a change touched: a reader that is
+released cannot be taught later. Each such message has a specimen, and each
+reader reads it with each nested choice made unfamiliar.
 
 Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
 offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt
