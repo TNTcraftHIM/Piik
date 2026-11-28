@@ -5,6 +5,7 @@
 #include <audioclientactivationparams.h>
 #include <fcntl.h>
 #include <io.h>
+#include <initguid.h>
 #include <mmdeviceapi.h>
 #include <wrl.h>
 #include <wrl/implements.h>
@@ -93,6 +94,22 @@ class ActivationHandler final : public RuntimeClass<
   ComPtr<IAudioClient> client_;
 };
 
+HRESULT ActivateAudioClient(PCWSTR path, PROPVARIANT* parameters,
+                            ComPtr<IAudioClient>* client) {
+  // The completion can outlive a timed-out caller; it owns its event handle.
+  auto handler = Make<ActivationHandler>();
+  if (!handler) return E_OUTOFMEMORY;
+  if (!handler->Completed()) return HRESULT_FROM_WIN32(GetLastError());
+  ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
+  HRESULT result = ActivateAudioInterfaceAsync(path, __uuidof(IAudioClient),
+                                               parameters, handler.Get(), &operation);
+  if (FAILED(result)) return result;
+  if (WaitForSingleObject(handler->Completed(), 10'000) != WAIT_OBJECT_0) return HRESULT_FROM_WIN32(WAIT_TIMEOUT);
+  result = handler->Result();
+  if (SUCCEEDED(result)) *client = handler->Client();
+  return result;
+}
+
 HRESULT ActivateProcessLoopback(DWORD pid, bool exclude,
                                 ComPtr<IAudioClient>* client) {
   AUDIOCLIENT_ACTIVATION_PARAMS parameters{};
@@ -106,31 +123,29 @@ HRESULT ActivateProcessLoopback(DWORD pid, bool exclude,
   variant.blob.cbSize = sizeof(parameters);
   variant.blob.pBlobData = reinterpret_cast<BYTE*>(&parameters);
 
-  // The completion can outlive a timed-out caller; it owns its event handle.
-  auto handler = Make<ActivationHandler>();
-  if (!handler) return E_OUTOFMEMORY;
-  if (!handler->Completed()) return HRESULT_FROM_WIN32(GetLastError());
-  ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
-  HRESULT result = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
-                                                __uuidof(IAudioClient), &variant,
-                                                handler.Get(), &operation);
-  if (FAILED(result)) return result;
-  if (WaitForSingleObject(handler->Completed(), 10'000) != WAIT_OBJECT_0) return HRESULT_FROM_WIN32(WAIT_TIMEOUT);
-  result = handler->Result();
-  if (SUCCEEDED(result)) *client = handler->Client();
-  return result;
+  return ActivateAudioClient(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &variant,
+                             client);
 }
 
-HRESULT ActivateEndpoint(ComPtr<IAudioClient>* client, bool microphone = false, const std::wstring& device_id = L"") {
+HRESULT ActivateDefaultRender(ComPtr<IAudioClient>* client) {
+  // Opt into Windows' routing for the default render interface.
+  WCHAR path[39];
+  if (!StringFromGUID2(DEVINTERFACE_AUDIO_RENDER, path, ARRAYSIZE(path))) {
+    return E_UNEXPECTED;
+  }
+  return ActivateAudioClient(path, nullptr, client);
+}
+
+HRESULT ActivateMicrophone(const std::wstring& device_id, ComPtr<IAudioClient>* client) {
   ComPtr<IMMDeviceEnumerator> enumerator;
   HRESULT result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
                                     CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
   ComPtr<IMMDevice> device;
   if (SUCCEEDED(result)) {
     result = device_id.empty()
-        ? enumerator->GetDefaultAudioEndpoint(microphone ? eCapture : eRender, microphone ? eCommunications : eConsole, &device)
+        ? enumerator->GetDefaultAudioEndpoint(eCapture, eCommunications, &device)
         : enumerator->GetDevice(device_id.c_str(), &device);
-    if (SUCCEEDED(result) && microphone) {
+    if (SUCCEEDED(result)) {
       ComPtr<IMMEndpoint> endpoint;
       EDataFlow flow = eAll;
       result = device.As(&endpoint);
@@ -266,7 +281,7 @@ bool ProcessAudioAvailable(bool exclude) {
 
 bool SystemAudioAvailable() {
   ComPtr<IAudioClient> client;
-  return SUCCEEDED(ActivateEndpoint(&client)) && client != nullptr;
+  return SUCCEEDED(ActivateDefaultRender(&client)) && client != nullptr;
 }
 
 HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime, bool exclude,
@@ -301,7 +316,7 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
   AudioCaptureCounts counts("default-endpoint", result);
   if (FAILED(result)) return result;
   ComPtr<IAudioClient> client;
-  result = ActivateEndpoint(&client);
+  result = ActivateDefaultRender(&client);
   if (SUCCEEDED(result)) {
     result = CaptureAudioFrames(client, nullptr, true, counts, stop_event, stop_probe,
                                   ready_writer, writer);
@@ -317,7 +332,7 @@ HRESULT CaptureMicrophone(const std::wstring& device_id, HANDLE stop_event, cons
   AudioCaptureCounts counts("microphone", result);
   if (FAILED(result)) return result;
   ComPtr<IAudioClient> client;
-  result = ActivateEndpoint(&client, true, device_id);
+  result = ActivateMicrophone(device_id, &client);
   if (SUCCEEDED(result)) {
     result = CaptureAudioFrames(client, nullptr, false, counts, stop_event, stop_probe, ready_writer, writer);
   }

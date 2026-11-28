@@ -111,7 +111,12 @@ Piik 在 QUIC（UDP）失败后会尝试 HTTP/2（TCP），请允许两者使用
 <details>
 <summary>房主进阶排查 · 防火墙和端口</summary>
 
-1. Windows 房主打开 **Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙**，给当前 `piik-app.exe` 放行正在使用的网络类型。换过解压目录时，更新旧规则的路径。虚拟网卡可能属于 **公用网络**，高级规则可限定网卡和网段。[Microsoft 防火墙说明](https://support.microsoft.com/zh-cn/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall)
+1. Windows 房主打开 **Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙**，
+   选择实际运行的 `piik-app.exe`，允许它通过正在使用的网络类型。如果虚拟网卡属于 **公用网络**，就勾选 **公用**。
+   如果换了 Piik 的存放目录，请添加新路径下的程序。旧规则只匹配旧路径。然后请朋友重新打开邀请。
+   如果手动按端口设置规则，除了网页使用的 TCP，还要允许 Piik 的 UDP 媒体通信。
+   只放行网页端口时，可能能进房却看不到画面。
+   [Microsoft 防火墙说明](https://learn.microsoft.com/zh-cn/windows/security/operating-system-security/network-security/windows-firewall/configure)
 2. 若 App 提示 **本地端口不可用**，关闭占用端口的旧 Piik 实例。其他程序需要该端口时，用 `--port 9876` 启动 Piik，发送新邀请。网页和本地 STUN 端口都需可用。
 
 </details>
@@ -136,6 +141,29 @@ Piik 在 QUIC（UDP）失败后会尝试 HTTP/2（TCP），请允许两者使用
 2. 使用服务商支持的设置恢复路径 MTU 反馈（例如 ICMP 数据包过大消息），或将两端虚拟网卡的 MTU
    调整到已知隧道路径支持的值。由服务商管理这些设置时，请联系其支持团队。
 3. 再用新连接检查网页文档和完整脚本能否加载。如果没有改善，恢复原设置。
+
+</details>
+
+#### 安卓打不开虚拟局域网邀请
+
+1. 在安卓设置中搜索 **VPN**，查看当前连接的是哪个应用。如果是其他 VPN，或占用 VPN
+   连接的代理、广告过滤应用，先断开它，再连接组网工具。
+2. 如果组网工具有按应用分流的设置，确认浏览器会走组网 VPN。如果浏览器在排除名单里，把它移除。
+3. 重新连接同一个虚拟局域网，直接用浏览器打开完整邀请。如果网页时开时不开，
+   换网络或重连组网工具后，等组网恢复再刷新原来的完整邀请。
+   如果看到证书提示，先[和房主核对本地证书](#本地-https-证书提示)。
+
+如果已经进房，也看到有人正在分享，但画面连不上，检查组网工具能否在设备之间传输
+UDP。也可以切换 Wi-Fi 或移动数据，等组网重新连上后再进房试一次。
+[检查浏览器的 WebRTC 设置](./network.zh-CN.md#浏览器限制了-webrtc) ·
+[「没有可用的媒体线路」](./no-media-route.zh-CN.md)
+
+<details>
+<summary>进阶 · 安卓 VPN 的连接拦截设置</summary>
+
+在 VPN 的设置中，**屏蔽未使用 VPN 的所有连接**会拦截走 VPN 之外的流量，例如被排除的应用或绕过 VPN 的局域网流量。
+如果组网工具确认你要测试的连接绕过 VPN，可以在个人设备上暂时关闭此项做一次对照，测完再恢复。
+[Android VPN 设置说明](https://developer.android.com/develop/connectivity/vpn?hl=zh-cn#blocked-connections)
 
 </details>
 

@@ -2,9 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { StartupFailure } from "./components/living/StartupFailure";
+import "./styles.css";
 
 async function main() {
-  await import("./styles.css");
   let app = <App />;
   // Room controls share the Popover API; install it before any component mounts.
   if (!("popover" in HTMLElement.prototype)) {
@@ -30,5 +30,4 @@ async function main() {
 
 void main().catch((error: unknown) => {
   console.error("Could not start Piik", error);
-  window.dispatchEvent(new Event("piik:boot-failed"));
 });

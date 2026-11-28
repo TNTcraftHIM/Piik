@@ -74,6 +74,9 @@ func (m *Manager) releaseButton(button int) error {
 
 func (m *Manager) retryReleases() error {
 	var result error
+	if release := m.pendingTextRelease(); release != nil {
+		result = release()
+	}
 	for code := range m.pendingKeys {
 		if err := m.releaseKey(code); err != nil {
 			result = errors.Join(result, fmt.Errorf("key release retry: %w", err))
@@ -87,8 +90,22 @@ func (m *Manager) retryReleases() error {
 	return result
 }
 
+func (m *Manager) pendingTextRelease() func() error {
+	if sink, ok := m.sink.(interface{ pendingTextRelease() func() error }); ok {
+		return sink.pendingTextRelease()
+	}
+	return nil
+}
+
+func (m *Manager) pendingKeyCount() int {
+	if m.pendingTextRelease() != nil {
+		return len(m.pendingKeys) + 1
+	}
+	return len(m.pendingKeys)
+}
+
 func (m *Manager) noteInputResult(c *connection, err error) {
-	failed := err != nil || len(m.pendingKeys) != 0 || len(m.pendingButtons) != 0
+	failed := err != nil || m.pendingKeyCount() != 0 || len(m.pendingButtons) != 0
 	if c.inputFailed != failed {
 		c.inputFailed = failed
 		m.send(c, m.state(c))
@@ -98,8 +115,8 @@ func (m *Manager) noteInputResult(c *connection, err error) {
 func (m *Manager) applyHeld(c *connection, b bounds, event inputEvent) error {
 	releaseErr := m.retryReleases()
 	releasing := (event.Type == "key" || event.Type == "button") && !event.Down
-	if !releasing && (len(m.pendingKeys) != 0 || len(m.pendingButtons) != 0) {
-		return fmt.Errorf("held input cleanup is unavailable (%d key, %d button releases pending): %w", len(m.pendingKeys), len(m.pendingButtons), releaseErr)
+	if keys := m.pendingKeyCount(); !releasing && (keys != 0 || len(m.pendingButtons) != 0) {
+		return fmt.Errorf("held input cleanup is unavailable (%d key, %d button releases pending): %w", keys, len(m.pendingButtons), releaseErr)
 	}
 	switch event.Type {
 	case "key":

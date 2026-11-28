@@ -1002,8 +1002,13 @@ public final class CaptureService extends Service {
     CapturedAudio oldPreviousMicrophone = previousMicrophone;
     previousMicrophone = null;
     if (display != null) {
-      display.release();
+      VirtualDisplay oldDisplay = display;
       display = null;
+      try {
+        oldDisplay.release();
+      } catch (RuntimeException error) {
+        android.util.Log.w("PiikCapture", "virtual display release failed", error);
+      }
     }
     // Unblock JNI output before waiting for the GL queue, including a pending swap.
     if (old != null) old.runtime.captureEnded(old.id);
@@ -1017,7 +1022,11 @@ public final class CaptureService extends Service {
     if (projection != null) {
       MediaProjection oldProjection = projection;
       projection = null;
-      oldProjection.stop();
+      try {
+        oldProjection.stop();
+      } catch (RuntimeException error) {
+        android.util.Log.w("PiikCapture", "media projection stop failed", error);
+      }
     }
     stopForeground(STOP_FOREGROUND_REMOVE);
     Runnable closed = () -> {

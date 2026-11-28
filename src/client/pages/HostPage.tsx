@@ -663,15 +663,15 @@ export function HostPage({
   const nativeModeRef = useRef(false);
   const nativeSourceAudioRef = useRef<boolean | undefined>(undefined);
   const nativeSourceSelectionRef = useRef<Extract<ShareSourceSelection, { kind: "native" }> | null>(null);
-  const loadAudioApplications = useCallback(async () => {
+  const loadAudioApplications = useCallback(async (signal: AbortSignal) => {
     const client = nativeConnection.current;
     if (!client || !nativeModeRef.current) throw new Error("Piik App is unavailable");
-    return client.sources();
+    return client.sources(signal);
   }, []);
   const microphoneClient = nativeActive ? nativeConnection.current : null;
-  const loadMicrophoneDevices = useCallback(() => microphoneClient
-    ? microphoneClient.microphones() : browserCaptureDevices("audioinput"), [microphoneClient]);
-  const nativeSourceRequestRef = useRef<object | null>(null);
+  const loadMicrophoneDevices = useCallback((signal: AbortSignal) => microphoneClient
+    ? microphoneClient.microphones(signal) : browserCaptureDevices("audioinput"), [microphoneClient]);
+  const nativeSourceRequestRef = useRef<AbortController | null>(null);
   const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
   const nativeShareCleanupRef = useRef<Promise<void>>(Promise.resolve());
@@ -795,6 +795,7 @@ export function HostPage({
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
+      nativeSourceRequestRef.current?.abort();
       nativeSourceRequestRef.current = null;
       nativeSourcePathRef.current = null;
       disposeNativeShare();
@@ -1583,6 +1584,7 @@ export function HostPage({
   }
 
   function closeCaptureSourcePicker(): void {
+    nativeSourceRequestRef.current?.abort();
     nativeSourceRequestRef.current = null;
     nativeSourcePathRef.current = null;
     setNativeSources(null);
@@ -1595,7 +1597,8 @@ export function HostPage({
         id: phase === "live" ? "host-switch-source" : "host-start-share", restore: false,
       };
     }
-    const request = {};
+    nativeSourceRequestRef.current?.abort();
+    const request = new AbortController();
     nativeSourceRequestRef.current = request;
     nativeSourcePathRef.current = null;
     if (!isClientActivated()) {
@@ -1632,8 +1635,8 @@ export function HostPage({
     }
     try {
       const [adapters, sources] = await Promise.all([
-        client.captureOptions(),
-        client.sources(),
+        client.captureOptions(request.signal),
+        client.sources(request.signal),
       ]);
       const codec = nativeCaptureCodec(client);
       const path = defaultNativeCapturePath(
@@ -1665,6 +1668,8 @@ export function HostPage({
         nativeConnection.discard(client);
       }
       setNativeSources({ kind: "failed" });
+    } finally {
+      request.abort();
     }
   }
 
@@ -3036,12 +3041,7 @@ export function HostPage({
         hostAudioRef.current = createBrowserAudio(captured, selection.source ?? "browser", generation, shareGeneration);
         const audio = hostAudioRef.current;
         try {
-          const audioStart = new AbortController();
-          browserAudioStartAbortRef.current = audioStart;
-          try { captured = await audio.start(audioStart.signal); }
-          finally {
-            if (browserAudioStartAbortRef.current === audioStart) browserAudioStartAbortRef.current = null;
-          }
+          captured = await startBrowserAudio(audio);
           if (!isCurrentShare(generation, shareGeneration)) {
             audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose(); return;
           }
@@ -3242,6 +3242,18 @@ export function HostPage({
     }
   }
 
+  async function startBrowserAudio(audio: HostAudio): Promise<MediaStream> {
+    const controller = new AbortController();
+    browserAudioStartAbortRef.current = controller;
+    try {
+      return await audio.start(controller.signal);
+    } finally {
+      if (browserAudioStartAbortRef.current === controller) {
+        browserAudioStartAbortRef.current = null;
+      }
+    }
+  }
+
   function createBrowserAudio(captured: MediaStream, source: BrowserCaptureSource, generation: number, shareGeneration: string): HostAudio {
     const audio = new HostAudio(captured, source, available => {
       if (!isCurrentShare(generation, shareGeneration) || hostAudioRef.current !== audio) return;
@@ -3407,12 +3419,7 @@ export function HostPage({
         const shareGeneration = shareGenerationRef.current!;
         const audio = createBrowserAudio(captured, source, generation, shareGeneration);
         try {
-          const audioStart = new AbortController();
-          browserAudioStartAbortRef.current = audioStart;
-          try { captured = await audio.start(audioStart.signal); }
-          finally {
-            if (browserAudioStartAbortRef.current === audioStart) browserAudioStartAbortRef.current = null;
-          }
+          captured = await startBrowserAudio(audio);
           await nativeRetirement;
           if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
             captured.getTracks().forEach(track => track.stop());

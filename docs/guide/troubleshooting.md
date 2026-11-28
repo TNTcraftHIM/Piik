@@ -121,7 +121,13 @@ temporary address, ask that site's administrator to check its service.
 <details>
 <summary>Advanced Host checks · Firewall and ports</summary>
 
-1. On Windows, open **Windows Security → Firewall & network protection → Allow an app through firewall**. Allow the current `piik-app.exe` on the network type in use. Update the rule if you extracted App to a new folder. Virtual adapters may use the **Public** profile. Advanced rules can limit access to the adapter and subnet. [Microsoft firewall instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall)
+1. On the Windows host, open **Windows Security → Firewall & network protection →
+   Allow an app through firewall**. Select the `piik-app.exe` you are running and allow it on the network type in use.
+   If the virtual adapter uses the **Public** profile, allow Piik on **Public**. If you moved Piik to a different folder,
+   add the executable at its new path. The old rule only applies to the old path. Ask your friend to retry the invitation.
+   If you use port-specific rules, allow Piik's UDP media traffic as well as the TCP web port.
+   Allowing only the web port can let visitors enter the room but leave them unable to watch.
+   [Microsoft firewall instructions](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure)
 2. If App reports **the local port is unavailable**, close the older Piik instance using it. If another app needs the port, launch Piik with `--port 9876` and send the new invitation. The web and local STUN ports must both be available.
 
 </details>
@@ -156,6 +162,37 @@ compare before and after on your virtual LAN:
    known tunnel path. If the provider manages these settings, ask its support team.
 3. Open a fresh connection and check whether both the document and full script
    load. Restore the original settings if the change does not help.
+
+</details>
+
+#### Android cannot open a virtual LAN invitation
+
+1. In Android settings, search for **VPN** and check which app is connected.
+   If another VPN, proxy or ad blocker is using the VPN connection,
+   disconnect it so your virtual LAN app can connect.
+2. If the virtual LAN app has per-app settings, make sure your browser
+   uses its VPN. If the browser is on the exclusion list, remove it.
+3. Reconnect to the same virtual LAN and open the full invitation directly
+   in your browser. If the page only opens sometimes, wait for the virtual
+   LAN to reconnect after switching networks or reconnecting the app, then
+   reload the original invitation. If you see a certificate warning,
+   [verify the local certificate with the host](#local-https-certificate-warning).
+
+If you join the room and see an active share but the picture won't play,
+check whether the virtual LAN carries UDP between devices. You can also
+switch between Wi-Fi and mobile data, wait for the virtual LAN to
+reconnect, and join again.
+[Check browser WebRTC settings](./network.md#browser-webrtc-restrictions) ·
+[“No media route available”](./no-media-route.md)
+
+<details>
+<summary>Advanced · Android VPN connection blocking</summary>
+
+**Block connections without VPN** blocks traffic outside the VPN,
+including traffic from excluded apps and local network traffic that bypasses
+the VPN. If your virtual LAN app confirms that the connection you are testing
+bypasses its VPN, you can briefly turn the setting off on a personal device
+to compare, then restore it. [Android VPN settings](https://developer.android.com/develop/connectivity/vpn#blocked-connections)
 
 </details>
 

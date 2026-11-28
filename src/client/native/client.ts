@@ -54,6 +54,7 @@ const REQUEST_TIMEOUT_MS = 8_000;
 interface NativeDiscoveryOptions {
   waitForPermission?: boolean;
   signal?: AbortSignal;
+  port?: number;
 }
 
 export function isLoopbackPage(): boolean {
@@ -79,7 +80,7 @@ interface PendingRequest<T = unknown> {
   schema: z.ZodType<T>;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
-  timer: number | null;
+  retire: () => void;
 }
 
 export interface NativeShareInput {
@@ -130,22 +131,22 @@ export async function discoverNativeHealth(
 }
 
 /** A local approval address is not permission to use native media. */
-export async function discoverNativeConnect(options: NativeDiscoveryOptions = {}): Promise<string | null> {
+export async function discoverNativeConnect(options: NativeDiscoveryOptions = {}): Promise<{ url: URL; port: number } | null> {
   return discoverNative("connect-discovery", body => {
-    const { connectURL } = nativeConnectSchema.parse(body);
+    const { connectURL, port } = nativeConnectSchema.parse(body);
     const url = new URL(connectURL);
     if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
         url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
       throw new Error("Invalid local App approval address");
     }
     url.searchParams.set("site", window.location.origin);
-    return url.toString();
+    return { url, port };
   }, options);
 }
 
 async function discoverNative<T>(
   path: "health" | "connect-discovery", read: (body: unknown) => T,
-  { waitForPermission = true, signal }: NativeDiscoveryOptions,
+  { waitForPermission = true, signal, port }: NativeDiscoveryOptions,
 ): Promise<T | null> {
   if (signal?.aborted) return null;
   const permission = await localPermission();
@@ -166,7 +167,7 @@ async function discoverNative<T>(
     if (awaitingPermission) permission.addEventListener("change", permissionChanged);
     permissionChanged();
     // An explicit launch stays with its App even when another approved App is faster.
-    const selectedPort = clientRuntimePort();
+    const selectedPort = port ?? clientRuntimePort();
     const ports = selectedPort === null ? Array.from({
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
     }, (_, index) => NATIVE_CLIENT_PORT_START + index) : [selectedPort];
@@ -309,20 +310,20 @@ export class NativeClient {
     await this.request("ping", {}, pongResponseSchema);
   }
 
-  async captureOptions(): Promise<NativeAdapter[]> {
+  async captureOptions(signal?: AbortSignal): Promise<NativeAdapter[]> {
     const response = await this.request(
       "capture-options",
       {},
-      captureOptionsResponseSchema,
+      captureOptionsResponseSchema, undefined, undefined, signal,
     );
     return response.adapters;
   }
 
-  async sources(): Promise<NativeCaptureTarget[]> {
+  async sources(signal?: AbortSignal): Promise<NativeCaptureTarget[]> {
     const response = await this.request(
       "list-sources",
       {},
-      sourceListResponseSchema,
+      sourceListResponseSchema, undefined, undefined, signal,
     );
     return response.sources;
   }
@@ -697,9 +698,9 @@ export class NativeClient {
     );
   }
 
-  async microphones(): Promise<{ id: string; label: string }[]> {
+  async microphones(signal?: AbortSignal): Promise<{ id: string; label: string }[]> {
     if (!this.health.nativeMedia.microphone) throw new Error("Piik App microphone is unavailable");
-    return (await this.request("list-microphones", {}, microphoneListResponseSchema)).devices;
+    return (await this.request("list-microphones", {}, microphoneListResponseSchema, undefined, undefined, signal)).devices;
   }
 
   async setMicrophone(shareId: string, enabled: boolean, volume: number, deviceId = ""): Promise<void> {
@@ -788,7 +789,9 @@ export class NativeClient {
     schema: z.ZodType<T>,
     timeoutMs: number | null = REQUEST_TIMEOUT_MS,
     onRequested?: () => void,
+    signal?: AbortSignal,
   ): Promise<T> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new NativeRequestError("unavailable", type));
     }
@@ -796,11 +799,20 @@ export class NativeClient {
     const began = performance.now();
     const details = { type, requestId: id };
     return new Promise<T>((resolveRequest, rejectRequest) => {
+      const retire = () => {
+        this.pending.delete(id);
+        if (timer !== null) window.clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+      };
+      const abort = () => {
+        retire();
+        rejectRequest(signal?.reason);
+      };
       const timer =
         timeoutMs === null
           ? null
           : window.setTimeout(() => {
-              this.pending.delete(id);
+              retire();
               debugEvent("native", "request-timeout", { ...details, durationMs: performance.now() - began });
               rejectRequest(new NativeRequestError("timeout", type));
             }, timeoutMs);
@@ -815,8 +827,9 @@ export class NativeClient {
           debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
           rejectRequest(error);
         },
-        timer,
+        retire,
       });
+      signal?.addEventListener("abort", abort, { once: true });
       try {
         debugEvent("native", "request", { ...details, requested: fields, timeoutMs });
         this.socket.send(
@@ -828,8 +841,7 @@ export class NativeClient {
           }),
         );
       } catch (error) {
-        if (timer !== null) window.clearTimeout(timer);
-        this.pending.delete(id);
+        retire();
         debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
         rejectRequest(new NativeRequestError("send-failed", type, { cause: error }));
         return;
@@ -851,8 +863,7 @@ export class NativeClient {
     if (id) {
       const pending = this.pending.get(id);
       if (!pending) return;
-      this.pending.delete(id);
-      if (pending.timer !== null) window.clearTimeout(pending.timer);
+      pending.retire();
       const failure = requestFailedResponseSchema.safeParse(value);
       if (failure.success) {
         if (failure.data.code === "source-canceled") {
@@ -911,10 +922,9 @@ export class NativeClient {
 
   private rejectPending(): void {
     for (const request of this.pending.values()) {
-      if (request.timer !== null) window.clearTimeout(request.timer);
+      request.retire();
       request.reject(new NativeRequestError("disconnected", request.operation));
     }
-    this.pending.clear();
   }
 }
 

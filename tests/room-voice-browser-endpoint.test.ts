@@ -21,15 +21,20 @@ it("keeps connected voice on sender parameter rejection and applies a later expl
   let parameters = { encodings: [{ maxBitrate: 32_000 }], codecs: [{ mimeType: "audio/opus", sdpFmtpLine: "maxaveragebitrate=510000" }] };
   const sender = { track, getParameters: () => parameters, setStreams: vi.fn(),
     setParameters: vi.fn(async (next: typeof parameters) => { parameters = next; }) };
-  const input = { stream: { getAudioTracks: () => [track] }, close: vi.fn() };
+  const input = { stream: { getAudioTracks: () => [track] }, level: () => .2, close: vi.fn() };
   // The real endpoint owns sender creation, negotiation, failure reporting and retirement.
-  vi.stubGlobal("RTCPeerConnection", class extends Peer { addTrack = vi.fn(() => sender); });
+  const getStats = vi.fn(async () => new Map());
+  vi.stubGlobal("RTCPeerConnection", class extends Peer { addTrack = vi.fn(() => sender); getStats = getStats; });
   try {
     endpoint.setAuthority(authority, "self");
     endpoint.attach("mic", input as unknown as MicrophoneInput);
     await endpoint.reconcile();
     const pc = Peer.instances[0]!;
     expect(endpoint.connected).toBe(true);
+    expect(await endpoint.levels()).toEqual(new Map([["self", .2]]));
+    expect(getStats).not.toHaveBeenCalled();
+    await endpoint.connectionMetrics();
+    expect(getStats).toHaveBeenCalledOnce();
     sender.setParameters.mockRejectedValueOnce(new DOMException("temporarily unavailable", "InvalidStateError"));
     endpoint.setAuthority({ ...authority, revision: 2, bitrate: 48_000 }, "self");
     await expect(endpoint.reconcile()).resolves.toBeUndefined();

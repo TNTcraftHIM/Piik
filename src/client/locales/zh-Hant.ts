@@ -532,7 +532,7 @@ export const zhHant: Partial<Record<CopyKey, string>> = {
   "host.switching": "正在選擇",
   "host.stop": "停止分享",
   "host.noAudio": "未分享來源聲音",
-  "host.noBrowserAudioDetail": "iPhone 和 iPad 上的 Safari 分享遊戲或影片時只有畫面。要加入自己的講解，可開啟「分享麥克風」。",
+  "host.noBrowserAudioDetail": "瀏覽器沒有提供這次分享的來源聲音。講解可使用房間語音或「分享麥克風」。",
   "host.localPreviewPaused": "本機預覽已暫停，分享仍在繼續",
   "host.preview": "本機預覽",
   "host.previewAutoPause": "自動暫停預覽",

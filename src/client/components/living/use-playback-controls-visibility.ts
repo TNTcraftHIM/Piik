@@ -91,7 +91,8 @@ export function usePlaybackControlsVisibility(
       }
     }, options);
     screen.addEventListener("focusin", event => {
-      if (owns(event.target)) show(); else scheduleHide();
+      // Picture touch owns its click toggle, so only keyboard focus reveals it here.
+      if (owns(event.target) && (event.target !== video || video.matches(":focus-visible"))) show(); else scheduleHide();
     }, options);
     screen.addEventListener("focusout", scheduleHide, options);
     screen.addEventListener("keydown", event => {

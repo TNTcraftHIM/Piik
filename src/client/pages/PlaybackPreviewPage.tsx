@@ -19,23 +19,16 @@ import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../../shared/protocol";
 
 type PreviewRole = "host" | "viewer";
 
-export function testMedia(withAudio: boolean, portrait: boolean, poster?: string) {
+export function testMedia(withAudio: boolean, portrait: boolean) {
   const canvas = document.createElement("canvas");
   canvas.width = portrait ? 480 : 640;
   // A 4:3 picture makes contain, crop and stretch visible in the 16:9 player.
   canvas.height = portrait ? 640 : 480;
   const paint = canvas.getContext("2d")!;
-  const image = poster ? new Image() : undefined;
-  if (image && poster) image.src = poster;
   const started = performance.now();
   let animation = 0;
   function draw(now: number) {
     paint.setTransform(canvas.width / 640, 0, 0, canvas.height / 480, 0, 0);
-    if (image) {
-      if (image.complete && image.naturalWidth) paint.drawImage(image, 0, 0, 640, 480);
-      animation = requestAnimationFrame(draw);
-      return;
-    }
     const seconds = (now - started) / 1000;
     paint.fillStyle = "#172c3b";
     paint.fillRect(0, 0, 640, 480);

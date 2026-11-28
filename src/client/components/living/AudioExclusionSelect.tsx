@@ -43,7 +43,7 @@ export function AudioExclusionSelect({ sources, value, onChange, disabled, busy,
 
 // Reuse native source enumeration. The Host owns applying the selected audio input.
 export function LiveAudioExclusion({ load, ...selection }: {
-  load: () => Promise<NativeCaptureTarget[]>;
+  load: (signal: AbortSignal) => Promise<NativeCaptureTarget[]>;
   value?: NativeCaptureTarget; onChange: (target: NativeCaptureTarget | undefined) => void; disabled?: boolean;
 }) {
   const [sources, setSources] = useState<NativeCaptureTarget[]>([]);
@@ -51,13 +51,13 @@ export function LiveAudioExclusion({ load, ...selection }: {
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
-    let current = true;
+    const request = new AbortController();
     setBusy(true);
-    void load().then(sources => {
-      if (current) { setSources(sources); setFailed(false); }
-    }, () => { if (current) setFailed(true); })
-      .finally(() => { if (current) setBusy(false); });
-    return () => { current = false; };
+    void load(request.signal).then(sources => {
+      if (!request.signal.aborted) { setSources(sources); setFailed(false); }
+    }, () => { if (!request.signal.aborted) setFailed(true); })
+      .finally(() => { if (!request.signal.aborted) setBusy(false); });
+    return () => request.abort();
   }, [load, revision]);
   return <AudioExclusionSelect {...selection} sources={sources} busy={busy} failed={failed}
     onRefresh={() => setRevision(value => value + 1)} />;

@@ -56,7 +56,7 @@ func newPunchLab(t *testing.T, left, right vnet.NATType) *punchLab {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = wan.Stop() })
-	for _, port := range []string{"3478", "3479", "3480"} {
+	for _, port := range []string{"3478", "3479", "3480", "3481"} {
 		startPunchSTUN(t, serverNet, port)
 	}
 	return network

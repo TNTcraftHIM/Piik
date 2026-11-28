@@ -557,8 +557,9 @@ ComPtr<IMFSample> CreateCallerOutputSample(const MFT_OUTPUT_STREAM_INFO& info) {
   return sample;
 }
 
-ComPtr<IMFSample> PullOutput(IMFTransform* transform,
-                             const MFT_OUTPUT_STREAM_INFO& info) {
+ComPtr<IMFSample> PullOutput(const SelectedTransform& selected,
+                             MFT_OUTPUT_STREAM_INFO& info,
+                             const VideoProfile& profile) {
   bool transform_provides =
       (info.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES |
                        MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
@@ -571,11 +572,36 @@ ComPtr<IMFSample> PullOutput(IMFTransform* transform,
   output.dwStreamID = 0;
   output.pSample = caller_sample.Get();
   DWORD status = 0;
-  HRESULT result = transform->ProcessOutput(0, 1, &output, &status);
+  HRESULT result = selected.transform->ProcessOutput(0, 1, &output, &status);
 
   ComPtr<IMFCollection> events;
   if (output.pEvents != nullptr) {
     events.Attach(output.pEvents);
+  }
+  ComPtr<IMFSample> produced;
+  if (output.pSample != caller_sample.Get()) {
+    produced.Attach(output.pSample);
+  }
+  if (result == MF_E_TRANSFORM_STREAM_CHANGE &&
+      (status & MFT_PROCESS_OUTPUT_STATUS_NEW_STREAMS) == 0) {
+    auto required = CreateOutputType(profile);
+    for (DWORD index = 0;; ++index) {
+      ComPtr<IMFMediaType> candidate;
+      Check(selected.transform->GetOutputAvailableType(0, index, &candidate),
+            "output-change-available-type");
+      GUID subtype = {};
+      Check(candidate->GetGUID(MF_MT_SUBTYPE, &subtype), "output-change-subtype");
+      if (subtype != MFVideoFormat_H264) continue;
+      Check(required->CopyAllItems(candidate.Get()), "output-change-attributes");
+      HRESULT set = selected.transform->SetOutputType(0, candidate.Get(), 0);
+      if (set == MF_E_INVALIDMEDIATYPE) continue;
+      Check(set, "output-change-set-type");
+      ValidateMediaTypes(selected.transform.Get(), profile);
+      ValidateCodecReadback(selected.codec.Get(), profile);
+      Check(selected.transform->GetOutputStreamInfo(0, &info), "output-change-info");
+      // The asynchronous MFT signals another HaveOutput when its sample is ready.
+      return {};
+    }
   }
   Check(result, "mft-process-output");
   if ((output.dwStatus & MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE) != 0 ||
@@ -586,9 +612,6 @@ ComPtr<IMFSample> PullOutput(IMFTransform* transform,
 
   if (caller_sample) {
     if (output.pSample != caller_sample.Get()) {
-      if (output.pSample != nullptr) {
-        output.pSample->Release();
-      }
       Fail("mft-output-allocation",
            "hardware MFT replaced the caller-owned output sample");
     }
@@ -597,8 +620,6 @@ ComPtr<IMFSample> PullOutput(IMFTransform* transform,
   if (output.pSample == nullptr) {
     Fail("mft-output-sample", "hardware MFT produced no output sample");
   }
-  ComPtr<IMFSample> produced;
-  produced.Attach(output.pSample);
   return produced;
 }
 
@@ -689,8 +710,8 @@ EncodedAccessUnit LiveEncoder::Encode(
     }
     if (type != METransformHaveOutput) continue;
 
-    ComPtr<IMFSample> output = PullOutput(selected_.transform.Get(),
-                                          output_info_);
+    ComPtr<IMFSample> output = PullOutput(selected_, output_info_, profile_);
+    if (!output) continue;
     LONGLONG output_time = -1;
     Check(output->GetSampleTime(&output_time), "output-sample-time");
     if (output_time != static_cast<LONGLONG>(timestamp100ns)) {

@@ -104,7 +104,7 @@ import {
   type ViewerPresentationAction,
   type ViewerRouteKind,
 } from "../media/viewer-presentation";
-import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
+import { mediaElementPlaybackFailed, nextViewerMediaBinding, playbackFailure, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
 import { observeCompositedVideoFrame } from "../media/video-frame-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
@@ -165,6 +165,10 @@ interface PendingPeerRoute {
   snapshot: PeerSnapshot | null;
   qualityProbe: P2pQualityProbe | null;
   qualityResult: CandidateQualityProbeResult;
+}
+
+function readStickPositions() {
+  return readRoomPreferences().stickPositions;
 }
 
 export function ViewerPage({
@@ -449,7 +453,11 @@ export function ViewerPage({
         if (!mediaBindingIsCurrent(binding) || !failure) {
           return;
         }
-        invalidatePresentedMedia();
+        if (failure === "autoplay-blocked") {
+          invalidatePresentedMedia();
+        } else {
+          invalidateQualityPresentation();
+        }
         dispatchPresentation({
           type: failure,
           generation: binding.generation,
@@ -1071,6 +1079,7 @@ export function ViewerPage({
             pendingPeer = null;
             prepareParent(null);
             peerRef.current = activatedPeer;
+            refreshScreenBufferStatus();
             activatedPeer.activatePreparedRoute();
             previousPeer?.dispose();
             applyMediaAssignment(
@@ -2332,12 +2341,25 @@ export function ViewerPage({
               }}
               onPause={invalidateQualityPresentation}
               onEnded={invalidateQualityPresentation}
+              onError={({ currentTarget: video }) => {
+                const binding = remoteMediaRef.current;
+                if (!binding || video.srcObject !== binding.stream || !mediaElementPlaybackFailed(video.error)) return;
+                invalidateQualityPresentation();
+                dispatchPresentation({
+                  type: "playback-failed",
+                  generation: binding.generation,
+                  revision: binding.boundAtRevision,
+                });
+              }}
             />
             <PlaybackControls
               overlayAction={<RoomChatToggle session={interactionSession} />}
               overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
+                  readStickPositions={readStickPositions} onStickPositionChange={(side, position) => {
+                    saveRoomPreferences({ stickPositions: { ...readStickPositions(), [side]: position } });
+                  }}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
               settings={{ pictureFit, pictureRotation, setPictureRotation: rotation => {
                 setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation });

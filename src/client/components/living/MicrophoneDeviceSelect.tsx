@@ -6,7 +6,7 @@ import { Tooltip } from "./Tooltip";
 
 // Shared presentation only: the caller owns capture and device replacement.
 export function MicrophoneDeviceSelect({ value, load, onChange, disabled, revision, browser = true }: {
-  value: string; load: () => Promise<CaptureDevice[]>;
+  value: string; load: (signal: AbortSignal) => Promise<CaptureDevice[]>;
   onChange: (id: string) => void; disabled?: boolean; revision?: unknown; browser?: boolean;
 }) {
   const { t, vis } = useCopy();
@@ -17,22 +17,23 @@ export function MicrophoneDeviceSelect({ value, load, onChange, disabled, revisi
   const [refresh, setRefresh] = useState(0);
   const unavailable = browser && !navigator.mediaDevices?.getUserMedia;
   useEffect(() => {
-    let current = true;
-    let request = 0;
+    let pending: AbortController;
     const update = () => {
-      const token = ++request;
+      pending?.abort();
+      pending = new AbortController();
+      const { signal } = pending;
       setBusy(true);
-      void load().then(result => {
-        if (!current || request !== token) return;
+      void load(signal).then(result => {
+        if (signal.aborted) return;
         setDevices(result); setFailed(false);
       }, () => {
-        if (current && request === token) setFailed(true);
-      }).finally(() => { if (current && request === token) setBusy(false); });
+        if (!signal.aborted) setFailed(true);
+      }).finally(() => { if (!signal.aborted) setBusy(false); });
     };
     update();
     if (browser) navigator.mediaDevices?.addEventListener("devicechange", update);
     return () => {
-      current = false;
+      pending.abort();
       if (browser) navigator.mediaDevices?.removeEventListener("devicechange", update);
     };
   }, [load, refresh, revision, browser]);

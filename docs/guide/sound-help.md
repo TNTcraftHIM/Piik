@@ -27,9 +27,11 @@ For room voice, the Host selects **Open room voice** and both people open **Inte
 
 ## I hear my own voice twice
 
-1. Keep room voice on, turn the stream’s playback volume to zero and speak. If the echo stops, restore the volume and ask the Host to temporarily turn off source audio. For a full-screen share, that setting is **System sound**.
-2. If the echo stops again and the Host still hears you, the share is picking up the call. In Piik App on Windows, the Host can share the game window or exclude the app playing the call during full-screen sharing. If the game and call use the same browser, share the game tab with tab audio. [Exclude a voice app from screen audio](./sharing.md#exclude-a-voice-app-from-screen-audio)
+1. Keep room voice on, turn only that stream’s playback volume to zero and speak. If the echo stops, restore the volume and ask the Host to temporarily turn off source audio. For a full-screen share, that setting is **System sound**.
+2. If the echo stops again and the Host still hears you, the share is picking up the call. In a desktop browser, share only the game or video tab with tab audio and keep Piik in another tab. Separate browser processes are unnecessary. Piik App on Windows can share the game window or exclude the app playing the call during full-screen sharing. [Exclude a voice app from screen audio](./sharing.md#exclude-a-voice-app-from-screen-audio)
 3. If the echo continues with stream playback muted, ask anyone using speakers to try headphones. If muting source audio leaves an echo, also try turning off the Host’s **Include my microphone**.
+
+On a phone, first turn off **Include my microphone** and keep room voice on, so the microphone is not sent through both the stream and the call. If source audio is available and turning it off removes the echo, share only the picture; use another device for the call when you also need content sound. Headphones can reduce speaker sound picked up by a microphone, but cannot prevent system recording from capturing the call directly.
 
 <details>
 <summary>Check monitoring outputs when using a virtual mixer</summary>

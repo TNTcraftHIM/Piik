@@ -297,6 +297,59 @@ func TestStaticHandlerRefusesTraversal(t *testing.T) {
 	}
 }
 
+func TestMissingDocumentUsesAppShell(t *testing.T) {
+	const shell = `<html><script src="/assets/app.js"></script></html>`
+	handler := staticHandler(fstest.MapFS{"index.html": {Data: []byte(shell)}}, staticNotFound)
+	for _, tc := range []struct {
+		name, method, path, accept, mode string
+		wantDocument                     bool
+	}{
+		{"navigation", "GET", "/old.html", "text/html,application/xhtml+xml,*/*;q=0.8", "navigate", true},
+		{"older browser", "GET", "/old.html", "text/html", "", true},
+		{"head", "HEAD", "/old.html", "text/html", "navigate", true},
+		{"script", "GET", "/assets/old.js", "*/*", "cors", false},
+		{"fetch", "GET", "/old.html", "text/html", "cors", false},
+		{"html refused", "GET", "/old.html", "text/html;q=0,*/*", "navigate", false},
+		{"post", "POST", "/old.html", "text/html", "navigate", false},
+		{"well-known", "GET", "/.well-known/old.html", "text/html", "navigate", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(tc.method, tc.path, nil)
+			request.Header.Set("Accept", tc.accept)
+			if tc.mode != "" {
+				request.Header.Set("Sec-Fetch-Mode", tc.mode)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404", recorder.Code)
+			}
+			if !tc.wantDocument {
+				if recorder.Body.String() != staticNotFoundBody {
+					t.Errorf("response body = %q, want JSON 404", recorder.Body.String())
+				}
+				return
+			}
+			wantBody := shell
+			if tc.method == "HEAD" {
+				wantBody = ""
+			}
+			if got := recorder.Body.String(); got != wantBody {
+				t.Errorf("response body = %q, want %q", got, wantBody)
+			}
+			for header, want := range map[string]string{
+				"Content-Type": "text/html;charset=utf-8", "Cache-Control": "no-store",
+				"Content-Length": strconv.Itoa(len(shell)), "X-Content-Type-Options": "nosniff",
+				"Referrer-Policy": "no-referrer",
+			} {
+				if got := recorder.Header().Get(header); got != want {
+					t.Errorf("%s = %q, want %q", header, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestStaticHandlerWithoutIndexHTML(t *testing.T) {
 	// The former frontend mode "none": nothing can be served, everything 404s.
 	handler := staticHandler(fstest.MapFS{".gitkeep": &fstest.MapFile{}}, staticNotFound)

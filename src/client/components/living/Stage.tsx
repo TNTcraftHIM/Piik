@@ -64,8 +64,12 @@ export function StageOverlay({
   still?: boolean;
 }) {
   const { vis, lang, t } = useCopy();
-  const routeFailed = viewerStage === "route-failed";
-  const guide = useGuideLink(lang, "no-media-route", routeFailed);
+  const playbackFailed = viewerStage === "playback-failed";
+  const showHelp = viewerStage === "route-failed" || playbackFailed;
+  const guide = useGuideLink(lang, "no-media-route", showHelp, playbackFailed ? {
+    en: "i-get-no-picture-but-other-viewers-can-watch",
+    zh: "只有我没画面其他人能看",
+  } : undefined);
   const isWaiting = waiting && !onActivate;
   const content = (
     <>
@@ -103,7 +107,7 @@ export function StageOverlay({
       aria-label={message}
     >
       {content}
-      {routeFailed && <a className="lr-tv-route-help" href={guide} target="_blank" rel="noopener noreferrer">
+      {showHelp && <a className="lr-tv-route-help" href={guide} target="_blank" rel="noopener noreferrer">
         {t("help.troubleshooting")}
       </a>}
     </div>

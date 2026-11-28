@@ -166,8 +166,9 @@ void ValidateCodecReadback(ICodecAPI* codec,
                            const VideoProfile& profile = kDefaultVideoProfile);
 void ForceKeyFrame(ICodecAPI* codec);
 ComPtr<IMFSample> CreateCallerOutputSample(const MFT_OUTPUT_STREAM_INFO& info);
-ComPtr<IMFSample> PullOutput(IMFTransform* transform,
-                            const MFT_OUTPUT_STREAM_INFO& info);
+ComPtr<IMFSample> PullOutput(const SelectedTransform& selected,
+                             MFT_OUTPUT_STREAM_INFO& info,
+                             const VideoProfile& profile = kDefaultVideoProfile);
 ComPtr<IMFSample> CreateSurfaceSample(ID3D11Texture2D* texture,
                                       LONGLONG timestamp100ns,
                                       LONGLONG duration100ns);

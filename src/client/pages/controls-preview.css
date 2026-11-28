@@ -24,7 +24,7 @@
 .cp-tools .lr-input select { min-width: 0; border: 0; background: var(--paper); color: var(--ink); font: inherit; }
 .cp-tools .lr-pill { max-width: 100%; }
 .cp-feedback { min-height: 2em; }
-.cp-card .cp-input-error { color: var(--danger); }
+.cp-card .cp-input-error { color: var(--danger-ink); }
 .cp-section { margin-top: 44px; scroll-margin-top: 24px; }
 .cp-people-room { padding: 24px 12px 8px; border-radius: 26px; background: var(--wall-2); }
 .cp-sync { display: flex; align-items: center; justify-content: center; gap: 24px; }
@@ -61,8 +61,6 @@ body:has(.cp-guide-stage) { transition: none; }
 .cp-guide-stage:has([data-guide-capture]) { width: fit-content; max-width: 100%; padding: 0; }
 .cp-guide-stage[data-guide-scene^="share-source"] .lr-tv-screen { min-height: 500px; }
 .cp-guide-stage[data-guide-scene^="share-source"] .lr-source-picker-panel { padding: 14px; }
-.cp-guide-stage[data-guide-scene="touch-joystick"] { width: min(520px, 100%); }
-.cp-guide-stage[data-guide-scene="touch-joystick"] .lr-tv-screen { width: 100%; min-height: 0; }
 
 .cp-guide-invite { width: min(550px, 100%); padding: 14px; }
 .cp-guide-invite .lr-invite-field { flex-basis: 100%; }

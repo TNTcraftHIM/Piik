@@ -17,14 +17,22 @@ own behavior; research and Git/PRs own evidence and completed history.
   to identify the failing transition before changing capture or service lifetime.
 - [ ] **Release mirror platform integration.** Verify a supported way to create
   the platform's Release tag or trigger its immediate synchronization during
-  publication. The v2.8.0 mirror is waiting for its tag. Resume from the
-  [original build](https://github.com/TNTcraftHIM/Piik/actions/runs/44881655913)
-  once the tag arrives. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+  publication. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+- [ ] **Public invitation timeout feedback (#557).** Verify the App timeout
+  title and fixed public address guide link in the maintenance candidate, then
+  confirm both in the published build.
+  [#557](https://github.com/TNTcraftHIM/Piik/issues/557)
+- [ ] **Windows H.264 output negotiation (#452).** Verify the format-change
+  handling on the reporter's Intel device, including startup and bitrate changes.
+  The App diagnostic identifies `MF_E_TRANSFORM_STREAM_CHANGE`; preserve the
+  configured output and SPS requirements when accepting an updated media type.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [audio scope control](./research/native-client-media.md#windows-audio-exclusion)
   reproduces the contrast with another output device; locate the reporter's
-  first failing transition before changing the capture owner.
+  first failing transition. Verify the default-output activation on Windows 10
+  and during an actual default-device change; keep this separate from identifying
+  the reporter's playback endpoint.
 - [ ] **Blue-tinted sharing (#529).** Identify the source and affected receive
   path from [#529](https://github.com/TNTcraftHIM/Piik/issues/529): Piik version,
   platform, capture choice and matching source/Viewer screenshots. Compare
@@ -44,6 +52,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   also removes its other audio. Browser own-document exclusion and Native
   process-tree exclusion are already implemented; acoustic echo and duplicate
   commentary retain their separate microphone owners.
+- [ ] **iOS share and room-voice echo.** Confirm the reporting iOS/browser version,
+  display-capture audio track and share-microphone setting. The reported echo
+  returns through the shared picture. Compare with the share microphone disabled
+  while keeping room voice active before attributing it to source-audio capture.
 - [ ] **Virtual-LAN page loading.** Identify where the affected invitation stalls
   by comparing document and script results on the affected path and a working
   path. Controlled tests reproduce size-dependent HTTP stalls and fresh HTTPS
@@ -57,13 +69,20 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
+- [ ] **Linux Cinnamon/X11 capture without a ScreenCast portal backend (#552).**
+  Verify the App source picker and Browser sharing on the affected setup before
+  deciding the native capture support scope.
+  [#552](https://github.com/TNTcraftHIM/Piik/issues/552)
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
   host. The supplied v2.5.2 reports retain the grant and receive authorized mouse
   events, but Windows `SendInput` rejects a button event and subsequent release
-  attempts. Capture whether local physical input also stops during the refusal
-  to identify its OS trigger. Later same-process reports clear the release
-  backlog; the local controlled Chrome trial did not reproduce the failure.
+  attempts. The reporter still loses control after returning to the desktop in
+  v2.8.0. The physical mouse still works, and returning to Chrome before
+  disconnection restores remote control under the same grant. Later same-process
+  reports clear the release backlog. Compare the first native rejection and
+  release counters across that transition on the original host. The local
+  controlled Chrome trial did not reproduce the failure.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

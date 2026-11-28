@@ -1,3 +1,6 @@
+import { createServer } from "node:http";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import {
   checkReleaseUpdate, DEFAULT_RELEASE_API_URL, MIRROR_RELEASE_API_URL,
@@ -173,6 +176,33 @@ describe("App release update notice", () => {
       releaseURL: "https://atomgit.com/TNTcraftHIM/Piik/releases",
     });
     await expect(checkReleaseUpdate({ ...current, version: "v2.0.0" }, { fetchImpl })).resolves.toBeNull();
+  });
+
+  it("releases an unfinished error response while using the mirror", async () => {
+    let errorBodyClosed = false;
+    const server = createServer((request, response) => {
+      if (request.url === "/primary") {
+        response.writeHead(503);
+        response.write("busy");
+        response.once("close", () => { errorBodyClosed = true; });
+        return;
+      }
+      response.end(JSON.stringify(mirrorReleases));
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      await expect(checkReleaseUpdate({ version: "v1.0.0", revision: currentRevision }, {
+        apiURL: `${origin}/primary`, mirrorAPIURL: `${origin}/mirror`,
+      })).resolves.toMatchObject({ version: "v1.10.0", revision: latestRevision });
+      await vi.waitFor(() => expect(errorBodyClosed).toBe(true));
+    } finally {
+      const closed = once(server, "close");
+      server.close();
+      server.closeAllConnections();
+      await closed;
+    }
   });
 
   it("gives the mirror its own deadline after a primary timeout", async () => {

@@ -48,6 +48,23 @@ describe("sender source statistics", () => {
       .toMatchObject({ bitrateKbps: 800, nativeEdgeQualityState: "unknown" });
   });
 
+  it("restarts only the affected codec's observation window on an existing RTP stream", () => {
+    const previous = createStatsAccumulator();
+    const sample = (timestamp: number, videoCodec: string, audioCodec: string) => {
+      const stats = report(timestamp);
+      Object.assign(stats.get("video"), { codecId: videoCodec, ssrc: 12 });
+      Object.assign(stats.get("audio"), { codecId: audioCodec, ssrc: 34 });
+      return collectConnectionMetricsFromReport(stats, "send", previous,
+        { trackIdentifier: "video-track", audioTrackIdentifier: "audio-track" });
+    };
+
+    sample(1_000, "VP8", "opus");
+    expect(sample(2_000, "VP8", "opus")).toMatchObject({ intervalFramesEncoded: 30, bitrateKbps: 800, audioBitrateKbps: 128 });
+    expect(sample(3_000, "H264", "opus")).toMatchObject({ intervalFramesEncoded: null, bitrateKbps: null, audioBitrateKbps: 128 });
+    expect(sample(4_000, "H264", "PCMU")).toMatchObject({ intervalFramesEncoded: 30, bitrateKbps: 800, audioBitrateKbps: null });
+    expect(sample(5_000, "H264", "PCMU").audioBitrateKbps).toBe(128);
+  });
+
   it.each(["media-source", "outbound-rtp"])("does not infer a source with another %s of the same kind", (type) => {
     const stats = report();
     (stats as unknown as Map<string, unknown>).set("old", {

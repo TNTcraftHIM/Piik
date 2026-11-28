@@ -3,7 +3,7 @@ import type { RemoteGamepadReport } from "./protocol";
 
 // Standard Gamepad layout. Platform backends own native device formats.
 // https://www.w3.org/TR/gamepad/#remapping
-export function gamepadReport(pad: Pick<Gamepad, "buttons" | "axes">): RemoteGamepadReport {
+function gamepadReport(pad: Pick<Gamepad, "buttons" | "axes">): RemoteGamepadReport {
   let buttons = 0;
   for (let index = 0; index < 17; index++) {
     if (pad.buttons[index]?.pressed) buttons |= 1 << index;
@@ -93,13 +93,12 @@ export class RemoteGamepad {
       this.touchReport = null;
       this.touchAxes.fill(0);
     }
-    const report = pad ? gamepadReport(pad) : this.touchReport;
-    if (report && time >= this.nextReport) {
+    if ((pad || this.touchReport) && time >= this.nextReport) {
       const interval = 1000 / 60;
       this.nextReport = time + interval - ((time - this.nextReport) % interval);
       // Repeat the complete current report so the native driver can enumerate
       // a newly attached virtual device even when the player holds still.
-      this.input({ type: "gamepad", gamepad: report });
+      this.input({ type: "gamepad", gamepad: pad ? gamepadReport(pad) : this.touchReport! });
     }
     this.resume();
   };

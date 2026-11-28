@@ -252,10 +252,11 @@ export class PiikPromo extends HTMLElement {
         if (current()) {
           this.status('The film could not load. Try Play again.', '短片暂时无法加载，请点击播放重试。');
           console.warn('[piik] film unavailable', error);
+          controller.abort();
         }
         return null;
       } finally {
-        if (current()) { this._loading = null; this.sync(); }
+        if (this._loadController === controller) { this._loading = null; this.sync(); }
       }
     })();
     const loading = this._loading;

@@ -98,7 +98,7 @@ constexpr LONGLONG kFastCaptureUpdateInterval100ns = 40'000;
 #ifdef PIIK_H264_FIXTURE
 constexpr UINT32 kFrameRate = kDefaultVideoProfile.frame_rate;
 constexpr UINT32 kBitRate = kDefaultVideoProfile.bit_rate;
-constexpr UINT32 kGopFrames = kFrameRate * 2;
+constexpr UINT32 kFixtureRecoveryRequestFrames = kFrameRate * 2;
 constexpr UINT32 kMaxEventsPerPump = 64;
 constexpr UINT32 kFrameCount = 360;
 constexpr UINT32 kRateProbeBitRate = kBitRate / 2;
@@ -364,7 +364,7 @@ struct RunEvidence final {
 
 #ifdef PIIK_H264_FIXTURE
 bool IsRecoveryFrame(UINT32 frame) {
-  return frame % kGopFrames == 0;
+  return frame % kFixtureRecoveryRequestFrames == 0;
 }
 
 double Percentile95(std::vector<double> values) {
@@ -379,7 +379,8 @@ double Percentile95(std::vector<double> values) {
 
 RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
                        SelectedTransform& selected) {
-  ConfigureCodec(selected.codec.Get());
+  VideoProfile profile = kDefaultVideoProfile;
+  ConfigureCodec(selected.codec.Get(), profile);
   ComPtr<IMFMediaType> output_type = CreateOutputType();
   Check(selected.transform->SetOutputType(0, output_type.Get(), 0),
         "mft-set-output-type");
@@ -445,8 +446,8 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
             ++pending_input;
           }
         } else if (type == METransformHaveOutput) {
-          ComPtr<IMFSample> sample = PullOutput(selected.transform.Get(),
-                                                output_info);
+          ComPtr<IMFSample> sample = PullOutput(selected, output_info, profile);
+          if (!sample) continue;
           LONGLONG sample_time = -1;
           Check(sample->GetSampleTime(&sample_time), "output-sample-time");
           if (sample_time < 0 || sample_time % kFrameDuration100ns != 0) {
@@ -504,9 +505,11 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
         if (frame == kRateProbeFrames) {
           SetU32(selected.codec.Get(), CODECAPI_AVEncCommonMeanBitRate,
                  kRateProbeBitRate, "codec-runtime-bitrate-low");
+          profile.bit_rate = kRateProbeBitRate;
         } else if (frame == kRateProbeFrames * 2) {
           SetU32(selected.codec.Get(), CODECAPI_AVEncCommonMeanBitRate,
                  kBitRate, "codec-runtime-bitrate-high");
+          profile.bit_rate = kBitRate;
         }
         if (IsRecoveryFrame(frame)) {
           ForceKeyFrame(selected.codec.Get());
@@ -2139,6 +2142,7 @@ void RunVideoCapture(ProductArguments arguments) {
     UINT64 minimum_capture_timestamp = 0;
     bool window_minimized = false;
     UINT64 next_output_timestamp = 0;
+    const UINT32 presentation_sample_frames = arguments.profile.frame_rate * 2;
     UINT64 source_frames = 0;
     auto pool_size = initial_size;
     std::shared_ptr<const CaptureInput> latest_input;
@@ -2263,7 +2267,7 @@ void RunVideoCapture(ProductArguments arguments) {
       input->timestamp = *presentation_timestamp;
       input->capture_timestamp = timestamp;
       input->presentation = presentation.Resolve(content_width, content_height,
-          source_frames % arguments.profile.gop_frames() == 0);
+          source_frames % presentation_sample_frames == 0);
       latest.Close();
       latest = nullptr;
       previous_capture_timestamp = timestamp;

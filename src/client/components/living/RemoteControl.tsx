@@ -23,11 +23,13 @@ function hasTouchInput() {
 
 // The video keeps its existing media owner. This temporary surface handles
 // input only while its current routed endpoint holds a local App grant.
-export function RemoteControl({ channel, videoRef, available, pictureFit, pictureRotation = 0, touchMode = "direct" }: {
+export function RemoteControl({ channel, videoRef, available, pictureFit, pictureRotation = 0, touchMode = "direct", readStickPositions, onStickPositionChange }: {
   channel: InputTransport | null; videoRef: RefObject<HTMLVideoElement | null>;
   available: boolean;
   pictureFit?: VideoFit;
   pictureRotation?: VideoRotation;
+  readStickPositions?(): RoomPreferences["stickPositions"];
+  onStickPositionChange?(side: "left" | "right", position: { x: number; y: number }): void;
   touchMode?: RoomPreferences["remoteTouchMode"];
 }) {
   const { t, vis } = useCopy();
@@ -365,15 +367,16 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onBlur={reset}
         onKeyDown={event => {
           event.preventDefault(); event.stopPropagation();
-          if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
+          if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true, repeat: event.repeat });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}
+          readStickPositions={readStickPositions} onStickPositionChange={onStickPositionChange}
           pointAt={point} touchMode={touchMode} virtualSticksEnabled={virtualSticksEnabled}
           touchOnlySticks={touchOnlySticks} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
           onRightStick={gamepadAvailable && !gamepadConnected ? rightStick : undefined} onStickMouse={moveStickMouse} />}
       </div>}
-      {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+      {active && keyboardOpen && <RemoteKeyboard input={input} inputSurface={surface} touch={touchControls} platform={state.platform}
         virtualSticks={touchControls ? { checked: virtualSticksEnabled, onChange: checked => {
           setVirtualSticksEnabled(checked); saveRoomPreferences({ virtualSticksEnabled: checked });
         } } : undefined}

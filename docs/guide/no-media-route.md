@@ -8,6 +8,8 @@ English · [简体中文](./no-media-route.zh-CN.md)
 
 Ask whether another viewer can see the picture. If someone can, go to [only my picture is missing](#i-get-no-picture-but-other-viewers-can-watch). If nobody can watch, ask the host to check their preview.
 
+If you joined over a LAN or virtual LAN, ask the Host to [allow Piik’s UDP media through their firewall](./troubleshooting.md#local-invitation-will-not-open). On Android, also [check the virtual LAN connection](./troubleshooting.md#android-cannot-open-a-virtual-lan-invitation).
+
 - **The App says the local preview is unavailable but sharing continues.** The host can reconnect their preview from **Playback settings**. Check [viewer connections](#nobody-gets-a-picture) separately.
 - **The shared source itself is blank.** Ask the host to share an open window, such as a browser window. Once it appears in the preview, open the invitation again. [Start sharing](./sharing.md#start-sharing)
 - **The host can see the picture.** Follow [nobody gets a picture](#nobody-gets-a-picture).

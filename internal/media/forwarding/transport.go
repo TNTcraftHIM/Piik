@@ -21,6 +21,7 @@ import (
 	packetpacer "github.com/livekit/mediatransportutil/pkg/pacer"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
+	"github.com/livekit/protocol/utils/mono"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -410,7 +411,7 @@ func (transport *Transport) driveProbeLocked() {
 		demand, _ := transport.Output.probeDemand()
 		if transport.probe.Result.EndTime == 0 && (!transport.paddingReady || demand <= 0 ||
 			transport.estimator.CongestionState() != bwe.CongestionStateNone || transport.estimator.ProbeClusterIsGoalReached() ||
-			time.Since(transport.probe.CreatedAt) >= transport.probe.Goal.Duration) {
+			mono.Now().Sub(transport.probe.CreatedAt) >= transport.probe.Goal.Duration) {
 			transport.stopProbeLocked()
 		}
 		if transport.probe.Result.EndTime != 0 {

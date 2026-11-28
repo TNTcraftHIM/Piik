@@ -27,6 +27,8 @@ export function withBrowserDebug(target: string, enabled = browserDebugEnabled):
 
 const MAX_EVENTS = 8_192;
 const MAX_BYTES = 8 * 1024 * 1024;
+// Match the Long Animation Frames API's threshold (w3.org/TR/long-animation-frames/).
+const LONG_ANIMATION_FRAME_MS = 50;
 const events: Array<{ record: BrowserDebugEvent; bytes: number }> = [];
 const startedAt = new Date().toISOString();
 const started = performance.now();
@@ -212,6 +214,47 @@ export async function downloadBrowserDebug(): Promise<void> {
     `piik-browser-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
 }
 
+interface LongAnimationFrame extends PerformanceEntry {
+  scripts: ReadonlyArray<{ duration: number }>;
+  styleAndLayoutStart: number;
+  styleDuration?: number;
+  layoutDuration?: number;
+}
+
+function recordLongFrames(entries: PerformanceEntry[]): void {
+  for (const entry of entries as LongAnimationFrame[]) {
+    debugEvent("performance", "long-animation-frame", {
+      startElapsedMs: entry.startTime - started, durationMs: entry.duration,
+      attributedScripts: entry.scripts.length,
+      attributedScriptMs: entry.scripts.reduce((sum, script) => sum + script.duration, 0),
+      styleAndLayoutStartElapsedMs: entry.styleAndLayoutStart ? entry.styleAndLayoutStart - started : null,
+      styleDurationMs: entry.styleDuration ?? null, layoutDurationMs: entry.layoutDuration ?? null,
+    });
+  }
+}
+
+function observeFrameGaps(): () => void {
+  let request: number | undefined, previous: number | undefined;
+  const frame = (now: number) => {
+    if (previous !== undefined && now - previous >= LONG_ANIMATION_FRAME_MS) {
+      debugEvent("performance", "animation-frame-gap", { startElapsedMs: previous - started, durationMs: now - previous });
+    }
+    previous = now;
+    request = window.requestAnimationFrame(frame);
+  };
+  const visibility = () => {
+    if (request !== undefined) window.cancelAnimationFrame(request);
+    previous = undefined;
+    request = document.visibilityState === "visible" ? window.requestAnimationFrame(frame) : undefined;
+  };
+  visibility();
+  document.addEventListener("visibilitychange", visibility);
+  return () => {
+    if (request !== undefined) window.cancelAnimationFrame(request);
+    document.removeEventListener("visibilitychange", visibility);
+  };
+}
+
 export function installBrowserDebug(): (() => void) | undefined {
   if (!browserDebugEnabled) return;
   window.__PIIK_DEBUG__ = {
@@ -223,8 +266,16 @@ export function installBrowserDebug(): (() => void) | undefined {
   const reportRejection = (event: PromiseRejectionEvent) => debugError("window", "unhandled-rejection", event.reason);
   window.addEventListener("error", reportError);
   window.addEventListener("unhandledrejection", reportRejection);
-  debugEvent("app", "loaded");
+  const hasLongFrames = globalThis.PerformanceObserver?.supportedEntryTypes?.includes("long-animation-frame") ?? false;
+  const observer = hasLongFrames ? new PerformanceObserver(list => recordLongFrames(list.getEntries())) : undefined;
+  observer?.observe({ type: "long-animation-frame" });
+  const unregister = observer && registerDebugCollector("long-animation-frame", () => recordLongFrames(observer.takeRecords()));
+  const releaseFrameGaps = typeof window.requestAnimationFrame === "function" ? observeFrameGaps() : undefined;
+  debugEvent("app", "loaded", { longAnimationFrames: hasLongFrames, animationFrameGaps: !!releaseFrameGaps });
   return () => {
+    observer?.disconnect();
+    unregister?.();
+    releaseFrameGaps?.();
     window.removeEventListener("error", reportError);
     window.removeEventListener("unhandledrejection", reportRejection);
   };

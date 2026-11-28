@@ -83,7 +83,14 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
   }
 
   async function connect(wake = false, automatic = false): Promise<void> {
-    if (!automatic) setAutomaticHint(false);
+    if (!automatic) {
+      setAutomaticHint(false);
+      if (pending.current?.automatic && !pending.current.open) {
+        // A passive discovery cannot start the browser permission prompt.
+        pending.current.controller.abort();
+        pending.current = null;
+      }
+    }
     if (pending.current) {
       if (!automatic) pending.current.automatic = false;
       pending.current.open?.(); return;
@@ -99,10 +106,14 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     let native: typeof import("../../native/client") | undefined;
     let approving = false;
     let waking = false;
+    let approval: { url: URL; port: number } | undefined;
     const verifyApproval = async (reported = false) => {
-      if (approving || signal.aborted) return;
+      if (!approval || approving || signal.aborted) return;
       approving = true;
-      const health = await native?.discoverNativeHealth({ signal, ...(manage ? { waitForPermission: false } : {}) }).catch(() => null);
+      const health = await native?.discoverNativeHealth({ signal, port: approval.port, waitForPermission: !manage }).catch(error => {
+        if (!signal.aborted && native && error instanceof native.NativeCompatibilityError) finish("incompatible");
+        return null;
+      });
       if (signal.aborted) return;
       approving = false;
       if (manage) {
@@ -113,18 +124,17 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
       if (health) {
         rememberBuild(health);
         finish("ready");
-        activateClient();
+        activateClient(health.port);
         onConnected?.();
       } else if (reported) finish("unavailable");
       else if (attempt.popup?.closed) finish("idle");
     };
     const onMessage = (event: MessageEvent) => {
-      if (!attempt.popup || event.source !== attempt.popup || !approvalOrigin || event.origin !== approvalOrigin ||
+      if (!attempt.popup || event.source !== attempt.popup || event.origin !== approval?.url.origin ||
           event.data?.type !== "piik-app-approved" || event.data.site !== window.location.origin) return;
       // A message or browser return asks us to verify App-owned permission.
       void verifyApproval(true);
     };
-    let approvalOrigin = "";
     const finish = (result: typeof state, keepPage = false) => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", onFocus);
@@ -160,23 +170,23 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
       try {
         native = await import("../../native/client");
         if (signal.aborted) return;
-        const url = await native.discoverNativeConnect({ signal, waitForPermission: !attempt.automatic });
+        const selected = await native.discoverNativeConnect({ signal, waitForPermission: !attempt.automatic });
         if (signal.aborted) return;
-        if (!url) { finish("unavailable"); return; }
-        const health = await native.discoverNativeHealth({ signal, waitForPermission: false });
+        if (!selected) { finish("unavailable"); return; }
+        const health = await native.discoverNativeHealth({ signal, port: selected.port, waitForPermission: false });
         if (signal.aborted) return;
         rememberBuild(health);
         manage = manage && health !== null;
         if (health && !manage) {
           finish("ready");
-          activateClient();
+          activateClient(health.port);
           onConnected?.();
           return;
         }
-        approvalOrigin = new URL(url).origin;
+        approval = selected;
         attempt.open = () => {
           if (signal.aborted || attempt.popup) return;
-          const destination = new URL(url);
+          const destination = new URL(selected.url);
           if (manage) destination.searchParams.delete("site");
           attempt.popup = window.open(destination.href, "_blank");
           if (!attempt.popup) { finish("unavailable"); return; }
@@ -204,6 +214,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
   }
 
   const busy = state === "busy" || state === "waking" || state === "approving";
+  const passiveDiscovery = state === "busy" && pending.current?.automatic;
   const label = t(state === "busy" ? "client.connect.discovering" : state === "approving" ? "client.connect.approving" : state === "approval" ? "client.connect.found" :
     state === "waking" ? "client.connect.returnToBrowser" : state === "ready" ? "client.connect.manage" : state === "incompatible" ? "native.incompatible" :
     state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
@@ -223,7 +234,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
         event.preventDefault();
         checkRelease();
         void connect();
-      }} disabled={busy}>
+      }} disabled={busy && !passiveDiscovery}>
       <Glyph name={availableUpdate ? "arrowUp" : state === "ready" ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={busy ? "lr-spin" : undefined} />
       {vis ? null : <span className="lr-cap">App</span>}

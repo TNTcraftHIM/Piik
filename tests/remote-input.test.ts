@@ -83,6 +83,7 @@ it("keeps keyboard control when optional gamepad support fails for the grant", (
   channel.receive({ ...active, capabilities: ["coPlay", "gamepad", "text"] });
   session.input({ type: "gamepad", gamepad });
   expect(channel.sent.at(-1)).toEqual({ type: "gamepad", gamepad, grant });
+  session.input({ type: "key", code: "KeyW", down: true });
   channel.receive({ ...active, capabilities: ["coPlay", "text"], reason: "gamepad" });
   const before = channel.sent.length;
   session.input({ type: "gamepad", gamepad }); session.input({ type: "gamepad-reset" }); session.input({ type: "gamepad-stop" });
@@ -185,13 +186,13 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
   expect(frames.size).toBe(0);
 });
 
-it.each(["windows", "darwin", "linux"] as const)("keeps the Host platform in local request state (%s)", platform => {
+it.each(["windows", "darwin", "linux", "future-platform"])("keeps the Host platform in local request state (%s)", platform => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   session.request();
   expect(channel.sent).toEqual([{ type: "sync" }]);
   expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready" }).success).toBe(false);
-  expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready", platform: "unknown" }).success).toBe(false);
+  expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready", platform: "" }).success).toBe(false);
   channel.receive({ mode: "ask", state: "ready", platform });
   session.request();
   expect(session.state).toMatchObject({ state: "pending", platform });
@@ -397,6 +398,40 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
   expect(picturePoint(video, 100, 50)).toEqual({ x: 0, y: 0 });
   expect(picturePoint(video, 900, 650)).toEqual({ x: 1, y: 1 });
   expect(picturePoint(video, 300, 500)).toEqual({ x: 0.25, y: 0.75 });
+});
+
+it.each([
+  { additionalStatus: true },
+  { platform: "future-platform" },
+  { reason: "future-reason" },
+])("retires active input when unavailable contains further information (%j)", details => {
+  const channel = new Channel(), changed = vi.fn(), interrupted = vi.fn();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, changed, interrupted);
+  const ready = { platform: "windows", mode: "ask", state: "ready" };
+  channel.receive(ready);
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "a".repeat(64);
+  const active = { ...ready, state: "active", intent, grant };
+  channel.receive(active);
+  session.input({ type: "key", code: "KeyW", down: true });
+  expect(channel.sent.at(-1)).toEqual({ type: "key", code: "KeyW", down: true, grant });
+  for (const malformed of [{ mode: "future-mode" }, { state: "future-state" }, { grant: "short" },
+    { intent: "short" }, { platform: null }, { reason: null }]) {
+    channel.receive({ ...ready, state: "unavailable", ...malformed });
+    expect(session.state?.state).toBe("active");
+  }
+  channel.receive({ ...ready, ...details, state: "unavailable" });
+  expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ state: "unavailable" }));
+  expect(interrupted).toHaveBeenCalledOnce();
+  const before = channel.sent.length;
+  session.input({ type: "key", code: "KeyW", down: false });
+  session.input({ type: "button", button: 0, down: true });
+  expect(channel.sent).toHaveLength(before);
+  channel.receive(active);
+  expect(channel.sent.at(-1)).toEqual({ type: "release", intent });
+  expect(session.state?.state).toBe("unavailable");
+  expect(channel.readyState).toBe("open");
+  session.dispose();
 });
 
 it("ends a pending request when its source becomes unavailable, even before the request reaches the Host", () => {

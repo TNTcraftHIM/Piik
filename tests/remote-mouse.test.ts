@@ -29,7 +29,7 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
   const owner = { hidden: false, activeElement: null,
     addEventListener: (type: string, callback: () => void) => listeners.set(type, callback),
     removeEventListener: (type: string) => listeners.delete(type),
-    defaultView: { addEventListener: vi.fn(), removeEventListener: vi.fn() } };
+    defaultView: new EventTarget() };
   const layer = { clientWidth: 400, clientHeight: 300 };
   const positionRef = { current: layer };
   const widget = { offsetLeft: left, offsetTop: 100, offsetWidth: 44, offsetHeight: 56,
@@ -59,6 +59,11 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
       const current = slot();
       if (changed(current.deps, deps)) { current.deps = deps; current.value = callback; }
       return current.value;
+    },
+    useEffectEvent: (callback: () => void) => {
+      const current = slot();
+      current.value = callback;
+      return () => current.value();
     },
     useEffect: effect, useLayoutEffect: effect, Glyph: () => null, RemoteDirectionPad,
   });
@@ -198,7 +203,7 @@ it("retains a shared button until its final contact ends and releases remaining 
   } finally { view.dispose(); }
 });
 
-it("tucks only an idle edge mini and cancels the timer on interaction, expansion, hiding and disposal", () => {
+it("parks the idle mini after blur or hiding and keeps the expanded touch mouse open", () => {
   vi.useFakeTimers();
   const view = mouse(0);
   try {
@@ -208,17 +213,40 @@ it("tucks only an idle edge mini and cancels the timer on interaction, expansion
     view.find("lr-remote-mouse").props.onPointerUp(view.event());
     view.find("lr-remote-mouse-mini").props.onClick({ detail: 1 }); view.render();
     expect(view.expanded()).toBe(true); expect(vi.getTimerCount()).toBe(0);
+    view.owner.defaultView.dispatchEvent(new Event("blur"));
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS); view.render();
+    expect(view.expanded()).toBe(true);
     view.find("lr-remote-mouse-minimize").props.onClick(); view.render();
     vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS); view.render(); expect(view.docked()).toBe("left");
     view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
     view.find("lr-remote-mouse").props.onPointerMove(view.event(10, 0));
+    view.render();
+    view.widget.style.setProperty.mockClear();
+    view.find("lr-remote-mouse").props.onPointerMove(view.event(20, 0));
+    expect(view.widget.style.setProperty).toHaveBeenCalled();
     view.find("lr-remote-mouse").props.onPointerUp(view.event(10, 0)); view.render();
     expect(vi.getTimerCount()).toBe(1);
+    view.owner.defaultView.dispatchEvent(new Event("blur"));
+    expect(vi.getTimerCount()).toBe(1);
     view.owner.hidden = true; view.listeners.get("visibilitychange")?.();
-    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS); view.render();
+    expect(view.docked()).toBe("left");
     view.dispose();
     const pending = mouse(0);
     expect(vi.getTimerCount()).toBe(1); pending.dispose(); expect(vi.getTimerCount()).toBe(0);
+  } finally { view.dispose(); vi.useRealTimers(); }
+});
+
+it.each(["onPointerCancel", "onLostPointerCapture"])("tucks the idle mini after %s", end => {
+  vi.useFakeTimers();
+  const view = mouse(0);
+  try {
+    view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
+    view.find("lr-remote-mouse").props[end](view.event());
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS);
+    view.render();
+    expect(view.docked()).toBe("left");
+    expect(view.pointer.button).not.toHaveBeenCalled();
   } finally { view.dispose(); vi.useRealTimers(); }
 });
 

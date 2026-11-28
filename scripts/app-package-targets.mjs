@@ -1,5 +1,5 @@
-export const CLOUDFLARED_VERSION = "2026.10.3";
-export const CLOUDFLARED_SOURCE_SHA256 = "6c6901ae333508e1c529184bf90cb87ff59592620d293401db38415269908311";
+export const CLOUDFLARED_VERSION = "2026.11.2";
+export const CLOUDFLARED_SOURCE_SHA256 = "e9122343a3708e9a691239b5901916819e4933f8751a0364b3800fc5bc6a7ca4";
 
 // Android packages both supported ABIs in one installable APK, not a Go CLI.
 export const ANDROID_APP_PACKAGE_TARGET = {
@@ -32,7 +32,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared.exe",
     captureName: "piik-capture.exe",
     tunnelAsset: "cloudflared-windows-amd64.exe",
-    tunnelSha256: "76b2805253d0d6ffacb092a7acfbee99e7af6917835c0c5410e23f3ef5052da2",
+    tunnelSha256: "555b46c85582461d189cac30d14ad05480d612613801be9f110b8ce08c5b2113",
     tunnelArchive: false,
   },
   {
@@ -46,7 +46,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-linux-amd64",
-    tunnelSha256: "053b80b0a23031a038fdbf3c073f59f82b8f1f152aa67971d7383ffafc0dbab0",
+    tunnelSha256: "56f13335143ec0e22772963290683a84a04114a35ec64cbc794a4d39ff9bb8cf",
     tunnelArchive: false,
   },
   {
@@ -60,7 +60,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-linux-arm64",
-    tunnelSha256: "89297ebfb9e8c99c0dc013a1140601453cf3798d8306c5591651f4a3f5210be8",
+    tunnelSha256: "04a7b7f08bce85d56b26ffe1fdbfbb21a074495a363d16f0783c40e25b5c5281",
     tunnelArchive: false,
   },
   {
@@ -74,7 +74,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-darwin-arm64.tgz",
-    tunnelSha256: "1165d14b6f6360a3b8c283d7d1100024d6ec7cd9bc9e32519e96150645f3ec55",
+    tunnelSha256: "f6d58eeec91ad1ec5fd1f7e4a587303772929b2625be5d24068033851c36ff55",
     tunnelArchive: true,
   },
   {
@@ -88,7 +88,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-darwin-amd64.tgz",
-    tunnelSha256: "81b7b85f2376815c4f59b1aa323887b62e16ce8b67555c2e1577dc23f2a82000",
+    tunnelSha256: "6153d9ec629174882a3adbff2f7dc5a24b4f3bdd7ccc38eaa84fba26eb890311",
     tunnelArchive: true,
   },
 ];

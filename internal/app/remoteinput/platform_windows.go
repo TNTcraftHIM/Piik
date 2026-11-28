@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"runtime"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"golang.org/x/sys/windows"
 )
 
@@ -34,9 +36,11 @@ type winInput struct {
 	Mouse mouseInput
 }
 type windowsSink struct {
-	desktop string
-	keys    map[uint16]bool
-	buttons map[int]bool
+	desktop   string
+	send      func(...winInput) (uintptr, error)
+	textKeyUp winInput
+	keys      map[uint16]bool
+	buttons   map[int]bool
 }
 
 func newPlatformSink(bool) (inputSink, error) {
@@ -53,7 +57,9 @@ func newPlatformSink(bool) (inputSink, error) {
 	if !ok {
 		return nil, errors.New("input backend desktop is unavailable")
 	}
-	return &windowsSink{desktop: name, keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
+	s := &windowsSink{desktop: name, keys: map[uint16]bool{}, buttons: map[int]bool{}}
+	s.send = s.sendOnDesktop
+	return s, nil
 }
 
 func (*windowsSink) Authorize() error { return nil }
@@ -147,8 +153,13 @@ func tokenIntegrity(token windows.Token) (uint32, bool) {
 }
 
 func (s *windowsSink) inject(inputs ...winInput) error {
+	_, err := s.send(inputs...)
+	return err
+}
+
+func (s *windowsSink) sendOnDesktop(inputs ...winInput) (uintptr, error) {
 	if len(inputs) == 0 {
-		return nil
+		return 0, nil
 	}
 	// Keep failure observations on the OS thread that attempted the operation.
 	runtime.LockOSThread()
@@ -164,18 +175,18 @@ func (s *windowsSink) inject(inputs ...winInput) error {
 		// thread that drifted away from this backend's original desktop.
 		active, _, _ := user32.NewProc("OpenInputDesktop").Call(0, 0, 0x10000000) // GENERIC_ALL: input injection needs more than object observation.
 		if active == 0 {
-			return original
+			return n, original
 		}
 		defer user32.NewProc("CloseDesktop").Call(active)
 		activeName, activeOK := desktopName(active)
 		thread, _, _ := user32.NewProc("GetThreadDesktop").Call(uintptr(windows.GetCurrentThreadId()))
 		threadName, threadOK := desktopName(thread)
 		if !activeOK || !threadOK || activeName != s.desktop || activeName == threadName {
-			return original
+			return n, original
 		}
 		setDesktop := user32.NewProc("SetThreadDesktop")
 		if ok, _, _ := setDesktop.Call(active); ok == 0 {
-			return original
+			return n, original
 		}
 		// Never replay the accepted prefix of a partially accepted operation.
 		remaining := inputs[n:]
@@ -189,9 +200,11 @@ func (s *windowsSink) inject(inputs ...winInput) error {
 		if ok, _, restoreErr := setDesktop.Call(thread); ok == 0 {
 			result = errors.Join(result, fmt.Errorf("restore input thread desktop: %w", restoreErr))
 		}
-		return result
+		slog.Debug("remote-input", "event", "desktop-retry", "initial", slog.GroupValue(diagnostics.Error(original)),
+			"totalAccepted", n+accepted, "operationSucceeded", result == nil)
+		return n + accepted, result
 	}
-	return nil
+	return n, nil
 }
 
 func keyInput(scan uint16, down bool) winInput {
@@ -237,6 +250,18 @@ func buttonInput(button int, down bool) (winInput, error) {
 	return input, nil
 }
 
+// The Viewer sends a fraction of the picture's continuous extent. Select its
+// physical pixel, then the midpoint of the integer Win32 codes for that pixel.
+func absoluteMouseCoordinate(position float64, start, extent, origin, size int32) int32 {
+	const rounding = 0x1p-52 // Viewer division and rotation can round an exact pixel boundary down.
+	local := min(int64((position+rounding)*float64(extent)), int64(extent)-1)
+	pixel := max(int64(0), min(int64(size)-1, int64(start)-int64(origin)+local))
+	width := int64(size)
+	first := (pixel*65536 + width - 1) / width
+	last := ((pixel+1)*65536 - 1) / width
+	return int32((first + last) / 2)
+}
+
 func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 	switch e.Type {
 	case "move":
@@ -250,9 +275,9 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		if int32(w) < 2 || int32(h) < 2 {
 			return errors.New("desktop is unavailable")
 		}
-		px := float64(b.left) + e.X*float64(b.width-1) - float64(int32(x))
-		py := float64(b.top) + e.Y*float64(b.height-1) - float64(int32(y))
-		return s.inject(winInput{Mouse: mouseInput{X: int32(px * 65535 / float64(int32(w)-1)), Y: int32(py * 65535 / float64(int32(h)-1)), Flags: 0xc001}})
+		dx := absoluteMouseCoordinate(e.X, b.left, b.width, int32(x), int32(w))
+		dy := absoluteMouseCoordinate(e.Y, b.top, b.height, int32(y), int32(h))
+		return s.inject(winInput{Mouse: mouseInput{X: dx, Y: dy, Flags: 0xc001}})
 	case "relative":
 		if e.DX < -32767 || e.DX > 32767 || e.DY < -32767 || e.DY > 32767 {
 			return errors.New("invalid relative pointer")
@@ -296,15 +321,40 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 			delete(s.keys, key)
 		}
 	case "text":
-		return s.inject(textInputs(e.Text)...)
+		inputs := textInputs(e.Text)
+		n, err := s.send(inputs...)
+		if n%2 == 1 {
+			// Each UTF-16 unit has a press and release. An odd prefix ends on a press.
+			s.textKeyUp = inputs[n]
+			return errors.Join(err, s.releaseTextKey())
+		}
+		return err
 	default:
 		return errors.New("unsupported input")
 	}
 	return nil
 }
 
+func (s *windowsSink) pendingTextRelease() func() error {
+	if s.textKeyUp.Kind == 0 {
+		return nil
+	}
+	return s.releaseTextKey
+}
+
+func (s *windowsSink) releaseTextKey() error {
+	n, err := s.send(s.textKeyUp)
+	if n == 1 {
+		s.textKeyUp = winInput{}
+	}
+	return err
+}
+
 func (s *windowsSink) Reset() error {
 	var result error
+	if release := s.pendingTextRelease(); release != nil {
+		result = release()
+	}
 	for key := range s.keys {
 		if err := s.inject(keyInput(key, false)); err != nil {
 			result = errors.Join(result, err)
@@ -339,12 +389,21 @@ func watchStopShortcut(ctx context.Context, key int, stop func()) (func(), error
 			Private uint32
 		}
 		user32.NewProc("PeekMessageW").Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, 0)
-		ok, _, _ := user32.NewProc("RegisterHotKey").Call(0, 1, 0x4003, uintptr(0x6f+key)) // Ctrl+Alt+Fn; no repeat.
-		if ok == 0 {
-			ready <- errors.New("remote-control shortcut is already in use")
-			return
+		// Windows matches exact modifier sets. Reserve every Shift/Win variant
+		// of the chosen function key before reporting that control can start.
+		const ctrlAltNoRepeat = 0x4003
+		const shift, win = 0x4, 0x8
+		register := user32.NewProc("RegisterHotKey")
+		unregister := user32.NewProc("UnregisterHotKey")
+		for i, extra := range [...]uintptr{0, shift, win, shift | win} {
+			id := uintptr(i + 1)
+			ok, _, _ := register.Call(0, id, ctrlAltNoRepeat|extra, uintptr(0x6f+key))
+			if ok == 0 {
+				ready <- errors.New("remote-control shortcut is already in use")
+				return
+			}
+			defer unregister.Call(0, id)
 		}
-		defer user32.NewProc("UnregisterHotKey").Call(0, 1)
 		ready <- nil
 		go func() {
 			select {

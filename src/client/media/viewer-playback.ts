@@ -1,5 +1,9 @@
 type ViewerPlaybackElement = Pick<HTMLVideoElement, "srcObject" | "pause">;
 
+export function mediaElementPlaybackFailed(error: Pick<MediaError, "code"> | null): boolean {
+  return error?.code === 3 || error?.code === 4;
+}
+
 export function playbackFailure(error: unknown): "autoplay-blocked" | "playback-failed" | null {
   const name = typeof error === "object" && error !== null && "name" in error ? error.name : undefined;
   // pause()/load() cancel pending play promises; cancellation is not failed media.

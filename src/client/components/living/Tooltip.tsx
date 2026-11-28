@@ -138,7 +138,7 @@ export function Tooltip({
     };
     measure();
     // A clipped label can change its focus wrapper; measure outside resize delivery.
-    const observer = new ResizeObserver(() => {
+    const observer = new view.ResizeObserver(() => {
       view.cancelAnimationFrame(frame);
       frame = view.requestAnimationFrame(measure);
     });
@@ -202,7 +202,7 @@ export function Tooltip({
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
-    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options"));
+    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options, [data-tooltip-controls]"));
     const playback = Boolean(controlBar?.closest(".lr-playback"));
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
@@ -264,7 +264,7 @@ export function Tooltip({
     // Viewport fit comes first; within it, keep guidance off neighbouring
     // media controls. Reserve auto-hidden bars too: entering the player can
     // reveal them while this guidance is still open.
-    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar")]
+    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar, [data-tooltip-controls]")]
       .filter(element => !element.contains(wrap) && element.getClientRects().length)
       .map(element => element.getBoundingClientRect());
     const boundedLeft = (left: number) => Math.max(x + EDGE_MARGIN, Math.min(left, right - width - EDGE_MARGIN));
@@ -329,8 +329,14 @@ export function Tooltip({
     if (panelMounted) {
       // Native top layer escapes couch, table and source-list overflow without
       // a portal or a second set of trigger/interaction owners.
-      tip?.showPopover?.();
-      pickAlignRef.current();
+      // Restoring focus during native popover dismissal can open this tip.
+      const view = tip?.ownerDocument.defaultView;
+      if (!tip || !view) return;
+      const frame = view.requestAnimationFrame(() => {
+        tip.showPopover?.();
+        pickAlignRef.current();
+      });
+      return () => view.cancelAnimationFrame(frame);
     } else {
       tip?.hidePopover?.();
     }
@@ -364,7 +370,7 @@ export function Tooltip({
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
     // A pawn can move on focus or hover without changing its layout box.
     trigger?.addEventListener("transitionend", schedulePick);
-    const observer = new ResizeObserver(schedulePick);
+    const observer = new view.ResizeObserver(schedulePick);
     for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const movement = new MutationObserver(schedulePick);
     if (surface) movement.observe(surface, { attributes: true, attributeFilter: ["style"] });

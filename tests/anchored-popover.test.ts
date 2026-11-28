@@ -14,18 +14,26 @@ vi.mock("../src/client/ui/panel-window", () => ({ useSurfaceDocument: () => unde
 
 afterEach(() => {
   for (const cleanup of hooks.effects.splice(0).reverse()) cleanup();
-  vi.unstubAllGlobals();
 });
 
-function surface() {
+function surface(closeWhenAnchorClipped = false) {
   const frame = new Map<number, FrameRequestCallback>();
   let sequence = 0, visible = true, open = true;
+  let intersect: ((isIntersecting: boolean) => void) | undefined;
   const field = {};
   const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
   const view = Object.assign(new EventTarget(), {
     visualViewport: viewport, innerWidth: 390, innerHeight: 844,
     requestAnimationFrame: (callback: FrameRequestCallback) => { frame.set(++sequence, callback); return sequence; },
     cancelAnimationFrame: (id: number) => { frame.delete(id); },
+    ResizeObserver: class { observe() {} disconnect() {} },
+    IntersectionObserver: class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersect = isIntersecting => callback([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+      }
+      observe() {}
+      disconnect() {}
+    },
   });
   const owner = { defaultView: view, activeElement: null as unknown };
   const anchor = {
@@ -41,14 +49,13 @@ function surface() {
     matches: () => open, hidePopover,
   });
   Object.defineProperty(menu, "offsetHeight", { get: () => Math.min(700, parseFloat(style.maxHeight) || 700) });
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-  useAnchoredPopover({ current: anchor as unknown as HTMLElement }, { current: menu as unknown as HTMLElement });
+  useAnchoredPopover({ current: anchor as unknown as HTMLElement }, { current: menu as unknown as HTMLElement }, { closeWhenAnchorClipped });
   const resize = (height: number) => {
     viewport.height = height;
     viewport.dispatchEvent(new Event("resize"));
     for (const [id, callback] of [...frame]) { frame.delete(id); callback(0); }
   };
-  return { owner, field, menu, style, hidePopover, resize, removeAnchor: () => { visible = false; } };
+  return { owner, field, menu, style, hidePopover, resize, intersect, removeAnchor: () => { visible = false; } };
 }
 
 describe("Anchored popover input ownership", () => {
@@ -69,6 +76,15 @@ describe("Anchored popover input ownership", () => {
   it("still dismisses an inactive menu whose anchor leaves view", () => {
     const current = surface();
     current.resize(320);
+    expect(current.hidePopover).toHaveBeenCalledOnce();
+  });
+
+  it("dismisses an opted-in menu when scrolling clips its anchor while the menu owns focus", () => {
+    const current = surface(true);
+    current.owner.activeElement = current.field;
+    current.intersect!(true);
+    expect(current.hidePopover).not.toHaveBeenCalled();
+    current.intersect!(false);
     expect(current.hidePopover).toHaveBeenCalledOnce();
   });
 });

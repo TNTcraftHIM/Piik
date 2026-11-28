@@ -53,7 +53,7 @@ it("selects the launched runtime over a faster resident App and never substitute
   }) as typeof fetch);
   const saved = new Map<string, string>();
   const tabSaved = new Map<string, string>();
-  const page = {
+  const page = Object.assign(new EventTarget(), {
     location: new URL("http://127.0.0.1:8787/"), setTimeout, clearTimeout,
     localStorage: { getItem: (key: string) => saved.get(key) ?? null,
       setItem: (key: string, value: string) => { saved.set(key, value); } },
@@ -63,18 +63,27 @@ it("selects the launched runtime over a faster resident App and never substitute
     history: { state: null, replaceState: (_state: unknown, _unused: string, value: string) => {
       page.location = new URL(value, page.location);
     } },
-  };
+  });
   vi.stubGlobal("window", page);
   const { discoverNativeHealth, discoverNativeConnect } = await import("../src/client/native/client");
-  const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
+  const { activateClient, takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
   // Both actual HTTP stubs are discoverable; the older one responds first.
   await expect(discoverNativeHealth()).resolves.toMatchObject({ port: old.port });
+  old.requests.length = 0;
+  await expect(discoverNativeHealth({ port: selected.port })).resolves.toMatchObject({ port: selected.port });
+  expect(old.requests).toEqual([]);
+  activateClient(selected.port);
+  await expect(discoverNativeHealth()).resolves.toMatchObject({ port: selected.port });
+  expect(old.requests).toEqual([]);
+  expect([...tabSaved.values()]).toEqual([String(selected.port)]);
   page.location.search = `?piik-client-port=${selected.port}`;
   page.location.hash = "piik-client=1";
   takeClientLaunchBootstrap();
   old.requests.length = 0;
   await expect(discoverNativeHealth()).resolves.toMatchObject({ port: selected.port });
-  await expect(discoverNativeConnect()).resolves.toContain(`127.0.0.1:${selected.port}/client?`);
+  await expect(discoverNativeConnect()).resolves.toEqual({ port: selected.port,
+    url: new URL(`http://127.0.0.1:${selected.port}/client?site=http%3A%2F%2F127.0.0.1%3A8787`),
+  });
   expect(old.requests).toEqual([]);
   expect(page.location.href).toBe("http://127.0.0.1:8787/");
   expect([...saved.keys()]).toEqual(["piik:client-launch:v1"]);

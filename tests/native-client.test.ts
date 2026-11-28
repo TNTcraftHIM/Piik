@@ -71,7 +71,7 @@ describe("native App private wire", () => {
     });
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
-    await expect(discoverNativeConnect()).resolves.toContain("http://127.0.0.1:54321/client?");
+    await expect(discoverNativeConnect()).resolves.toMatchObject({ port: health.port, url: expect.any(URL) });
     await notifyNativePresentation("en", new AbortController().signal);
     const preference = await AppQualityPreference.connect(new AbortController().signal);
     await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
@@ -127,7 +127,7 @@ describe("native App private wire", () => {
     await expect(discoverNativeConnect({ waitForPermission: false })).resolves.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
     if (state === "prompt") {
-      await expect(discoverNativeConnect({ waitForPermission: true })).resolves.toContain("127.0.0.1:54321/client?");
+      await expect(discoverNativeConnect({ waitForPermission: true })).resolves.toMatchObject({ port: health.port, url: expect.any(URL) });
       expect(fetcher).toHaveBeenCalled();
     }
   });
@@ -140,7 +140,9 @@ describe("native App private wire", () => {
       ? new Response(JSON.stringify({ ...health, connectURL: "http://127.0.0.1:54321/client" }))
       : new Response(null, { status: 404 }));
     vi.stubGlobal("fetch", fetcher);
-    await expect(discoverNativeConnect()).resolves.toBe("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example");
+    await expect(discoverNativeConnect()).resolves.toEqual({ port: health.port,
+      url: new URL("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example"),
+    });
     expect(fetcher.mock.calls.every(([url]) => url.endsWith("/connect-discovery"))).toBe(true);
     expect(socket).not.toHaveBeenCalled();
   });
@@ -628,6 +630,11 @@ describe("native App private wire", () => {
     window.setTimeout = globalThis.setTimeout;
     window.clearTimeout = globalThis.clearTimeout;
     const timedOut = expect(client!.sources()).rejects.toMatchObject({ reason: "timeout", operation: "list-sources" });
+    const reader = new AbortController();
+    const cancelled = expect(client!.sources(reader.signal)).rejects.toMatchObject({ name: "AbortError" });
+    reader.abort();
+    expect(vi.getTimerCount()).toBe(1);
+    await cancelled;
     await vi.advanceTimersByTimeAsync(8_000);
     await timedOut;
     expect(sockets[0]!.close).not.toHaveBeenCalled();
@@ -945,6 +952,57 @@ describe("native App private wire", () => {
       socket.ack(last, "microphone-set");
       await pending;
       expect(requests.at(-1)?.type).toBe("stop-share");
+    } finally { client.close(); }
+  });
+
+  it("retires canceled microphone lists while the current list and control socket stay usable", async () => {
+    const requests: Record<string, unknown>[] = [];
+    let socket!: Socket;
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v10.${health.instanceToken}`;
+      constructor() { super(); socket = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() { this.readyState = Socket.CLOSING; }
+      reply(id: unknown, type: string, fields = {}) {
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ version: 10, id, type, ...fields }) }));
+      }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        if (request.type === "hello") queueMicrotask(() => this.reply(request.id, "ready"));
+        else if (request.type === "ping") queueMicrotask(() => this.reply(request.id, "pong"));
+        else requests.push(request);
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    const clearRequestTimer = vi.fn(clearTimeout);
+    vi.stubGlobal("window", { setTimeout, clearTimeout: clearRequestTimer, location: new URL("https://piik.example/") });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...health, nativeMedia: { ...health.nativeMedia, microphone: true },
+    }))));
+    const client = (await NativeClient.connect())!;
+    try {
+      await expect(client.microphones(AbortSignal.abort())).rejects.toMatchObject({ name: "AbortError" });
+      expect(requests).toHaveLength(0);
+      clearRequestTimer.mockClear();
+      const closed = new AbortController();
+      const canceled = client.microphones(closed.signal);
+      const current = new AbortController();
+      const listing = client.microphones(current.signal);
+      closed.abort();
+      await expect(canceled).rejects.toMatchObject({ name: "AbortError" });
+      expect(clearRequestTimer).toHaveBeenCalledOnce();
+      expect(requests).toEqual([0, 1].map(() => ({ version: 10, id: expect.any(String), type: "list-microphones" })));
+      const [oldRequest, currentRequest] = requests;
+      socket.reply(oldRequest!.id, "microphone-list", { devices: [{ id: "old", label: "Old microphone" }] });
+      expect(clearRequestTimer).toHaveBeenCalledOnce();
+      socket.reply(currentRequest!.id, "microphone-list", { devices: [{ id: "new", label: "New microphone" }] });
+      await expect(listing).resolves.toEqual([{ id: "new", label: "New microphone" }]);
+      expect(clearRequestTimer).toHaveBeenCalledTimes(2);
+      current.abort();
+      expect(clearRequestTimer).toHaveBeenCalledTimes(2);
+      await expect(client.ping()).resolves.toBeUndefined();
     } finally { client.close(); }
   });
 

@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-26
+Last updated: 2026-11-27
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -46,6 +46,9 @@ phases, including NAT and Auto codec behavior.
 - Remote-control UI and routed input have local evidence. OS permissions,
   protected/admin applications and game compatibility retain the limits in the
   [input assessment](./research/room-interactions.md#attended-remote-control-prototype).
+  The maintenance candidate's four-variant Windows stop shortcut passed package
+  unit checks. Real modifier delivery and partial-registration rollback remain
+  for the existing isolated desktop input gate.
 - A two-device Windows virtual-LAN trial established direct packaged-App web
   access and remote video after scoped firewall permission. Other networks must
   likewise carry HTTP/WebSocket and media UDP. [Virtual LAN research](./research/nat-traversal.md#routed-virtual-lan-discovery)

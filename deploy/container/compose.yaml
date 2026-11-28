@@ -2,7 +2,7 @@ name: piik
 
 services:
   piik:
-    image: ${PIIK_IMAGE:-ghcr.io/tntcrafthim/piik:latest}
+    image: ${PIIK_IMAGE:-ghcr.io/tntcrafthim/piik:v2.8.1}
     restart: unless-stopped
     stop_grace_period: 20s
     read_only: true

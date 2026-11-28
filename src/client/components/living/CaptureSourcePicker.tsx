@@ -148,8 +148,7 @@ export function CaptureSourcePicker({
     (target.kind === "window"
       ? nativeSources.processAudio
       : nativeSources.systemAudio);
-  const audioTarget = selectedTarget ?? sources.find(target => target.kind === "picker");
-  const canShareAudio = !!audioTarget && supportsAudio(audioTarget);
+  const canShareAudio = selectedTarget ? supportsAudio(selectedTarget) : sources.some(supportsAudio);
   // Source enumeration already owns process identity; do not create a second app scanner.
   const applications = nativeSources.kind === "ready" ? audioApplications(nativeSources.sources) : [];
   const exclusionKey = excludeAudio ? audioApplicationKey(excludeAudio) : "";
@@ -158,7 +157,7 @@ export function CaptureSourcePicker({
   const exclusionUnavailable = selectedTarget?.kind === "display" && canShareAudio && shareAudio && !!excludeAudio && (!canExcludeAudio || missingExclusion);
   const refreshing = activeTab === "camera" ? cameraSources.busy : nativeSources.kind === "loading";
   const refreshLabel = t(refreshing ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
-  const audioAction = t(!audioTarget ? "host.sourcePicker.audioHint" : !canShareAudio ? "host.sourcePicker.audioUnavailable" : audioLocked
+  const audioAction = t(!canShareAudio ? "host.sourcePicker.audioUnavailable" : audioLocked
     ? "host.sourcePicker.audioLocked"
     : shareAudio ? "host.sourcePicker.audioOff" : "host.sourcePicker.audioOn");
   const audioLabel = t(
@@ -333,7 +332,7 @@ export function CaptureSourcePicker({
                   </span>
                   {vis ? null : <span>{audioLabel}</span>}
                   <Tooltip
-                    kind={!audioTarget ? "hint-share-audio" : !canShareAudio ? "no-audio" : audioLocked
+                    kind={!canShareAudio ? "no-audio" : audioLocked
                       ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
                       : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
                     text={vis ? undefined : !canShareAudio ? audioAction : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
@@ -364,7 +363,7 @@ export function CaptureSourcePicker({
               cameraSources.cancel();
               onCamera?.(id);
             }} /> : <>
-          <div className="lr-source-picker-list">
+          <div className="lr-source-picker-list" data-tooltip-controls>
             {browserCapture ? (
               <button
                 type="button"

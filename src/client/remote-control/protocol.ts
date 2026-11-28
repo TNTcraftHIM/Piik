@@ -18,14 +18,15 @@ export type RemoteInputPlatform = z.infer<typeof remoteInputPlatformSchema>;
 export const remoteInputStateSchema = z.object({
   state: z.enum(["ready", "unavailable", "pending", "active", "suspended", "failed"]),
   mode: remoteControlModeSchema,
-  platform: remoteInputPlatformSchema,
+  platform: z.string().min(1),
   grant: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   intent: z.string().regex(/^[0-9a-f]{32}$/).optional(),
-  reason: z.enum(["password", "retry", "busy", "gamepad"]).optional(),
+  // A future diagnostic has no local copy, but differs from a reply with no reason.
+  reason: z.enum(["password", "retry", "busy", "gamepad"]).or(z.string().min(1).transform(() => null)).optional(),
   capabilities: z.array(z.string().min(1).max(32)).max(16).optional(),
   coPlay: z.boolean().optional(),
   inputFailed: z.boolean().optional(),
-}).strict();
+});
 export type RemoteInputState = z.infer<typeof remoteInputStateSchema>;
 
 export function remoteTextAvailable(state: RemoteInputState): boolean {

@@ -31,7 +31,11 @@ export function isClientActivated(): boolean {
   catch { return clientActivatedInPage; }
 }
 
-export function activateClient(): void {
+export function activateClient(port?: number): void {
+  if (port !== undefined) {
+    clientPortInPage = port;
+    writeSessionValue(CLIENT_RUNTIME_STORAGE_KEY, String(port));
+  }
   clientActivatedInPage = true;
   try { window.localStorage.setItem(CLIENT_LAUNCH_STORAGE_KEY, "1"); } catch { /* Optional persistence. */ }
   window.dispatchEvent(new Event(CLIENT_ACTIVATION_EVENT));

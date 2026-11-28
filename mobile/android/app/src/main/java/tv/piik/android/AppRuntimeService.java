@@ -23,6 +23,7 @@ public final class AppRuntimeService extends Service {
   final ExecutorService work = Executors.newSingleThreadExecutor();
   final ArrayDeque<MediaRequest> requests = new ArrayDeque<>();
   Runtime runtime;
+  boolean startupEntryHandled;
   CompletableFuture<Runtime> startup;
   Throwable failure;
   MediaRequest active;
@@ -337,7 +338,6 @@ public final class AppRuntimeService extends Service {
     if (!admitted && preparing == request) preparing = null;
     MainActivity activity = MainActivity.current;
     if (activity != null && activity.permissionRequest == request) {
-      activity.permissionOwner = null;
       activity.permissionRequest = null;
     }
     if (!admitted) request.owner.captureEnded(request.id);

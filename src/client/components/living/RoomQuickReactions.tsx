@@ -18,7 +18,7 @@ export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId
   const [expanded, setExpanded] = useState(false);
   const anchor = useMemo(() => ({ current: trigger }), [trigger]);
   const panel = useRef<HTMLDivElement>(null);
-  useAnchoredPopover(anchor, panel, { side: "above", align: "center" });
+  useAnchoredPopover(anchor, panel, { side: "above", align: "center", closeWhenAnchorClipped: true });
   useLayoutEffect(() => {
     const menu = panel.current!;
     if (menu.matches(":popover-open")) menu.hidePopover();

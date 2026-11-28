@@ -50,8 +50,9 @@ On a Linux x64 or ARM64 server with Docker Compose v2, download the two deployme
 into an empty directory:
 
 ```sh
-curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
-curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/v2.8.1/deploy/container/compose.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/v2.8.1/deploy/container/.env.example
+echo 'PIIK_IMAGE=ghcr.io/tntcrafthim/piik:v2.8.1' >> .env
 ```
 
 In `.env`, set `PUBLIC_BASE_URL` to the HTTPS address people will open. In `STUN_URLS`, replace `share.example.com` with the domain that resolves directly to the server for UDP traffic. Run the first command to check the settings. If it succeeds, run the second to start Piik.

@@ -14,6 +14,7 @@ import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
 import type { AppReleaseIdentity } from "../lib/release-update";
+import { useGuideLink } from "../lib/use-project-link";
 import { useReleaseUpdate } from "../lib/use-release-update";
 
 const launcherStateSchema = z.object({
@@ -71,7 +72,8 @@ export function AppLauncherPage() {
   const [siteError, setSiteError] = useState<string>();
   const [siteEntry, setSiteEntry] = useState({ origin: "", confirming: false });
   // Background reads cannot replace a newer command's result or optimistic state.
-  const stateChanges = useRef({ revision: 0, pending: 0 });
+  const stateRead = useRef<AbortController | null>(null);
+  const pendingStateChanges = useRef(0);
   const externalSite = new URLSearchParams(window.location.search).get("site");
   const manualSite = externalSite === null && siteEntry.confirming;
   const requestedSite = externalSite ?? (manualSite ? siteEntry.origin : null);
@@ -93,28 +95,24 @@ export function AppLauncherPage() {
   }, [manualSite, approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
-    let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let restoredSettings = false;
     let enterOnReady = new URLSearchParams(window.location.search).get("start") === "1";
-    let reading = false;
     const readState = () => {
-      if (reading || !current) return;
+      if (stateRead.current && !stateRead.current.signal.aborted) return;
       clearTimeout(timer);
-      if (stateChanges.current.pending) {
+      if (pendingStateChanges.current) {
         timer = setTimeout(readState, 750);
         return;
       }
-      reading = true;
-      const revision = stateChanges.current.revision;
-      const fresh = () => current && revision === stateChanges.current.revision && !stateChanges.current.pending;
-      void fetch("/api/client-launcher", { cache: "no-store" })
+      const read = stateRead.current = new AbortController();
+      void fetch("/api/client-launcher", { cache: "no-store", signal: read.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error();
         return launcherStateSchema.parse(await response.json());
       })
       .then((state) => {
-        if (!fresh()) return;
+        if (read.signal.aborted) return;
         if (!restoredSettings) {
           setMode(state.defaultMode);
           setModes(state.modes);
@@ -145,29 +143,34 @@ export function AppLauncherPage() {
         setBuild({ version: state.version, revision: state.revision, packageTarget: state.packageTarget });
       })
       .catch(() => {
-        if (!fresh()) return;
+        if (read.signal.aborted) return;
         setError({ kind: "load" });
         setStarting(false);
         setLoading(false);
       }).finally(() => {
-        reading = false;
-        if (current && !fresh()) timer = setTimeout(readState, 750);
+        if (stateRead.current !== read) return;
+        stateRead.current = null;
+        if (read.signal.aborted) {
+          clearTimeout(timer);
+          timer = setTimeout(readState, 750);
+        }
       });
     };
     void readState();
     const refresh = () => { void readState(); };
     window.addEventListener("focus", refresh);
     return () => {
-      current = false;
+      stateRead.current?.abort();
+      stateRead.current = null;
       clearTimeout(timer);
       window.removeEventListener("focus", refresh);
     };
   }, [reload]);
 
   function beginStateChange(): () => void {
-    stateChanges.current.revision++;
-    stateChanges.current.pending++;
-    return () => { stateChanges.current.pending--; };
+    pendingStateChanges.current++;
+    stateRead.current?.abort();
+    return () => { pendingStateChanges.current--; };
   }
 
   async function enableDebug(): Promise<void> {
@@ -277,6 +280,8 @@ export function AppLauncherPage() {
     }
   }
 
+  const invitationTimedOut = error?.kind === "launch" && error.reason === "tunnel-timeout";
+  const publicAddressGuide = useGuideLink(lang, "frp", invitationTimedOut);
   const errorKey = `client.launch.failure.${error?.reason}`;
   return (
     <div className="lr-app">
@@ -353,9 +358,13 @@ export function AppLauncherPage() {
         ) : (
           <LauncherForm
             roomError={error?.kind === "launch" ? <>
-              <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
+              <Pill icon="alert" tone="bad" label={t(invitationTimedOut ? "client.launch.invitationTimeout" : "client.launch.error")} alert comic="signal-failed" />
               {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
-              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
+              {invitationTimedOut
+                ? <a className="lr-btn is-dense" href={publicAddressGuide} target="_blank" rel="noopener noreferrer">
+                  {t("client.launch.publicAddressGuide")}<Glyph name="arrowRight" size={16} />
+                </a>
+                : <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>}
               {error.detail && <details className="lr-client-launch-technical">
                 <summary>{t("client.launch.errorDetails")}</summary>
                 <p className="lr-client-launch-detail">{error.detail}</p>

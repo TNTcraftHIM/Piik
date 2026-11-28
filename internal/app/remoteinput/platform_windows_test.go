@@ -6,12 +6,16 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"golang.org/x/sys/windows"
 )
 
@@ -62,7 +66,7 @@ func TestWindowsInputRecoversItsDesktopAndPendingRelease(t *testing.T) {
 	// Never switch the visible desktop. Only this test thread leaves it.
 	probe := winInput{Mouse: mouseInput{Flags: 1}}
 	restricted := &windowsSink{desktop: windows.UTF16PtrToString(name)}
-	if err := restricted.inject(probe); err == nil {
+	if _, err := restricted.sendOnDesktop(probe); err == nil {
 		t.Fatal("input escaped the backend's desktop")
 	}
 	if err := sink.inject(probe); err != nil {
@@ -147,6 +151,86 @@ func TestNativeStopShortcutRegistrationLifetime(t *testing.T) {
 	stop()
 }
 
+func TestNativeStopShortcutModifierGroup(t *testing.T) {
+	requireDesktopInputAcceptance(t)
+	m, err := New(t.Context(), false)
+	if err != nil || m == nil {
+		t.Fatalf("create input manager: %v", err)
+	}
+	defer m.Close()
+	var keys []int
+	for key := 1; key <= 11 && len(keys) < 2; key++ {
+		if key != defaultStopKey {
+			if _, err := m.SetStopShortcut(key); err == nil {
+				keys = append(keys, key)
+			}
+		}
+	}
+	if len(keys) != 2 {
+		t.Fatal("need two available non-default function keys on the isolated desktop")
+	}
+	next, current := keys[0], keys[1]
+	s := m.NewSession()
+	defer s.Close()
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+	if err := setTestPolicy(s, "room", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Occupy only the final Ctrl+Alt+Shift+Win variant on another OS thread.
+	func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		const id = 27
+		ok, _, err := user32.NewProc("RegisterHotKey").Call(0, id, 0x400f, uintptr(0x6f+next))
+		if ok == 0 {
+			t.Fatalf("reserve final variant on F%d: %v", next, err)
+		}
+		defer user32.NewProc("UnregisterHotKey").Call(0, id)
+		if _, err := m.SetStopShortcut(next); err == nil {
+			t.Fatal("replacement succeeded despite occupied final variant")
+		}
+	}()
+
+	// The previous binding must still revoke through the real Windows queue.
+	sink := m.sink.(*windowsSink)
+	for i, extra := range [][]string{nil, {"ShiftLeft"}, {"MetaLeft"}, {"ShiftLeft", "MetaLeft"}} {
+		name := strings.Join(append([]string{"Ctrl+Alt"}, extra...), "+")
+		if !t.Run(name, func(t *testing.T) {
+			// The first activation must use the binding left by the failed replacement.
+			if i > 0 {
+				if err := setTestPolicy(s, "room", ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, key := range append(extra, "ControlLeft", "AltLeft", "F"+strconv.Itoa(current)) {
+				scan := scanCodes[key]
+				if err := sink.inject(keyInput(scan, true)); err != nil {
+					t.Fatalf("press %s: %v", key, err)
+				}
+				defer func() {
+					if err := sink.inject(keyInput(scan, false)); err != nil {
+						t.Errorf("release %s: %v", key, err)
+					}
+				}()
+			}
+			deadline := time.After(5 * time.Second)
+			for s.State().Mode != "ask" {
+				select {
+				case <-s.Changes():
+				case <-deadline:
+					t.Fatalf("F%d did not revoke control", current)
+				}
+			}
+		}) {
+			return
+		}
+	}
+	if _, err := m.SetStopShortcut(next); err != nil {
+		t.Fatalf("could not reacquire complete F%d group after rollback: %v", next, err)
+	}
+}
+
 func TestCommittedTextPackets(t *testing.T) {
 	inputs := textInputs("A中😀")
 	units := []uint16{0x41, 0x4e2d, 0xd83d, 0xde00}
@@ -179,5 +263,71 @@ func TestMouseButtonPackets(t *testing.T) {
 	}
 	if _, err := buttonInput(5, true); err == nil {
 		t.Fatal("unknown button accepted")
+	}
+}
+
+type scriptedWindowsSink struct{ *windowsSink }
+
+func (scriptedWindowsSink) Target(nativecapture.CaptureTarget, *nativecapture.Stream) (bounds, bool, error) {
+	return bounds{width: 100, height: 100}, true, nil
+}
+
+func TestWindowsPartialUnicodeRelease(t *testing.T) {
+	sink := scriptedWindowsSink{&windowsSink{}}
+	batch := textInputs("A😀Z")
+	var calls [][]winInput
+	// Accept A and the high surrogate press. Its KEYUP only succeeds after retirement.
+	counts := []uintptr{3, 0, 0, 0, 1}
+	sink.send = func(inputs ...winInput) (uintptr, error) {
+		calls = append(calls, inputs)
+		if len(calls) > len(counts) {
+			t.Fatal("unexpected extra input")
+		}
+		n := counts[len(calls)-1]
+		if n != uintptr(len(inputs)) {
+			return n, errors.New("short SendInput")
+		}
+		return n, nil
+	}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s, peers := coPlaySession(t, m, true)
+	s.coPlay = false
+	c := peers[0]
+	sendTestInput(m, c, inputEvent{Type: "request"})
+	grant := c.grant
+	sendTestInput(m, c, inputEvent{Type: "text", Text: "A😀Z"})
+	if grant == "" || c.grant != grant || !c.inputFailed {
+		t.Fatal("partial text changed grant or hid input failure")
+	}
+	if got := m.Diagnostics().PendingKeyReleases; got != 1 {
+		t.Fatalf("pending releases after partial text = %d, want 1 (calls = %d)", got, len(calls))
+	}
+	sendTestInput(m, c, inputEvent{Type: "relative", DX: 1})
+	m.release()
+	m.retryReleases()
+	m.retryReleases()
+	up := batch[3:4]
+	if !reflect.DeepEqual(calls, [][]winInput{batch, up, up, up, up}) || m.Diagnostics().PendingKeyReleases != 0 {
+		t.Fatalf("release recovery did not deliver only the unmatched KEYUP: %v", calls)
+	}
+}
+
+func TestAbsoluteMousePicturePixel(t *testing.T) {
+	// A 1024-pixel source at -1600 lies 320 pixels from the virtual origin.
+	for _, sample := range []struct {
+		position float64
+		extent   int32
+		pixel    int32
+	}{
+		{0, 1024, 0}, {.99 / 1024, 1024, 0}, {1 / 1024., 1024, 1}, {1.01 / 1024, 1024, 1},
+		{511.99 / 1024, 1024, 511}, {1, 1024, 1023},
+		// Actual picturePoint output for source pixel 2 on a 1920-wide image.
+		{0.001041666666666663, 1920, 2},
+	} {
+		code := absoluteMouseCoordinate(sample.position, -1600, sample.extent, -1920, 4480)
+		got := int32(int64(code)*4480/65536) - 320
+		if got != sample.pixel {
+			t.Fatalf("position %g reached %d, want %d", sample.position, got, sample.pixel)
+		}
 	}
 }

@@ -24,7 +24,9 @@
   --action-text: #2055b2;
   --idle: #8ea3b8;
   --busy: #3478e5;
+  /* Live decoration and readable status foreground. */
   --live: #2fa66a;
+  --live-ink: #18754a;
   --warn: #d98e04;
   --danger: #d64541;
   --control-hover: #eef3ff;
@@ -67,6 +69,7 @@
   --line: var(--piik-dark-line);
   --busy: #82b1ff;
   --live: #3fb97a;
+  --live-ink: #73dca2;
   --warn: #e8a33d;
   --danger: #e25a52;
   --action: var(--piik-dark-action);

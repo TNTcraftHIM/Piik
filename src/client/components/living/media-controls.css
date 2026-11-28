@@ -11,4 +11,3 @@
   border: 0; border-radius: 12px; box-shadow: none;
   background: transparent; color: inherit;
 }
-.lr-media-controls .lr-btn.is-danger { color: var(--danger); }

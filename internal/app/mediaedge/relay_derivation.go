@@ -292,6 +292,7 @@ func (run *relayRun) write(stream *nativecapture.Stream) error {
 				var accepted bool
 				frame.Timestamp, frame.Duration, accepted = relayFrameTiming(clock, timestamp)
 				if !accepted {
+					input.h264.emitted = nil
 					continue
 				}
 				waitingRecovery = false

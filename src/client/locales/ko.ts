@@ -532,7 +532,7 @@ export const ko: Partial<Record<CopyKey, string>> = {
   "host.switching": "선택 중",
   "host.stop": "공유 중지",
   "host.noAudio": "소스 소리를 공유하지 않고 있어요",
-  "host.noBrowserAudioDetail": "iPhone과 iPad의 Safari에서는 게임이나 동영상의 화면만 공유돼요. 내 목소리를 더하려면 마이크 공유를 켜세요.",
+  "host.noBrowserAudioDetail": "브라우저가 공유 소리 없이 화면을 제공했어요. 설명할 때는 방 음성이나 마이크 공유를 사용하세요.",
   "host.localPreviewPaused": "로컬 미리보기 일시 중지됨. 공유는 계속돼요",
   "host.preview": "로컬 미리보기",
   "host.previewAutoPause": "미리보기 자동 일시 중지",

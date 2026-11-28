@@ -356,7 +356,9 @@ and window actions. Picture fit and rotation move to the same attached settings
 at that width, reusing their controls rather than duplicating visible actions.
 The playback surface is lightly translucent over the picture. One visibility
 owner hides the complete surface. Grants, pause and source changes do not move
-the bar or resize the picture. Remote input retains its local bezel pull.
+the bar or resize the picture. An idle picture stays clear of controls. While
+active remote input owns picture gestures, a small local handle at the lower
+edge reveals the controls.
 Playback settings own on-screen chat appearance and connection preferences;
 chat settings own records, and voice settings own microphone processing.
 Viewer settings prefer space below the picture without resizing it. Use equal-width
@@ -393,7 +395,7 @@ selection tasks visually interchangeable.
 
 ## Cast And Objects
 
-The brand mascot keeps its own identity, separate from ordinary participants.
+The brand mascot is named **Piika**. It keeps its own identity, separate from ordinary participants.
 Participant characters should leave room for that distinctive presence.
 
 The App badge and favicons derive from [one SVG](../../public/favicon.svg):
@@ -703,9 +705,9 @@ or animation rules inside an individual scene.
 | Meaning | Token / code tone | Panel and symbol |
 | --- | --- | --- |
 | Explanation, preference, ordinary action, intentional closure or unknown state | Neutral ink / `off` | Neutral panels; illustrate the action/object without a success stamp |
-| Confirmed completion or delivered media | Green `--live` / `live` | Neutral before, green result; check or completed object |
+| Confirmed completion or delivered media | Green `--live-ink` for text/status icons, `--live` for artwork / `live` | Neutral before, green result; check or completed object |
 | Still usable with a limitation, unavailable optional capability, or intentional media pause | Amber `--warn` / `warn` | Neutral before, amber result; limit, pause, lock or unavailable mark on the affected part |
-| Confirmed failed or blocked action | Red `--danger` / `bad` | Neutral before, red result; cross, broken path or other explicit failure mark |
+| Confirmed failed or blocked action | Red `--danger-ink` text, `--danger` marks / `bad` | Neutral before, readable red result; cross, broken path or other explicit failure mark |
 | Work in progress or awaiting an action/frame | Blue `--busy` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |
 
 Recovery retains amber because service is interrupted while work continues.

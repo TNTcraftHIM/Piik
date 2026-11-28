@@ -50,6 +50,9 @@ advances in send order with a receive-time watermark, while older ACKs repair
 counts without rewinding it. Reset reseeds that delay baseline without discarding
 delivery history. Piik's shared
 forwarding package uses this copy for both individual transports and publications.
+The copy carries the send-side settle correction from [upstream #5247](https://github.com/livekit/livekit/pull/5247).
+Native transport also measures the probe duration in the same monotonic clock
+as the LiveKit prober's creation timestamp.
 Two recovery policies accompany those corrections. Inconclusive probes use
 existing backoff from completion without growing the next probe or reporting
 measured congestion. Delay inference tolerates clock-rate skew using RFC 6817 A.2's
@@ -90,10 +93,13 @@ the next packet's delta or indexing past the feedback array.
 
 Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
 the root module replaces LiveKit with the immutable
-[c7f56b38 revision](https://github.com/TNTcraftHIM/livekit/commit/c7f56b38971398d077a0aa5004443eaf3c31016c),
-based on upstream `cde3991916cf`. Its only changes are an optional local encoder
-demand input to `StreamAllocator` and regression tests. Native publication uses
-that input; ordinary forwarding leaves it unset. The existing allocator still
+[3fb53ddc revision](https://github.com/TNTcraftHIM/livekit/commit/3fb53ddcdd0f9b2539e9dea54a6692276dba9051),
+based on [upstream v1.13.11](https://github.com/livekit/livekit/tree/385aa40f9292fe1db8caad87301e4b285b7c198a).
+The patch adds optional local encoder demand to `StreamAllocator` and regression
+tests. Native publication uses that input. Ordinary forwarding leaves it unset.
+Probe pacing and elapsed logging use the same monotonic clock as their start time.
+The tag includes [upstream #5055](https://github.com/livekit/livekit/pull/5055),
+which permits concurrent retransmission reads. The existing allocator still
 owns probe timing, congestion response and allocation; encoder demand does not
 change track-deficiency state. No allocator source is copied into Piik and no
 build-time patch is applied.
@@ -104,13 +110,23 @@ capacity. Once an upstream revision supports this input and passes those
 checks, remove the replacement directive and its replacement checksums. The
 separate local send-side estimator corrections retain their own removal gate.
 
+## Pion ICE send consent
+
+The root module uses the MIT-licensed
+[backport `cea533fd`](https://github.com/TNTcraftHIM/pion-ice/commit/cea533fd3ec331aa67212a291a1b81cf12c989ff),
+based on Pion ICE v4.4.9. It applies
+[Pion #894](https://github.com/pion/ice/pull/894) to expire send consent without
+an authenticated response and to handle explicit revocation. Remove the
+replacement and its two checksums once an official compatible release passes
+the expiry, healthy delivery and consumer controls.
+
 ## Pion H.264 Profile Matching
 
 Until [upstream #3668](https://github.com/pion/webrtc/pull/3668) is available,
 the root module replaces Pion with the immutable
-[6ed9e55c revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/6ed9e55c5935edf3b55d0528fdfb5cc85110a013),
-based on official v4.2.26. It matches equivalent H.264 subprofiles according to
-[RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
+[94d7bae6 revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/94d7bae66f92a292d84194daf848d9d5dc8ba14b),
+based on [official v4.2.29](https://github.com/pion/webrtc/tree/96acb16fcd2d00ec0c8a3ac372b078d73ae4722f).
+The patch matches equivalent H.264 subprofiles according to [RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
 Without this repair, an offer containing Constrained Baseline `42c01f` and VP8
 can select VP8 even though the receiver prefers and supports that H.264 profile.
 The patch changes only profile matching and its regressions; level and

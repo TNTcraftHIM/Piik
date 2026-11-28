@@ -33,16 +33,18 @@ describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en", vis: true }));
 
-  it("waits for display selection before offering the previous system audio exclusion", () => {
+  it("offers a saved audio exclusion before choosing a display without selecting a capture source", () => {
     setCopy({ lang: "en", vis: false });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "ready", sources: [game, { kind: "display", sourceId: "2", title: "Screen" }],
-        processAudio: false, systemAudio: true, processAudioExclusion: false },
-      initialTab: "display", initialAudio: true, initialExcludeAudio: game, audioLocked: true,
+        processAudio: true, systemAudio: true, processAudioExclusion: true },
+      initialTab: "display", initialAudio: true, initialExcludeAudio: game,
       onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
     }));
     expect(html).toMatch(/data-native-source="display:2"[^>]*aria-pressed="false"/);
-    expect(html).not.toContain(t("en", "host.sourcePicker.excludeNone"));
+    expect(html).not.toContain('data-native-source="window:');
+    expect(html).toMatch(/class="lr-btn is-primary"[^>]*disabled=""/);
+    expect(html).toContain('<option value="10:123456" selected="">My Game</option>');
     expect(html).not.toContain(t("en", "host.sourcePicker.excludeMissing"));
   });
   it("shows one system chooser for picker-only Apps instead of duplicate desktop tabs", () => {

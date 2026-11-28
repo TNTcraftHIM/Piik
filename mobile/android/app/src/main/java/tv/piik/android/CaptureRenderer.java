@@ -267,7 +267,8 @@ final class CaptureRenderer {
   }
 
   void captureFrame() {
-    frameTimestamp = Math.max(System.nanoTime(), frameTimestamp + 1000);
+    // MediaCodec reports whole microseconds. Allow at least one 90 kHz RTP tick.
+    frameTimestamp = Math.max(System.nanoTime(), frameTimestamp + 12_000);
     Target owner = current;
     if (owner != null && owner.inputFrame != null) {
       long timestamp = frameTimestamp / 1000;

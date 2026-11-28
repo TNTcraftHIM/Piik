@@ -67,10 +67,39 @@ replacing the Go transport. The unmatched field reports remain in [TODO](../todo
 
 ## 2.x Receiver Buffering And Source Gaps
 
-Reviewed 2026-11-17. Two separate synthetic controls distinguish late delivery
+Reviewed 2026-11-25. Synthetic controls distinguish late delivery
 from absent source frames. The [media-quality contract](../standards/media-quality.md#capture-and-controls)
 owns automatic buffering and the optional receiver target; requested targets
 and actual delay remain different measurements.
+
+On November 23, Windows HeadlessChrome 156 ran one fresh connection per target
+with the 2.x receiver setting from `4b42514b` and synthetic 320×180 video.
+The local UDP path held packets for 200 ms every three seconds and released
+them in order. The three event windows had maximum presentation intervals of
+195/229/202 ms on automatic and 62/77/63 ms at 300 ms. Automatic recorded
+three freezes totaling 643 ms. The 300 ms arm recorded one 311 ms freeze
+before the first intervention and zero in the event windows. Neither arm
+recorded loss, NACKs or retransmissions during those windows. Per-window
+median capture-to-presentation delays estimated by Chrome were 30–35 ms
+on automatic and 303–308 ms at 300 ms.
+
+On November 25, Windows HeadlessChrome 156 used the 2.x production
+receiver-buffer helper from 0acd7ddc in a local WebRTC loopback with synthetic
+320×180 canvas video and one fresh connection per setting. Each connection
+received three 200 ms UDP holds about three seconds apart, with in-order
+release and zero reported packet loss in the event windows.
+
+| Receiver target | Mean jitter-buffer residence per event window | Maximum presentation interval in each window | Freezes in the three windows |
+| --- | ---: | ---: | ---: |
+| Automatic | 8-12 ms | 195 / 208 / 202 ms | 3 |
+| 300 ms | 275-280 ms | 63 / 69 / 49 ms | 0 |
+| 1000 ms | 975-979 ms | 63 / 62 / 63 ms | 0 |
+
+Residence uses the change in accumulated jitter-buffer delay divided by the
+change in emitted frames per window. End-to-end delay is a separate metric.
+In this video-only control, both explicit targets avoided counted freezes
+during the holds. The 1000 ms setting added about 700 ms of buffer residence
+over 300 ms with the same freeze count.
 
 The November 16 network control used the e25bd009 production Source,
 RelayDerivation, Windows helper and LiveKit/Pion path. Those media owners and
@@ -85,7 +114,9 @@ packet delay and three 200 ms interruptions. With sender budget fixed at 200 ms:
 | Automatic | 402.6 ms | 106.2 ms | 3 / 1.075 s |
 | 300 ms | 145.9 ms | 331.1 ms | 0 / 0 s |
 
-Both arms decoded 1338 frames, and the interruption windows recorded NACK/RTX.
+Recalculation of the three original interruption windows found one freeze per
+window on automatic and zero at 300 ms. Both arms recorded NACKs and received
+retransmissions in every window and decoded 1338 frames over the full run.
 This supports smoother presentation at about 225 ms additional delay in that
 control, without proving each repair arrived in time. Derived QP, bitrate and
 lost-packet identities differed; it does not establish a sharpness improvement.
@@ -108,11 +139,21 @@ that intervention was rarely active; the 500 ms arm also had an unexplained
 cadence gate, leaving no complete four-arm comparison. These observations do
 not establish a benefit from increasing sender delay.
 
-Waiting can accommodate late content but cannot supply absent source frames.
-An encoder stall that later delivers every frame with its original timeline is
-a different, unmeasured case. Neither control identifies the cause of reported
-periodic stalls or establishes physical-device capture, audio synchronization
-or cross-network acceptance.
+A separate control on 92185fee used two simultaneous ViewerPeer receivers in
+Windows HeadlessChrome 152. The source sent numbered 320×180 pictures and a
+synthetic audio track. A transform held each sender's encoded video for one
+251 ms interval and released all eight frames in order with original RTP
+timestamps. Source submissions stayed at most 35 ms apart around the event.
+The maximum interval between presentations was 278 ms on automatic and 69 ms
+at the 300 ms receiver target. The receivers presented two and eight of the
+held timestamps respectively. Automatic recorded one 285 ms freeze. The
+300 ms target recorded zero and raised the stable submission-to-callback
+median from 18 to 279 ms. Both receivers reported zero loss and NACKs.
+
+This control isolates delayed availability of completed pictures. A physical
+encoder's behavior during a stall and the cause of the reported periodic
+stalls remain open. Audio sample counts advanced, but audible synchronization
+was outside the measurement.
 
 ## VP8 Cost And Hardware Boundary
 

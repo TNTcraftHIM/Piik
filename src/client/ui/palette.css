@@ -20,9 +20,12 @@
   --action-text: #2055b2;
   --idle: #8ea3b8;
   --busy: #3478e5;
+  /* Live decoration and readable status foreground. */
   --live: #2fa66a;
+  --live-ink: #18754a;
   --warn: #d98e04;
   --danger: #d64541;
+  --danger-ink: #a52c28;
   --control-hover: #eef3ff;
   --control-selected: #e5efff;
   --control-selected-ink: #214c9b;
@@ -63,8 +66,10 @@
   --line: var(--piik-dark-line);
   --busy: #82b1ff;
   --live: #3fb97a;
+  --live-ink: #73dca2;
   --warn: #e8a33d;
   --danger: #e25a52;
+  --danger-ink: #ffaaa2;
   --action: var(--piik-dark-action);
   --action-deep: var(--piik-dark-action);
   --action-ink: var(--piik-dark-action-ink);

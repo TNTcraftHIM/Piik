@@ -279,6 +279,37 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(staleFailure).stage).toBe("receiving");
   });
 
+  it("replaces Play with a failure and invalidates the previous frame proof", () => {
+    const failed = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 2, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 1, revision: 2 },
+      { type: "frame-presented", generation: 1, proofEpoch: 0, revision: 2 },
+      { type: "autoplay-blocked", generation: 1, revision: 2 },
+      { type: "playback-failed", generation: 1, revision: 2 },
+    );
+    expect(failed.autoplayBlockedGeneration).toBeNull();
+    expect(deriveViewerPresentation(failed)).toMatchObject({
+      stage: "playback-failed",
+      hasCurrentFrame: false,
+      hasRetainedFrame: true,
+    });
+    expect(reduceViewerPresentation(failed, {
+      type: "autoplay-blocked", generation: 1, revision: 2,
+    })).toBe(failed);
+    expect(reduceViewerPresentation(failed, {
+      type: "frame-presented", generation: 1, proofEpoch: 0, revision: 2,
+    })).toBe(failed);
+
+    const restarted = applyFrom(failed,
+      { type: "media-bound", generation: 2, revision: 2 },
+      { type: "frame-presented", generation: 2, proofEpoch: 0, revision: 2 },
+    );
+    expect(deriveViewerPresentation(restarted).stage).toBe("playing");
+    expect(deriveViewerPresentation(reduceViewerPresentation(failed, { type: "sharing-stopped" })).stage).toBe("waiting-host");
+  });
+
   it("keeps playback authority with the bound media generation", () => {
     const oldMedia = apply(
       { type: "access", access: "ready" },
