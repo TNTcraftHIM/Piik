@@ -2892,7 +2892,9 @@ export class ChannelSession {
     const page = media.page;
     if (selection === null) {
       try { await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId); }
-      finally { await page.stopMedia(); }
+      finally {
+        if (this.watchPlayer(id) === player) await page.stopMedia();
+      }
       return;
     }
     if (this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource) throw new Error("watch_source_already_active");
@@ -2903,6 +2905,7 @@ export class ChannelSession {
       if (this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
       await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource }, undefined, player.roomId);
     } catch (error) {
+      if (this.watchPlayer(id) !== player) throw error;
       await page.stopMedia().catch(() => {});
       try { await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId); }
       catch { /* The next welcome reconciles the actual reader with room authority. */ }

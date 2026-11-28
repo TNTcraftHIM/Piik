@@ -193,18 +193,59 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
   expect(frames.size).toBe(0);
 });
 
-it.each(["windows", "darwin", "linux"] as const)("keeps the Host platform in local request state (%s)", platform => {
+it.each(["windows", "darwin", "linux", "future-os"])("keeps the Host platform in local request state (%s)", platform => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   session.request();
   expect(channel.sent).toEqual([{ type: "sync" }]);
   expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready" }).success).toBe(false);
-  expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready", platform: "unknown" }).success).toBe(false);
   channel.receive({ mode: "ask", state: "ready", platform });
   session.request();
   expect(session.state).toMatchObject({ state: "pending", platform });
   session.release();
   expect(session.state).toMatchObject({ state: "ready", platform });
+  session.dispose();
+});
+
+it("applies extended Host state for the same grant and retires it on unavailable", () => {
+  const channel = new Channel(), interrupted = vi.fn();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {}, interrupted);
+  const ready = { platform: "windows", mode: "ask", state: "ready" };
+  channel.receive(ready);
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "a".repeat(64);
+  const active = { ...ready, state: "active", intent, grant };
+  channel.receive(active);
+  const key = { type: "key", code: "KeyW", down: true } as const;
+  session.input(key);
+  const count = channel.sent.length;
+  const metadata = { platform: "future-os", reason: "future-detail", extraDetail: true };
+  channel.receive({ ...active, ...metadata });
+  expect(session.state).toMatchObject({ state: "active", grant, platform: "future-os" });
+  session.input(key);
+  expect(channel.sent).toHaveLength(count); // The same grant still holds KeyW.
+
+  for (const invalid of [{ state: "future-state" }, { mode: "future-mode" }, { grant: "short" }, { intent: "short" }]) {
+    channel.receive({ ...ready, state: "unavailable", ...invalid });
+    expect(session.state?.state).toBe("active");
+  }
+  channel.receive({ ...ready, state: "unavailable", ...metadata });
+  expect(session.state?.state).toBe("unavailable");
+  expect(session.state?.grant).toBeUndefined();
+  expect(interrupted.mock.calls).toEqual([["control-ended"]]);
+  session.input({ type: "key", code: "KeyD", down: true });
+  expect(channel.sent).toHaveLength(count);
+  channel.receive(active);
+  expect(channel.sent.at(-1)).toEqual({ type: "release", intent });
+  expect(channel.readyState).toBe("open");
+
+  channel.receive(ready);
+  session.request();
+  const next = channel.sent.at(-1)?.intent;
+  expect(next).not.toBe(intent);
+  channel.receive({ ...active, intent: next, grant: "b".repeat(64) });
+  session.input(key);
+  expect(channel.sent.at(-1)).toEqual({ ...key, grant: "b".repeat(64) });
   session.dispose();
 });
 
@@ -296,8 +337,12 @@ it("distinguishes an unapproved request from a granted control that ends", () =>
   expect(interrupted.mock.calls).toEqual([["request-not-approved"], ["control-ended"]]);
 
   session.request();
+  channel.receive({ ...ready, intent: channel.sent.at(-1)?.intent, reason: "future-detail" });
+  expect(interrupted.mock.calls.at(-1)).toEqual(["request-ended"]);
+
+  session.request();
   channel.close();
-  expect(interrupted.mock.calls).toEqual([["request-not-approved"], ["control-ended"], ["request-ended"]]);
+  expect(interrupted.mock.calls).toEqual([["request-not-approved"], ["control-ended"], ["request-ended"], ["request-ended"]]);
   session.dispose();
 });
 
