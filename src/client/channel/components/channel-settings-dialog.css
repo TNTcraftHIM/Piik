@@ -4,6 +4,7 @@
 .c3-settings-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex: none; padding: 22px 24px 18px; }
 .c3-settings-dialog-heading > div { min-width: 0; }
 .c3-settings-dialog-heading h2 { margin: 0; font-size: 22px; line-height: 1.35; overflow-wrap: anywhere; text-wrap: balance; }
+.c3-settings-dialog-heading h2[tabindex="-1"]:focus { outline: none; }
 .c3-settings-dialog-heading p { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
 .c3-settings-dialog-heading > .lr-comic-tip-wrap { flex: none; }
 .c3-settings-content, .c3-settings-body { display: flex; flex-direction: column; min-height: 0; }

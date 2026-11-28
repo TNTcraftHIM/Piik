@@ -641,3 +641,73 @@ test.each(['resolve', 'reject'] as const)('source retirement freezes the owned c
   } finally { player.close(); }
   expect(close).toHaveBeenCalledOnce();
 });
+
+test.each([10, 60])("delayed iframe scrubs converge when the sharer returns to %i", async finalPosition => {
+  vi.useFakeTimers();
+  const state: WatchMediaState = {
+    position: 10, paused: true, rate: 1, readyState: 2, duration: 120, ended: false, buffered: null,
+  };
+  const issued: number[] = [];
+  const media: WatchMedia = {
+    seekEvents: false, seekTolerance: 2,
+    read: async () => ({ ...state }),
+    patch: async ({ position, paused }) => {
+      if (position !== undefined) {
+        issued.push(position);
+        setTimeout(() => { state.position = position; }, issued.length * 1000);
+      }
+      if (paused !== undefined) state.paused = paused;
+    },
+    ready: async () => {}, listen: () => () => {}, close() {},
+  };
+  const player = new WatchPlayer("room", false, media, () => {});
+  const host = async (position: number, paused = true) => {
+    player.update({ timeline: "media", position, paused, rate: 1, anchorTime: performance.now() });
+    await player.serialize(async () => {});
+  };
+  try {
+    player.calibrate(0, 0, 0);
+    await host(10); await player.ready();
+    await host(60);
+    await vi.advanceTimersByTimeAsync(500);
+    await host(80);
+    await vi.advanceTimersByTimeAsync(400);
+    await host(finalPosition);
+    expect(issued).toEqual([60, 80, finalPosition]);
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(player.mediaState?.position).toBe(finalPosition);
+    expect(player.blockedReason).toBeNull();
+    await host(finalPosition, false);
+    expect(state.paused).toBe(false);
+  } finally { player.close(); }
+});
+
+test("a new shared rate supersedes the rate still pending in the provider", async () => {
+  vi.useFakeTimers();
+  const state: WatchMediaState = {
+    position: 10, paused: true, rate: 1, readyState: 2, duration: 120, ended: false, buffered: null,
+  };
+  const rates: number[] = [];
+  const media: WatchMedia = {
+    read: async () => ({ ...state }), playbackRates: () => [1, 2],
+    patch: async ({ rate }) => {
+      if (rate === undefined) return;
+      rates.push(rate);
+      setTimeout(() => { state.rate = rate; }, 200);
+    },
+    ready: async () => {}, listen: () => () => {}, close() {},
+  };
+  const player = new WatchPlayer("room", false, media, () => {});
+  const host = async (rate: number) => {
+    player.update({ timeline: "media", position: 10, paused: true, rate, anchorTime: 0 });
+    await player.serialize(async () => {});
+  };
+  try {
+    player.calibrate(0, 0, 0);
+    await host(1); await player.ready();
+    await host(2); await host(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(rates).toEqual([2, 1]);
+    expect(state.rate).toBe(1);
+  } finally { player.close(); }
+});

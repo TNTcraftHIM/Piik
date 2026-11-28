@@ -692,16 +692,22 @@ export function WatchSourceDialog({ channel, roomId, activityId, replacing = fal
           onChange={event => setURL(event.target.value)} autoComplete="off" />
       </span></label>
       {!channel.pagePlayer && !portableEmbed && !directFile && <p>{t(channel.appConnected ? "watch.pageUnsupported" : "watch.connectApp")}</p>}
-      <div className="c3-share-title-actions"><Btn type="submit" icon={openPage ? "globe" : "play"} tone="primary" title={portableEmbed ? "watch.selectVideo" : openPage ? "watch.openPage" : confirmLabel} cap={portableEmbed ? "watch.selectVideo" : openPage ? "watch.openPage" : confirmLabel} busy={busy} disabled={busy || !validURL} />
-        {appPageAvailable && !portableEmbed && <Btn icon={openPage ? "play" : "globe"} quiet
-          title={openPage ? "watch.directStart" : "watch.openPage"} cap={openPage ? "watch.directStart" : "watch.openPage"} disabled={busy || !validURL}
-          onClick={() => { if (openPage) void run(() => channel.startWatch(roomId, url.trim(), false), onClose);
-            else void run(() => channel.prepareWatchPage(roomId, url.trim(), undefined, false)); }} />}
-        {onOtherSources && <Btn icon="cast" quiet title="watch.otherSources" cap="watch.otherSources" disabled={busy} onClick={() => {
-          close();
-          onOtherSources();
-        }} />}
-        <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} /></div>
+      <div className="c3-share-title-actions">
+        <div className="c3-share-title-actions">
+          <Btn type="submit" icon={openPage ? "globe" : "play"} tone="primary" title={portableEmbed ? "watch.selectVideo" : openPage ? "watch.openPage" : confirmLabel} cap={portableEmbed ? "watch.selectVideo" : openPage ? "watch.openPage" : confirmLabel} busy={busy} disabled={busy || !validURL} />
+          {appPageAvailable && !portableEmbed && <Btn icon={openPage ? "play" : "globe"} quiet
+            title={openPage ? "watch.directStart" : "watch.openPage"} cap={openPage ? "watch.directStart" : "watch.openPage"} disabled={busy || !validURL}
+            onClick={() => { if (openPage) void run(() => channel.startWatch(roomId, url.trim(), false), onClose);
+              else void run(() => channel.prepareWatchPage(roomId, url.trim(), undefined, false)); }} />}
+        </div>
+        <div className="c3-share-title-actions">
+          {onOtherSources && <Btn icon="cast" quiet title="watch.otherSources" cap="watch.otherSources" disabled={busy} onClick={() => {
+            close();
+            onOtherSources();
+          }} />}
+          <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
+        </div>
+      </div>
     </form>}
     {help && <ChannelDiagnosisHelp diagnosis={help} />}
   </ChannelSettingsDialog>;

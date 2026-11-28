@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { useChannel } from "../src/client/channel/use-channel";
+import { reloadFromRoomLayer } from "../src/client/channel/use-room-pane";
 
 const { session, cleanups } = vi.hoisted(() => ({
   session: { start: vi.fn(), close: vi.fn(), acceptInvitation: vi.fn(), getSnapshot: () => ({}), subscribe: vi.fn(), refreshReadMarkers: vi.fn() },
@@ -19,6 +20,16 @@ vi.mock("react", () => ({
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
   vi.unstubAllGlobals(); vi.clearAllMocks();
+});
+
+test("a diagnostic reload clears the overlay marker and keeps the selected room and other page state", () => {
+  const page = { piikChannelRoom: "room-1", piikRoomPane: "people", scrollTop: 48 };
+  const replaceState = vi.fn(), reload = vi.fn();
+  vi.stubGlobal("history", { state: { ...page, piikRoomLayer: true }, replaceState });
+  vi.stubGlobal("location", { reload });
+  reloadFromRoomLayer("/?debug=1");
+  expect(replaceState).toHaveBeenCalledWith(page, "", "/?debug=1");
+  expect(replaceState).toHaveBeenCalledBefore(reload);
 });
 
 test("a persisted page return restarts the retired session and cleanup removes that listener", () => {

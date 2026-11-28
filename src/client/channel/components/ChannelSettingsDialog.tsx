@@ -12,6 +12,7 @@ import { ChannelAction } from "./ChannelAction";
 import { channelErrorPresentation } from "../../components/error-presentation";
 import { useLayerHistory } from "../../ui/layer-history";
 import { useSettingsAction } from "../../ui/use-settings-action";
+import { reloadFromRoomLayer } from "../use-room-pane";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
@@ -116,7 +117,7 @@ export function ChannelSettingsError({ error }: { error: string | null }) {
   if (error === "deferred_module_load_failed") {
     return <div className="c3-settings-error">
       <p role="alert">{t("channel.error.deferredModuleLoad")}</p>
-      <ChannelAction icon="refresh" quiet label={t("common.refresh")} onClick={() => window.location.reload()} />
+      <ChannelAction icon="refresh" quiet label={t("common.refresh")} onClick={() => reloadFromRoomLayer(window.location.href)} />
     </div>;
   }
   const { message } = channelErrorPresentation(error, t);

@@ -60,3 +60,4 @@
 .c3-share-title .lr-input, .c3-share-title input { width: 100%; min-width: 0; }
 .c3-share-title p { margin: 0; color: var(--muted); line-height: 1.6; }
 .c3-share-title-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.c3-share-title-actions > .c3-share-title-actions { max-inline-size: 100%; }
