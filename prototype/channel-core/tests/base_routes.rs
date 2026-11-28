@@ -4594,6 +4594,14 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
                 let current = pair(&network, host, viewer_session);
                 assert_eq!(current.udp_preparation.is_some(), udp);
                 assert_eq!(current.can_receive_video_layers, layers);
+                if !udp {
+                    let responder = if host_session > viewer_session { host } else { resumed };
+                    let effects = network.command(responder, json!({"type":"signal","pairId":current.id,
+                        "payload":{"udp":{"type":"answer","observation":{"kind":"observed","address":"203.0.113.5","port":1024}}}}));
+                    assert!(!effects.events.iter().any(|(_, event)| matches!(event, Event::Signal { .. })));
+                    assert!(effects.events.iter().any(|(_, event)| matches!(event,
+                        Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_signal")));
+                }
                 previous = resumed;
             }
         }
@@ -4679,6 +4687,9 @@ fn coordinated_udp_signals_use_the_current_pair_and_fixed_endpoint_roles() {
     let offer = json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":observation}});
     let answer = json!({"udp":{"type":"answer","observation":observation}});
     for (from, payload, accepted) in [
+        (initiator, json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":{"kind":"observed","address":"203.0.113.5","port":1024}}}), true),
+        (responder, json!({"udp":{"type":"answer","observation":{"kind":"observed","address":"203.0.113.5","port":65535}}}), true),
+        (responder, json!({"udp":{"type":"answer","observation":{"kind":"observed","address":"203.0.113.5","port":1023}}}), false),
         (initiator, offer.clone(), true),
         (responder, offer, false),
         (responder, answer.clone(), true),
@@ -4741,7 +4752,8 @@ fn coordinated_udp_signals_use_the_current_pair_and_fixed_endpoint_roles() {
         );
         assert_eq!(
             result.events.iter().any(|(to, event)| *to != from
-                && matches!(event,Event::Signal{pair_id,..} if *pair_id==original.id)),
+                && matches!(event, Event::Signal { pair_id, payload: delivered, .. }
+                    if *pair_id == original.id && serde_json::to_value(delivered).unwrap() == payload)),
             accepted
         );
         assert_eq!(
@@ -5043,6 +5055,8 @@ fn udp_observation_preserves_port_bounds_in_both_directions() {
         port: 1023
     }
     .valid());
+    assert!(serde_json::from_value::<UdpObservation>(
+        json!({"kind":"observed","address":"203.0.113.5"})).is_err());
     assert!(UdpObservation::Irregular { address }.valid());
     assert!(UdpObservation::Irregular { address }.target().is_none());
     for address in [
