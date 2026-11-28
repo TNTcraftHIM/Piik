@@ -1,5 +1,6 @@
 use super::*;
 use crate::capture::{Settings, Target};
+use piik_channel_core::wire::SessionInfo;
 use serde_json::json;
 
 #[test]
@@ -1003,8 +1004,20 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
                 "hostSessionId":host,"bindingId":Uuid::new_v4()
             })),room("offline",false,serde_json::Value::Null)]},
         "users":[{"id":user,"name":"Source","version":"a".repeat(64)},{"id":owner,"name":"Owner","version":"b".repeat(64)}],
-        "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
-            {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
+        "sessions":[SessionInfo {
+            id: session_id,
+            user_id: user,
+            online: true,
+            signing_key: [0; 32],
+            version: piik_channel_core::PRODUCT_VERSION,
+        },
+            SessionInfo {
+                id: host,
+                user_id: owner,
+                online: true,
+                signing_key: [1; 32],
+                version: piik_channel_core::PRODUCT_VERSION,
+            }],
         "watchActivities":[],"watchSubscriptions":[],"watchBytes":[],"files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[]
     }))
     .unwrap();
@@ -1510,7 +1523,13 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 "hostingMode":"lightweight","roomCreationPolicy":"ordinary","askUnnamedMemberName":false,"managedRoomIds":[],
                 "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
-            "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
+            "sessions":[SessionInfo {
+                id: session_id,
+                user_id: user,
+                online: true,
+                signing_key: [0; 32],
+                version: piik_channel_core::PRODUCT_VERSION,
+            }],
             "files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[],
             "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
         }))
