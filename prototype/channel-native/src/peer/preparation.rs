@@ -343,12 +343,15 @@ async fn observe(
     let first = addresses.next().ok_or_else(|| anyhow::anyhow!("no observed endpoint"))?;
     ensure!(addresses.all(|address| address == first), "mapping addresses differ");
     let [Some(a), Some(b), Some(c)] = observations else {
-        // A response describes this socket at that destination. Only try a real observed tuple.
-        let endpoint = observations.into_iter().flatten().map(|endpoint| Observation::Observed {
-            address: *endpoint.ip(),
-            port: endpoint.port(),
-        }).find(Observation::valid).ok_or_else(|| anyhow::anyhow!("no usable observed endpoint"))?;
-        return Ok((endpoint, Some(socket)));
+        let mut replies = observations.into_iter().flatten().filter(|endpoint| {
+            (Observation::Observed { address: *endpoint.ip(), port: endpoint.port() }).valid()
+        });
+        let first = replies.next().ok_or_else(|| anyhow::anyhow!("no usable observed endpoint"))?;
+        if replies.any(|other| other.port() != first.port()) {
+            return Ok((Observation::Irregular { address: *first.ip() }, None));
+        }
+        let observed = Observation::Observed { address: *first.ip(), port: first.port() };
+        return Ok((observed, Some(socket)));
     };
     let step = i32::from(c.port()) - i32::from(b.port());
     let observation = if a == b && b == c {
@@ -371,6 +374,7 @@ async fn observe(
     // The public peer target is checked when supplied by signaling.
     Ok((observation, matches!(observation, Observation::Stable { .. }).then_some(socket)))
 }
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RandomRole {
     Pool,
@@ -385,11 +389,11 @@ impl ProbePlan {
     fn new(local: Observation, remote: Observation) -> Result<Self> {
         ensure!(remote.valid(), "unsupported peer mapping address");
         match (local, remote) {
-            (Observation::Stable { .. }, Observation::Irregular { address }) => Ok(Self {
+            (Observation::Observed { .. } | Observation::Stable { .. }, Observation::Irregular { address }) => Ok(Self {
                 targets: search_targets(address)?,
                 random: Some(RandomRole::Search),
             }),
-            (Observation::Irregular { .. }, Observation::Stable { .. }) => Ok(Self {
+            (Observation::Irregular { .. }, Observation::Observed { .. } | Observation::Stable { .. }) => Ok(Self {
                 targets: vec![remote.target().unwrap()],
                 random: Some(RandomRole::Pool),
             }),
@@ -401,7 +405,7 @@ impl ProbePlan {
                     .target()
                     .ok_or_else(|| anyhow::anyhow!("invalid prediction"))?;
                 let alternate =
-                    if let (Observation::Stable { .. }, Observation::Sequential { step, .. }) =
+                    if let (Observation::Observed { .. } | Observation::Stable { .. }, Observation::Sequential { step, .. }) =
                         (local, remote)
                     {
                         u16::try_from(i32::from(target.port()) + 4 * i32::from(step))
@@ -585,7 +589,7 @@ impl Survey {
             let mut requests_left = if random { RANDOM_REQUEST_BUDGET } else { CHECK_PACKET_BUDGET };
             let mut next_send = Instant::now();
             if is_pool {
-                // M mappings share one stable remote tuple before its N guesses.
+                // M mappings share one measured remote tuple before its N guesses.
                 for (socket, request) in sockets.iter().zip(&requests) {
                     sleep_until(next_send.into()).await;
                     socket.send_to(&request.raw, plan.targets[0]).await?;
@@ -1906,14 +1910,31 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn measured_target_selects_the_complementary_random_roles() -> Result<()> {
+        let public = Ipv4Addr::new(203, 0, 113, 5);
+        let observed = Observation::Observed { address: public, port: 42000 };
+        let irregular = Observation::Irregular { address: Ipv4Addr::new(198, 51, 100, 2) };
+        let search = ProbePlan::new(observed, irregular)?;
+        assert!(matches!(search.random, Some(RandomRole::Search)));
+        assert_eq!(search.targets.len(), RANDOM_TARGETS);
+        let pool = ProbePlan::new(irregular, observed)?;
+        assert!(matches!(pool.random, Some(RandomRole::Pool)));
+        assert_eq!(pool.targets, [SocketAddrV4::new(public, 42000)]);
+        assert!(ProbePlan::new(irregular, irregular).is_err());
+        Ok(())
+    }
+
     #[tokio::test]
-    async fn partial_survey_uses_one_measured_target_and_keeps_its_socket() -> Result<()> {
+    async fn partial_survey_keeps_the_socket_for_an_observed_target() -> Result<()> {
         let public = Ipv4Addr::new(203, 0, 113, 5);
         for (ports, conflicting_ips) in [
             (vec![Some(42000u16), None, Some(42004)], false),
             (vec![None, Some(42002), None], false),
             (vec![Some(42000), None, Some(42004)], true),
             (vec![Some(42000), Some(42002)], false),
+            (vec![Some(42000), Some(42000)], false),
+            (vec![Some(80), Some(42000)], false),
             (vec![Some(42000)], false),
         ] {
             let mut addresses = Vec::new();
@@ -1957,7 +1978,14 @@ mod tests {
                 continue;
             }
             let (observation, retained) = result?;
-            let port = ports.into_iter().flatten().next().unwrap();
+            let mut usable_ports = ports.into_iter().flatten().filter(|port| *port >= 1024);
+            let port = usable_ports.next().unwrap();
+            if usable_ports.any(|other| other != port) {
+                assert!(matches!(observation, Observation::Irregular { address } if address == public));
+                assert!(retained.is_none());
+                while let Some(result) = responders.join_next().await { std::net::UdpSocket::bind(result??)?; }
+                continue;
+            }
             assert!(matches!(observation, Observation::Observed { address, port: p } if address == public && p == port));
             let socket = retained.context("missing retained observation socket")?;
             let client = socket.local_addr()?;
@@ -1965,14 +1993,14 @@ mod tests {
             drop(socket);
             std::net::UdpSocket::bind(client)?;
             let sequential = Observation::Sequential { address: public, port: 43000, step: 2 };
-            for (local, remote) in [(observation, observation), (observation, sequential), (sequential, observation)] {
+            for (local, remote) in [(observation, observation), (sequential, observation)] {
                 let plan = ProbePlan::new(local, remote)?;
                 assert_eq!(plan.targets, [remote.target().unwrap()]);
                 assert!(plan.random.is_none());
             }
-            let irregular = Observation::Irregular { address: public };
-            assert!(ProbePlan::new(observation, irregular).is_err());
-            assert!(ProbePlan::new(irregular, observation).is_err());
+            let plan = ProbePlan::new(observation, sequential)?;
+            assert!(plan.random.is_none());
+            assert_eq!(plan.targets, [SocketAddrV4::new(public, 43008), SocketAddrV4::new(public, 43016)]);
         }
         Ok(())
     }

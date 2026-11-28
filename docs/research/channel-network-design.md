@@ -744,13 +744,17 @@ hypotheses; fixed Server listeners and coordinated Native preparation do not
 generate them. The limit bounds added targets, not the SDK's connectivity checks.
 
 Coordinated UDP preparation starts beside ordinary ICE on one authorized physical
-pair. Both capable Native endpoints survey concurrently, using up to three
-resolved STUN destinations and preserving send order. One or two valid replies
-retain the survey socket and one observed endpoint without claiming a mapping
-pattern. Such an endpoint can participate in the existing authenticated check
-with an observed, stable or fully observed sequential peer. Partial observations
-do not supply a step or qualify for random-port search. Conflicting public
-addresses end preparation. Ordinary ICE continues independently.
+pair when at least two distinct supported STUN authorities are configured.
+Both capable Native endpoints survey concurrently, using up to three
+resolved STUN destinations and preserving send order. One reply or equal partial
+replies retain the survey socket and an unclassified observed endpoint. Two
+differing ports on the same mapped IP qualify for the irregular side. Sequential
+prediction still requires three complete observations. The existing plan pairs
+the irregular side's bounded pool with a search from a peer that retains a
+measured endpoint, whether stable or unclassified. Other named endpoints use
+the existing target check and sequential peer's bounded alternate. Conflicting
+public addresses end preparation.
+Ordinary ICE continues independently.
 The Offer owns the shared secret, and the
 responder publishes its observations only in the Answer. After mutual completion,
 the Runtime admits the socket, reader and candidates in one pump turn before
@@ -766,9 +770,9 @@ and the selected path's provenance is unknown, preparation runs to its bounded e
 When the local survey is stable and the remote survey is sequential, the retained
 socket alternates between two predicted targets. Authenticated traffic fixes one
 target before replies; both peers complete within the preparation's shared limits.
-One stable and one irregular observation can instead use random-port preparation:
-the irregular side opens 256 sockets toward the stable side's retained tuple;
-the stable side checks 1,024 distinct ports on the authorized peer address, each
+One retained endpoint and one irregular observation can use random-port preparation:
+the irregular side opens 256 sockets toward the retained tuple;
+the searching side checks 1,024 distinct ports on the authorized peer address, each
 once: one port drawn inside each of 1,024 equal parts of the 1024–65535
 range, the parts visited in bit-reversed order from a random start, so early
 checks spread across the range. Each endpoint permits at most 1,032 requests and 16 replies,
