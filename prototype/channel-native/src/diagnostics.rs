@@ -174,6 +174,37 @@ pub fn app_retired(owner: Uuid, page: Option<Uuid>, reason: &'static str) {
     );
 }
 
+/// A bounded summary from the local Windows presentation loop.
+#[cfg(all(feature = "capture", windows))]
+pub fn window_loop_lateness(
+    window_ms: u128,
+    samples: u32,
+    max_ms: u128,
+    at_least_16_ms: u32,
+    at_least_50_ms: u32,
+    at_least_100_ms: u32,
+) {
+    let mut state = RECORDER.0.lock().unwrap();
+    let Some(buffer) = state.buffer.as_mut() else {
+        return;
+    };
+    let message = serde_json::json!({
+        "event": "window_loop_lateness",
+        "window_ms": window_ms,
+        "samples": samples,
+        "max_ms": max_ms,
+        "at_least_16_ms": at_least_16_ms,
+        "at_least_50_ms": at_least_50_ms,
+        "at_least_100_ms": at_least_100_ms,
+    });
+    buffer.push(
+        &Record::builder()
+            .level(log::Level::Info)
+            .args(format_args!("{message}"))
+            .build(),
+        "piik.app",
+    );
+}
 /// The selected sound scope is useful even when capture succeeds without an error.
 #[cfg(all(feature = "capture", windows))]
 pub(crate) fn system_audio_source(process: Option<(u32, bool)>) {

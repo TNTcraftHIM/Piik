@@ -8,6 +8,7 @@ mod download;
 mod page;
 mod permission;
 mod popup;
+mod window_loop;
 
 pub use console::attach as attach_console;
 
@@ -19,7 +20,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::{
     cell::RefCell,
     rc::Rc,
+    sync::{atomic::{AtomicBool, Ordering}, Arc},
     thread,
+    time::Instant,
 };
 use tao::{
     dpi::{LogicalPosition, LogicalSize, PhysicalSize},
@@ -167,6 +170,7 @@ fn disable_drag_regions(view: &WebView) {
 }
 #[derive(Clone)]
 enum ServiceEvent {
+    WindowLoopProbe(Instant, Arc<AtomicBool>),
     ResetWebsitePermissions(
         std::sync::Arc<
             std::sync::Mutex<Option<(String, oneshot::Sender<std::result::Result<(), String>>)>>,
@@ -240,7 +244,7 @@ fn worker_finishes_after_headless_close() -> Result<()> {
         update: Default::default(),
     };
     let mut events = EventLoopBuilder::with_user_event().with_any_thread(true).build();
-    let mut core = Core::start(config, Some(0), events.create_proxy())?;
+    let mut core = Core::start(config, Some(0), events.create_proxy(), false)?;
     let mut ready = false;
     let mut finished = false;
     events.run_return(|event, _, flow| {
@@ -266,6 +270,7 @@ impl Core {
         config: Config,
         port: Option<u16>,
         events: EventLoopProxy<ServiceEvent>,
+        has_window: bool,
     ) -> Result<Self> {
         let (stop, stopped) = oneshot::channel();
         let worker = thread::Builder::new().name("piik-app".into()).spawn(move || {
@@ -279,13 +284,24 @@ impl Core {
                     let service = app::serve(listener, config, async {
                         tokio::select! { _ = stopped => {}, _ = signal => {} }
                     }, Some(ready));
-                    tokio::pin!(service);
-                    tokio::select! {
-                        result = &mut service => result,
-                        entry = entry => {
-                            if let Ok(entry) = entry { let _ = events.send_event(ServiceEvent::Ready { entry, launcher }); }
-                            service.await
-                        },
+                    let service = async {
+                        tokio::pin!(service);
+                        tokio::select! {
+                            result = &mut service => result,
+                            entry = entry => {
+                                if let Ok(entry) = entry { let _ = events.send_event(ServiceEvent::Ready { entry, launcher }); }
+                                service.await
+                            },
+                        }
+                    };
+                    if has_window {
+                        tokio::pin!(service);
+                        tokio::select! {
+                            result = &mut service => result,
+                            () = window_loop::sample(&events) => service.await,
+                        }
+                    } else {
+                        service.await
                     }
                 })
             }));
@@ -846,7 +862,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 .is_ok()
         }) as crate::app::page::Dispatcher
     });
-    let mut core = Core::start(config, port, events.create_proxy())?;
+    let mut core = Core::start(config, port, events.create_proxy(), window.is_some())?;
     let mut result = Ok(());
     let mut language = Language::En;
     let mut theme = Theme::Light;
@@ -857,8 +873,18 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let mut minimum_scale = window.as_ref().map(|main| main.window.scale_factor());
     let permission_events = events.create_proxy();
     let page_events = events.create_proxy();
+    let mut samples = window_loop::Samples::default();
     events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
+        let event = match event {
+            Event::UserEvent(ServiceEvent::WindowLoopProbe(posted, pending)) => {
+                let handled = Instant::now();
+                pending.store(false, Ordering::Relaxed);
+                samples.received(posted, handled);
+                return;
+            }
+            event => event,
+        };
         let present_permission = matches!(&event, Event::UserEvent(ServiceEvent::Permission));
         let had_prompt = prompt.is_some();
         match event {
