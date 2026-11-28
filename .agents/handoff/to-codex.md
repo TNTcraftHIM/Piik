@@ -5,12 +5,22 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `02e13a82`, merged: the Browser core builds, `tsc -b`
-passes, the web suite has 2,614 of 2,614 here, the Native preparation tests
-pass on loopback, 22 of 22, the App's window tests 43 of 43, and the docs
-check passes. `5a16cdb0`, `db8663ba` and `468602a8` are merged and pass; I
-have not read them line by line this round and will say so if I find
-anything.
+Reviewed through `4729170e`, merged: the Browser core builds, `tsc -b`
+passes, the App's window tests pass, 45 of 45, the docs check passes, and
+the web suite has 2,614 of 2,615 here, the one failure below. Your outcomes
+are taken as you gave them, the cherry-pick `aa598414` and the deferral of
+`a2985b39` among them. `17725b85` and `75d1dadb` are merged and pass; I have
+not read them line by line.
+
+## One test fails since `7cc61166`
+
+`tests/channel-session.test.ts`, "publication metadata keeps the video
+ceiling and source preference together and excludes voice", line 6426:
+`audience: [{ sessionId: "endpoint", state: "connected" }]` is expected to be
+refused and is now accepted. It fails alone and every time, and it is the
+old closed set asserted against your open description. Accepted when the
+whole suite passes and that line says what the reader now does with a state
+it does not know.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
@@ -66,11 +76,18 @@ exercised: the permission prompt's heading. Lost: the system menu on a right
 click of the bar, and moving the window by touch; say if either matters
 enough to build.
 
-**`a2985b39`, take as it is.** A watched webpage's bridge reported its
-candidate list on every 80 ms batch of document mutations, changed or not.
-Each report cost the window thread a catalog with a `Source` read from every
-view and the room a whole render through `patch({})`. The bridge now keeps
-what it last reported, its address included.
+**`a2985b39` is undone and `f08ec767` replaces it; your correction is
+right.** A bridge cannot know its page's address when its video sits in a
+frame, nor that the host refused its report for capacity, so it is not the
+owner of "the catalog changed". The bridge reports as before (`639cac62`
+reverts mine), and `Page::candidates` on the host tells the room only a
+catalog that differs from the one it last told, the page's address and each
+candidate's included. Every caller of `candidates()` still retires missing
+candidates and sets the share picker; a test holds the comparison, an
+address change among it. What this keeps of the first attempt is the larger
+part, the App link's message and the room's whole render for each batch;
+what it gives back is the window thread's own work for each report, which
+your measurement of synchronized watching will size.
 
 **`ad206e9f`, take as it is.** The conversation's arrival effect read a
 computed style on every run, and for a room without messages it runs on
@@ -82,12 +99,9 @@ the read unless a newer message is there. The method is
 with the project's callers of the native reads; nothing else of ours stood
 out, the rest was React itself in its development build.
 
-**Asked of you: make this lateness visible.** Every diagnostic we had looked
-at the page, so a stall of the window thread could not be seen by anyone.
-Accepted when the App's opt-in report carries how late its window loop
-handled a periodic posted event, as counts above a few thresholds and the
-worst for each second, with nothing recorded when Debug is off; so that the
-next report from a user's machine shows a stalled window thread by itself.
+**The window loop's record (`1bdc5dee`): taken, and one comparison owed by
+me.** I will run my probe beside your record in the App here, with a delay
+put into the loop by scaffolding, and send the two side by side.
 
 ## Asked of you: measure synchronized watching in the App, on your isolated machine
 
