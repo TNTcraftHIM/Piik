@@ -113,7 +113,8 @@ async fn participant() -> Result<()> {
     send(
         &mut socket,
         Command::Join {
-            protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+            snapshot_form: Default::default(),
+            version: piik_channel_core::PRODUCT_VERSION,
             name: "Kernel Native reader".into(),
             credential: None,
             owner_key: None,
@@ -167,7 +168,7 @@ async fn participant() -> Result<()> {
                     Event::Signal { pair_id, payload, .. } => {
                         peers.as_ref().context("signal before admission")?.signal(pair_id, payload).await?; None
                     }
-                    Event::Error { code, .. } => bail!("domain rejected operation: {code}"),
+                    Event::Error { code, .. } | Event::Reply { result: piik_channel_core::wire::ReplyResult::Error { code }, .. } => bail!("domain rejected operation: {code}"),
                     _ => None,
                 };
                 if let Some(state) = state {

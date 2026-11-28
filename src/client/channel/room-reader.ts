@@ -66,13 +66,13 @@ export class RoomReader {
     return this.admission?.readyRequestId === requestId || this.interactionSession?.getSnapshot().pending?.requestId === requestId;
   }
 
-  receiveInteraction(requestId: string, record: InteractionReply): boolean {
+  receiveInteraction(requestId: string | undefined, record: InteractionReply): boolean {
     const interaction = this.interactionSession;
     if (!interaction) return false;
     switch (record.type) {
       case "interaction_ready": {
         const admission = this.admission;
-        if (admission?.readyRequestId !== requestId) return true;
+        if (!requestId || admission?.readyRequestId !== requestId) return true;
         delete admission.readyRequestId;
         interaction.setSupportedReactions(record.reactionIds);
         interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
@@ -83,7 +83,7 @@ export class RoomReader {
         if (record.snapshot?.type === "publication") this.options.publicationReactions(record.snapshot);
         const event = record.event;
         if (!event) {
-          interaction.confirm(requestId, record.nonce);
+          if (requestId) interaction.confirm(requestId, record.nonce);
           return true;
         }
         const { senderUserId, target } = event;
@@ -96,7 +96,7 @@ export class RoomReader {
         return true;
       }
       case "error":
-        this.settle(requestId, record.code === "rate_limited" ? "rate-limited"
+        if (requestId) this.settle(requestId, record.code === "rate_limited" ? "rate-limited"
           : record.code === "target_unavailable" ? "target-unavailable" : "busy");
         return true;
     }
@@ -120,7 +120,7 @@ export class RoomReader {
     const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
     const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
     interaction.receiveConfirmedChat({
-      type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
+      type: "room-interaction", id: message.id, occurredAt: message.time, messageSeq: message.seq,
       sender: { peerId: message.userId, displayName, role: "viewer" }, payload: { kind: "chat", text },
     });
   }

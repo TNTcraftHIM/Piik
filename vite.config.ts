@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { productVersionDefine } from "./scripts/release-version.mjs";
 import { defineConfig } from "vite";
 import { buildFilmControls } from "./scripts/build-film-controls.mjs";
 
@@ -7,6 +8,7 @@ import { buildFilmControls } from "./scripts/build-film-controls.mjs";
 const server = `http://127.0.0.1:${process.env.PIIK_CHANNEL_PORT ?? 8791}`;
 
 export default defineConfig({
+  define: productVersionDefine(process.env.PIIK_BUILD_VERSION),
   plugins: [react(), {
     name: "film-controls",
     apply: "serve",

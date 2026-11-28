@@ -22,7 +22,8 @@ export function buildChannelWeb(root, { version, revision, cargoTarget }) {
     try { assertCleanRevision(root, revision); reusable = true; } catch {}
   }
   const env = { ...process.env, RUSTUP_TOOLCHAIN: '1.91.0',
-    VITE_PIIK_VERSION: version, VITE_PIIK_REVISION: revision,
+    PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision,
+    VITE_PIIK_REVISION: revision,
     ...(cargoTarget ? { CARGO_TARGET_DIR: cargoTarget } : {}) };
   writeChannelWebLicenseNotices(root, join(root, 'public', 'third-party-licenses.txt'));
   for (const args of [

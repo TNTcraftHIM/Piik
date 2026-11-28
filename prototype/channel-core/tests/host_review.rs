@@ -1,3 +1,4 @@
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     host::{HostAction, HostInput, RequestContext, RoomHost},
     wire::{Command, Kind, PublicationInput, RoomAccess, VideoCeiling, VideoResolution},
@@ -142,7 +143,7 @@ fn review_admit(core: &mut piik_channel_core::Authority, connection: Uuid, key: 
     core.handle(
         connection,
         piik_channel_core::wire::Request::parse(
-            &serde_json::json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","ownerKey":(key=="owner").then_some(key)}).to_string(),
+            &serde_json::json!({"type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","ownerKey":(key=="owner").then_some(key)}).to_string(),
         )
         .unwrap(),
         0,
@@ -211,7 +212,6 @@ fn review_register(
 #[test]
 fn unchanged_host_projection_keeps_replies_without_rebroadcasting_room_state() {
     use piik_channel_core::{
-        host::RoomResult,
         wire::{Event, Request},
         Authority,
     };
@@ -241,7 +241,7 @@ fn unchanged_host_projection_keeps_replies_without_rebroadcasting_room_state() {
     host.dispatch(input).unwrap();
     let unchanged = review_host_turn(&mut core, owner, "emission-review", host.finish(None).unwrap());
     assert!(unchanged.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "enter")));
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id == "enter")));
     assert!(!unchanged.events.iter().any(|(_, event)| matches!(event, Event::State { .. })));
 
     let read = core.handle(owner, Request {
@@ -256,14 +256,13 @@ fn unchanged_host_projection_keeps_replies_without_rebroadcasting_room_state() {
     assert!(changed.events.iter().any(|(_, event)| matches!(event, Event::State { state }
         if state.channel.rooms.iter().any(|room| room.id == "emission-review" && room.reading))));
     assert!(changed.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "read")));
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id == "read")));
     assert_eq!(core.current_connection(session), Some(owner));
 }
 
 #[test]
 fn pending_room_request_finishes_when_its_host_binding_retires() {
     use piik_channel_core::{
-        host::RoomResult,
         wire::{Event, Request},
         Authority, RECOVERY_MS,
     };
@@ -280,7 +279,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         let reader = Uuid::new_v4();
         review_admit(&mut core, owner, "owner");
         let joined = core.handle(reader, Request::parse(&serde_json::json!({
-            "type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name":"Reader", "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
+            "type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor, "name":"Reader", "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
         }).to_string()).unwrap(), 0);
         let (reader_session, credential) = joined
             .events
@@ -346,7 +345,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         assert!(!accepted
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
         if case == "stop" {
             let mut retired_source = core.clone();
             let retired = retired_source.handle(
@@ -394,7 +393,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         let replacement = Uuid::new_v4();
         if case == "requester-replaced" {
             core.handle(replacement, Request::parse(&serde_json::json!({
-                "type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name":"Reader", "credential":credential, "sessionId":reader_session,
+                "type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor, "name":"Reader", "credential":credential, "sessionId":reader_session,
                 "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
             }).to_string()).unwrap(), 2);
         }
@@ -470,7 +469,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
             .iter()
             .filter(|(_, event)| {
                 matches!(event,
-            Event::RoomReply { request_id: Some(id), .. } if id == "preflight-enter")
+            Event::Reply { room_id: Some(_), request_id: id, .. } if id == "preflight-enter")
             })
             .collect();
         if case == "requester-replaced" {
@@ -481,8 +480,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         } else {
             assert_eq!(replies.len(), 1, "{case} left its room request pending");
             assert!(
-                matches!(replies[0], (target, Event::RoomReply { room_id: id,
-                result: RoomResult::Error { code }, .. })
+                matches!(replies[0], (target, Event::Reply { room_id: Some(id), result: ReplyResult::Error { code }, .. })
                 if *target == reader && id == room_id && code == "room_context_changed")
             );
         }
@@ -491,7 +489,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
             !late.events.iter().any(|(target, event)| (*target == reader
                 || *target == replacement)
                 && matches!(event,
-                Event::RoomReply { request_id: Some(id), .. } if id == "preflight-enter")),
+                Event::Reply { room_id: Some(_), request_id: id, .. } if id == "preflight-enter")),
             "{case} completed a retired request from late host output"
         );
     }
@@ -564,7 +562,7 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
         !effects
             .events
             .iter()
-            .any(|(target, event)| *target == c && matches!(event, Event::RoomReply { .. })),
+            .any(|(target, event)| *target == c && matches!(event, Event::Reply { room_id: Some(_), .. })),
         "host completed a request never routed to its room"
     );
 }
@@ -656,7 +654,7 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
         .events
         .iter()
         .any(|(target, e)| *target == c
-            && matches!(e,Event::Ack{request_id} if request_id=="rename")));
+            && matches!(e,Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id=="rename")));
     let stopped = core.handle(
         b,
         Request {
@@ -670,7 +668,7 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
     );
     assert!(!stopped.close.contains(&c));
     assert!(stopped.events.iter().any(|(target,e)| *target==c && matches!(e,
-        Event::RoomReply { request_id:Some(id), result:piik_channel_core::host::RoomResult::Error { code }, .. } if id=="entry" && code=="room_context_changed")));
+        Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Error { code } } if id=="entry" && code=="room_context_changed")));
 }
 
 #[test]
@@ -790,12 +788,12 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         piik_channel_core::host::RoomResult::Deleted { data_removed: true };
     let rejected = review_host_turn(&mut core, b, "concurrent-review", forged_delete);
     assert!(rejected.events.iter().any(
-        |(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_reply")
+        |(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_reply")
     ));
     let completed = review_host_turn(&mut core, b, "concurrent-review", output);
     assert!(
         completed.events.iter().any(|(target, e)| *target == b
-            && matches!(e,Event::RoomReply{request_id:Some(id),..}if id=="publish")),
+            && matches!(e,Event::Reply { room_id: Some(_), request_id: id, .. }if id=="publish")),
         "publish completion was lost"
     );
     // The already-acknowledged source must remain admitted in unrelated full snapshots.
@@ -1145,7 +1143,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                         _ => unreachable!(),
                     }
                     let effects = review_host_turn(&mut core, source, room, output);
-                    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")), "invalid flow ownership must be rejected: {conflict}");
+                    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection")), "invalid flow ownership must be rejected: {conflict}");
                     let state = core
                         .handle(
                             source,
@@ -1438,7 +1436,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             let mut invalid = published.clone();
             invalid.projection.views.get_mut(&relay).unwrap().watch_bytes[0].upstream = Some(branch);
             assert!(review_host_turn(&mut core, connections[0], room_id, invalid).events.iter()
-                .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")));
+                .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection")));
             let result = review_host_turn(&mut core, connections[0], room_id, published);
             assert!(result.events.iter().any(|(_, e)| matches!(e, Event::HostInput { room_id: room, input }
                 if room == room_id && input.failed_pairs.iter().any(|failure|
@@ -1473,7 +1471,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         assert!(!accepted
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
         let original = serde_json::to_value(state(&mut core, connections[2]).pairs).unwrap();
 
         let mut prepared = output(
@@ -1581,7 +1579,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         }
         let effects = review_host_turn(&mut core, connections[0], room_id, prepared);
         if !matches!(case, "shadow" | "promotion" | "fresh_lineage") {
-            assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")), "accepted invalid lineage: {case}");
+            assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection")), "accepted invalid lineage: {case}");
             assert_eq!(
                 serde_json::to_value(state(&mut core, connections[2]).pairs).unwrap(),
                 original,
@@ -1593,7 +1591,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             !effects
                 .events
                 .iter()
-                .any(|(_, event)| matches!(event, Event::Error { .. })),
+                .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })),
             "rejected valid lineage: {case}"
         );
         let before = state(&mut core, connections[2]);
@@ -1631,7 +1629,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             assert!(!effects
                 .events
                 .iter()
-                .any(|(_, event)| matches!(event, Event::Error { .. })));
+                .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
             let after = state(&mut core, connections[2]);
             let promoted: BTreeMap<_, _> = after
                 .pairs
@@ -1666,7 +1664,7 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
         let effects = core.handle(
             socket,
             Request::parse(
-                &json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+                &json!({"type":"join","canUsePeerTransport":true,"major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,
             "name":"Viewer","signingKey":signer,"credential":credential,"sessionId":resume})
                 .to_string(),
             )
@@ -1731,7 +1729,7 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
         effects
             .events
             .iter()
-            .all(|(_, event)| !matches!(event, Event::Error { .. })),
+            .all(|(_, event)| !matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })),
         "{}",
         serde_json::to_string(&effects.events).unwrap()
     );
@@ -1750,7 +1748,7 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
         .unwrap();
     let rejected = |effects: piik_channel_core::Effects| {
         effects.events.iter()
-        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection"))
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection"))
     };
     let mut wrong_helper = output.clone();
     wrong_helper
@@ -1822,7 +1820,7 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
     let (resumed, _, joined) = join_reader(&mut core, Uuid::new_v4(), Some(credential), Some(helper));
     assert_eq!(resumed, helper);
     let retained = review_host_turn(&mut core, writer, room, output.clone());
-    assert!(!retained.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
+    assert!(!retained.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     assert!(!retained.events.iter().any(|(_, event)| matches!(event, Event::State { .. })),
         "the unchanged projection does not repeat the state already sent by rejoin");
     assert!(joined
@@ -1836,7 +1834,6 @@ fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() 
 #[test]
 fn room_topology_exposes_only_admitted_pairs_inside_the_current_room_scope() {
     use piik_channel_core::{
-        host::RoomResult,
         wire::{Event, LinkState, Request},
         Authority,
     };
@@ -1886,10 +1883,7 @@ fn room_topology_exposes_only_admitted_pairs_inside_the_current_room_scope() {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply {
-                result: RoomResult::Topology { topology },
-                ..
-            } => Some(topology),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Topology { topology }, .. } | Event::Deferred { result: ReplyResult::Topology { topology }, .. } => Some(topology),
             _ => None,
         })
         .unwrap()
@@ -1987,7 +1981,7 @@ fn relay_candidates_admit_the_writer_and_voice_member_within_the_room_grant() {
         result
             .events
             .iter()
-            .any(|(_, e)| matches!(e, Event::Error {code,..} if code == "invalid_room_projection"))
+            .any(|(_, e)| matches!(e, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "invalid_room_projection"))
     };
     let mut outside = actual.clone();
     outside.projection.relay_session_ids.insert(lobby);
@@ -2091,7 +2085,7 @@ fn registered_writer_reloads_lineage_across_summary_change_and_full_install() {
         assert!(!effects
             .events
             .iter()
-            .any(|(_, e)| matches!(e, Event::Error { .. })))
+            .any(|(_, e)| matches!(e, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })))
     };
     accepted(review_host_turn(&mut domain, connection, id, output));
 
@@ -2123,7 +2117,7 @@ fn registered_writer_reloads_lineage_across_summary_change_and_full_install() {
     assert!(stale
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "stale_room_host")));
     drop((host, archive));
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -2151,4 +2145,68 @@ fn new_host_policy_preserves_advertised_media_and_site_relay_choice() {
         assert!(piik_channel_core::host::RoomSummary::from_policy(&installed) == summary);
         assert_eq!(installed.allow_service_relay, allow.unwrap_or(true));
     }
+}
+
+#[test]
+fn new_host_action_uses_the_pending_revision_and_a_later_projection_remains_usable() {
+    use piik_channel_core::{wire::{Event, Request}, Authority};
+    use serde_json::json;
+
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    review_admit(&mut core, owner, "owner");
+    let room_id = "revision-room";
+    let mut host = RoomHost::new(RoomState::new(room_id.into(), "Room".into(),
+        Default::default(), core.identity().1, RoomAccess::Public, false, None).unwrap());
+    let sync = review_register(&mut core, owner, &host);
+    host.dispatch(sync).unwrap();
+    review_host_turn(&mut core, owner, room_id, host.finish(None).unwrap());
+    let enter = |core: &mut Authority, id: &str| {
+        core.handle(owner, Request {
+            request_id: Some(id.into()),
+            command: Command::EnterRoom { room_id: room_id.into(), password: None, invite_key: None },
+        }, 2).events.into_iter().find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        }).unwrap()
+    };
+    let first = enter(&mut core, "first");
+    let next = enter(&mut core, "next");
+    let baseline = serde_json::to_value(&first).unwrap();
+    let mut extended = baseline.clone();
+    for path in ["", "/action", "/action/context", "/action/command"] {
+        extended.pointer_mut(path).unwrap()["extension"] = json!(true);
+    }
+    let input: HostInput = serde_json::from_value(extended).unwrap();
+    assert_eq!(serde_json::to_value(input).unwrap(), baseline);
+    for nested in [false, true] {
+        let mut wire = serde_json::to_value(&first).unwrap();
+        if nested {
+            wire["action"]["command"] = json!({"type":"later_command","value":2});
+        } else {
+            wire["action"] = json!({"type":"later_action","value":2});
+        }
+        let input: HostInput = serde_json::from_value(wire).unwrap();
+        assert!(input.action.is_unsupported());
+        assert_eq!(host.dispatch(input).err(), Some("unsupported"));
+    }
+    let unsupported = |core: &mut Authority, binding_id| core.handle(owner, Request {
+        request_id: None,
+        command: Command::HostUnsupported { room_id: room_id.into(), binding_id, revision: first.revision },
+    }, 3);
+    let stale = unsupported(&mut core, Uuid::new_v4());
+    assert!(matches!(stale.events.as_slice(), [(_, Event::Error { code, .. })] if code == "stale_room_host"));
+    let answered = unsupported(&mut core, first.binding_id);
+    assert!(matches!(answered.events.as_slice(),
+        [(_, Event::Reply { request_id, room_id: Some(scope), result: ReplyResult::Error { code } })]
+        if request_id == "first" && scope == room_id && code == "unsupported"));
+    assert!(unsupported(&mut core, first.binding_id).events.is_empty());
+
+    host.dispatch(next).unwrap();
+    let mut output = serde_json::to_value(host.finish(None).unwrap()).unwrap();
+    output["reply"]["result"] = json!({"type":"later_result","value":2});
+    let received = review_host_turn(&mut core, owner, room_id, serde_json::from_value(output).unwrap());
+    assert!(received.events.iter().any(|(_, event)| matches!(event,
+        Event::Reply { request_id, room_id: Some(scope), result: ReplyResult::Unknown }
+            if request_id == "next" && scope == room_id)));
 }

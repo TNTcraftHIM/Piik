@@ -87,6 +87,7 @@ pub struct DomainMetadata {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DomainArchiveMetadata {
     pub version: u32,
+    #[serde(deserialize_with = "reject_ignored")]
     pub state: DomainStateHeader,
     pub owner_key: String,
 }
@@ -213,6 +214,7 @@ pub struct OwnCredential {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RetainedFile {
     pub message_seq: u64,
+    #[serde(deserialize_with = "reject_ignored")]
     pub attachment: AttachmentDescriptor,
 }
 
@@ -431,8 +433,20 @@ impl HistoryRow {
 #[serde(rename_all = "camelCase")]
 pub struct LiveHistoryRow {
     pub nonce: String,
-    #[serde(flatten, deserialize_with = "archive_message")]
+    #[serde(flatten, deserialize_with = "stored_message")]
     pub message: StoredMessage,
+}
+
+pub(crate) fn reject_ignored<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+    input: D,
+) -> Result<T, D::Error> {
+    let mut ignored = false;
+    let value = serde_ignored::deserialize(input, |_| ignored = true)?;
+    if ignored {
+        Err(serde::de::Error::custom("unknown stored field"))
+    } else {
+        Ok(value)
+    }
 }
 
 // Archive rows reuse the wire message fields, but must reject durable data the
@@ -442,7 +456,11 @@ fn archive_fields<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
 ) -> Result<T, D::Error> {
     #[derive(Deserialize)]
     struct Fields<T> {
-        #[serde(flatten)]
+        #[serde(
+            flatten,
+            deserialize_with = "reject_ignored",
+            bound(deserialize = "T: Deserialize<'de>")
+        )]
         known: T,
         #[serde(flatten)]
         extra: BTreeMap<String, serde::de::IgnoredAny>,
@@ -452,11 +470,15 @@ fn archive_fields<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
     if fields.extra.is_empty() {
         Ok(fields.known)
     } else {
-        Err(serde::de::Error::custom("unknown backup history field"))
+        Err(serde::de::Error::custom("unknown stored field"))
     }
 }
 
-fn archive_message<'de, D: serde::Deserializer<'de>>(input: D) -> Result<StoredMessage, D::Error> {
+/// Read a complete persisted message before projecting it for a history consumer.
+#[derive(Deserialize)]
+pub struct PersistedMessage(#[serde(deserialize_with = "stored_message")] pub StoredMessage);
+
+pub(crate) fn stored_message<'de, D: serde::Deserializer<'de>>(input: D) -> Result<StoredMessage, D::Error> {
     #[derive(Deserialize)]
     struct Message {
         #[serde(deserialize_with = "archive_fields")]

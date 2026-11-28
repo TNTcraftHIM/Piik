@@ -212,7 +212,8 @@ async fn capture_scope_survives_host_signaling_recovery_but_not_retired_authorit
 
     fn send(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
         if command["type"] == "join" {
-            command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+            command["major"] = json!(piik_channel_core::PRODUCT_VERSION.major);
+            command["minor"] = json!(piik_channel_core::PRODUCT_VERSION.minor);
             command["signingKey"] = json!(
                 piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
             );

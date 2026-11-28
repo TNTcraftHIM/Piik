@@ -524,6 +524,12 @@ directory entry; automatic recovery cannot recreate a removed room. Explicit
 backup import may restore an absent entry after authenticating as that room's
 creator. An archive's identifiers alone do not grant that authority.
 
+App creation sends the allocated ID and room settings. The authenticated hosting
+runtime constructs and validates the policy through the shared core. Opening
+an existing room reads its saved policy. A settings rejection before installation
+releases the creation reservation. A lost or unknown result retains it; only
+an explicit opened result confirms the room to the requesting page.
+
 In a lightweight channel, removing only the directory entry retires room access
 and activity. The creator keeps the local room data even if the host comes
 online during confirmation. The creator can also delete an online room's policy
@@ -599,8 +605,10 @@ without automatic replication, ownership transfer or a second storage role.
 Both restore and copy rebuild reply excerpts and author labels from the earlier
 message in the imported history. If that message was deleted or is missing,
 the reply keeps its own body and loses its quotation.
-The supported archive formats reject unrecognized fields in history rows
-before installation, so restoring cannot silently discard saved content.
+Stores and archives reject unrecognized content at the typed read boundary.
+History reads validate the parts they consume. A text-only page can omit images
+without decoding or changing the stored image column; complete export validates
+the complete row before installation.
 
 Use the storage platform's consistent snapshot mechanism; native SQLite provides
 the [online backup API](https://www.sqlite.org/backup.html). For a room restore,

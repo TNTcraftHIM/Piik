@@ -49,6 +49,7 @@ pub(crate) enum ConversationDelivery {
     AdvancedHistory,
 }
 
+#[derive(Default)]
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
     pub state_changed: bool,
@@ -180,7 +181,9 @@ impl Channel {
                 self.identity
                     .sessions
                     .get(&id)
-                    .is_some_and(|session| session.connection.is_some() && session.can_prepare_udp)
+                    .is_some_and(|session| {
+                        session.connection.is_some() && session.capabilities.can_prepare_udp
+                    })
             })
     }
     pub(crate) fn identity(&self) -> (Uuid, Uuid) {
@@ -1101,7 +1104,7 @@ impl Channel {
         &mut self,
         session: Uuid,
         packet: crate::conversation::SignedPacket,
-    ) -> Result<(Uuid, Event, ConversationDelivery), &'static str> {
+    ) -> Result<Option<(Uuid, Event, ConversationDelivery)>, &'static str> {
         if packet.sender != session {
             return Err("invalid_conversation_sender");
         }
@@ -1122,7 +1125,6 @@ impl Channel {
         if address.binding_id != binding.id || !valid_id(&address.request_id) {
             return Err("invalid_conversation_scope");
         }
-        let to_writer = address.recipient == binding.session;
         let participant = if address.sender == binding.session {
             address.recipient
         } else if address.recipient == binding.session {
@@ -1144,11 +1146,8 @@ impl Channel {
             .get(&participant)
             .ok_or("session_expired")?;
         let member = self.identity.member(endpoint.user_id)?;
-        let reply = if address.sender == binding.session {
-            serde_json::from_str::<crate::conversation::ConversationReply>(&packet.payload).ok()
-        } else {
-            None
-        };
+        use crate::conversation::{ConversationRecord, ConversationRole, SignedBody};
+        let body = SignedBody::read(&packet, &address, binding.session)?;
         let authorized = room.online_read_access(member, participant).ok_or("room_access_required")?;
         let denial = if !authorized {
             Some("room_access_required")
@@ -1158,41 +1157,54 @@ impl Channel {
             None
         };
         if let Some(code) = denial {
-            if reply.is_some() {
-                let error = Event::RoomReply {
-                    room_id: address.room_id,
-                    request_id: Some(address.request_id),
-                    result: RoomResult::Error { code: code.into() },
+            if body.role == ConversationRole::Record {
+                let error = Event::Reply {
+                    room_id: Some(address.room_id),
+                    request_id: address.request_id,
+                    result: crate::wire::ReplyResult::Error { code: code.into() },
                 };
-                return Ok((address.recipient, error, ConversationDelivery::ToReader));
+                return Ok(Some((
+                    address.recipient,
+                    error,
+                    ConversationDelivery::ToReader,
+                )));
+            }
+            if body.role == ConversationRole::Notice {
+                return Ok(None);
             }
             return Err(code);
         }
         let mut changed = false;
-        if let Some(crate::conversation::ConversationRecord::Confirmed { message, .. }) =
-            reply.map(|reply| reply.record)
-        {
-            let seq = message.message.seq;
-            if seq == 0 || seq > i64::MAX as u64 {
-                return Err("invalid_message");
-            }
-            if let Some(projection) = self
-                .remote
-                .get_mut(&address.room_id)
-                .and_then(|room| room.projection.as_mut())
+        if body.role == ConversationRole::Record && body.kind == "confirmed" {
+            if let Ok(ConversationRecord::Confirmed { message, .. }) =
+                serde_json::from_str(body.raw.get())
             {
-                changed = seq > projection.last_message_seq;
-                projection.last_message_seq = projection.last_message_seq.max(seq);
+                let seq = message.message.seq;
+                if seq == 0 || seq > i64::MAX as u64 {
+                    return Err("invalid_message");
+                }
+                if let Some(projection) = self
+                    .remote
+                    .get_mut(&address.room_id)
+                    .and_then(|room| room.projection.as_mut())
+                {
+                    changed = seq > projection.last_message_seq;
+                    projection.last_message_seq = projection.last_message_seq.max(seq);
+                }
             }
         }
         let delivery = if changed {
             ConversationDelivery::AdvancedHistory
-        } else if to_writer {
+        } else if body.role == ConversationRole::Command {
             ConversationDelivery::ToWriter
         } else {
             ConversationDelivery::ToReader
         };
-        Ok((address.recipient, Event::Conversation { packet }, delivery))
+        Ok(Some((
+            address.recipient,
+            Event::Conversation { packet },
+            delivery,
+        )))
     }
 
     pub(crate) fn remove_room(&mut self, id: &str, actor: Uuid) -> Vec<RetiredRoomReply> {
@@ -1421,6 +1433,36 @@ impl Channel {
         Ok(replies)
     }
 
+    fn host_binding(&self, id: &str, session: Uuid, connection: Uuid, binding_id: Uuid, revision: u64) -> Result<&crate::remote::Binding, &'static str> {
+        let room = self.remote.get(id).ok_or("room_unavailable")?;
+        let binding = room.binding.as_ref().ok_or("stale_room_host")?;
+        if binding.id != binding_id || binding.session != session || binding.connection != connection {
+            return Err("stale_room_host");
+        }
+        if revision > binding.revision { return Err("invalid_room_revision"); }
+        Ok(binding)
+    }
+
+    pub(crate) fn unsupported_host_input(
+        &mut self, id: &str, session: Uuid, connection: Uuid, binding_id: Uuid, revision: u64,
+    ) -> Result<HostAcceptance, &'static str> {
+        let binding = self.host_binding(id, session, connection, binding_id, revision)?;
+        let reply = match binding.replies.get(&revision) {
+            Some(ReplyOwner::Request { context, completion: None, .. }) => Some(RoomReply {
+                context: context.clone(),
+                result: RoomResult::Error { code: "unsupported".into() },
+            }),
+            Some(ReplyOwner::RouteWake) => None,
+            _ => return Ok(HostAcceptance::default()),
+        };
+        let needs_read_policy = revision == binding.read_floor && binding.applied_revision < revision;
+        let mut accepted = self.finish_host_output(id, revision, reply, false);
+        if needs_read_policy {
+            accepted.repair_input = Some(self.host_input(id, HostAction::Sync)?);
+        }
+        Ok(accepted)
+    }
+
     pub(crate) fn accept_host(
         &mut self,
         id: &str,
@@ -1428,17 +1470,7 @@ impl Channel {
         connection: Uuid,
         output: HostOutput,
     ) -> Result<HostAcceptance, &'static str> {
-        let room = self.remote.get(id).ok_or("room_unavailable")?;
-        let binding = room.binding.as_ref().ok_or("stale_room_host")?;
-        if binding.id != output.binding_id
-            || binding.session != session
-            || binding.connection != connection
-        {
-            return Err("stale_room_host");
-        }
-        if output.revision > binding.revision {
-            return Err("invalid_room_revision");
-        }
+        let binding = self.host_binding(id, session, connection, output.binding_id, output.revision)?;
         let reply_valid = match binding.replies.get(&output.revision) {
             Some(ReplyOwner::Request {
                 context,
@@ -2091,7 +2123,7 @@ impl Channel {
                     && self.identity.member(member.user_id).ok().as_ref() == Some(member);
                 (*revision <= binding.applied_revision
                     || !current
-                    || matches!(result, RoomResult::Error { .. }))
+                    || matches!(result, RoomResult::Unknown | RoomResult::Error { .. }))
                 .then_some((*revision, current))
             })
             .collect();
@@ -2245,12 +2277,36 @@ impl Channel {
         })
     }
 
+    fn snapshot_member(&self, session_id: Uuid) -> Option<crate::identity::Member> {
+        let session = self.identity.sessions.get(&session_id)?;
+        self.identity.member(session.user_id).ok()
+    }
+
+    fn directory_rooms(&self, member: crate::identity::Member) -> impl Iterator<Item = &RemoteRoom> {
+        self.remote.values().filter(move |room| {
+            member.user_id == room.summary.creator_id
+                || self.room_creation_policy.permits(Some(self.identity.owner_id), &room.summary)
+        })
+    }
+
+    pub(crate) fn conversation_snapshot(&self, session_id: Uuid) -> ConversationSnapshot {
+        let rooms = self.snapshot_member(session_id).into_iter().flat_map(|member| {
+            self.directory_rooms(member).filter_map(move |room| {
+                room.conversation_snapshot(member, session_id, Self::host_online(&self.identity, room))
+            })
+        }).collect();
+        ConversationSnapshot {
+            channel: ConversationChannelInfo { hosting_mode: self.hosting_mode, rooms },
+            sessions: self.identity.sessions.values().map(|session| SigningSession {
+                id: session.id,
+                signing_key: session.signing_key,
+                version: session.version,
+            }).collect(),
+        }
+    }
+
     pub fn snapshot(&self, session_id: Uuid) -> Snapshot {
-        let member = self
-            .identity
-            .sessions
-            .get(&session_id)
-            .and_then(|session| self.identity.member(session.user_id).ok());
+        let member = self.snapshot_member(session_id);
         let mut rooms = Vec::new();
         let mut publications = Vec::new();
         let mut watch_activities = Vec::new();
@@ -2260,14 +2316,7 @@ impl Channel {
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
         if let Some(member) = member {
-            for room in self.remote.values() {
-                if member.user_id != room.summary.creator_id
-                    && !self
-                        .room_creation_policy
-                        .permits(Some(self.identity.owner_id), &room.summary)
-                {
-                    continue;
-                }
+            for room in self.directory_rooms(member) {
                 if let Some(projection) =
                     room.projection.as_ref().filter(|_| room.binding.is_some())
                 {
@@ -2304,13 +2353,10 @@ impl Channel {
                 if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
                 {
-                    let bound = room.binding.as_ref().zip(room.projection.as_ref());
-                    if let Some((binding, projection)) = bound.filter(|_| snapshot.room.authorized)
+                    if let Some((binding, projection)) =
+                        room.projected_binding().filter(|_| snapshot.room.authorized)
                     {
-                        snapshot.room.delivery = Some(RoomDelivery {
-                            host_session_id: binding.session,
-                            binding_id: binding.id,
-                        });
+                        snapshot.room.delivery = Some(binding.delivery());
                         if snapshot.room.available
                             && binding.applied_revision >= binding.projection_floor
                         {
@@ -2383,6 +2429,7 @@ impl Channel {
                     user_id: session.user_id,
                     online: session.connection.is_some(),
                     signing_key: session.signing_key,
+                    version: session.version,
                 })
                 .collect(),
             publications,
@@ -2395,7 +2442,7 @@ impl Channel {
                     self.identity
                         .sessions
                         .get(&peer)
-                        .is_some_and(|session| session.can_receive_video_layers)
+                        .is_some_and(|session| session.capabilities.can_receive_video_layers)
                 },
             ),
             ice_servers: self.ice_servers.clone(),

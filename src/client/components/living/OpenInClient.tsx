@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppDiscovery } from "../../native/discovery";
 import { clientNavigationURL } from "../../channel/client-navigation";
+import type { AppConnectionIssue } from "../../ui/diagnosis";
 import { Glyph } from "../../ui/icons";
 import { Btn, Cap } from "./primitives";
 
 interface NavigationAttempt { controller: AbortController; popup: Window }
-export type AppNavigationIssue = "unsupported" | "popup-blocked" | "unavailable" | "incompatible";
+export type AppNavigationIssue = "unsupported" | "popup-blocked" | AppConnectionIssue;
 
 /** Navigation asks the local launcher to confirm a destination; it never approves a site. */
 export function OpenInClient({ discovery, targetURL, active, disabled, onIssue }: {
@@ -45,7 +46,7 @@ export function OpenInClient({ discovery, targetURL, active, disabled, onIssue }
       setBusy(false);
     } catch (error) {
       if (pending.current === attempt && !attempt.controller.signal.aborted)
-        onIssue(discovery.isIncompatible(error) ? "incompatible" : "unavailable");
+        onIssue(discovery.compatibilityIssue(error) ?? "unavailable");
     } finally {
       attempt.controller.abort();
       if (pending.current === attempt) {

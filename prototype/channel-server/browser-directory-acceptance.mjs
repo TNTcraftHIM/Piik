@@ -48,7 +48,7 @@ try {
   const initialCount = await sample(`${gate}.snapshot().state.channel.userCount`);
   const expectedCount = initialCount + 75;
   const identities = await sample(`(async () => {
-    const { CHANNEL_PROTOCOL } = await import('/src/client/channel/protocol.ts');
+    const { PRODUCT_VERSION } = await import('/src/client/channel/product-version.ts');
     const self = window.__channelGate.snapshot().self.id;
     const room = window.__channelGate.snapshot().state.channel.rooms[0];
     const credential = localStorage.getItem('piik.channel.prototype.credential');
@@ -59,21 +59,26 @@ try {
         socket.addEventListener('error', reject, { once: true });
       });
       function request(command, accepted) {
-        const requestId = crypto.randomUUID();
+        const joining = command.type === 'join';
+        const requestId = joining ? undefined : crypto.randomUUID();
         return new Promise((resolve, reject) => {
           const timer = setTimeout(() => { socket.removeEventListener('message', receive); reject(new Error(command.type)); }, 5000);
           function receive({ data }) {
             const event = JSON.parse(data);
-            if ((event.requestId !== requestId && command.type !== 'join') || ![accepted, 'error', 'room_reply'].includes(event.type)) return;
+            if (joining ? !['welcome', 'error', 'incompatible_version'].includes(event.type)
+              : event.type !== 'reply' || event.requestId !== requestId) return;
             clearTimeout(timer); socket.removeEventListener('message', receive);
-            if (event.type === 'error' || event.result?.type === 'error') reject(new Error(event.code ?? event.result.code)); else resolve(event);
+            const result = joining ? event : event.result;
+            if (result.type === 'error') reject(new Error(result.code));
+            else if (result.type !== accepted) reject(new Error('Unexpected reply: ' + result.type));
+            else resolve(result);
           }
           socket.addEventListener('message', receive);
           socket.send(JSON.stringify({ ...command, requestId }));
         });
       }
       const signingKey = Array.from(new Uint8Array(await crypto.subtle.exportKey('raw', (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])).publicKey)));
-      const welcome = await request({ type: 'join', canUsePeerTransport: false, name, credential, signingKey, protocol: CHANNEL_PROTOCOL }, 'welcome');
+      const welcome = await request({ type: 'join', canUsePeerTransport: false, name, credential, signingKey, ...PRODUCT_VERSION }, 'welcome');
       return { socket, request, welcome };
     }
     const offline = [];
@@ -86,7 +91,7 @@ try {
     const sameIdentity = await connect('Same identity', credential);
     const online = await connect('Online only');
     const present = await connect('In room');
-    await present.request({ type: 'browse', roomId: room.id, active: true }, 'ack');
+    await present.request({ type: 'browse', roomId: room.id, active: true }, 'done');
     window.directoryAcceptance = { sameIdentity, online, present, connect };
     return { self, room, offline, online: online.welcome.selfProfile.id, present: present.welcome.selfProfile.id,
       sameIdentity: sameIdentity.welcome.selfProfile.id };
@@ -157,7 +162,7 @@ try {
   }
   assert.equal((await rows()).find(row => row.id === lateId)?.group, "Offline");
   assert.equal(await sample("Number(document.querySelector('#c3-people-heading span').textContent)"), expectedCount + 1);
-  await sample("window.directoryAcceptance.sameIdentity.request({ type: 'set_profile', name: 'Renamed endpoint', avatar: null }, 'ack')");
+  await sample("window.directoryAcceptance.sameIdentity.request({ type: 'set_profile', name: 'Renamed endpoint', avatar: null }, 'done')");
   await until("rename updates the single self row", rows, value =>
     value.filter(row => row.self).length === 1 && value.some(row => row.self && row.name === "Renamed endpoint"));
   await sample(`${gate}.session.joinAsNewIdentity()`);

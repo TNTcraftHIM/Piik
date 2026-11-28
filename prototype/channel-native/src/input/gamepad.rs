@@ -15,7 +15,7 @@ const MAX_PADS: usize = 4;
 
 /// The existing Browser standard-gamepad report, independent of the OS backend.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Report {
     pub buttons: u32,
     pub left_trigger: u8,

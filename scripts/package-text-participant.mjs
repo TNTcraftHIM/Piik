@@ -20,6 +20,10 @@ const dirty = Boolean(git("status", "--porcelain"));
 const version = productVersion === "development" ? `0.0.0-development.${revision}` : productVersion.slice(1);
 const { devDependencies, engines, license } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const dependencies = { ws: devDependencies.ws, zod: devDependencies.zod };
+execFileSync(process.execPath, [join(root, browser, "build.mjs")], {
+  cwd: root, stdio: "inherit", windowsHide: true,
+  env: { ...process.env, PIIK_BUILD_VERSION: productVersion, PIIK_BUILD_REVISION: revision },
+});
 const staging = mkdtempSync(join(tmpdir(), "piik-text-participant-"));
 
 try {

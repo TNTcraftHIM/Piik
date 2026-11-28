@@ -2,12 +2,12 @@ import { z } from "zod";
 import { watchFormatSchema } from "../../shared/watch-format";
 
 const voiceShortcutStatusSchema = z.enum(["registered", "unavailable", "unbound"]);
-export const nativeVoiceShortcutsReportSchema = z.strictObject({
+export const nativeVoiceShortcutsReportSchema = z.object({
   microphone: voiceShortcutStatusSchema, listening: voiceShortcutStatusSchema,
 });
 export type NativeVoiceShortcutsReport = z.infer<typeof nativeVoiceShortcutsReportSchema>;
 
-export const nativeVoiceShortcutEventSchema = z.strictObject({
+export const nativeVoiceShortcutEventSchema = z.object({
   type: z.literal("voice_shortcut"), action: z.enum(["toggle_microphone", "toggle_listening"]),
   activatedAtMs: z.number().int().positive().safe(),
 });
@@ -22,16 +22,16 @@ export const nativePageStateSchema = z.object({
   position: z.number().finite().nonnegative(), paused: z.boolean(), rate: z.number().positive().max(16),
   duration: z.number().finite().nonnegative().nullable(), readyState: z.number().int().min(0).max(4), ended: z.boolean(),
   buffered: z.array(z.tuple([z.number().finite().nonnegative(), z.number().finite().nonnegative()]).refine(([start, end]) => end >= start)),
-}).strict();
+});
 const nativePageURLSchema = z.string().url().max(4096).refine(value => /^https?:\/\//.test(value));
 export const nativePageCandidateSchema = z.object({ id: z.uuid(), pageURL: nativePageURLSchema.nullable(), title: z.string().max(512).refine(value => [...value].length <= 256), url: nativePageURLSchema.nullable(), duration: z.number().finite().nonnegative().nullable() });
 export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
-export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: watchFormatSchema }).strict();
+export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: watchFormatSchema });
 export type NativePageMediaChoice = z.infer<typeof nativePageMediaChoiceSchema>;
 export const nativePageMpdCandidateSchema = z.object({
   id: z.uuid(), name: z.string().max(512).refine(value => [...value].length <= 256),
   hostname: z.string().min(1).max(253).regex(/^[A-Za-z0-9.:[\]-]+$/),
-}).strict();
+});
 export type NativePageMpdCandidate = z.infer<typeof nativePageMpdCandidateSchema>;
 const nativePageMpdTrackSchema = z.object({
   id: z.uuid(), kind: z.enum(["video", "audio"]),
@@ -39,8 +39,8 @@ const nativePageMpdTrackSchema = z.object({
   language: z.string().max(256), role: z.string().max(256),
   width: z.number().int().positive().safe().nullable(), height: z.number().int().positive().safe().nullable(),
   bandwidth: z.number().int().positive().safe().nullable(), frameRate: z.number().finite().positive().nullable(),
-}).strict();
-export const nativePageMpdCatalogSchema = z.object({ sourceId: z.uuid(), tracks: z.array(nativePageMpdTrackSchema).min(1) }).strict();
+});
+export const nativePageMpdCatalogSchema = z.object({ sourceId: z.uuid(), tracks: z.array(nativePageMpdTrackSchema).min(1) });
 export type NativePageMpdCatalog = z.infer<typeof nativePageMpdCatalogSchema>;
 export const nativePageMpdSelectionSchema = z.object({ sourceId: z.uuid(), videoId: z.uuid(), audioId: z.uuid().optional() })
   .strict().refine(value => value.videoId !== value.audioId);
@@ -50,7 +50,7 @@ export const NATIVE_PAGE_METADATA_PREFIX_BYTES = 1024 * 1024;
 export const nativePageIndexedCandidateSchema = z.object({
   id: z.uuid(), name: z.string().max(512).refine(value => [...value].length <= 256), hostname: z.string().min(1).max(253).regex(/^[A-Za-z0-9.:[\]-]+$/),
   mimeType: z.string().max(256), totalSize: z.number().int().positive().safe(),
-}).strict();
+});
 export type NativePageIndexedCandidate = z.infer<typeof nativePageIndexedCandidateSchema>;
 export const nativePageMetadataReadSchema = z.object({
   choiceId: z.uuid(), offset: z.number().int().nonnegative().safe(),
@@ -60,7 +60,7 @@ const nativePageBase64Schema = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-
 export const nativePageMetadataResultSchema = z.object({
   mimeType: z.string().max(256), totalSize: z.number().int().positive().safe(),
   bytesBase64: nativePageBase64Schema.max(4 * Math.ceil(NATIVE_PAGE_READ_BYTES / 3)),
-}).strict();
+});
 export const nativePageResourceReadSchema = z.object({
   sourceId: z.uuid(), resourceId: z.uuid(), offset: z.number().int().nonnegative().safe(),
   length: z.number().int().positive().max(NATIVE_PAGE_READ_BYTES),
@@ -68,7 +68,7 @@ export const nativePageResourceReadSchema = z.object({
 export const nativePageResourceResultSchema = z.object({
   mimeType: z.string().max(256), totalSize: z.number().int().nonnegative().safe().nullable(), eof: z.boolean(),
   bytesBase64: nativePageBase64Schema.max(4 * Math.ceil(NATIVE_PAGE_READ_BYTES / 3)),
-}).strict();
+});
 export const nativePageIndexedTrackRecipeSchema = z.object({
   choiceId: z.uuid(), totalSize: z.number().int().positive().safe(),
   codec: z.string().min(1).max(128).regex(/^[!#$%&'*+\-.^_`{|}~0-9A-Za-z]+$/),
@@ -89,14 +89,15 @@ export const nativePageIndexedSelectionSchema = z.object({
   video: nativePageIndexedTrackRecipeSchema, audio: nativePageIndexedTrackRecipeSchema.optional(),
 }).strict().refine(value => value.video.choiceId !== value.audio?.choiceId);
 export type NativePageIndexedSelection = z.infer<typeof nativePageIndexedSelectionSchema>;
+const pageSampleEventSchema = z.enum(["emptied", "loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error"]);
 export const nativePageEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("page_media_changed"), pageId: z.uuid() }).strict(),
-  z.object({ type: z.literal("page_selection_lost"), pageId: z.uuid(), candidateId: z.uuid() }).strict(),
+  z.object({ type: z.literal("page_media_changed"), pageId: z.uuid() }),
+  z.object({ type: z.literal("page_selection_lost"), pageId: z.uuid(), candidateId: z.uuid() }),
   z.object({ type: z.literal("page_candidates"), pageId: z.uuid(), url: nativePageURLSchema, candidates: z.array(nativePageCandidateSchema).max(64) }),
-  z.object({ type: z.literal("page_sample"), pageId: z.uuid(), candidateId: z.uuid(), event: z.enum(["emptied", "loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error"]) }).strict(),
-  z.object({ type: z.literal("page_share_requested"), pageId: z.uuid() }).strict(),
-  z.object({ type: z.literal("page_closed"), pageId: z.uuid() }).strict(),
-  z.object({ type: z.literal("page_blocked"), pageId: z.uuid(), candidateId: z.uuid() }).strict(),
+  z.object({ type: z.literal("page_sample"), pageId: z.uuid(), candidateId: z.uuid(), event: z.string().transform(name => pageSampleEventSchema.safeParse(name).data) }),
+  z.object({ type: z.literal("page_share_requested"), pageId: z.uuid() }),
+  z.object({ type: z.literal("page_closed"), pageId: z.uuid() }),
+  z.object({ type: z.literal("page_blocked"), pageId: z.uuid(), candidateId: z.uuid() }),
 ]);
 import { remoteControlModeSchema, remoteInputPlatformSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
@@ -154,7 +155,7 @@ const remoteControlRequestSchema = z.object({
   id: opaqueIdentifierSchema,
   peerId: opaqueIdentifierSchema,
   state: z.enum(["pending", "active", "suspended"]),
-}).strict();
+});
 
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
 

@@ -18,6 +18,7 @@ pub mod history;
 pub mod host;
 mod identity;
 pub mod input;
+mod product_version;
 mod publication;
 mod remote;
 mod room;
@@ -38,17 +39,18 @@ pub use access::{
 };
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::{DomainStateHeader, DurableState, MAX_ROOMS};
+pub use product_version::{ProductVersion, PRODUCT_VERSION};
 pub use identity::{Endpoint, Member, User, MAX_SESSIONS, PROFILE_PAGE_SIZE, RECOVERY_MS};
 pub use room::{RoomRecipient, RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
 pub use stored_room::{RoomBackup, StoredRoomHost};
 
 use channel::Channel;
-use host::{HostOutput, RequestContext, RoomReply, RoomResult};
-use identity::Admission;
+use host::{RequestContext, RoomReply, RoomResult};
+use identity::{Admission, PeerCapabilities};
 use serde_json::Value;
 use uuid::Uuid;
-use wire::{Command, Event, Request, CHANNEL_PROTOCOL};
+use wire::{Command, Event, ProfileId, ReplyResult, Request, SnapshotForm};
 
 /// Events are addressed to physical connections, not reusable endpoint sessions.
 /// Deliver events before closing the listed connections so leave can acknowledge.
@@ -58,6 +60,24 @@ pub struct Effects {
     pub close: Vec<Uuid>,
     /// A member submitted a signed conversation request to its current room writer.
     pub conversation_to_writer: bool,
+}
+
+impl Effects {
+    fn done(&mut self, connection: Uuid, request_id: Option<String>) {
+        if let Some(request_id) = request_id {
+            self.events.push((connection, Event::Reply {
+                request_id,
+                room_id: None,
+                result: ReplyResult::Done,
+            }));
+        }
+    }
+
+    fn room_error(&mut self, connection: Uuid, id: Option<String>, room: &str, code: &str) {
+        self.events.push((connection, Event::completion(
+            id, Some(room.into()), ReplyResult::Error { code: code.into() },
+        )));
+    }
 }
 
 #[derive(Clone)]
@@ -240,7 +260,7 @@ impl Authority {
     ) -> Result<Effects, &'static str> {
         if service.is_some_and(|service| {
             self.channel.identity.sessions.get(&service.endpoint.session_id).is_none_or(|session| {
-                !session.can_use_peer_transport
+                !session.capabilities.can_use_peer_transport
                     || session.connection != Some(service.endpoint.connection_id)
             })
         }) {
@@ -312,14 +332,13 @@ impl Authority {
         };
         // Transport completion can arrive after its last lease has retired.
         if !self.channel.current_report(session_id, &request.command) {
-            if let Some(request_id) = request.request_id {
-                effects.events.push((connection, Event::Ack { request_id }));
-            }
+            effects.done(connection, request.request_id);
             return effects;
         }
         if let Command::Conversation { packet } = request.command {
             match self.channel.relay_conversation(session_id, packet) {
-                Ok((recipient, event, delivery)) => {
+                Ok(None) => {}
+                Ok(Some((recipient, event, delivery))) => {
                     self.deliver(recipient, event, &mut effects);
                     match delivery {
                         channel::ConversationDelivery::ToWriter => effects.conversation_to_writer = true,
@@ -347,11 +366,10 @@ impl Authority {
                         self.channel
                             .identity
                             .profiles(ids.as_deref(), *after, query.as_deref())
-                            .map(|(profiles, total, next_cursor)| Event::Profiles {
+                            .map(|(profiles, total, next_cursor)| Event::Reply {
                                 request_id,
-                                profiles,
-                                total,
-                                next_cursor,
+                                room_id: None,
+                                result: ReplyResult::Profiles { profiles, total, next_cursor },
                             })
                     }) {
                     Ok(event) => effects.events.push((connection, event)),
@@ -361,9 +379,7 @@ impl Authority {
             }
             Command::CancelRoomCreation { room_id } => {
                 self.cancel_reservation(session_id, room_id, &mut effects);
-                if let Some(request_id) = request.request_id {
-                    effects.events.push((connection, Event::Ack { request_id }));
-                }
+                effects.done(connection, request.request_id);
                 return effects;
             }
             Command::CreateRoom { room, .. } => {
@@ -372,10 +388,7 @@ impl Authority {
                         self.broadcast(None, &mut effects);
                         effects.events.push((
                             connection,
-                            Event::RoomCreated {
-                                room,
-                                request_id: request.request_id,
-                            },
+                            Event::completion(request.request_id, None, ReplyResult::RoomCreated { room }),
                         ));
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
@@ -386,9 +399,7 @@ impl Authority {
                 match self.channel.admit_room(session_id, room.clone()) {
                     Ok(()) => {
                         self.broadcast(None, &mut effects);
-                        if let Some(request_id) = request.request_id {
-                            effects.events.push((connection, Event::Ack { request_id }));
-                        }
+                        effects.done(connection, request.request_id);
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
@@ -403,7 +414,7 @@ impl Authority {
                 let hosted_data = self.hosting_mode() == wire::HostingMode::Hosted
                     && room.is_some_and(|room| room.reservation.is_none());
                 if let Err(code) = self.channel.can_remove_room(session_id, room_id) {
-                    Self::error(connection, request.request_id, code, &mut effects);
+                    effects.room_error(connection, request.request_id, room_id, code);
                 } else if self.channel.room_online(room_id)
                     && (hosted_data
                         || (*delete_data
@@ -419,7 +430,7 @@ impl Authority {
                     ) {
                         Ok((session, event)) => self.deliver(session, event, &mut effects),
                         Err(code) => {
-                            Self::error(connection, request.request_id, code, &mut effects)
+                            effects.room_error(connection, request.request_id, room_id, code)
                         }
                     }
                 } else {
@@ -434,13 +445,11 @@ impl Authority {
                     self.broadcast(None, &mut effects);
                     effects.events.push((
                         connection,
-                        Event::RoomReply {
-                            room_id: room_id.clone(),
-                            request_id: request.request_id,
-                            result: RoomResult::Deleted {
-                                data_removed: false,
-                            },
-                        },
+                        Event::completion(
+                            request.request_id,
+                            Some(room_id.clone()),
+                            ReplyResult::Deleted { data_removed: false },
+                        ),
                     ));
                 }
                 return effects;
@@ -455,13 +464,9 @@ impl Authority {
                 {
                     Ok(topology) => effects.events.push((
                         connection,
-                        Event::RoomReply {
-                            room_id: room_id.clone(),
-                            request_id: request.request_id,
-                            result: RoomResult::Topology { topology },
-                        },
+                        Event::completion(request.request_id, Some(room_id.clone()), ReplyResult::Topology { topology }),
                     )),
-                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                    Err(code) => effects.room_error(connection, request.request_id, room_id, code),
                 }
                 return effects;
             }
@@ -484,23 +489,23 @@ impl Authority {
                             self.deliver(session, event, &mut effects);
                         }
                         self.broadcast(None, &mut effects);
-                        if let Some(request_id) = request.request_id {
-                            effects.events.push((connection, Event::Ack { request_id }));
-                        }
+                        effects.done(connection, request.request_id);
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
                 return effects;
             }
+            Command::HostUnsupported { room_id, binding_id, revision } => {
+                match self.channel.unsupported_host_input(room_id, session_id, connection, *binding_id, *revision) {
+                    Ok(accepted) => self.finish_host_turn(room_id, accepted, &mut effects),
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
             Command::HostOutput { room_id, output } => {
-                if let Err(code) = self.host_output(
-                    room_id,
-                    session_id,
-                    connection,
-                    output.clone(),
-                    &mut effects,
-                ) {
-                    Self::error(connection, request.request_id, code, &mut effects);
+                match self.channel.accept_host(room_id, session_id, connection, output.clone()) {
+                    Ok(accepted) => self.finish_host_turn(room_id, accepted, &mut effects),
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
                 return effects;
             }
@@ -517,9 +522,7 @@ impl Authority {
                             self.room_reply(&room, reply, &mut effects);
                         }
                         self.broadcast(None, &mut effects);
-                        if let Some(request_id) = request.request_id {
-                            effects.events.push((connection, Event::Ack { request_id }));
-                        }
+                        effects.done(connection, request.request_id);
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
@@ -530,11 +533,12 @@ impl Authority {
         if let Some(room) = self.channel.command_room(session_id, &request.command) {
             match self.channel.forward_room(&room, context, request.command) {
                 Ok((session, event)) => self.deliver(session, event, &mut effects),
-                Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                Err(code) => effects.room_error(connection, request.request_id, &room, code),
             }
             return effects;
         }
         let sync_hosts = matches!(request.command, Command::Leave);
+        let snapshot_form = self.channel.identity.sessions[&session_id].snapshot_form;
         match self.channel.handle(session_id, request.command, now) {
             Ok(outcome) => {
                 for (room, reply) in outcome.replies {
@@ -550,26 +554,16 @@ impl Authority {
                     self.broadcast(None, &mut effects);
                 }
                 if outcome.leave {
-                    effects.events.push((
-                        connection,
-                        Event::State {
-                            state: self.channel.snapshot(session_id),
-                        },
-                    ));
+                    effects.events.push((connection, self.state_event(session_id, snapshot_form)));
                 }
-                if let Some(request_id) = request.request_id {
-                    effects.events.push((connection, Event::Ack { request_id }));
-                }
+                effects.done(connection, request.request_id);
                 if outcome.leave {
                     effects.close.push(connection);
                 }
             }
             Err(code) => effects.events.push((
                 connection,
-                Event::Error {
-                    code: code.into(),
-                    request_id: request.request_id,
-                },
+                Event::completion(request.request_id, None, ReplyResult::Error { code: code.into() }),
             )),
         }
         effects
@@ -626,19 +620,9 @@ impl Authority {
     }
 
     fn join(&mut self, connection: Uuid, request: Request, now: u64, effects: &mut Effects) {
-        if matches!(&request.command, Command::Join { protocol, .. } if *protocol != CHANNEL_PROTOCOL)
-        {
-            Self::error(
-                connection,
-                request.request_id,
-                "incompatible_protocol",
-                effects,
-            );
-            effects.close.push(connection);
-            return;
-        }
         let Command::Join {
-            protocol: _,
+            version,
+            snapshot_form,
             name,
             credential,
             owner_key,
@@ -653,22 +637,31 @@ impl Authority {
                 connection,
                 Event::Error {
                     code: "join_required".into(),
-                    request_id: request.request_id,
+                    room_id: None,
                 },
             ));
             effects.close.push(connection);
             return;
         };
+        if !version.is_compatible() {
+            effects.events.push((connection, Event::IncompatibleVersion { version: PRODUCT_VERSION }));
+            effects.close.push(connection);
+            return;
+        }
         match self.channel.join(
             Admission {
+                version,
+                snapshot_form,
                 name: &name,
                 credential: credential.as_deref(),
                 owner_key: owner_key.as_deref(),
                 resume: session_id.as_deref(),
                 signing_key,
-                can_use_peer_transport,
-                can_prepare_udp,
-                can_receive_video_layers,
+                capabilities: PeerCapabilities {
+                    can_use_peer_transport,
+                    can_prepare_udp,
+                    can_receive_video_layers,
+                },
             },
             connection,
             now,
@@ -680,23 +673,29 @@ impl Authority {
                 {
                     effects.close.push(old);
                 }
-                effects.events.push((
-                    connection,
-                    Event::Welcome {
-                        protocol: CHANNEL_PROTOCOL,
-                        self_profile: self.channel.identity.users
-                            [&self.channel.identity.sessions[&admitted.session_id].user_id]
-                            .profile(),
+                let session_id = admitted.session_id;
+                let user_id = self.channel.identity.sessions[&session_id].user_id;
+                let welcome = match snapshot_form {
+                    SnapshotForm::Full => Event::Welcome {
+                        version: PRODUCT_VERSION,
+                        self_profile: self.channel.identity.users[&user_id].profile(),
                         credential: admitted.credential,
-                        session_id: admitted.session_id,
+                        session_id,
                         connection_id: connection,
-                        state: self.channel.snapshot(admitted.session_id),
+                        state: self.channel.snapshot(session_id),
                         invitation_origin: None,
                     },
-                ));
-                if let Some(request_id) = request.request_id {
-                    effects.events.push((connection, Event::Ack { request_id }));
-                }
+                    SnapshotForm::Conversation => Event::ConversationWelcome {
+                        version: PRODUCT_VERSION,
+                        self_profile: ProfileId { id: user_id },
+                        credential: admitted.credential,
+                        session_id,
+                        connection_id: connection,
+                        state: self.channel.conversation_snapshot(session_id),
+                        invitation_origin: None,
+                    },
+                };
+                effects.events.push((connection, welcome));
                 self.sync_hosts(effects, admitted.peer_transport_withdrawn);
                 self.broadcast(Some(admitted.session_id), effects);
             }
@@ -705,7 +704,7 @@ impl Authority {
                     connection,
                     Event::Error {
                         code: code.into(),
-                        request_id: request.request_id,
+                        room_id: None,
                     },
                 ));
                 effects.close.push(connection);
@@ -728,10 +727,7 @@ impl Authority {
     fn error(connection: Uuid, request_id: Option<String>, code: &str, effects: &mut Effects) {
         effects.events.push((
             connection,
-            Event::Error {
-                code: code.into(),
-                request_id,
-            },
+            Event::completion(request_id, None, ReplyResult::Error { code: code.into() }),
         ));
     }
 
@@ -741,17 +737,7 @@ impl Authority {
         }
     }
 
-    fn host_output(
-        &mut self,
-        room_id: &str,
-        session: Uuid,
-        connection: Uuid,
-        output: HostOutput,
-        effects: &mut Effects,
-    ) -> Result<(), &'static str> {
-        let accepted = self
-            .channel
-            .accept_host(room_id, session, connection, output)?;
+    fn finish_host_turn(&mut self, room_id: &str, accepted: channel::HostAcceptance, effects: &mut Effects) {
         if let Some(actor) = accepted.deleted_by {
             for (room, reply) in self.channel.remove_room(room_id, actor) {
                 self.room_reply(&room, reply, effects);
@@ -770,7 +756,6 @@ impl Authority {
         for reply in accepted.replies {
             self.room_reply(room_id, reply, effects);
         }
-        Ok(())
     }
 
     fn room_reply(&mut self, room_id: &str, reply: RoomReply, effects: &mut Effects) {
@@ -789,11 +774,7 @@ impl Authority {
         };
         effects.events.push((
             context.connection,
-            Event::RoomReply {
-                room_id: room_id.into(),
-                request_id: context.request_id,
-                result: completion,
-            },
+            Event::completion(context.request_id, Some(room_id.into()), completion.into()),
         ));
     }
 
@@ -816,13 +797,16 @@ impl Authority {
             .values()
             .filter(|session| Some(session.id) != except && session.connection.is_some())
         {
-            self.deliver(
-                session.id,
-                Event::State {
-                    state: self.channel.snapshot(session.id),
-                },
-                effects,
-            );
+            self.deliver(session.id, self.state_event(session.id, session.snapshot_form), effects);
+        }
+    }
+
+    fn state_event(&self, session: Uuid, form: SnapshotForm) -> Event {
+        match form {
+            SnapshotForm::Full => Event::State { state: self.channel.snapshot(session) },
+            SnapshotForm::Conversation => Event::ConversationState {
+                state: self.channel.conversation_snapshot(session),
+            },
         }
     }
 }

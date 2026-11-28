@@ -8,7 +8,7 @@ export function initializeRuntime(): Promise<void> {
   });
 }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
-import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
+import type { ChannelCommand, ChannelMessage, ChatOptions, ConversationAddress, ConversationNotice, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
 import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostDispatchOptions, type HostedRoom, type PeerDelivery } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
@@ -30,9 +30,15 @@ function portable(row: BackupHistoryRow & { retryKey: string }): BackupHistoryRo
   return message;
 }
 function live(row: StoredRow | undefined) { return row && "id" in row ? row : undefined; }
+function storedMessage(row: StoredRow | undefined): RetainedMessage | null {
+  const message = live(row);
+  if (!message) return null;
+  const { roomId: _roomId, nonce: _nonce, retryKey: _retryKey, ...fields } = message;
+  return fields;
+}
 export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
 export interface PageResult {
-  type: "page"; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
+  type: "page"; inlineImages: boolean; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
@@ -40,7 +46,7 @@ type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult
   | { type: "media_cleared"; throughSeq: number }
   | { type: "seek"; after: number; seq: number | null };
 interface SendRequest { type: "send"; roomId: string; draft: ChatOptions & { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
-interface ReadRequest { type: "read"; roomId: string; before: number | null }
+interface ReadRequest { type: "read"; roomId: string; before: number | null; inlineImages: boolean }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest
@@ -48,6 +54,7 @@ type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRe
   | { type: "seek"; roomId: string; after: number; excludeAuthor: string }
   | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string; authorId?: string | null }
   | { type: "clear_history"; roomId: string; throughSeq: number };
+type HostUnsupported = Extract<ChannelCommand, { type: "host_unsupported" }>;
 interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
 type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
@@ -376,7 +383,8 @@ export class BrowserRoomHost implements HostedRoom {
       if (current?.() === false || !this.bindingId || (input as { bindingId?: string } | null)?.bindingId !== this.bindingId) {
         throw new Error("stale_room_host");
       }
-      const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));
+      const work: HostWork | HostUnsupported = JSON.parse(this.room.dispatch(JSON.stringify(input)));
+      if ("type" in work) return work;
       try {
         let result: HistoryResult | undefined;
         if (work.delete) {
@@ -426,7 +434,7 @@ export class BrowserRoomHost implements HostedRoom {
       const request: Extract<HistoryRequest, { type: "clear_media" }> = JSON.parse(this.room.media_clear_request());
       const result = await this.executeHistory(request, null);
       if (result.type !== "media_cleared") throw new Error("invalid_history_result");
-      const replies: ConversationReply[] = JSON.parse(this.room.media_clear_replies(BigInt(result.throughSeq)));
+      const replies: ConversationNotice[] = JSON.parse(this.room.media_clear_replies(BigInt(result.throughSeq)));
       return { historyLineage: request.historyLineage, throughSeq: result.throughSeq, replies };
     });
   }
@@ -438,7 +446,7 @@ export class BrowserRoomHost implements HostedRoom {
   }
 
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
-    let page = request.type === "read" ? new HistoryPage() : undefined;
+    let page = request.type === "read" ? new HistoryPage(request.inlineImages) : undefined;
     let oldest: number | undefined, result: HistoryResult;
     return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "clear_media" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort, record) => {
       const clearedThrough = record.clearedThrough ?? 0;
@@ -454,12 +462,12 @@ export class BrowserRoomHost implements HostedRoom {
         };
         read<StoredRow | undefined>(messages.index("send").get([request.roomId, retryKey]), previous => {
           if (previous && !live(previous)) throw new Error("message_unavailable");
-          if (previous) { prepare({ type: "existing", message: previous }); return; }
+          if (previous) { prepare({ type: "existing", message: storedMessage(previous) }); return; }
           read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity]), "prev"), cursor => {
             const lastSeq = cursor?.value.seq ?? 0;
             if (request.draft.reply) {
               read<StoredRow | undefined>(messages.get([request.roomId, request.draft.reply.seq]), reply => {
-                prepare({ type: "new", lastSeq, reply: live(reply) ?? null });
+                prepare({ type: "new", lastSeq, reply: storedMessage(reply) });
               }, abort);
             } else prepare({ type: "new", lastSeq });
           }, abort);
@@ -510,7 +518,7 @@ export class BrowserRoomHost implements HostedRoom {
         }, abort);
       } else if (request.type === "react") {
         read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), previous => {
-          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(live(previous) ?? null)));
+          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(storedMessage(previous))));
           if (confirmation.event) messages.put({ ...previous!, reactions: {
             revision: confirmation.snapshot.revision, counts: confirmation.snapshot.counts,
           } });
@@ -518,7 +526,7 @@ export class BrowserRoomHost implements HostedRoom {
         }, abort);
       } else if (request.type === "attachment") {
         read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), value => {
-          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(live(value) ?? null)));
+          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(storedMessage(value))));
         }, abort);
       } else if (request.type === "seek") {
         const range = IDBKeyRange.bound([request.roomId, Math.max(request.after, clearedThrough)], [request.roomId, Infinity], true);
@@ -533,9 +541,9 @@ export class BrowserRoomHost implements HostedRoom {
           const range = IDBKeyRange.bound(lower, [request.roomId, request.before ?? Infinity], true, request.before !== null);
           read(messages.openCursor(range, "prev"), value => {
             if (!value) return;
-            const row = live(value.value);
-            if (!row) return value.continue();
-            const { roomId: _roomId, nonce: _nonce, retryKey: _retryKey, ...message } = row;
+            const message = storedMessage(value.value);
+            if (!message) return value.continue();
+            if (!request.inlineImages) delete message.inlineImages;
             if (page!.push(JSON.stringify(message))) value.continue();
           }, abort);
         }

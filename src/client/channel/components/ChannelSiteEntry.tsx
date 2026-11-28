@@ -54,7 +54,9 @@ export function ChannelSiteEntry({ channel, failure }: {
     {showFailure && failure.message && <p role="alert">{failure.message}</p>}
     {connecting ? <span role="status" className="visually-hidden">{title}</span>
         : <>
-          <ChannelAction icon="refresh" label={identityRejected ? t("channel.siteEntry.retrySavedIdentity") : t("channel.siteEntry.reconnect")} onClick={channel.reconnect} />
+          {channel.error === "page_update_required"
+            ? <ChannelAction icon="refresh" label={t("common.refresh")} primary onClick={() => window.location.reload()} />
+            : <ChannelAction icon="refresh" label={identityRejected ? t("channel.siteEntry.retrySavedIdentity") : t("channel.siteEntry.reconnect")} onClick={channel.reconnect} />}
           {identityRejected && <>
             <ChannelAction icon="plus" label={t("channel.siteEntry.joinWithANewIdentity")} onClick={channel.joinAsNewIdentity} />
             <p>{t("channel.siteEntry.newIdentityNote")}</p>

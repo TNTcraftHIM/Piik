@@ -80,7 +80,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, uno
         onSelect={onSelect} onManage={onManage} />
     {showPeople && <div id={id} className="c3-room-people" role="group" aria-label={room.name} hidden={!peopleOpen}>
       {peopleOpen && present.map(person => <ChannelUser key={person.userId} id={person.userId} name={memberName(person.userId, person.name, duplicates.has(person.name))} avatar={person.avatar}
-        self={person.userId === channel.self?.id} owner={person.owner} online={person.online} />)}
+        self={person.userId === channel.self?.id} owner={person.owner} online={person.online} roomActivity={person} />)}
     </div>}
   </div>;
 }

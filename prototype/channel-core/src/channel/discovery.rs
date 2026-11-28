@@ -793,7 +793,7 @@ impl Channel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::identity::Admission;
+    use crate::identity::{Admission, PeerCapabilities};
 
     #[test]
     fn repair_reserves_the_trial_prefix_without_pinning_idle_neighbors() {
@@ -823,11 +823,14 @@ mod tests {
             identity
                 .admit(
                     Admission {
+                        version: crate::PRODUCT_VERSION,
+                        snapshot_form: Default::default(),
                         name,
                         signing_key: [0; 32],
-                        can_use_peer_transport: true,
-                        can_prepare_udp: false,
-                        can_receive_video_layers: false,
+                        capabilities: PeerCapabilities {
+                            can_use_peer_transport: true,
+                            ..PeerCapabilities::default()
+                        },
                         credential: None,
                         owner_key: None,
                         resume: None,

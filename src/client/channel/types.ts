@@ -109,6 +109,7 @@ export interface ChannelView {
   inputChannels: ReadonlyMap<string, InputTransport>;
   remoteControls: ReadonlyMap<string, ChannelRemoteControlState>;
   error: string | null;
+  hostingRestoreFailure?: string;
   errorRoomId?: string;
   /** Rooms this device should host but could not open, owned by its local hosting runtime. */
   roomOpenFailures: ReadonlyMap<string, RoomOpenFailure>;

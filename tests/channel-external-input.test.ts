@@ -1,6 +1,6 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { afterEach, expect, test, vi } from "vitest";
-import { APP_PROTOCOL, ChannelApp } from "../src/client/channel/app-link";
-import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
+import { ChannelApp } from "../src/client/channel/app-link";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -31,7 +31,7 @@ class Socket {
 afterEach(() => { vi.unstubAllGlobals(); setCopy({ lang: "en" }); });
 async function setup() {
   vi.stubGlobal("WebSocket", Socket);
-  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+  const app = new ChannelApp({ service: "piik-channel-app", ...PRODUCT_VERSION,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", () => {}, () => {});
   const socket = Socket.current;
   socket.onopen?.(); socket.reply(null); await app.ready;

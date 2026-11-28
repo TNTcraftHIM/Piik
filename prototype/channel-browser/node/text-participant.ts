@@ -5,13 +5,18 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
-import init, { SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
+import init, { SessionSigner, channel_wire_limits, verify_conversation } from '../pkg/piik_channel_browser.js';
+import { checkDomainVersion, HISTORY_INLINE_IMAGES, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ReceivedConversation, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary, type StoredMessage } from '../../../src/client/channel/protocol';
+import { productVersionSchema } from '../../../src/client/channel/product-version';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
+const productVersion = productVersionSchema.parse(JSON.parse(channel_wire_limits()));
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
 }>;
-export type TextHistoryPage = Omit<Extract<ConversationReply['record'], { type: 'history_page' }>, 'type'>;
+export interface TextHistoryOptions {
+  parts?: readonly (typeof HISTORY_INLINE_IMAGES)[];
+}
+export type TextHistoryPage = Omit<Extract<ConversationReply['record'], { type: 'history_page' }>, 'type' | 'parts'> & { parts: string[] };
 export type TextReactionResult = {
   type: 'reaction';
   nonce: number;
@@ -24,23 +29,22 @@ const conversationRoomSchema = roomSchema.pick({ id: true, authorized: true, ava
 const conversationStateSchema = z.object({
   channel: snapshotSchema.shape.channel.pick({ hostingMode: true })
     .extend({ rooms: z.array(conversationRoomSchema).max(CHANNEL_ROOM_LIMIT) }),
-  sessions: z.array(snapshotSchema.shape.sessions.element.pick({ id: true, signingKey: true })).max(CHANNEL_SESSION_LIMIT),
+  sessions: z.array(snapshotSchema.shape.sessions.element.pick({ id: true, signingKey: true, major: true, minor: true })).max(CHANNEL_SESSION_LIMIT),
 });
 const textWelcomeSchema = channelWelcomeSchema.extend({ state: conversationStateSchema,
   selfProfile: channelWelcomeSchema.shape.selfProfile.pick({ id: true }) });
 const textStateSchema = z.object({ type: z.literal('state'), state: conversationStateSchema });
-const eventHeaderSchema = z.object({ type: z.string(), protocol: z.unknown().optional() });
+const eventHeaderSchema = z.object({ type: z.string() });
 type TextEvent = ChannelEvent | z.infer<typeof textWelcomeSchema> | z.infer<typeof textStateSchema>;
 
 function decodeTextEvent(raw: unknown, wireBytes: number): TextEvent | undefined {
   if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error('Channel event exceeds frame limit');
-  const header = eventHeaderSchema.parse(raw);
-  switch (header.type) {
-    case 'welcome':
-      if (header.protocol !== CHANNEL_PROTOCOL) throw new Error('incompatible_protocol');
-      return textWelcomeSchema.parse(raw);
+  const { type } = eventHeaderSchema.parse(raw);
+  checkDomainVersion(raw, productVersion);
+  switch (type) {
+    case 'welcome': return textWelcomeSchema.parse(raw);
     case 'state': return textStateSchema.parse(raw);
-    case 'conversation': case 'room_created': case 'room_reply': case 'ack': case 'error': return eventSchema.parse(raw);
+    case 'conversation': case 'reply': case 'error': return eventSchema.parse(raw);
     // This participant neither installs media nor hosts rooms.
     default: return;
   }
@@ -57,13 +61,13 @@ export interface TextParticipantOptions {
 type ConversationResult = 'confirmed' | 'history_page' | 'interaction_ready' | 'reaction' | 'message_deleted';
 type Pending = {
   roomId?: string;
-  expects: 'ack' | 'room_created' | ConversationResult;
+  expects: 'done' | 'room_created' | ConversationResult;
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 };
 function expectsWriterResult(expects: Pending['expects']): boolean {
-  return expects !== 'ack' && expects !== 'room_created';
+  return expects !== 'done' && expects !== 'room_created';
 }
 /** Only socket/request I/O; the existing Core WASM signs and validates every room record. */
 export type TextParticipantEvents = {
@@ -122,7 +126,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         };
         const join = () => {
           try {
-            this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: this.options.name ?? '', credential: this.credential,
+            this.write({ type: 'join', ...productVersion, snapshotForm: 'conversation', canUsePeerTransport: false, name: this.options.name ?? '', credential: this.credential,
               sessionId: this.sessionId, signingKey: Array.from(this.signer.signing_key()) });
           }
           catch (error) {
@@ -201,7 +205,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (admission?.inviteKey !== undefined || admission?.password !== undefined)
         await this.request({ type: 'enter_room', roomId, ...admission });
       this.checkSocket(socket);
-      await this.request({ type: 'browse', roomId, active: true }, 'ack', { accepted: accept });
+      await this.request({ type: 'browse', roomId, active: true }, 'done', { accepted: accept });
       this.checkSocket(socket);
     } finally {
       if (this.acceptBrowse === accept) this.acceptBrowse = undefined;
@@ -231,7 +235,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     this.socket.send(JSON.stringify({ ...command, requestId }));
   }
 
-  private request(command: ChannelCommand, expects: Pending['expects'] = 'ack',
+  private request(command: ChannelCommand, expects: Pending['expects'] = 'done',
     { requestId = randomUUID(), accepted }: { requestId?: string; accepted?: () => void } = {}): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -272,8 +276,8 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     }, 'confirmed') as StoredMessage;
   }
 
-  async history(before?: number): Promise<TextHistoryPage> {
-    return await this.conversation({ type: 'history', roomId: this.selectedRoomId(), before }, 'history_page') as TextHistoryPage;
+  async history(before?: number, { parts = [HISTORY_INLINE_IMAGES] }: TextHistoryOptions = {}): Promise<TextHistoryPage> {
+    return await this.conversation({ type: 'history', roomId: this.selectedRoomId(), before, parts: parts.length ? parts : undefined }, 'history_page') as TextHistoryPage;
   }
 
   async deleteOwnMessage(message: ChannelMessage): Promise<void> {
@@ -338,44 +342,39 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       this.emit('state', this.summary());
       return;
     }
-    if (event.type === 'error' && event.requestId) {
-      this.complete(event.requestId, undefined, Error(event.code));
+    if (event.type === 'error') {
+      this.emit('failure', new Error(event.code));
       return;
     }
-    if (event.type === 'room_created' && event.requestId) {
-      if (this.pending.get(event.requestId)?.expects === 'room_created')
-        this.complete(event.requestId, event.room);
-      return;
-    }
-    if (event.type === 'room_reply' && event.requestId) {
-      const pending = this.pending.get(event.requestId);
-      if (!pending || pending.roomId !== event.roomId) return;
-      if (event.result.type === 'error')
-        this.complete(event.requestId, undefined, Error(event.result.code));
+    if (event.type === 'reply') {
+      const { requestId, roomId, result } = event;
+      const pending = this.pending.get(requestId);
+      if (!pending || (roomId !== undefined && pending.roomId !== roomId)) return;
+      if (result.type === 'error') this.complete(requestId, undefined, Error(result.code));
       else if (expectsWriterResult(pending.expects)) return;
-      else if (pending.expects === 'ack' && event.result.type === 'done')
-        this.complete(event.requestId, event.result);
-      else this.complete(event.requestId, undefined, Error('invalid_response'));
-      return;
-    }
-    if (event.type === 'ack') {
-      if (this.pending.get(event.requestId)?.expects === 'ack')
-        this.complete(event.requestId);
+      else if (result.type === 'unknown_outcome') this.complete(requestId, undefined, Error('unknown_outcome'));
+      else if (pending.expects !== result.type) this.complete(requestId, undefined, Error('invalid_response'));
+      else this.complete(requestId, result.type === 'room_created' ? result.room : undefined);
       return;
     }
     if (event.type !== 'conversation' || !this.state || !this.sessionId)
       return;
-    const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ConversationAddress | ConversationReply;
-    if (reply.roomId !== this.roomId || !('record' in reply))
+    const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ReceivedConversation;
+    if (reply.role === 'ignored') return;
+    if (reply.roomId !== this.roomId || reply.role === 'command')
       throw new Error('invalid_conversation_sender');
-    const record = reply.record;
-    const pending = this.pending.get(reply.requestId);
-    // A closing socket can still deliver the writer's receipt for an in-flight request.
-    if (this.socket?.readyState !== WebSocket.OPEN && (!pending || record.type === 'live_message')) return;
-    if (record.type === 'live_message') {
-      this.emit('live', record.message);
+    if (reply.role === 'notice') {
+      if (this.socket?.readyState === WebSocket.OPEN && reply.notice.type === 'live_message') this.emit('live', reply.notice.message);
       return;
     }
+    const pending = this.pending.get(reply.requestId);
+    if (reply.role === 'unknown_record') {
+      if (pending?.roomId === reply.roomId && expectsWriterResult(pending.expects)) this.complete(reply.requestId, undefined, Error('unknown_outcome'));
+      return;
+    }
+    const record = reply.record;
+    // A closing socket can still deliver the writer's receipt for an in-flight request.
+    if (this.socket?.readyState !== WebSocket.OPEN && !pending) return;
     if (pending && expectsWriterResult(pending.expects) && record.type !== pending.expects) {
       this.complete(reply.requestId, undefined, Error(record.type === 'error' ? record.code : 'invalid_response'));
       return;
@@ -391,7 +390,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (record.hasMore && !record.messages.length)
         this.complete(reply.requestId, undefined, new Error('incomplete_history'));
       else
-        this.complete(reply.requestId, { messages: record.messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before });
+        this.complete(reply.requestId, { messages: record.messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before, parts: record.parts ?? [] });
     }
     if (record.type === 'confirmed') {
       if (pending?.expects === 'confirmed') this.complete(reply.requestId, record.message);

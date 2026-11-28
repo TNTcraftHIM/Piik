@@ -16,9 +16,11 @@ use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt
 use piik_channel_core::{
     backup::DomainMetadata,
     storage,
-    wire::{Event, HostingMode, Request, RoomCreationPolicy},
+    wire::{Command, Event, HostingMode, ReplyResult, Request, RoomCreationPolicy},
     Authority, Effects,
 };
+#[cfg(test)]
+use piik_channel_core::PRODUCT_VERSION;
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -50,7 +52,7 @@ struct Hub {
 
 impl Hub {
     fn redeem_launch(&mut self, request: &mut Request) {
-        if let piik_channel_core::wire::Command::Join { owner_key: Some(key), .. } = &mut request.command {
+        if let Command::Join { owner_key: Some(key), .. } = &mut request.command {
             if self.launch_tickets.remove(key).is_some_and(|expiry| Instant::now() < expiry) {
                 *key = self.authority.owner_admission_key().to_owned();
             }
@@ -66,7 +68,7 @@ impl Hub {
         connection: Uuid,
         request: Request,
         defer_room_result: bool,
-    ) -> Option<Event> {
+    ) -> Option<ReplyResult> {
         if !self
             .clients
             .get(&connection)
@@ -78,11 +80,11 @@ impl Hub {
         // A host has already committed its room policy. The domain's directory
         // is a projection of that authority, not a second writer that may undo it.
         let room_projection = matches!(&request.command,
-            piik_channel_core::wire::Command::HostOutput { output, .. }
+            Command::HostOutput { output, .. }
             if !output.reply.as_ref().is_some_and(|reply| matches!(reply.result,
                 piik_channel_core::host::RoomResult::Deleted { .. })));
         let deleted = match &request.command {
-            piik_channel_core::wire::Command::HostOutput { room_id, output }
+            Command::HostOutput { room_id, output }
                 if output.reply.as_ref().is_some_and(|reply| {
                     matches!(
                         reply.result,
@@ -97,25 +99,37 @@ impl Hub {
             }
             _ => None,
         };
-        let (failure_target, request_id) = match &request.command {
-            piik_channel_core::wire::Command::HostOutput { output, .. } => output
-                .reply
-                .as_ref()
-                .map(|reply| (reply.context.connection, reply.context.request_id.clone()))
-                .unwrap_or((connection, request.request_id.clone())),
-            _ => (connection, request.request_id.clone()),
+        let (failure_target, request_id, room_scope) = match &request.command {
+            Command::HostOutput { room_id, output } => {
+                let (target, request_id) = output
+                    .reply
+                    .as_ref()
+                    .map(|reply| (reply.context.connection, reply.context.request_id.clone()))
+                    .unwrap_or((connection, request.request_id.clone()));
+                (target, request_id, Some(room_id.clone()))
+            }
+            Command::DeleteRoom { room_id, .. } => (connection, request.request_id.clone(), Some(room_id.clone())),
+            Command::Join { .. } => (connection, None, None),
+            _ => (connection, request.request_id.clone(), None),
         };
         let user_change = matches!(
             request.command,
-            piik_channel_core::wire::Command::Join { .. }
-                | piik_channel_core::wire::Command::SetProfile { .. }
+            Command::Join { .. } | Command::SetProfile { .. }
         );
         let before = (metadata && !room_projection).then(|| self.authority.clone());
+        let deleting = matches!(request.command, Command::DeleteRoom { .. });
         let mut effects = self.authority.handle(connection, request, now());
-        let failed = effects
-            .events
-            .iter()
-            .any(|(target, event)| *target == connection && matches!(event, Event::Error { .. }));
+        // Authority appends a command rejection after expiry and other effects.
+        // A HostOutput may itself complete a room request with a scoped error.
+        let failed = effects.events.last().is_some_and(|(target, event)| {
+            *target == connection
+                && matches!(
+                    event,
+                    Event::Error { room_id, .. }
+                        | Event::Reply { room_id, result: ReplyResult::Error { .. }, .. }
+                        if room_id.is_none() || deleting
+                )
+        });
         if metadata && !failed {
             let saved = if user_change {
                 self.storage.save_user(&self.authority, connection)
@@ -129,7 +143,7 @@ impl Hub {
                         connection,
                         Event::Error {
                             code: "directory_storage_failed".into(),
-                            request_id: None,
+                            room_id: None,
                         },
                     );
                     return None;
@@ -141,10 +155,11 @@ impl Hub {
                 }
                 self.send(
                     failure_target,
-                    Event::Error {
-                        code: "storage_failed".into(),
+                    Event::completion(
                         request_id,
-                    },
+                        room_scope,
+                        ReplyResult::Error { code: "storage_failed".into() },
+                    ),
                 );
                 return None;
             }
@@ -157,14 +172,14 @@ impl Hub {
                     *target == connection
                         && matches!(
                             event,
-                            Event::RoomCreated { .. }
-                                | Event::RoomReply {
-                                    result: piik_channel_core::host::RoomResult::Deleted { .. },
-                                    ..
-                                }
+                            Event::Reply { result, .. } | Event::Deferred { result, .. }
+                                if matches!(result, ReplyResult::RoomCreated { .. } | ReplyResult::Deleted { .. })
                         )
                 })
-                .map(|index| effects.events.remove(index).1)
+                .map(|index| match effects.events.remove(index).1 {
+                    Event::Reply { result, .. } | Event::Deferred { result, .. } => result,
+                    _ => unreachable!(),
+                })
         } else {
             None
         };
@@ -173,10 +188,13 @@ impl Hub {
     }
 
     fn send(&self, connection: Uuid, mut event: Event) {
+        // Hosted storage has consumed any deferred work by this point.
+        if matches!(event, Event::Deferred { .. }) {
+            return;
+        }
         if let Some(origin) = &self.invitation_origin {
-            if let Event::Welcome {
-                invitation_origin, ..
-            } = &mut event
+            if let Event::Welcome { invitation_origin, .. }
+            | Event::ConversationWelcome { invitation_origin, .. } = &mut event
             {
                 *invitation_origin = Some(origin.clone());
             }
@@ -283,10 +301,10 @@ async fn send_frame(
 }
 
 async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
-    use piik_channel_core::wire::Command;
     use piik_channel_native::session::{HostCommand, OpenRoom};
 
-    let (room, session, request_id, commands, password, picture, allow_service_relay) = {
+    let request_id = request.request_id.clone();
+    let (room, session, commands, password, picture, allow_service_relay) = {
         let mut hub = state.hub.lock().unwrap();
         if hub.authority.hosting_mode() == HostingMode::Lightweight {
             hub.request(connection, request);
@@ -305,7 +323,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         let password = password.take();
         let picture = picture.take();
         let allow_service_relay = *allow_service_relay;
-        let Some(Event::RoomCreated { room, request_id }) =
+        let Some(ReplyResult::RoomCreated { room }) =
             hub.handle_request(connection, request, true)
         else {
             return;
@@ -313,7 +331,6 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         (
             room,
             hub.authority.session_for_connection(connection).expect("room creator session"),
-            request_id,
             hub.room_commands.clone(),
             password,
             picture,
@@ -323,53 +340,44 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     let id = room.id.clone();
     let result = async {
         let commands = commands.ok_or_else(|| "hosting_unavailable".to_owned())?;
-        let policy = tokio::task::spawn_blocking(move || {
-            room.new_policy(password, picture, allow_service_relay)
-        })
-        .await
-        .map_err(|_| "hosting_unavailable")??;
+        let creator_id = room.creator_id;
+        let room = piik_channel_core::host::NewRoom::from_summary(&room, password, picture, allow_service_relay);
         let (result, response) = tokio::sync::oneshot::channel();
         commands
-            .try_send(HostCommand::Open(OpenRoom { policy, result }))
+            .try_send(HostCommand::Open(OpenRoom { room, creator_id, result }))
             .map_err(|_| "hosting_unavailable")?;
-        response.await.unwrap_or_else(|_| Err("room_creation_unconfirmed".into()))
+        response.await.map_err(|_| "room_creation_unconfirmed")?.map_err(|error| error.to_string())
     }
     .await;
     let mut hub = state.hub.lock().unwrap();
-    match result {
-        Ok(room) => hub.send(connection, Event::RoomCreated { room, request_id }),
+    let result = match result {
+        Ok(room) => ReplyResult::RoomCreated { room },
         Err(code) => {
             if !matches!(code.as_str(), "room_creation_unconfirmed" | "room_created_connection_failed") {
                 let mut effects = Effects::default();
                 hub.authority.cancel_reservation(session, &id, &mut effects);
                 hub.apply(effects);
             }
-            hub.send(connection, Event::Error { code, request_id });
+            ReplyResult::Error { code }
         }
-    }
+    };
+    hub.send(connection, Event::completion(request_id, None, result));
 }
 
 async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: String) {
     use piik_channel_native::session::HostCommand;
-    let (reply, creator, commands) = {
+    let request_id = request.request_id.clone();
+    let (creator, commands) = {
         let mut hub = state.hub.lock().unwrap();
         let Some(creator) = hub.authority.offline_hosted_creator(&id) else {
             hub.request(connection, request);
             return;
         };
         // Only the durable, authorized directory removal may retire this room's data.
-        let Some(reply) = hub.handle_request(connection, request, true) else {
+        let Some(ReplyResult::Deleted { .. }) = hub.handle_request(connection, request, true) else {
             return;
         };
-        (reply, creator, hub.room_commands.clone())
-    };
-    let Event::RoomReply {
-        room_id,
-        request_id,
-        ..
-    } = reply
-    else {
-        return;
+        (creator, hub.room_commands.clone())
     };
     let removed = if let Some(commands) = commands {
         let (result, response) = tokio::sync::oneshot::channel();
@@ -394,11 +402,7 @@ async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: Str
             hub.apply(effects);
             hub.send(
                 connection,
-                Event::RoomReply {
-                    room_id,
-                    request_id,
-                    result: piik_channel_core::host::RoomResult::Deleted { data_removed: true },
-                },
+                Event::completion(request_id, Some(id), ReplyResult::Deleted { data_removed: true }),
             );
             return;
         }
@@ -406,21 +410,18 @@ async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: Str
     }
     hub.send(
         connection,
-        Event::Error {
-            request_id,
-            code: "storage_failed".into(),
-        },
+        Event::completion(request_id, Some(id), ReplyResult::Error { code: "storage_failed".into() }),
     );
 }
 
 async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
-    if let piik_channel_core::wire::Command::DeleteRoom { room_id, .. } = &request.command {
+    if let Command::DeleteRoom { room_id, .. } = &request.command {
         let id = room_id.clone();
         return delete_room(state, connection, request, id).await;
     }
     if matches!(
         &request.command,
-        piik_channel_core::wire::Command::CreateRoom { .. }
+        Command::CreateRoom { .. }
     ) {
         return create_room(state, connection, request).await;
     }
@@ -428,7 +429,7 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
         let mut hub = state.hub.lock().unwrap();
         if !matches!(
             request.command,
-            piik_channel_core::wire::Command::Conversation { .. }
+            Command::Conversation { .. }
         ) {
             hub.request(connection, request);
             return;
@@ -483,18 +484,10 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
         Ok(Some(Ok(Message::Text(text)))) => text,
         _ => return,
     };
-    let mut request = match Request::parse(&text) {
+    let mut request = match Request::parse_first(&text) {
         Ok(request) => request,
-        Err((request_id, code)) => {
-            send(
-                &mut socket,
-                &Event::Error {
-                    code: code.into(),
-                    request_id,
-                },
-                &mut images,
-            )
-            .await;
+        Err(event) => {
+            send(&mut socket, &event, &mut images).await;
             return;
         }
     };
@@ -551,10 +544,7 @@ async fn session(mut socket: WebSocket, state: Domain, local_entry: bool) {
                         Ok(value) => dispatch_request(&state, connection, value).await,
                         Err((request_id, code)) => state.hub.lock().unwrap().send(
                             connection,
-                            Event::Error {
-                                code: code.into(),
-                                request_id,
-                            },
+                            Event::completion(request_id, None, ReplyResult::Error { code: code.into() }),
                         ),
                     },
                     // Axum replies to Ping automatically.
@@ -913,10 +903,10 @@ mod tests {
         assert_eq!(domain.owner_key(), owner_key);
         let redeem = |ticket: &str| {
             let mut join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":ticket,
-                "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
+                "major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"signingKey":vec![0;32]}).to_string()).unwrap();
             let mut hub = domain.hub.lock().unwrap();
             hub.redeem_launch(&mut join);
-            let piik_channel_core::wire::Command::Join { owner_key, .. } = join.command else { unreachable!() };
+            let Command::Join { owner_key, .. } = join.command else { unreachable!() };
             owner_key.unwrap()
         };
         let first = domain.launch_ticket().unwrap();
@@ -934,7 +924,7 @@ mod tests {
         let (credential, mut backup) = {
             let mut hub = domain.hub.lock().unwrap();
             let join = Request::parse(&json!({"type":"join","name":"Operator","ownerKey":owner_key,
-                "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":vec![0;32]}).to_string()).unwrap();
+                "major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"signingKey":vec![0;32]}).to_string()).unwrap();
             let effects = hub.authority.handle(Uuid::new_v4(), join, 0);
             let credential = effects.events.into_iter().find_map(|(_, event)| match event {
                 Event::Welcome { credential, .. } => Some(credential), _ => None,
@@ -980,7 +970,8 @@ mod tests {
         };
         let request = |mut value: serde_json::Value| {
             if value["type"] == "join" {
-                value["protocol"] = serde_json::json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+                value["major"] = serde_json::json!(PRODUCT_VERSION.major);
+                value["minor"] = serde_json::json!(PRODUCT_VERSION.minor);
             }
             Request::parse(&value.to_string()).unwrap()
         };
@@ -1013,7 +1004,7 @@ mod tests {
         policy.id = drain(&mut receiver)
             .into_iter()
             .find_map(|event| match event {
-                Event::RoomCreated { room, .. } => Some(room.id),
+                Event::Reply { result: ReplyResult::RoomCreated { room }, .. } => Some(room.id),
                 _ => None,
             })
             .unwrap();
@@ -1057,12 +1048,12 @@ mod tests {
             request(json!({"type":"host_output","roomId":id,"output":output})),
         );
         let failed = drain(&mut receiver);
-        assert!(failed.iter().any(|event| matches!(event, Event::Error { code, request_id: Some(request) } if code == "storage_failed" && request == "delete")));
+        assert!(failed.iter().any(|event| matches!(event, Event::Reply { result: ReplyResult::Error { code }, request_id, room_id: Some(room_id) } if code == "storage_failed" && request_id == "delete" && room_id == &id)));
         assert!(failed.iter().any(|event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == id && !room.available))));
         assert!(!failed.iter().any(|event| matches!(
             event,
-            Event::RoomReply {
-                result: piik_channel_core::host::RoomResult::Deleted { .. },
+            Event::Reply {
+                result: ReplyResult::Deleted { .. },
                 ..
             }
         )));
@@ -1077,8 +1068,8 @@ mod tests {
         );
         assert!(drain(&mut receiver).iter().any(|event| matches!(
             event,
-            Event::RoomReply {
-                result: piik_channel_core::host::RoomResult::Deleted {
+            Event::Reply {
+                result: ReplyResult::Deleted {
                     data_removed: false
                 },
                 ..

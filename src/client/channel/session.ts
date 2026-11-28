@@ -15,6 +15,7 @@ import { WatchPlayer } from "./watch-playback";
 import { Stage, type SourceSelection, type ScreenShare } from "./stage";
 import { HTMLVideoMedia, AppPageMedia, createResourceWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
 import { watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource, type WatchFormat } from "./protocol";
+import { PRODUCT_VERSION } from "./product-version";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
@@ -23,15 +24,15 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { id as channelId, roomInvitationSchema, CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { HISTORY_INLINE_IMAGES, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, DomainVersionMismatch, checkDomainVersion, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type ReceivedRecord, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { requestBrowserRoomPersistence } from "./browser-room-persistence";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type HostMediaTarget, type ReportError, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { BrowserHosting, browserRoomStorage } from "./browser-hosting";
 import { validBackupSequence, type BrowserRoomSnapshot, type BrowserRoomStage } from "../../../prototype/channel-browser/src/hosting-contract";
-import { AppPage, ChannelApp, discoverChannelAppHealth, type AppPageMediaSelection, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
-import type { NativeCaptureTarget, EncodingExecution, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
+import { AppPage, ChannelApp, RoomSettingsRejected, discoverChannelAppHealth, type AppPageMediaSelection, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
+import { nativeVideoCodecSchema, type NativeCaptureTarget, type EncodingExecution, type NativePageMpdSelection, type NativePageMpdCatalog } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
@@ -113,6 +114,10 @@ function captureSource(track: MediaStreamTrack | undefined, camera = false): Scr
   return { kind: camera ? "camera" : "screen", name: name || null };
 }
 
+function fullHistoryCommand(roomId: string, before?: number): Extract<ChannelCommand, { type: "history" }> {
+  return { type: "history", roomId, ...(before === undefined ? {} : { before }), parts: [HISTORY_INLINE_IMAGES] };
+}
+
 function signedConversationRequest(command: ChannelCommand) {
   switch (command.type) {
     case "chat": return { command, result: "confirmed" } as const;
@@ -128,18 +133,16 @@ function acceptsChannelReply(command: ChannelCommand, event: ChannelReply): bool
   switch (command.type) {
     case "create_room": return event.type === "room_created";
     case "profiles": return event.type === "profiles";
-    case "room_invite": return event.type === "room_reply" && event.result.type === "invite";
-    case "get_room_invite": return event.type === "room_reply" && event.result.type === "invite_state";
-    case "room_topology": return event.type === "room_reply" && event.result.type === "topology";
-    case "delete_room": return event.type === "room_reply" && event.result.type === "deleted";
+    case "room_invite": return event.type === "invite";
+    case "get_room_invite": return event.type === "invite_state";
+    case "room_topology": return event.type === "topology";
+    case "delete_room": return event.type === "deleted";
     case "start_watch":
     case "join_watch":
       if (command.type === "join_watch" && command.mode === null) break;
-      if (event.type !== "room_reply" || event.result.type !== "watch_ready") return false;
-      const time = event.result.serverTime;
-      return typeof time === "number" && Number.isSafeInteger(time) && time >= 0;
+      return event.type === "watch_ready";
   }
-  return event.type === "ack" || event.type === "room_reply" && event.result.type === "done";
+  return event.type === "done";
 }
 
 function stored(key: string, value?: string): string | null {
@@ -167,6 +170,12 @@ function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
     return rest;
   });
   return { ...state, channel: { ...state.channel, rooms } };
+}
+
+function captureCodec(name: string) {
+  const codec = nativeVideoCodecSchema.safeParse(name);
+  if (!codec.success) throw new Error("capture_codec_unsupported");
+  return codec.data;
 }
 
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
@@ -223,6 +232,7 @@ export class ChannelSession {
     request: command => this.request(command),
     write: command => this.write(command),
     report: error => this.patch({ error }),
+    restoreChanged: () => this.patch({}),
     failures: roomOpenFailures => this.patch({ roomOpenFailures }),
   });
   private app: ChannelApp | undefined;
@@ -404,7 +414,7 @@ export class ChannelSession {
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     const errorRoomId = "error" in patch ? patch.errorRoomId : this.view.errorRoomId;
-    this.view = { ...this.view, ...patch, pending, errorRoomId, waitingWatchPages: new Set(this.waitingWatchPages.keys()), watchPlayers: new Map(this.watchPlayers()), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+    this.view = { ...this.view, ...patch, hostingRestoreFailure: this.hosting.restoreFailure, pending, errorRoomId, waitingWatchPages: new Set(this.waitingWatchPages.keys()), watchPlayers: new Map(this.watchPlayers()), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
       appPort: this.app?.connected ? this.app.port : undefined,
       backgroundVoiceShortcuts: this.app?.connected ? this.app.backgroundVoiceShortcuts : undefined,
       externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
@@ -498,7 +508,7 @@ export class ChannelSession {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
         sentBootstrap = newIdentity ? undefined : this.ownerBootstrap;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
+        this.write({ type: "join", ...PRODUCT_VERSION, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.closeConnection();
@@ -512,10 +522,9 @@ export class ChannelSession {
         const text = String(data), wireBytes = new TextEncoder().encode(text).byteLength;
         if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
         const raw = JSON.parse(text);
-        if (raw.type === "welcome" && raw.protocol !== CHANNEL_PROTOCOL) {
-          this.closeConnection(); this.patch({ error: "incompatible_protocol" }); return;
-        }
+        checkDomainVersion(raw, PRODUCT_VERSION);
         const event = decoder.decode(raw, wireBytes);
+        if (!event) return;
         if (event.type === "welcome") {
           const skipRoom = acceptWelcome?.(event);
           const bootstrap = sentBootstrap;
@@ -523,7 +532,12 @@ export class ChannelSession {
           sentBootstrap = undefined;
           this.receive(event, skipRoom, bootstrap);
         } else this.receive(event);
-      } catch {
+      } catch (error) {
+        if (error instanceof DomainVersionMismatch) {
+          this.closeConnection();
+          this.patch({ error: error.update === "participant" ? "page_update_required" : "domain_update_required" });
+          return;
+        }
         this.patch({ error: "invalid_response" });
         // Later frames may omit pictures; recovery must start with a complete Welcome.
         socket.close();
@@ -545,9 +559,6 @@ export class ChannelSession {
   }
 
   private receive(event: ChannelEvent, skipRestoreRoom?: string, bootstrap?: OwnerBootstrap): void {
-    // A routed conversation can fail at the Domain, but only its writer confirms it.
-    if ("requestId" in event && event.requestId && this.requests.get(event.requestId)?.signedResult
-      && event.type !== "error" && !(event.type === "room_reply" && event.result.type === "error")) return;
     if (event.type === "welcome") {
       this.endRecovery();
       const resumed = this.view.sessionId === event.sessionId;
@@ -593,9 +604,7 @@ export class ChannelSession {
       void this.syncAppWatching(resumed);
       void this.resumeWatches();
       const socket = this.socket, current = () => this.socket === socket && this.view.sessionId === event.sessionId && !this.closed;
-      void this.hosting.restore(event.sessionId, current, skipRestoreRoom).catch(error => {
-        if (current()) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
-      });
+      void this.hosting.restore(event.sessionId, current, skipRestoreRoom);
       if (resumed) {
         this.media.resync();
         this.attachments.resume();
@@ -618,45 +627,37 @@ export class ChannelSession {
       void this.conversation.receive(event.packet).catch(() => {});
     } else if (event.type === "host_bound") this.hosting.bound(event.roomId, event.bindingId);
     else if (event.type === "host_input") this.hosting.input(event.roomId, event.input);
-    else if (event.type === "room_reply") {
-      if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
-      const request = event.requestId ? this.requests.get(event.requestId) : undefined;
-      if (!request && event.requestId && event.result.type === "error") this.readings.get(event.roomId)?.reader.undelivered(event.requestId);
-      if (!request || request.roomId !== event.roomId || !event.requestId) return;
-      this.retireRequest(event.requestId);
-      if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
-      else {
-        request.result?.(event); request.resolve();
+    else if (event.type === "reply") {
+      const { requestId, roomId, result } = event;
+      this.forwardingBudget?.capacity_reply(requestId);
+      const request = this.requests.get(requestId);
+      if (!request) {
+        if (result.type === "error") {
+          if (roomId !== undefined) this.readings.get(roomId)?.reader.undelivered(requestId);
+          else for (const { reader } of this.readings.values()) {
+            if (!reader.hasPendingInteraction(requestId)) continue;
+            reader.undelivered(requestId);
+            break;
+          }
+        }
+        return;
       }
-    } else if (event.type === "room_created" || event.type === "profiles") {
-      const request = event.requestId ? this.requests.get(event.requestId) : undefined;
-      if (!request || !event.requestId) return;
-      this.retireRequest(event.requestId);
-      request.result?.(event); request.resolve();
+      if (roomId !== undefined && request.roomId !== roomId) return;
+      // Only the writer confirms its signed conversation command.
+      if (request.signedResult && result.type !== "error") return;
+      this.retireRequest(requestId);
+      if (result.type === "error") request.reject(new Error(result.code));
+      else if (result.type === "unknown_outcome") request.reject(new Error("unknown_outcome"));
+      else { request.result?.(result); request.resolve(); }
     } else if (event.type === "state") this.applyState(event.state);
     else if (event.type === "signal") {
       if (event.payload !== null) this.media.signal(event.pairId, event.payload);
-    }
-    else if (event.type === "ack" || event.type === "error") {
-      if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
-      const request = event.requestId ? this.requests.get(event.requestId) : null;
-      if (request && event.requestId) {
-        if (event.type === "ack" && (request.kind === "room_invite" || request.kind === "get_room_invite")) return;
-        this.retireRequest(event.requestId);
-        if (event.type === "ack") { request.result?.(event); request.resolve(); }
-        else request.reject(new Error(event.code));
-      } else if (event.type === "error" && event.requestId) {
-        for (const { reader } of this.readings.values()) {
-          if (!reader.hasPendingInteraction(event.requestId)) continue;
-          reader.undelivered(event.requestId);
-          break;
-        }
-      } else if (event.type === "error" && !event.requestId) {
-        if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
-          this.closeConnection();
-        }
-        this.patch({ error: event.code });
+    } else if (event.type === "error") {
+      if (event.roomId !== undefined && event.roomId !== this.roomId) return;
+      if (!this.view.sessionId || event.code === "invalid_credential") {
+        this.closeConnection();
       }
+      this.patch({ error: event.code });
     }
   }
 
@@ -957,13 +958,27 @@ export class ChannelSession {
     });
   }
 
-  private receiveConversation(reply: ConversationReply): void {
-    const record = reply.record;
-    const request = this.requests.get(reply.requestId);
+  private rejectRequest(requestId: string, code: string): void {
+    const request = this.requests.get(requestId);
+    if (request && this.retireRequest(requestId)) request.reject(new Error(code));
+  }
+
+  private receiveConversation(reply: ReceivedRecord): void {
+    const request = reply.role === "notice" ? undefined : this.requests.get(reply.requestId);
     const addressed = request?.signedResult && request.roomId === reply.roomId && request.bindingId === reply.bindingId;
-    if (addressed && record.type !== request.signedResult && record.type !== "error"
-      && record.type !== "live_message") {
-      this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
+    const reader = this.readings.get(reply.roomId)?.reader;
+    if (reply.role === "unknown_record") {
+      if (addressed) {
+        this.retireRequest(reply.requestId);
+        request.reject(new Error("unknown_outcome"));
+      } else if (reader?.bindingId === reply.bindingId && reader.hasPendingInteraction(reply.requestId)) {
+        reader.undelivered(reply.requestId);
+      }
+      return;
+    }
+    const record = reply.role === "notice" ? reply.notice : reply.record;
+    if (addressed && record.type !== request.signedResult && record.type !== "error") {
+      this.rejectRequest(reply.requestId, "invalid_response");
       return;
     }
     if (record.type === "message_deleted" || record.type === "history_cleared" || record.type === "room_media_cleared") {
@@ -977,10 +992,9 @@ export class ChannelSession {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
     }
     if (record.type === "interaction_ready" || record.type === "reaction" || (record.type === "error" && !request)) {
-      const reader = this.readings.get(reply.roomId)?.reader;
-      if (reader?.bindingId === reply.bindingId && reader.receiveInteraction(reply.requestId, record)) return;
+      if (reader?.bindingId === reply.bindingId && reader.receiveInteraction(reply.role === "record" ? reply.requestId : undefined, record)) return;
     }
-    if (record.type === "live_message") {
+    if (reply.role === "notice" && record.type === "live_message") {
       if (this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.delivery?.bindingId === reply.bindingId)) {
         this.applyMessage(reply.roomId, record.message, true);
       }
@@ -990,7 +1004,7 @@ export class ChannelSession {
     if (request.seekAfter !== undefined && record.type !== "error") {
       if (record.type !== "history_seek_result" || record.after !== request.seekAfter
         || (record.seq !== null && (!Number.isSafeInteger(record.seq) || record.seq <= record.after))) {
-        this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
+        this.rejectRequest(reply.requestId, "invalid_response");
         return;
       }
       request.result?.(record);
@@ -999,7 +1013,7 @@ export class ChannelSession {
     if (record.type === "history_page" && history?.hasPage(reply.requestId)) {
       const page = history.completePage(reply.requestId, record);
       if (!page) {
-        this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
+        this.rejectRequest(reply.requestId, "incomplete_history");
         return;
       }
       this.applyHistory(reply.roomId, history, page);
@@ -1034,7 +1048,7 @@ export class ChannelSession {
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.delivery?.bindingId === bindingId)) return;
     const history = this.histories.get(roomId), messages = history?.messages;
     if (!history) return;
-    for (const requestId of history.applyReactions(bindingId, snapshot)) this.receive({ type: "error", requestId, code: "incomplete_history" });
+    for (const requestId of history.applyReactions(bindingId, snapshot)) this.rejectRequest(requestId, "incomplete_history");
     if (history.messages !== messages) this.patch(this.historyView([roomId]));
   }
 
@@ -1310,7 +1324,7 @@ export class ChannelSession {
         current.history = this.action(`history:${id}`, async () => {
           try {
             do {
-              await this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id,
+              await this.request(fullHistoryCommand(id, before), undefined, id,
                 { replaceHistory: before !== undefined, refresh, bindingId: current.reader.bindingId });
               before = refresh?.before;
             } while (before !== undefined && this.roomId === id && this.readings.get(id) === current);
@@ -1532,7 +1546,7 @@ export class ChannelSession {
     if (reading) delete reading.followLatest;
     const pending = this.view.pending.has(`history:${roomId}`);
     const loading = this.action(`history:${roomId}`, () => this.request(
-      { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, { signal: options.signal, replaceHistory: replace, bindingId: options.bindingId }), !options.signal, options);
+      fullHistoryCommand(roomId, before), undefined, roomId, { signal: options.signal, replaceHistory: replace, bindingId: options.bindingId }), !options.signal, options);
     if (reading && !pending) reading.history = loading;
     return loading;
   }
@@ -1547,9 +1561,14 @@ export class ChannelSession {
     const current = this.sessionContext(), socket = this.socket;
     const serverHosted = this.view.state!.channel.hostingMode === "hosted";
     let room: RoomSummary | undefined;
-    await this.request(createRoomCommand(settings, this.view.self!.id, serverHosted), event => {
-      if (event.type === "room_created") room = event.room;
-    });
+    try {
+      await this.request(createRoomCommand(settings, this.view.self!.id, serverHosted), event => {
+        if (event.type === "room_created") room = event.room;
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unknown_outcome") throw new RoomCreationInterrupted(undefined, false);
+      throw error;
+    }
     try { current(); } catch (error) {
       if (room && serverHosted) throw new RoomCreationInterrupted(room.id, true);
       throw error;
@@ -1571,18 +1590,19 @@ export class ChannelSession {
     }
     let creation: "reserved" | "dispatched" | "committed" = "reserved";
     try {
-      const runtime = await loadRoomHosting();
-      const policy = await runtime.createRoomPolicy({ ...settings, id: room.id, creatorId: self.id });
       current();
       if (app) {
         if (this.app !== app || !app.connected) throw new Error("app_disconnected");
         creation = "dispatched";
-        const opened = await app.open(policy, room.id);
+        const opened = await app.open({ ...settings, id: room.id });
         creation = "committed";
         current();
         await this.request({ type: "browse", roomId: opened.id, active: true });
         return opened.id;
       }
+      const runtime = await loadRoomHosting();
+      const policy = await runtime.createRoomPolicy({ ...settings, id: room.id, creatorId: self.id });
+      current();
       const storage = await browserRoomStorage(state.channel.id, self.id);
       current();
       const host = await storage.open(policy);
@@ -1592,7 +1612,7 @@ export class ChannelSession {
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
     } catch (error) {
-      if (creation === "reserved") { cancel(); throw error; }
+      if (creation === "reserved" || (creation === "dispatched" && error instanceof RoomSettingsRejected)) { cancel(); throw error; }
       throw new RoomCreationInterrupted(room.id, creation === "committed");
     }
   }, reportError);
@@ -1636,10 +1656,8 @@ export class ChannelSession {
     const current = this.sessionContext(), context = this.connectionContext(roomId, publicationId);
     let topology: ChannelTopology | undefined;
     await this.request({ type: "room_topology", roomId, publicationId }, event => {
-      if (event.type !== "room_reply" || event.result.type !== "topology") throw new Error("invalid_response");
-      const parsed = channelTopologySchema.safeParse(event.result.topology);
-      if (!parsed.success) throw new Error("invalid_response");
-      topology = parsed.data;
+      if (event.type !== "topology") throw new Error("invalid_response");
+      topology = event.topology;
     }, roomId, { signal });
     current(); signal?.throwIfAborted();
     context.current();
@@ -2190,8 +2208,8 @@ export class ChannelSession {
     let dataRemoved: boolean | undefined;
     try {
       await this.request({ type: "delete_room", roomId, deleteData }, event => {
-        if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
-        dataRemoved = event.result.dataRemoved;
+        if (event.type !== "deleted") throw new Error("invalid_response");
+        dataRemoved = event.dataRemoved;
       });
       if (dataRemoved === undefined) throw new Error("invalid_response");
     } catch (error) {
@@ -2221,11 +2239,10 @@ export class ChannelSession {
   getRoomInvite = async (roomId: string): Promise<RoomInvitationState> => {
     let invitation: RoomInvitationState | undefined;
     await this.request({ type: "get_room_invite", roomId }, event => {
-      if (event.type !== "room_reply") throw new Error("invalid_response");
-      const state = roomInvitationSchema.safeParse(event.result.invitation);
-      if (!state.success) throw new Error("invalid_response");
-      invitation = state.data.state === "available"
-        ? { state: "available", url: this.roomInvitationURL(roomId, state.data.key) } : state.data;
+      if (event.type !== "invite_state") throw new Error("invalid_response");
+      const state = event.invitation;
+      invitation = state.state === "available"
+        ? { state: "available", url: this.roomInvitationURL(roomId, state.key) } : state;
     });
     if (!invitation) throw new Error("invalid_response");
     return invitation;
@@ -2238,10 +2255,8 @@ export class ChannelSession {
     if (this.invitationPending(roomId)) throw new Error("operation_pending");
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => {
-      if (event.type !== "room_reply") throw new Error("invalid_response");
-      const parsed = channelId.safeParse(event.result.key);
-      if (!parsed.success) throw new Error("invalid_response");
-      key = parsed.data;
+      if (event.type !== "invite") throw new Error("invalid_response");
+      key = event.key;
     });
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
@@ -2614,8 +2629,8 @@ export class ChannelSession {
     this.declinedSources.delete(id);
     const start = performance.now();
     await this.request({ type: "join_watch", roomId: player.roomId, id, mode }, event => {
-      if (!player.signal.aborted && event.type === "room_reply" && event.result.type === "watch_ready"
-        && typeof event.result.serverTime === "number") player.calibrate(event.result.serverTime, start);
+      if (!player.signal.aborted && event.type === "watch_ready"
+        && typeof event.serverTime === "number") player.calibrate(event.serverTime, start);
     }, player.roomId, { signal: player.signal });
     player.signal.throwIfAborted();
   }
@@ -2961,8 +2976,8 @@ export class ChannelSession {
       const replaceId = this.ownedReplacementWatchId(selection);
       await this.request({ type: "start_watch", roomId, id, source, ...(replaceId ? { replaceId } : {}), ...(byteSource ? { byteSource } : {}),
         playback: { timeline: initial.live ? "program" : "media", position: initial.position, paused: true, rate: initial.rate, anchorTime: 0 } }, event => {
-        if (event.type === "room_reply" && event.result.type === "watch_ready" && typeof event.result.serverTime === "number")
-          player.calibrate(event.result.serverTime, start);
+        if (event.type === "watch_ready" && typeof event.serverTime === "number")
+          player.calibrate(event.serverTime, start);
       }, roomId);
       if (!current() || this.watchPlayer(id) !== player) throw new DOMException("Cancelled", "AbortError");
       const screen = this.stages.get(roomId)?.screen;
@@ -3304,7 +3319,9 @@ export class ChannelSession {
         && this.stages.get(roomId)?.sourceSelection === selection
         && app.externalInput(share.id)?.captureId === event.captureId;
       try {
+        let codec;
         try {
+          codec = captureCodec(event.codec);
           if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: event.sessionId }, undefined, roomId);
           if (!current()) throw new DOMException("Input cancelled", "AbortError");
           await app.commitCapture(share.id, event.captureId);
@@ -3315,7 +3332,7 @@ export class ChannelSession {
         if (!current()) return;
         share.native = undefined;
         share.paused = undefined;
-        share.codec = automaticVideoCodecPreference(event.codec);
+        share.codec = automaticVideoCodecPreference(codec);
         this.retireCapture(share.id);
         const remoteControls = new Map(this.view.remoteControls);
         remoteControls.delete(share.id);
@@ -3525,6 +3542,7 @@ export class ChannelSession {
       const prepared = await preparing;
       ownsPreparation = true;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+      const codec = captureCodec(prepared.codec);
       selection.committing = true;
       this.patch({});
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
@@ -3535,7 +3553,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.native = native;
       share.paused = undefined;
-      share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
+      share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(codec) : manualVideoCodecPreference(codec);
       this.retireCapture(share.id);
       const remoteControls = new Map(this.view.remoteControls);
       if (replacesCapture) remoteControls.delete(share.id);
@@ -3609,7 +3627,7 @@ export class ChannelSession {
       this.retireWatch(publicationId);
       this.refreshActivity();
     } else await Promise.all([this.app?.stopCapture(publicationId), this.retireScreenPublication(publicationId)]);
-  });
+  }, false);
 
   private async retireScreenPublication(publicationId: string): Promise<void> {
     const browser = this.local.get(publicationId);

@@ -35,9 +35,9 @@ The [Server/App reference](../prototype/channel-server/README.md),
 Published 2.x compatibility is owned by the
 [maintenance contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md#accepted-release-contract)
 and its [versioning rules](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/versioning.md).
-Internal 3.0 uses matching artifacts under this tree's
-[versioning rules](./standards/versioning.md) and
-[saved-data formats](../prototype/channel-server/README.md#saved-data-and-files).
+The 3.0 candidate uses the product-version handshake. The first public baseline
+and Browser/App mixed-version artifact acceptance remain open.
+[3.0 versioning](./standards/versioning.md)
 
 ## Accepted Interaction Phase
 

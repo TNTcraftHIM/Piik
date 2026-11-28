@@ -3,12 +3,14 @@ import { once } from "node:events";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import WebSocket from "ws";
-import { CHANNEL_PROTOCOL, ChannelEventDecoder, eventSchema } from "../../src/client/channel/protocol.ts";
+import { ChannelEventDecoder, eventSchema } from "../../src/client/channel/protocol.ts";
+import { productVersion } from "../../scripts/release-version.mjs";
 
 const endpoint = process.env.CHANNEL_WS_URL ?? "ws://127.0.0.1:8791/prototype/channel";
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
 assert(["127.0.0.1", "localhost"].includes(new URL(endpoint).hostname), "Checks only target loopback");
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
+const version = productVersion(process.env.PIIK_BUILD_VERSION);
 assert(ownerKey, "Set PIIK_CHANNEL_OWNER_KEY to the local server's owner bootstrap key");
 // The protocol-only sources explicitly declare the accepted 720p30 ceiling.
 const videoSettings = { ceiling: { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 3_000_000 }, degradationPreference: 'balanced' };
@@ -26,9 +28,10 @@ async function connect(t, join = {}) {
     if (["welcome", "state"].includes(raw.type))
       assert(raw.state.users.every(user => !Object.hasOwn(user, "avatar")), "live summaries keep avatars in the profile path");
     const event = decoder.decode(raw, bytes.byteLength);
+    if (!event) return;
     recent.push({ type: event.type,
       ...(event.type === "error" ? { code: event.code } : {}),
-      ...(event.type === "room_reply" ? { result: event.result.type, code: event.result.code } : {}),
+      ...(event.type === "reply" ? { result: event.result.type, code: event.result.code } : {}),
       ...(["welcome", "state"].includes(event.type) ? { rooms: event.state.channel.rooms.map(room => ({ id: room.id, available: room.available })) } : {}),
     });
     if (recent.length > 16) recent.shift();
@@ -57,20 +60,16 @@ async function connect(t, join = {}) {
   const client = { socket, wait,
     async request(command) {
       const requestId = randomUUID();
-      const response = wait(event => event.requestId === requestId
-        && ["ack", "error", "room_reply", "profiles", "room_created"].includes(event.type)
-        && !(event.type === "ack" && ["room_invite", "get_room_invite"].includes(command.type)), command.type);
+      const response = wait(event => event.type === "reply" && event.requestId === requestId, command.type);
       socket.send(JSON.stringify({ ...command, requestId }));
-      const result = await response;
-      if (result.type === "error" || result.result?.type === "error") {
-        console.error(`Protocol ${command.type}: ${result.code ?? result.result.code}`);
-      }
-      return result.type === "room_reply" ? { requestId, ...result.result, type: result.result.type === "error" ? "error" : "ack" } : result;
+      const event = await response;
+      if (event.result.type === "error") console.error("Protocol " + command.type + ": " + event.result.code);
+      return event;
     },
   };
   const signingKey = [...Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url")];
-  socket.send(JSON.stringify({ type: "join", canUsePeerTransport: true, protocol: CHANNEL_PROTOCOL, name: "Protocol check", signingKey, ...join }));
-  client.welcome = await wait(event => ["welcome", "error"].includes(event.type), "join result");
+  socket.send(JSON.stringify({ type: "join", canUsePeerTransport: true, ...version, name: "Protocol check", signingKey, ...join }));
+  client.welcome = await wait(event => ["welcome", "error", "incompatible_version"].includes(event.type), "join result");
   return client;
 }
 
@@ -90,12 +89,12 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
     assert.deepEqual([...state.channel.managedRoomIds].sort(), rooms.map(room => room.id).sort());
     assert.deepEqual(clients[1].welcome.state.channel.managedRoomIds, []);
     for (const room of rooms) for (const client of clients) {
-      assert.equal((await client.request({ type: "voice", roomId: room.id, joined: true, muted: false, deafened: false })).type, "ack");
+      assert.equal((await client.request({ type: "voice", roomId: room.id, joined: true, muted: false, deafened: false })).result.type, "done");
       for (const kind of ["screen", "voice"]) {
         const publicationId = randomUUID();
         assert.equal((await client.request({ type: "publish", publication: { id: publicationId, roomId: room.id, kind,
-          ...(kind === "screen" ? { videoSettings, source } : {}) } })).type, "ack");
-        if (client !== reader && kind === "screen") assert.equal((await reader.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
+          ...(kind === "screen" ? { videoSettings, source } : {}) } })).result.type, "done");
+        if (client !== reader && kind === "screen") assert.equal((await reader.request({ type: "subscribe", publicationId, enabled: true })).result.type, "done");
       }
     }
     const event = await reader.wait(event => event.type === "state" && event.state.publications.length === clients.length * rooms.length * 2
@@ -114,8 +113,8 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
 });
 
 test("authenticated users, signed conversation and selective source ownership", { timeout: 30_000 }, async t => {
-  const previous = await connect(t, { protocol: CHANNEL_PROTOCOL - 1 });
-  assert.equal(previous.welcome.code, "incompatible_protocol");
+  const incompatible = await connect(t, { major: (version.major ^ 1) >>> 0 });
+  assert.deepEqual(incompatible.welcome, { type: "incompatible_version", ...version });
   const owner = await connect(t, { ownerKey, name: "Owner check" });
   const friend = await connect(t, { name: "Friend check" });
   const other = await connect(t, { name: "Other check" });
@@ -127,19 +126,19 @@ test("authenticated users, signed conversation and selective source ownership", 
   assert.notEqual(friend.welcome.sessionId, other.welcome.sessionId);
   const friendUser = friend.welcome.state.sessions.find(session => session.id === friend.welcome.sessionId).userId;
   const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-  assert.equal((await friend.request({ type: "set_profile", name: "Friend check", avatar })).type, "ack");
+  assert.equal((await friend.request({ type: "set_profile", name: "Friend check", avatar })).result.type, "done");
   const updated = await other.wait(event => event.type === "state" && event.state.users.some(user => user.id === friendUser
     && user.version !== friend.welcome.selfProfile.version), "profile version broadcast");
-  const profile = (await other.request({ type: "profiles", ids: [friendUser] })).profiles[0];
+  const profile = (await other.request({ type: "profiles", ids: [friendUser] })).result.profiles[0];
   assert.equal(profile.avatar, avatar);
   assert.equal(profile.version, updated.state.users.find(user => user.id === friendUser).version);
   const roomId = state.channel.rooms[0].id;
   if (!state.channel.rooms[0].available) await owner.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available after cleanup");
-  for (const client of [owner, friend, other]) assert.equal((await client.request({ type: "browse", roomId, active: true })).type, "ack");
+  for (const client of [owner, friend, other]) assert.equal((await client.request({ type: "browse", roomId, active: true })).result.type, "done");
   const text = `prototype-check-${randomUUID()}`;
   const nonce = randomUUID();
-  assert.equal((await friend.request({ type: "chat", roomId, text, nonce })).type, "error",
+  assert.equal((await friend.request({ type: "chat", roomId, text, nonce })).result.type, "error",
     "the domain cannot execute a room's conversation");
   const attacker = await connect(t, { name: "Spoof check" });
   const rejected = Promise.race([
@@ -151,47 +150,47 @@ test("authenticated users, signed conversation and selective source ownership", 
   attacker.socket.close();
 
   const publicationId = randomUUID();
-  assert.equal((await friend.request({ type: "publish", publication: { id: publicationId, roomId, kind: "screen", videoSettings, source } })).type, "ack");
+  assert.equal((await friend.request({ type: "publish", publication: { id: publicationId, roomId, kind: "screen", videoSettings, source } })).result.type, "done");
   const initial = await other.wait(event => event.type === "state"
     && event.state.publications.some(publication => publication.id === publicationId), "new screen publication");
   const screen = initial.state.publications.find(publication => publication.id === publicationId);
   assert.equal(Object.hasOwn(screen, "directLimit"), false);
-  assert.equal((await other.request({ type: "set_screen_direct_limit", publicationId, limit: 1 })).type, "error");
-  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: 21 })).code, "invalid_relay_capacity");
-  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: 1 })).type, "ack");
+  assert.equal((await other.request({ type: "set_screen_direct_limit", publicationId, limit: 1 })).result.type, "error");
+  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: 21 })).result.code, "invalid_relay_capacity");
+  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: 1 })).result.type, "done");
   await other.wait(event => event.type === "state"
     && event.state.publications.some(publication => publication.id === publicationId && publication.directLimit === 1),
   "explicit screen source limit");
-  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: null })).type, "ack");
+  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: null })).result.type, "done");
   await other.wait(event => event.type === "state"
     && event.state.publications.some(publication => publication.id === publicationId && !Object.hasOwn(publication, "directLimit")),
   "screen source limit restored to room default");
-  assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
-  assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
+  assert.equal((await other.request({ type: "unpublish", publicationId })).result.type, "error");
+  assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).result.type, "done");
   const assigned = await other.wait(event => event.type === "state" && event.state.subscriptions.includes(publicationId)
     && event.state.pairs.some(pair => pair.peerId === friend.welcome.sessionId), "assigned source pair");
   const pairId = assigned.state.pairs.find(pair => pair.peerId === friend.welcome.sessionId).id;
   const connected = { type: "link_state", pairId, state: "connected" };
-  assert.equal((await other.request(connected)).type, "ack");
+  assert.equal((await other.request(connected)).result.type, "done");
   // A profile broadcast gives the viewer a fresh snapshot after its one-sided report.
-  assert.equal((await other.request({ type: "set_profile", name: "Viewer link check" })).type, "ack");
+  assert.equal((await other.request({ type: "set_profile", name: "Viewer link check" })).result.type, "done");
   const oneSided = await other.wait(event => event.type === "state"
     && event.state.users.some(user => user.name === "Viewer link check"), "single-ended link snapshot");
   assert(oneSided.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === publicationId)));
-  assert.equal((await friend.request(connected)).type, "ack");
+  assert.equal((await friend.request(connected)).result.type, "done");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
   assert.equal(routed.state.users.find(user => user.id === friendUser).version, profile.version);
   assert(routed.state.pairs.every(pair => pair.peerId !== other.welcome.sessionId));
-  assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { resync: true } })).type, "ack",
+  assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { resync: true } })).result.type, "done",
     "an unknown or retired pair cannot restore its transport lease");
   const sourcePair = routed.state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === publicationId));
   assert.equal(sourcePair.id, pairId);
   assert(sourcePair.incoming.some(flow => flow.publicationId === publicationId && flow.selected));
   // A description needs its exchangeId, even on the caller's admitted pair.
   const malformed = await other.request({ type: "signal", pairId: sourcePair.id, payload: { description: { type: "offer", sdp: "invalid" } } });
-  assert.equal(malformed.type, "error");
-  assert.equal(malformed.code, "invalid_signal");
-  assert.equal((await friend.request({ type: "unpublish", publicationId })).type, "ack");
+  assert.equal(malformed.result.type, "error");
+  assert.equal(malformed.result.code, "invalid_signal");
+  assert.equal((await friend.request({ type: "unpublish", publicationId })).result.type, "done");
   await other.wait(event => event.type === "state" && !event.state.publications.some(publication => publication.id === publicationId)
     && event.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === publicationId)), "source retirement");
 
@@ -207,8 +206,8 @@ test("authenticated users, signed conversation and selective source ownership", 
   const returningUser = returning.welcome.state.sessions.find(session => session.id === returning.welcome.sessionId).userId;
   assert.equal(returningUser, friendUser);
   assert.notEqual(returning.welcome.sessionId, friend.welcome.sessionId, "another page is another endpoint");
-  assert.equal((await returning.request({ type: "browse", roomId, active: true })).type, "ack");
-  assert.equal((await returning.request({ type: "history", roomId })).type, "error",
+  assert.equal((await returning.request({ type: "browse", roomId, active: true })).result.type, "done");
+  assert.equal((await returning.request({ type: "history", roomId })).result.type, "error",
     "history requires a signed conversation addressed to the actual room host");
 
   const stolen = await connect(t, { credential: other.welcome.credential, sessionId: friend.welcome.sessionId });
@@ -227,37 +226,38 @@ test("Server-owned private invitations admit new users, conceal content and revo
   const roomId = "studio";
   if (!creator.welcome.state.channel.rooms.some(room => room.id === roomId && room.available)) await creator.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available for management");
-  assert.equal((await creator.request({ type: "update_room", roomId, name: "Private check", icon: "couch", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
+  assert.equal((await creator.request({ type: "update_room", roomId, name: "Private check", icon: "couch", access: "private", hidden: true, password: "test-room-password" })).result.type, "done");
   const concealed = await outsider.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "hidden room excluded");
   assert(!concealed.state.publications.some(p => p.roomId === roomId));
-  assert.equal((await outsider.request({ type: "browse", roomId, active: true })).type, "error");
-  assert.equal((await outsider.request({ type: "enter_room", roomId, password: "wrong" })).type, "error");
+  assert.equal((await outsider.request({ type: "browse", roomId, active: true })).result.type, "error");
+  assert.equal((await outsider.request({ type: "enter_room", roomId, password: "wrong" })).result.type, "error");
   const invitation = await creator.request({ type: "room_invite", roomId });
-  assert.equal(invitation.type, "ack");
+  assert.equal(invitation.result.type, "invite");
   assert.equal(typeof invitation.requestId, "string");
   const guest = await connect(t);
   assert.equal(guest.welcome.type, "welcome");
-  assert.equal((await guest.request({ type: "enter_room", roomId, inviteKey: invitation.key })).type, "ack");
+  assert.equal((await guest.request({ type: "enter_room", roomId, inviteKey: invitation.result.key })).result.type, "done");
   await guest.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.id === roomId && room.authorized), "private room grant after site Welcome");
   const guestUser = guest.welcome.state.sessions.find(session => session.id === guest.welcome.sessionId).userId;
   const privatePublication = randomUUID();
-  assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", videoSettings, source } })).type, "ack");
-  assert.equal((await outsider.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "error");
-  assert.equal((await guest.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "ack");
-  assert.equal((await guest.request({ type: "browse", roomId, active: true })).type, "ack");
-  assert.equal((await creator.request({ type: "revoke_room_access", roomId, userId: guestUser })).type, "ack");
+  assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", videoSettings, source } })).result.type, "done");
+  assert.equal((await outsider.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).result.type, "error");
+  assert.equal((await guest.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).result.type, "done");
+  assert.equal((await guest.request({ type: "browse", roomId, active: true })).result.type, "done");
+  assert.equal((await creator.request({ type: "revoke_room_access", roomId, userId: guestUser })).result.type, "done");
   const revoked = await guest.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "private grant revoked");
   assert(!revoked.state.publications.some(p => p.id === privatePublication));
   assert(revoked.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === privatePublication) && !pair.outgoing.some(flow => flow.publicationId === privatePublication)));
-  assert.equal((await guest.request({ type: "history", roomId })).type, "error");
-  assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).type, "ack");
-  assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", icon: "couch", access: "public", hidden: false })).type, "ack");
+  assert.equal((await guest.request({ type: "history", roomId })).result.type, "error");
+  assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).result.type, "done");
+  assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", icon: "couch", access: "public", hidden: false })).result.type, "done");
 });
 
 test("a lightweight room cancellation round-trips on the current channel protocol", { timeout: 30_000 }, async t => {
   const owner = await connect(t, { ownerKey });
   assert.equal(owner.welcome.type, "welcome");
-  assert.equal(owner.welcome.protocol, CHANNEL_PROTOCOL);
+  assert.equal(owner.welcome.major, version.major);
+  assert.equal(owner.welcome.minor, version.minor);
   const existing = owner.welcome.state.channel.rooms.find(room => room.available)
     ?? (await owner.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.available),
       "registered fixture room")).state.channel.rooms.find(room => room.available);
@@ -265,11 +265,11 @@ test("a lightweight room cancellation round-trips on the current channel protoco
     id: randomUUID(), creatorId: owner.welcome.selfProfile.id, name: "Cancelled reservation",
     icon: "couch", access: "public", hidden: false, hasPassword: false,
   } });
-  assert.equal(reservation.type, "room_created");
-  assert.equal((await owner.request({ type: "cancel_room_creation", roomId: reservation.room.id })).type, "ack");
-  assert.equal((await owner.request({ type: "cancel_room_creation", roomId: existing.id })).type, "ack");
-  assert.equal((await owner.request({ type: "browse", roomId: existing.id, active: true })).type, "ack");
-  assert.equal((await owner.request({ type: "leave" })).type, "ack");
+  assert.equal(reservation.result.type, "room_created");
+  assert.equal((await owner.request({ type: "cancel_room_creation", roomId: reservation.result.room.id })).result.type, "done");
+  assert.equal((await owner.request({ type: "cancel_room_creation", roomId: existing.id })).result.type, "done");
+  assert.equal((await owner.request({ type: "browse", roomId: existing.id, active: true })).result.type, "done");
+  assert.equal((await owner.request({ type: "leave" })).result.type, "done");
 });
 
 test("Node text participant updates its own saved profile", { timeout: 20_000 }, async t => {
@@ -283,9 +283,9 @@ test("Node text participant updates its own saved profile", { timeout: 20_000 },
   const { userId } = bot.summary();
   const getProfile = async () => {
     const reply = await reader.request({ type: "profiles", ids: [userId] });
-    assert.equal(reply.type, "profiles");
-    assert.equal(reply.profiles[0]?.id, userId);
-    return reply.profiles[0];
+    assert.equal(reply.result.type, "profiles");
+    assert.equal(reply.result.profiles[0]?.id, userId);
+    return reply.result.profiles[0];
   };
   const initial = await getProfile();
   assert.equal(initial.name, "Initial name");

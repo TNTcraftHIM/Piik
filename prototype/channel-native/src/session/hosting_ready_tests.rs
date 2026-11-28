@@ -163,14 +163,11 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
             if seq == 7 {
                 first
                     .send(Message::Text(
-                        serde_json::to_string(&Event::Error {
-                            code: "fixture_denied".into(),
-                            request_id: request.request_id,
-                        })?
+                        serde_json::to_string(&Event::Reply { request_id: request.request_id.unwrap(), room_id: None, result: ReplyResult::Error { code: "fixture_denied".into() } })?
                         .into(),
                     ))
                     .await?;
-                ensure!(response.await?.err().as_deref() == Some("fixture_denied"));
+                ensure!(response.await?.err().as_ref().map(OpenRoomError::reason) == Some("fixture_denied"));
                 let entries = std::fs::read_dir(directory.path())?
                     .map(|entry| entry.map(|entry| entry.file_name()))
                     .collect::<std::io::Result<Vec<_>>>()?;
@@ -180,8 +177,14 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
                     .write(true)
                     .open(directory.path().join(&entries[0]))?;
                 crate::hosted_room::try_lock_file(&lock)?;
-            } else {
+            } else if room_in_domain {
                 retry_response = Some(response);
+            } else {
+                first.send(Message::Text(serde_json::to_string(&Event::Reply {
+                        request_id: request.request_id.unwrap(), room_id: None, result: ReplyResult::Unknown,
+                    })?.into())).await?;
+                ensure!(response.await?.err().as_ref().map(OpenRoomError::reason) == Some("room_created_connection_failed"));
+                ensure!(directory.path().join(format!("{id}.sqlite")).try_exists()?);
             }
         }
 
@@ -255,10 +258,7 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
             let retry = Request::parse(retry.to_text()?).map_err(|e| anyhow!("{e:?}"))?;
             ensure!(matches!(retry.command, Command::HostRegister { .. }));
             next.send(Message::Text(
-                serde_json::to_string(&Event::Error {
-                    code: "fixture_denied".into(),
-                    request_id: retry.request_id,
-                })?
+                serde_json::to_string(&Event::Reply { request_id: retry.request_id.unwrap(), room_id: None, result: ReplyResult::Error { code: "fixture_denied".into() } })?
                 .into(),
             ))
             .await?;
@@ -274,10 +274,9 @@ async fn check_readmission(room_in_domain: bool) -> Result<()> {
         let description = response.await?.map_err(anyhow::Error::msg)?;
         ensure!(Some(description.session_id) == next_id && next_id != first_id);
         ensure!(local_endpoint(&commands).await? == next_id);
-        ensure!(
-            retry_response.unwrap().await?.err().as_deref()
-                == Some("room_created_connection_failed")
-        );
+        if let Some(response) = retry_response {
+            ensure!(response.await?.err().as_ref().map(OpenRoomError::reason) == Some("room_created_connection_failed"));
+        }
         ensure!(directory.path().join(format!("{id}.sqlite")).try_exists()?);
         Ok::<_, anyhow::Error>(())
     };

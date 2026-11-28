@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../channel/product-version";
 import { useState } from "react";
 import type { z } from "zod";
 import { ChannelConnectionReport } from "../channel/components/ChannelConnections";
@@ -24,7 +25,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
         delivery: { hostSessionId: "host", bindingId: "binding" } }] },
     users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo", version: "0".repeat(64) },
       { id: "self-user", name: "Nori", version: "0".repeat(64) }, { id: "friend-user", name: "Kiki", version: "0".repeat(64) }],
-    sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
+    sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION })),
     publications: roomOnly ? [] : [
       ...["host", "self", "friend"].map(id => ({ audience: [], id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice" as const, paused: false })),
       ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ audience: [], id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }))),
@@ -105,7 +106,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
   }
   if (mode === "room-links") {
     state.users.push({ id: "guest-user", name: "Rin", version: "0".repeat(64) });
-    state.sessions.push({ id: "guest", userId: "guest-user", online: true, signingKey: Array(32).fill(0) });
+    state.sessions.push({ id: "guest", userId: "guest-user", online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION });
     state.channel.userCount++;
     state.channel.rooms[0].participantSessionIds.push("guest");
     topology.pairs = [

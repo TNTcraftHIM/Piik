@@ -277,11 +277,8 @@ the separate App management/discovery listener is not a site-forwarding endpoint
 Changing the port retains App-hosted rooms but changes the web origin. Browser
 identity, preferences and cached files remain associated with the old address.
 
-Build the App, bundled Web files and domain server from the same source for
-internal testing. Incompatible control or signaling protocols are
-rejected at entry. App discovery advertises both protocol identifiers so the Web
-page checks native control and domain participation before approval. The storage
-format and reset boundary are documented below.
+Build the App with its bundled Web files. The page checks local App
+compatibility at discovery, before approval. See [versioning](../../docs/standards/versioning.md#extending-interfaces).
 
 Build the frontend and start it:
 
@@ -380,12 +377,8 @@ current hosting runtime. Existing Browser rooms remain in their pages and are
 not migrated; a remembered App preference cannot prevent Browser hosting when
 the App is absent.
 
-After updating the 3.0 test App, refresh the Web page you use. An incompatible
-App Link shows the existing update prompt; [versioning](../../docs/standards/versioning.md)
-owns interface compatibility.
-
-A reachable App with an incompatible control protocol is distinct from an absent
-App. Without a selected port, discovery keeps looking for a compatible process
+An incompatible App Link prompts the user to update the older App or site.
+Without a selected port, discovery keeps looking for a compatible process
 before it reports the mismatch, and Browser capture stays available. Discovery
 has one bounded deadline, which starts once the Browser's local-network consent
 is no longer pending; a failed fetch alone does not establish that consent was
@@ -633,8 +626,8 @@ picture/sound settings belong to that share's card; changing the room selection
 or focused picture never retargets those settings to another publication.
 
 In the accepted model, reading and writing conversation require the domain
-connection and current room host, independently of ICE. Domain Join/Welcome check
-one protocol version and reject older incompatible endpoints explicitly.
+connection and current room host, independently of ICE. Domain Join/Welcome
+apply the [versioning rules](../../docs/standards/versioning.md#extending-interfaces).
 Each speaker, screen publication, file and forwarded webpage activity selects
 paths on confirmed connections within its authorized room graph. An eligible
 participant can forward voice without joining or hearing the call.

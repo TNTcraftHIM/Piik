@@ -11,6 +11,7 @@ export interface HostingSession {
   request(command: ChannelCommand): Promise<void>;
   write(command: ChannelCommand): void;
   report(error: string): void;
+  restoreChanged(): void;
   /** Publishes the stored rooms this Browser could not open, and why. */
   failures(failures: ReadonlyMap<string, RoomOpenFailure>): void;
 }
@@ -33,6 +34,8 @@ export class BrowserHosting {
   private readonly rooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private failed: ReadonlyMap<string, RoomOpenFailure> = new Map();
   private cleanup: Promise<void> = Promise.resolve();
+
+  restoreFailure?: string;
 
   constructor(private readonly session: HostingSession) {}
 
@@ -59,13 +62,19 @@ export class BrowserHosting {
   }
 
   /** Runs the domain's input on the host it is bound to. A deletion that removed the room's data retires the host. */
-  input(roomId: string, input: { bindingId: string }): void {
+  input(roomId: string, input: { bindingId: string; hostSessionId: string }): void {
     const hosted = this.rooms.get(roomId), socket = this.session.socket();
-    if (!hosted || hosted.bindingId !== input.bindingId) return;
+    if (!hosted || hosted.bindingId !== input.bindingId || this.session.view().sessionId !== input.hostSessionId) return;
     const binding = hosted.bindingId;
-    const current = () => this.rooms.get(roomId) === hosted && hosted.bindingId === binding && this.session.socket() === socket;
+    const current = () => this.rooms.get(roomId) === hosted && hosted.bindingId === binding
+      && this.session.socket() === socket && this.session.view().sessionId === input.hostSessionId;
     void hosted.host.dispatch(input, { current }).then(output => {
       if (!current()) return;
+      const unsupported = output as Extract<ChannelCommand, { type: "host_unsupported" }>;
+      if (unsupported.type === "host_unsupported") {
+        this.session.write(unsupported);
+        return;
+      }
       const result = (output as { reply?: { result?: { type?: string; dataRemoved?: boolean } } }).reply?.result;
       if (result?.type === "deleted" && result.dataRemoved === true) {
         this.rooms.delete(roomId);
@@ -93,6 +102,21 @@ export class BrowserHosting {
    * serves. `current` holds while the connection and session that asked are live.
    */
   async restore(sessionId: string, current: () => boolean, skipRoom?: string): Promise<void> {
+    try {
+      await this.restoreStoredRooms(sessionId, current, skipRoom);
+      if (current()) this.setRestoreFailure();
+    } catch (error) {
+      if (current()) this.setRestoreFailure(error instanceof Error ? error.message : "storage_failed");
+    }
+  }
+
+  private setRestoreFailure(failure?: string): void {
+    if (failure === this.restoreFailure) return;
+    this.restoreFailure = failure;
+    this.session.restoreChanged();
+  }
+
+  private async restoreStoredRooms(sessionId: string, current: () => boolean, skipRoom?: string): Promise<void> {
     if (typeof indexedDB === "undefined") return;
     await this.cleanup;
     if (!current()) return;
@@ -207,6 +231,7 @@ export class BrowserHosting {
 
   /** Releases this session's local writers. The channel retires its bindings on leave or expiry. */
   release(): void {
+    this.setRestoreFailure();
     const hosts = [...this.rooms.values()];
     this.rooms.clear();
     if (this.failed.size) {

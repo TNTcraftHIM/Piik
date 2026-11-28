@@ -131,7 +131,11 @@ API. One connection-scoped lookup of `ipv4only.arpa` discovers the prefix under
 [RFC 7050](https://www.rfc-editor.org/rfc/rfc7050.html#section-3); synthesis follows
 the six [RFC 6052 layouts](https://www.rfc-editor.org/rfc/rfc6052.html#section-2.2).
 Initial ICE starts discovery once it has both a non-loopback IPv6 base and an
-IPv4 peer candidate. Desktop interface refresh can supply the first usable IPv6
+IPv4 peer candidate. Desktop interface refresh watches both bound address
+families until ICE nomination. Newly available IPv4 bases also reach the shared
+gateway publisher. A monitor-injection control published a late IPv4 candidate
+and admitted one injected gateway mapping to both connections sharing its socket.
+Interface refresh can supply the first usable IPv6
 base after gathering starts. First ICE nomination or pair retirement releases
 bootstrap work. Failed discovery or exhausted aliases preserve
 ordinary candidates. There is no persistent prefix cache or SDK fork. Well-known
@@ -209,6 +213,50 @@ This supports the 1,024-target budget without extending preparation time or
 adding sockets. A survey that has already consumed three seconds can leave room
 for only about 745 checks, so the target budget is a ceiling, not a promise to
 send all of them. Parallel survey remains a separate comparison.
+
+The search divides ports 1,024–65,535 into 1,024 strata of 63 ports. It visits
+strata in bit-reversed order with a random rotation and draws an independent,
+uniform port within each stratum. Rejection sampling avoids modulo bias. This
+combines early range coverage with independent offsets, following
+[stratified sampling](https://artowen.su.domains/mc/Ch-var-basic.pdf). A single
+rotation of bit-reversed ports instead leaves the first 1,024 targets in one
+residue class modulo 32: fixed pools at strides 2, 4 and 8 are then missed for
+half, three quarters and seven eighths of rotations. Contiguous-pool tests alone
+do not reveal that blind spot.
+
+The first 512 stratified targets leave at most 187 consecutive ports untested,
+so they reach any fixed contiguous 256-port pool. For any fixed pool of 256
+ports, the full-budget miss probability is at most `(62/63)^256`, about 1.664%,
+under independent uniform draws. Uniform distinct targets miss about 1.650%.
+These are static pool bounds, not unconditional dominance or field success rates.
+
+A 2026-11-27 Windows loopback control used four fixed 256-port pools at strides
+1, 2, 4 and 8. First hits occurred at targets 215, 384, 38 and 35. All four
+completed mutual authentication, adopted the winner into the original RTC and
+exchanged SCTP messages in both directions; losing sockets and preparation
+permits were released. The fixture counted all attempted targets at the existing
+2 ms cadence, dropping unmapped attempts before sending. Actual packets stayed
+on owned loopback sockets. The 1,024-target, 256-socket and five-second limits
+and the separate eight-socket sequential path remain unchanged. Physical NAT
+allocation, filtering and competing traffic require independent-network trials.
+
+Default observations use three documented services on different destination
+ports: [Cloudflare](https://developers.cloudflare.com/realtime/turn/faq/),
+[Google](https://webrtc.org/getting-started/peer-connections) and
+[Nextcloud](https://github.com/nextcloud/spreed/blob/main/docs/settings.md).
+Different ports reduce the chance that a per-destination counter appears to be
+one shared sequence. On 2026-11-27, two same-socket serial controls using the
+Native STUN decoder received three valid IPv4 XOR mappings in 931 and 870 ms,
+within the existing 1.5-second observation budget. Campus and carrier-network
+reachability still need the paired private-beta control.
+
+A search window bounded by two counter observations remains experimental.
+The bounds imply containment only when the peer mappings use the same counter
+and public exit. Even with containment, interleaved allocation can leave gaps:
+in a 128-position window, eight mappings at even offsets 2 through 16 were all
+missed by 64 bit-reversed probes starting at offset 1, while the current
+sequential strategy's first target hit offset 4. Window selection and probe
+ordering need a matched two-sided comparison before replacing that strategy.
 
 The frozen source archive had SHA-256
 `4371aafbe865676fe30d5cee7d21af781720a3ce664129c3d4c6cc4204ebdda2`

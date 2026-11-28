@@ -72,21 +72,14 @@ the feedback period; they do not delay that delivery.
   [ADR-0017](./adr/0017-contracts-fixed-before-release.md) against actual readers,
   writers and release storage fixtures. The
   [rule for extending interfaces](./standards/versioning.md#extending-interfaces)
-  is set: trace it through each connection, bring the private code to it and
-  exercise it in tests, then settle explicit reply outcomes and history and
-  storage boundaries before publication. Do not add exact-version steps,
-  closed wire boundaries or individual feature flags meanwhile.
+  is set. Complete Browser/App mixed-version artifact acceptance before
+  publication alongside the SDK/Server controls.
   Confirm the [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise).
   Verify unknown request outcomes cannot confirm work in the selected Native,
   Browser and SDK readers. Keep API/Bot capabilities within existing actions
   and authority. [Adopted architecture](./adr/0016-shared-rust-core.md) ·
   [Design review](./research/clean-room-design-review.md)
-- [ ] **Conversation results and reads.** Return the stored message with its
-  reaction revision in the existing send confirmation. Add the text-only
-  history selection before page budgeting, preserving omitted image data in
-  complete readers. Settle unknown terminal replies without treating them as
-  rejection or retiring healthy sibling operations.
 - [ ] **Remaining ownership reductions.** Preserve platform queue retirement
   semantics and the destination writer's validation when sharing their owners.
   Review SQLite single-row storage and a
@@ -224,11 +217,6 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **Refresh the MPD script runtime.** QuickJS-NG updates beyond 0.18.0,
-  including allocation-failure cleanup fixes, merged in
-  [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793) on 2026-11-24.
-  Verify MPD parser and Rust binding behavior when a published
-  crate includes the update, before replacing the 0.14.0 pin.
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
   contribution rules. The

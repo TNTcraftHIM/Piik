@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../channel/product-version";
 import sampleThumbnail from "../../../public/favicon.png?url&inline";
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { z } from "zod";
@@ -160,8 +161,8 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
       ...room, ...settingsByRoom[room.id], picture: settingsByRoom[room.id]?.picture ?? undefined }));
   const state = snapshotSchema.parse({ channel: { id: "sample", ...site, ownerId: "sample-ada", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: users.length,
     rooms, managedRoomIds: rooms.map(room => room.id) }, users: users.map(({ avatar: _avatar, ...user }) => user),
-    sessions: [...users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0) })),
-      { id: appSessionId, userId: "sample-ada", online: true, signingKey: Array(32).fill(0) }],
+    sessions: [...users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0), ...PRODUCT_VERSION })),
+      { id: appSessionId, userId: "sample-ada", online: true, signingKey: Array(32).fill(0), ...PRODUCT_VERSION }],
     publications: Object.keys(voiceByRoom).map(roomId => ({ audience: [], id: `voice-${roomId}`, kind: "voice", roomId,
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
@@ -321,7 +322,7 @@ export function ChannelGuidePreview({ shareVariant }: { shareVariant?: Component
       <header className="c3-guide-heading"><div className="c3-guide-title"><ChannelIdentityMark icon="couch" /><strong>{roomName}</strong>
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
-        <ChannelShareControl channel={channel} roomId="friday" variant={shareVariant} disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} /></header>
+        <ChannelShareControl channel={channel} roomId="friday" variant={shareVariant} disabled={false} onWatch={() => setWatchOpen(true)} startAction={shareStart} onStopScreen={(_room, id) => channel.stopScreen(id)} /></header>
       <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}

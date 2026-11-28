@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn domain_archive_contains_only_its_own_authority() -> Result<()> {
         use base64::Engine;
-        use piik_channel_core::wire::{Event, Request, CHANNEL_PROTOCOL};
+        use piik_channel_core::{wire::{Event, Request}, PRODUCT_VERSION};
         let mut authority = Authority::new("owner".into(), vec![]).unwrap();
         let mut png = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==")?;
         png.resize(
@@ -650,7 +650,7 @@ mod tests {
         let mut identities = Vec::new();
         for index in 0..200 {
             let connection = Uuid::new_v4();
-            let request = serde_json::json!({"type":"join","protocol":CHANNEL_PROTOCOL,"canUsePeerTransport":false,"name":format!("Friend {index}"),"ownerKey":(index==0).then_some("owner"),"signingKey":vec![1;32]});
+            let request = serde_json::json!({"type":"join","major":PRODUCT_VERSION.major,"minor":PRODUCT_VERSION.minor,"canUsePeerTransport":false,"name":format!("Friend {index}"),"ownerKey":(index==0).then_some("owner"),"signingKey":vec![1;32]});
             let effects =
                 authority.handle(connection, Request::parse(&request.to_string()).unwrap(), 0);
             let (credential, _) = effects

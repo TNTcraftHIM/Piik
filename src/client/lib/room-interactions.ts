@@ -15,7 +15,7 @@ export type ContentReactionTarget = z.infer<typeof contentTargetSchema>;
 export interface RoomInteraction {
   type: "room-interaction";
   id: string;
-  requestId: string;
+  requestId?: string;
   occurredAt: number;
   messageSeq?: number;
   sender: { peerId: string; role: "host" | "viewer"; displayName: string };
@@ -165,7 +165,7 @@ export class RoomInteractionSession {
     // lifetime beyond one full effect, and never replay an expired effect.
     const beganAt = Math.min(now, message.occurredAt - this.serverOffset);
     const own = message.sender.peerId === this.state.peerId;
-    const confirmsPending = own && message.requestId === this.request?.requestId;
+    const confirmsPending = own && this.request !== null && message.requestId === this.request.requestId;
     if (confirmsPending) {
       this.request = null;
       // The Host's interval starts at acceptance, after outbound queueing.

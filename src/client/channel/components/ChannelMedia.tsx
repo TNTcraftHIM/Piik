@@ -1,7 +1,7 @@
 import { playbackOutput } from "../../media/playback-output";
 import { PlaybackDeviceSelect } from "./PlaybackDeviceSelect";
 import { useWatchPageSlot } from "./use-watch-page-slot";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
@@ -58,8 +58,9 @@ export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
     : <small>{t("watch.forward.secure")}</small>;
 }
 
-function WatchPlaybackSettings({ receiving, originalPage, playback, children, audio, audioAvailable }: {
+function WatchPlaybackSettings({ receiving, originalPage, playback, children, audio, audioAvailable, timelineControls }: {
   receiving?: WatchReceiving; originalPage: boolean; children?: ReactNode;
+  timelineControls?: RefObject<HTMLDivElement | null>;
   audio?: ComponentProps<typeof AudioVolumeControl>; audioAvailable: boolean;
   playback?: { rate: number; rates: readonly number[]; disabled: boolean; onRate(rate: number): void };
 }) {
@@ -68,7 +69,7 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useLayerHistory(panel, open);
-  useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
+  useAnchoredPopover(timelineControls ?? trigger, panel, { side: "above", align: "end" });
   return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} controls={id} expanded={open} />
     <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
@@ -121,6 +122,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const outputFailed = useSyncExternalStore(playbackOutput.subscribe, () => playbackOutput.failedFor(player.video), () => false);
   const showOutputRecovery = outputFailed && !player.error && !player.blocked;
   const waiting = player.waitingForPicture && !player.error && !player.blocked;
+  const nativeWaiting = native.mounted && waiting;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
@@ -148,7 +150,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const openOriginal = !owned && website && originalPageAvailable ? onAppWatch : undefined;
   const settingsOriginal = !player.error && surface.kind !== "external" && openOriginal;
   const localControls = !!player.video || !!receivingSettings || !!settingsOriginal || owned && !embedded;
-  const hasControls = localControls || !embedded && !thumbnail && !!mediaState;
+  const hasControls = nativeWaiting || localControls || !embedded && !thumbnail && !!mediaState;
   const failure = channelErrorPresentation(player.error, t,
     receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
   const diagnosis = player.error ? diagnoseChannelFact({ area: "error", code: player.error }) : null;
@@ -224,7 +226,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-tooltip-player data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-tooltip-player data-native-page={pageId ? true : undefined} data-native-mounted={native.mounted || undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
     data-diagnosis={showDiagnosis || showOutputRecovery && !thumbnail ? true : undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
@@ -289,6 +291,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
             title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
           {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
+            {nativeWaiting && <span className="c3-watch-status" role="status">
+              <BrandMark size={16} motion="loop" />{t("watch.waiting")}
+            </span>}
             {ended && <span className="c3-watch-status" role="status">{t("watch.ended")}</span>}
             {live?.active && !seekAvailable && <span className="c3-watch-status">{t("watch.live")}</span>}
             {(!live || seekAvailable) && <span className="c3-watch-time" data-live={!!live || undefined} title={timeLabel}>{live ? timeReadout : <><strong>{formatMediaTime(position)}</strong>{` / ${formatMediaTime(media.duration || Number.NaN)}`}</>}</span>}
@@ -304,6 +309,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
             <AudioVolumeControl {...localVolume} compact />
           </span>}
           <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audio={localVolume} audioAvailable={audioAvailable}
+            timelineControls={showTimeline ? controls : undefined}
             playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
               onRate: rate => onPlayback({ rate }) } : undefined}>
             {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"

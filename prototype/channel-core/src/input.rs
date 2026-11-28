@@ -10,7 +10,7 @@ pub const INPUT_COMMAND_BYTES: usize = 4096;
 pub const INPUT_TEXT_BYTES: usize = 2048;
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct InputRegistration {
     pub publication_id: Uuid,
     pub controller_session_id: Uuid,
@@ -19,7 +19,7 @@ pub struct InputRegistration {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct InputFrame {
     pub publication_id: Uuid,
     pub controller_session_id: Uuid,

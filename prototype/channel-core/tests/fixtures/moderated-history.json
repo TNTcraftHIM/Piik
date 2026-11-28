@@ -9,7 +9,7 @@
   {"request":{"type":"send","draft":{"userId":"00000000-0000-4000-8000-000000000001","nonce":"original","text":"original","time":1,"attachments":[]}},"expect":{"error":"message_unavailable"}},
   {"request":{"type":"seek","after":0,"excludeAuthor":"00000000-0000-4000-8000-000000000002"},"expect":{"type":"seek","after":0,"seq":3}},
   {"request":{"type":"seek","after":3,"excludeAuthor":"00000000-0000-4000-8000-000000000002"},"expect":{"type":"seek","after":3,"seq":null}},
-  {"request":{"type":"read","before":null},"expect":{"type":"page","messages":[{"seq":2},{"seq":3}]}},
+  {"request":{"type":"read","before":null,"inlineImages":false},"expect":{"type":"page","messages":[{"seq":2},{"seq":3}]}},
   {"request":{"type":"attachment","messageSeq":3,"attachmentId":"00000000-0000-4000-8000-000000000009"},"expect":{"type":"attachment","authorId":"00000000-0000-4000-8000-000000000001","messageSeq":3,"attachment":{"id":"00000000-0000-4000-8000-000000000009","name":"shared.txt","size":1,"mediaType":"application/octet-stream","sha256":"9999999999999999999999999999999999999999999999999999999999999999"}}},
   {"request":{"type":"delete_message","messageSeq":3,"messageId":"$3","authorId":null},"expect":{"type":"message_deleted","messageSeq":3}},
   {"request":{"type":"attachment","messageSeq":3,"attachmentId":"00000000-0000-4000-8000-000000000009"},"expect":{"error":"attachment_unavailable"}},
@@ -18,5 +18,5 @@
   {"request":{"type":"clear_history","throughSeq":2},"expect":{"type":"history_cleared","throughSeq":2}},
   {"request":{"type":"attachment","messageSeq":2,"attachmentId":"00000000-0000-4000-8000-000000000009"},"expect":{"error":"attachment_unavailable"}},
   {"request":{"type":"attachment","messageSeq":4,"attachmentId":"00000000-0000-4000-8000-000000000009"},"expect":{"type":"attachment","authorId":"00000000-0000-4000-8000-000000000001","messageSeq":4,"attachment":{"id":"00000000-0000-4000-8000-000000000009","name":"shared.txt","size":1,"mediaType":"application/octet-stream","sha256":"9999999999999999999999999999999999999999999999999999999999999999"}}},
-  {"request":{"type":"read","before":null},"expect":{"type":"page","messages":[{"seq":4}]}}
+  {"request":{"type":"read","before":null,"inlineImages":false},"expect":{"type":"page","messages":[{"seq":4}]}}
 ]

@@ -1,4 +1,5 @@
 //! Transient media reads on the room's existing base tree. No attachment or cache semantics.
+use crate::conversation::{ControlRole, UnknownControl};
 use crate::wire::WatchByteSource;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,7 +20,7 @@ pub const WATCH_MAX_RANGE_FRAMES: usize = WATCH_WINDOW_BYTES.div_ceil(WATCH_FRAM
 const PREFIX: [u8; 2] = [0, 0];
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchBytePlan {
     pub room_id: String,
     pub activity_id: Uuid,
@@ -29,7 +30,7 @@ pub struct WatchBytePlan {
     pub receiving: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchKey {
     pub room_id: String,
     pub activity_id: Uuid,
@@ -39,8 +40,7 @@ pub struct WatchKey {
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum WatchControl {
     Pull {
@@ -58,11 +58,14 @@ pub enum WatchControl {
         request_id: Uuid,
         code: String,
     },
+    #[serde(untagged)]
+    Unknown(UnknownControl<WatchKey>),
 }
 impl WatchControl {
     pub fn key(&self) -> &WatchKey {
         match self {
             Self::Pull { key, .. } | Self::Cancel { key, .. } | Self::Error { key, .. } => key,
+            Self::Unknown(control) => &control.key,
         }
     }
     pub fn request_id(&self) -> Uuid {
@@ -70,6 +73,7 @@ impl WatchControl {
             Self::Pull { request_id, .. }
             | Self::Cancel { request_id, .. }
             | Self::Error { request_id, .. } => *request_id,
+            Self::Unknown(control) => control.request_id,
         }
     }
 }
@@ -117,7 +121,7 @@ pub enum WatchEffect {
     },
 }
 #[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Header {
     request_id: Uuid,
     offset: u64,
@@ -428,6 +432,25 @@ impl WatchDelivery {
         {
             return self.pull(Some(peer), key, request_id, offset, length);
         }
+        if let WatchControl::Unknown(control) = &control {
+            if !self.grants(peer, &control.key.room_id) {
+                return vec![];
+            }
+            match control.role {
+                ControlRole::Request => {
+                    return vec![WatchEffect::SendControl {
+                        peer,
+                        control: WatchControl::Error {
+                            key: control.key.clone(),
+                            request_id: control.request_id,
+                            code: "unsupported".into(),
+                        },
+                    }]
+                }
+                ControlRole::Notice => return vec![],
+                ControlRole::Reply => {}
+            }
+        }
         let id = control.request_id();
         if matches!(&control, WatchControl::Cancel { key, .. } if self.deferred.get(&id).is_some_and(|p| p.peer == peer && &p.key == key))
         {
@@ -444,10 +467,15 @@ impl WatchDelivery {
             WatchControl::Cancel { .. } if pending.consumer == Some(peer) => {
                 self.stop(id, "watch_read_cancelled", false)
             }
+            WatchControl::Unknown(_) if pending.supplier == Some(peer) => {
+                self.stop(id, "unknown_outcome", true)
+            }
             WatchControl::Error { code, .. } if pending.supplier == Some(peer) => {
                 let code = match code.as_str() {
-                    "watch_path_unavailable" => "watch_path_unavailable",
-                    "watch_read_busy" => "watch_read_busy",
+                    "watch_path_unavailable"
+                    | "watch_read_busy"
+                    | "unknown_outcome"
+                    | "unsupported" => code.as_str(),
                     _ => "watch_source_failed",
                 };
                 self.stop(id, code, true)
@@ -740,6 +768,48 @@ mod tests {
             .unwrap()
     }
     #[test]
+    fn watch_controls_and_chunk_headers_accept_extra_members() {
+        use crate::conversation::{decode_control, ControlFrame};
+        let request = id(20);
+        let mut packet = serde_json::json!({
+            "kind": "watch", "extra": true, "body": {
+                "type": "pull", "role": "request", "key": key(), "requestId": request,
+                "offset": 0, "length": 1, "extra": 2
+            }
+        });
+        packet["body"]["key"]["extra"] = true.into();
+        let decode =
+            |packet: &serde_json::Value| decode_control(&serde_json::to_vec(packet).unwrap());
+        assert!(
+            matches!(decode(&packet), Ok(ControlFrame::Watch(WatchControl::Pull { request_id, .. })) if request_id == request)
+        );
+        packet["body"]["role"] = "reply".into();
+        assert!(decode(&packet).is_err());
+        packet["body"].as_object_mut().unwrap().remove("role");
+        assert!(decode(&packet).is_err());
+        packet["body"]["role"] = "request".into();
+        packet["body"]["length"] = "one".into();
+        assert!(decode(&packet).is_err());
+
+        let mut viewer = WatchDelivery::new(id(3));
+        viewer.update(vec![plan(Some(id(2)), vec![], true)], peers());
+        viewer.read(key(), request, 0, 1);
+        let header = serde_json::to_vec(&serde_json::json!({
+            "requestId": request, "offset": 0, "mimeType": "video/mp4",
+            "totalSize": 1, "length": 1, "eof": true, "extra": true
+        }))
+        .unwrap();
+        let mut frame = PREFIX.to_vec();
+        frame.extend_from_slice(&(header.len() as u16).to_be_bytes());
+        frame.extend_from_slice(&header);
+        frame.push(7);
+        assert!(viewer.chunk(id(2), &frame[..3]).is_err());
+        assert!(
+            matches!(viewer.chunk(id(2), &frame).unwrap().as_slice(), [WatchEffect::Received { request_id, result }] if *request_id == request && result.bytes == [7])
+        );
+    }
+
+    #[test]
     fn unaligned_window_crosses_transit_and_keeps_frames_bounded() {
         let mut source = WatchDelivery::new(id(1));
         let mut relay = WatchDelivery::new(id(2));
@@ -794,6 +864,8 @@ mod tests {
         for (failure, expected) in [
             ("watch_path_unavailable", "watch_path_unavailable"),
             ("watch_read_busy", "watch_read_busy"),
+            ("unsupported", "unsupported"),
+            ("future_reply", "unknown_outcome"),
             (
                 "https://source.invalid/private?grant=secret",
                 "watch_source_failed",
@@ -806,10 +878,38 @@ mod tests {
             let request = id(20);
             let pull = control(viewer.read(key(), request, 7, 10));
             relay.control(id(3), pull);
-            let response = WatchControl::Error {
-                key: key(),
-                request_id: request,
-                code: failure.into(),
+            let response = if failure == "future_reply" {
+                use crate::conversation::decode_control;
+                let future = |role, key: WatchKey| {
+                    let packet = serde_json::json!({"kind": "watch", "body": {
+                        "role": role, "type": "future", "key": key, "requestId": request
+                    }});
+                    let frame = decode_control(&serde_json::to_vec(&packet).unwrap()).unwrap();
+                    let body = serde_json::to_value(frame).unwrap()["body"].clone();
+                    serde_json::from_value::<WatchControl>(body).unwrap()
+                };
+                assert!(relay.control(id(1), future("notice", key())).is_empty());
+                assert!(relay.control(id(3), future("reply", key())).is_empty());
+                let mut other = key();
+                other.activity_id = id(99);
+                assert!(relay
+                    .control(id(1), future("reply", other.clone()))
+                    .is_empty());
+                assert!(relay
+                    .control(id(9), future("request", other.clone()))
+                    .is_empty());
+                assert!(
+                    matches!(relay.control(id(3), future("request", other.clone())).as_slice(),
+                    [WatchEffect::SendControl { peer, control: WatchControl::Error { key, request_id, code } }]
+                    if *peer == id(3) && *request_id == request && key == &other && code == "unsupported")
+                );
+                future("reply", key())
+            } else {
+                WatchControl::Error {
+                    key: key(),
+                    request_id: request,
+                    code: failure.into(),
+                }
             };
             let response = relay
                 .control(id(1), response)

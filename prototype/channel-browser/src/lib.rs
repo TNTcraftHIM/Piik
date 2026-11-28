@@ -1,12 +1,13 @@
 use piik_channel_core::{
+    backup::PersistedMessage,
     conversation::{
         self, ConversationAddress, ConversationReply, SessionSigner as SharedSigner, SignedPacket,
     },
     history::{
-        ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, StoredMessage, HISTORY_PAGE,
+        ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, HISTORY_PAGE,
     },
-    host::{HostInput, RoomHost as SharedRoomHost},
-    wire::{RoomAccess, RoomIcon},
+    host::{HostInput, NewRoom, RoomHost as SharedRoomHost},
+    wire::Command,
     RoomState,
 };
 use serde::{Deserialize, Serialize};
@@ -25,45 +26,16 @@ fn encode(value: &impl Serialize) -> Result<String, JsValue> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct NewRoom {
-    id: String,
-    name: String,
-    icon: RoomIcon,
-    picture: Option<String>,
+struct BrowserNewRoom {
     creator_id: Uuid,
-    access: RoomAccess,
-    hidden: bool,
-    password: Option<String>,
-    voice_bitrate: Option<u32>,
-    relay_capacity: Option<u8>,
-    allow_service_relay: Option<bool>,
+    #[serde(flatten)]
+    room: NewRoom,
 }
 
 #[wasm_bindgen]
 pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
-    let input: NewRoom = parse(input)?;
-    let mut policy = RoomState::new(
-        input.id,
-        input.name,
-        input.icon,
-        input.creator_id,
-        input.access,
-        input.hidden,
-        input.password,
-    )
-    .map_err(error)?;
-    if let Some(capacity) = input.relay_capacity {
-        policy.relay_capacity = capacity;
-    }
-    if let Some(bitrate) = input.voice_bitrate {
-        policy.voice_bitrate = bitrate;
-    }
-    policy.appearance.picture = input.picture;
-    if let Some(allowed) = input.allow_service_relay {
-        policy.allow_service_relay = allowed;
-    }
-    policy.validate().map_err(error)?;
-    encode(&policy)
+    let input: BrowserNewRoom = parse(input)?;
+    encode(&input.room.into_policy(input.creator_id).map_err(error)?)
 }
 
 #[wasm_bindgen]
@@ -216,12 +188,12 @@ pub struct HistoryPage(piik_channel_core::history::HistoryPage);
 #[wasm_bindgen]
 impl HistoryPage {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self(Default::default())
+    pub fn new(inline_images: bool) -> Self {
+        Self(piik_channel_core::history::HistoryPage::new(inline_images))
     }
 
     pub fn push(&mut self, row: &str) -> Result<bool, JsValue> {
-        self.0.push(parse::<StoredMessage>(row)?).map_err(error)
+        self.0.push(parse::<PersistedMessage>(row)?.0).map_err(error)
     }
 
     pub fn finish(self, oldest_seq: Option<u64>, before: Option<u64>) -> Result<String, JsValue> {
@@ -232,7 +204,7 @@ impl HistoryPage {
 #[wasm_bindgen]
 pub fn attachment_result(request: &str, message: &str) -> Result<String, JsValue> {
     let result = parse::<HistoryRequest>(request)?
-        .attachment_result(parse::<Option<StoredMessage>>(message)?)
+        .attachment_result(parse::<Option<PersistedMessage>>(message)?.map(|row| row.0))
         .map_err(error)?;
     encode(&result)
 }
@@ -240,7 +212,7 @@ pub fn attachment_result(request: &str, message: &str) -> Result<String, JsValue
 #[wasm_bindgen]
 pub fn reaction_result(request: &str, message: &str) -> Result<String, JsValue> {
     let confirmation = parse::<HistoryRequest>(request)?
-        .reaction_result(parse::<Option<StoredMessage>>(message)?)
+        .reaction_result(parse::<Option<PersistedMessage>>(message)?.map(|row| row.0))
         .map_err(error)?;
     encode(&HistoryResult::Reacted(confirmation))
 }
@@ -403,12 +375,15 @@ impl RoomHost {
         )
     }
     pub fn dispatch(&mut self, input: &str) -> Result<String, JsValue> {
-        encode(
-            &self
-                .room
-                .dispatch(parse::<HostInput>(input)?)
-                .map_err(error)?,
-        )
+        let input: HostInput = parse(input)?;
+        if input.action.is_unsupported() {
+            return encode(&Command::HostUnsupported {
+                room_id: self.room_id(),
+                binding_id: input.binding_id,
+                revision: input.revision,
+            });
+        }
+        encode(&self.room.dispatch(input).map_err(error)?)
     }
     /// Called only after requested storage completes; this binding sends no network ack.
     pub fn finish(&mut self, history: Option<String>) -> Result<String, JsValue> {
@@ -444,9 +419,10 @@ pub fn attachment_media_type(bytes: &[u8]) -> String {
 /// Static Browser and Node schemas are constructed before the WASM runtime starts.
 #[wasm_bindgen]
 pub fn channel_wire_limits() -> Result<String, JsValue> {
-    use piik_channel_core::{wire, MAX_ROOMS, MAX_SESSIONS, PROFILE_PAGE_SIZE};
+    use piik_channel_core::{wire, MAX_ROOMS, MAX_SESSIONS, PRODUCT_VERSION, PROFILE_PAGE_SIZE};
     encode(&serde_json::json!({
-        "protocol": wire::CHANNEL_PROTOCOL,
+        "major": PRODUCT_VERSION.major,
+        "minor": PRODUCT_VERSION.minor,
         "sessions": MAX_SESSIONS,
         "rooms": MAX_ROOMS,
         "profilePage": PROFILE_PAGE_SIZE,

@@ -19,7 +19,7 @@ export function ChannelRoomInvitation({ channel, room, onManageAccess }: {
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const label = t("invite.room.title", { name: room.name });
-  useAnchoredPopover(trigger, panel, { maxHeight: 560 });
+  useAnchoredPopover(trigger, panel, { align: "start", maxHeight: 560 });
   useLayerHistory(panel, open);
   return <span className="c3-room-invitation-entry" ref={trigger}>
     <Btn icon="link" title={{ text: label }} textTooltip quiet size="compact" expanded={open} controls={id} popoverTarget={id} />

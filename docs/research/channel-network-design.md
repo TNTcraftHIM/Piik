@@ -83,6 +83,10 @@ reading, forwarding preference, subscriptions and file plans. The domain assembl
 the existing complete client view only for an admitted recipient; it does not infer
 private-room grants from the common activity. Binding and revision checks still
 fence the whole projection, including host retirement and recovery.
+Each connection may select a conversation view at Join. The domain constructs
+that view from the same admission, binding and signing facts, without media
+plans or pictures. The default remains the full view. Reconnection selects
+anew; final Leave uses the departing connection's view after removing it.
 Room admission, initial offer/answer and broken-tree repair instructions travel
 through this existing domain rendezvous to the room
 runtime; establishing or repairing the tree cannot depend on that tree already
@@ -117,6 +121,9 @@ cannot replace newer routes, but an earlier authorized action can still complete
 Successful domain-mediated policy/activity actions are acknowledged after the domain has installed a
 projection covering that turn. Until then, the existing pending request retains
 its result; explicit failures do not wait for a projection.
+An unsupported host input settles its original waiter. If it also owns an
+uncovered read barrier, the domain requests the writer's ordinary synchronization;
+reads resume only after the writer supplies a covering projection.
 Confirmation follows the requester's current session and room permission facts;
 another participant leaving cannot invalidate it. Room entry uses that same
 authenticated session and confirmation boundary after the site handshake.
@@ -170,7 +177,6 @@ The [forwarding plan](./channel-forwarding-plan.md) defines peer transport eligi
 
 ## Routing Foundation
 
-The following sections describe the current planners within that architecture.
 The room projects source and receiver demand before a path exists. The channel
 admits the first pair on an empty graph and returns confirmed edges to the room.
 TransportBook owns physical attempts
@@ -435,11 +441,9 @@ does not create another probing or reconnection subsystem; one picture's ICE
 timeout must not block another picture or chat. The sharer owns capture and
 demand; the controller selects distribution.
 
-Every authorized, capable participant with capacity may relay without receiving
-every publication. [LiveKit's publication/subscription model](https://docs.livekit.io/transport/media/subscribe/)
-illustrates metadata without bytes. On A-B-C-D, a picture watched only by B needs
-only A-B; a viewer at D also needs non-viewing C. A file distribution chooses its own path to interested recipients. A shorter screen candidate must prove reachability,
-source supply and actual capacity; a control link alone is insufficient.
+Any admitted, capable participant with capacity may relay without watching
+that publication. A shorter screen candidate must prove reachability, source
+supply and actual capacity.
 Different publications can share a physical pair. Stopping one removes only its
 work, preserving unrelated calls, transfers and connection leases.
 
@@ -758,7 +762,8 @@ target before replies; both peers complete within the preparation's shared limit
 One stable and one irregular observation can instead use random-port preparation:
 the irregular side opens 256 sockets toward the stable side's retained tuple;
 the stable side checks 1,024 distinct ports on the authorized peer address, each
-once. Each endpoint permits at most 1,032 requests and 16 replies,
+once. A random start and a bit-reversed 16-bit order spread the early checks
+across the existing 1024–65535 range. Each endpoint permits at most 1,032 requests and 16 replies,
 at a mean of one send per 2 ms, within the same five-second preparation lifetime.
 At most two random preparations run per process across all sites and Drivers.
 The [matched budget control](./nat-traversal.md#random-mapping-collision-control)
@@ -1181,5 +1186,3 @@ work; the [Native reference](../../prototype/channel-native/README.md) and
   [WebRTC API](https://www.w3.org/TR/webrtc/) own transport capabilities.
 - [Jami file transfer](https://jami.net/swarm-file-transfers/) informs separating
   a file announcement from on-demand bytes and available copies.
-
-These references support the transport and routing boundaries described above.

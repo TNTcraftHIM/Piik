@@ -1,3 +1,4 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
@@ -14,8 +15,8 @@ import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
 import type { AppDiscoveryOptions } from "../src/client/native/discovery";
 import { setCopy, t } from "../src/client/ui/copy";
-import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
-import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
+import { channelAppDiscovery } from "../src/client/channel/app-link";
+import { isAppConnectionIssue } from "../src/client/ui/diagnosis";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
 /** A share start owner with no result, as the page supplies before any start. */
@@ -143,7 +144,7 @@ describe("shared App connection entry", () => {
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
     } });
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(false);
     expect(button.toLowerCase().includes("popovertarget=")).toBe(true);
@@ -176,22 +177,22 @@ describe("shared App connection entry", () => {
         { id: "mine", roomId: "room", kind: "screen", userId: "self" },
       ], voice: [], watchActivities: [], watchSubscriptions: [] },
     } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
     expect(html.match(/<button\b/g)).toHaveLength(3);
     expect(html).toContain('aria-label="Close"');
     expect(html).toMatch(/aria-label="(?:Share settings in Friday|Friday的分享设置)"/);
-    const header = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
+    const header = renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
     expect(header).toContain('aria-label="Switch source in Friday"');
     expect(header).toContain('aria-label="Share settings in Friday"');
     expect(screenQuality.mock.calls).toEqual([["mine"], ["mine"]]);
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "retired", disabled: false }))).toBe("");
-    const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "other", disabled: false }));
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "retired", disabled: false }))).toBe("");
+    const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "other", publicationId: "mine", disabled: false }))).toBe("");
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "other", publicationId: "mine", disabled: false }))).toBe("");
     ownedScreens.clear();
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "mine", disabled: false }))).toBe("");
-    expect(renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }))).toContain(`aria-label="${t("en", "host.start")}"`);
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", publicationId: "mine", disabled: false }))).toBe("");
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }))).toContain(`aria-label="${t("en", "host.start")}"`);
   });
 });
 
@@ -204,7 +205,7 @@ describe("Native sharing capabilities", () => {
       browserCapturePreparation: () => phase, sourceSelectionCommitting: () => false,
       nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
     } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, channel, roomId: "room", disabled: false, onWatch() {} }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, channel, roomId: "room", disabled: false, onWatch() {} }));
     expect(html).toContain('role="status" aria-live="polite"');
     expect(html).toContain(t("en", phase === "picker" ? "host.capture.chooseInSystem" : "host.capture.preparingPicture"));
     expect(html).toContain(t("en", "host.capture.cancelPreparationHint"));
@@ -219,7 +220,7 @@ describe("Native sharing capabilities", () => {
       nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
     };
     const startAction = { ...idleStart, error: "capture_failed" };
-    const render = () => renderToStaticMarkup(createElement(ChannelShareControl, { startAction, channel: channel as unknown as ChannelController, roomId: "room", disabled: false, onWatch() {} }));
+    const render = () => renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction, channel: channel as unknown as ChannelController, roomId: "room", disabled: false, onWatch() {} }));
     const failed = render();
     expect(failed.split('class="c3-share-wait c3-share-failure"')[1]).toContain(t("en", "channel.error.captureFailed"));
     expect(failed).toContain(`aria-label="${t("en", "notice.dismiss")}"`);
@@ -246,7 +247,7 @@ describe("Native sharing capabilities", () => {
       vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
         .mockReturnValueOnce([false, vi.fn()])
         .mockReturnValueOnce([sources, vi.fn()]);
-      return renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel: channel as unknown as ChannelController,
+      return renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel: channel as unknown as ChannelController,
         roomId: "room", publicationId: channel.ownedScreens.has("mine") ? "mine" : undefined, disabled: false }));
     };
     expect(render(true)).not.toContain('aria-label="Encoding method"');
@@ -353,11 +354,11 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    automatic, automaticFailed: { current: false }, connectedPort, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setManagement, setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
+    automatic, automaticFailed: { current: false }, connectedPort, window, document, pending, healthCheck, help, showHelp, setState, isAppConnectionIssue, setAutomaticHint: vi.fn(), setManagement, setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, available, ready: state === "ready" && connected !== false, setNavigationIssue, isClientActivated: () => activated,
     discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
-      isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError },
+      compatibilityIssue: (error: unknown) => error instanceof native.NativeCompatibilityError ? "app-update" : null },
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
       return () => window.removeEventListener("activation", changed);
@@ -376,7 +377,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
 
 it.each([
   ["unavailable", null],
-  ["incompatible", null],
+  ["app-update", null],
   ["unsupported", "unsupported"],
   ["popup-blocked", "popup-blocked"],
 ] as const)("resolves earlier navigation issue %s according to confirmed App readiness", (issue, expected) => {
@@ -402,7 +403,7 @@ describe("App connection approval", () => {
   });
 
   it.each([
-    [false, false, "incompatible"],
+    [false, false, "app-update"],
     [true, false, "approval"],
     [true, true, "ready"],
   ] as const)("uses current App discovery beside public 2.x: current=%s authorized=%s => %s", async (current, authorized, state) => {
@@ -411,7 +412,7 @@ describe("App connection approval", () => {
       const url = new URL(input), port = Number(url.port);
       if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port, instanceToken: "fixture-token" });
       if (current && port === NATIVE_CLIENT_PORT_START + 1) {
-        const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
+        const identity = { service: "piik-channel-app", ...PRODUCT_VERSION, port };
         if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
         return authorized ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
       }
@@ -429,22 +430,22 @@ describe("App connection approval", () => {
     } finally { page.cleanup(); }
   });
 
-  it("recognizes the current App and rejects an older channel protocol through the shared entry", async () => {
+  it("recognizes the current App and reports an older App major through the shared entry", async () => {
     const discovery = runInNewContext(ts.transpileModule(
       `function entry(${connectionProps}) { return discovery; } entry({});`,
       { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
     ).outputText, { channelAppDiscovery }) as typeof channelAppDiscovery;
     expect(discovery).toBe(channelAppDiscovery);
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1:8787/__status-preview") });
-    let domainProtocol = CHANNEL_PROTOCOL;
+    let major = PRODUCT_VERSION.major;
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const port = Number(new URL(input).port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol, port, token: "fixture-token" });
+      return Response.json({ service: "piik-channel-app", ...PRODUCT_VERSION, major, port, token: "fixture-token" });
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
-    domainProtocol = CHANNEL_PROTOCOL - 1;
-    await expect(discovery.health()).rejects.toThrow("incompatible_protocol");
+    major = PRODUCT_VERSION.major - 1;
+    await expect(discovery.health().catch(discovery.compatibilityIssue)).resolves.toBe("app-update");
   });
 
   it("keeps approval and subsequent management refresh on the App the user approved", async () => {
@@ -455,7 +456,7 @@ describe("App connection approval", () => {
     vi.stubGlobal("fetch", async (input: string) => {
       const url = new URL(input), port = Number(url.port);
       if (port !== first && port !== first + 1) throw new TypeError("No fixture App");
-      const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
+      const identity = { service: "piik-channel-app", ...PRODUCT_VERSION, port };
       if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
       if (!approved) return new Response(null, { status: 403 });
       if (port === first) await settle();
@@ -656,17 +657,17 @@ describe("App connection approval", () => {
     expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
   });
 
-  it.each(["absent", "failed", "incompatible"])("does not activate from an approval message when health is %s", async result => {
+  it.each(["absent", "failed", "app-update"])("does not activate from an approval message when health is %s", async result => {
     const page = mount();
     await page.openApproval();
     if (result === "absent") page.native.discoverNativeHealth.mockResolvedValue(null);
-    else if (result === "incompatible") page.native.discoverNativeHealth.mockRejectedValue(new page.native.NativeCompatibilityError());
+    else if (result === "app-update") page.native.discoverNativeHealth.mockRejectedValue(new page.native.NativeCompatibilityError());
     else page.native.discoverNativeHealth.mockRejectedValue(new Error("network unavailable"));
     page.message();
     await settle();
     expect(page.activateClient).not.toHaveBeenCalled();
     expect(page.onConnected).not.toHaveBeenCalled();
-    expect(page.setState).toHaveBeenLastCalledWith(result === "incompatible" ? "incompatible" : "unavailable");
+    expect(page.setState).toHaveBeenLastCalledWith(result === "app-update" ? "app-update" : "unavailable");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
     page.native.discoverNativeHealth.mockResolvedValue(null);
@@ -818,7 +819,7 @@ describe("initial App discovery", () => {
     const fetcher = vi.fn(async (input: string) => {
       const url = new URL(input), port = Number(url.port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
+      const identity = { service: "piik-channel-app", ...PRODUCT_VERSION, port };
       if (url.pathname === "/health") return approved ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
       return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
     });
@@ -837,9 +838,9 @@ describe("initial App discovery", () => {
   });
 
   it.each([false, true])("passive incompatibility stays quiet and preserves the live owner's connected fact (%s)", async connected => {
-    const incompatible = new Error("incompatible");
+    const incompatible = new Error("app-update");
     const discovery = { connect: vi.fn(async (): Promise<string | null> => { throw incompatible; }),
-      health: vi.fn(async (): Promise<null> => { throw incompatible; }), isIncompatible: (error: unknown) => error === incompatible };
+      health: vi.fn(async (): Promise<null> => { throw incompatible; }), compatibilityIssue: (error: unknown) => error === incompatible ? "app-update" as const : null };
     const page = mount(true, "idle", false, connected, discovery);
     try {
       await settle();
@@ -848,7 +849,7 @@ describe("initial App discovery", () => {
       expect(page.window.open).not.toHaveBeenCalled();
       if (!connected) {
         await page.connect();
-        expect(page.setState).toHaveBeenLastCalledWith("incompatible");
+        expect(page.setState).toHaveBeenLastCalledWith("app-update");
         expect(page.showHelp).toHaveBeenCalled();
       }
     } finally { page.cleanup(); }
@@ -882,7 +883,7 @@ describe("initial App discovery", () => {
     vi.stubGlobal("history", { state: null });
     const session = new ChannelSession();
     let ready!: (value: object) => void;
-    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(() => new Promise<object>(resolve => { ready = resolve; })), isIncompatible: () => false };
+    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(() => new Promise<object>(resolve => { ready = resolve; })), compatibilityIssue: () => null };
     const page = mount(false, "idle", false, false, discovery, true);
     const onConnected = runInNewContext(ts.transpileModule(`(${callback})`, {
       compilerOptions: { target: ts.ScriptTarget.ES2022 },
@@ -901,7 +902,7 @@ describe("initial App discovery", () => {
     } finally { page.cleanup(); session.close(); vi.unstubAllGlobals(); }
   });
   it("verifies an already approved App without opening another page", async () => {
-    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => ({})), isIncompatible: () => false };
+    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => ({})), compatibilityIssue: () => null };
     const page = mount(false, "idle", false, false, discovery, true);
     await settle();
     expect(discovery.connect).toHaveBeenCalledOnce();
@@ -911,7 +912,7 @@ describe("initial App discovery", () => {
     page.cleanup();
   });
   it("waits for a real approval click instead of treating discovery as authorization", async () => {
-    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => null), isIncompatible: () => false };
+    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => null), compatibilityIssue: () => null };
     const page = mount(false, "idle", false, false, discovery, true);
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("approval");
@@ -949,7 +950,7 @@ describe("initial App discovery", () => {
     } finally { granting.cleanup(); waiting.cleanup(); }
   });
   it("stops failed discovery across focus, permits manual retry, and aborts on unmount", async () => {
-    const discovery = { connect: vi.fn(async (_options?: AppDiscoveryOptions): Promise<string | null> => null), health: vi.fn(async () => ({})), isIncompatible: () => false };
+    const discovery = { connect: vi.fn(async (_options?: AppDiscoveryOptions): Promise<string | null> => null), health: vi.fn(async () => ({})), compatibilityIssue: () => null };
     const page = mount(true, "idle", false, false, discovery, true);
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
@@ -962,20 +963,20 @@ describe("initial App discovery", () => {
     page.cleanup(); expect(signal?.aborted).toBe(true);
   });
   it.each([false, true])("automatic discovery stays idle; explicit failure keeps recovery guidance (incompatible: %s)", async incompatible => {
-    const discovery = { connect: vi.fn(async (): Promise<string | null> => { if (incompatible) throw new Error("incompatible"); return null; }),
-      health: vi.fn(async () => null), isIncompatible: () => incompatible };
+    const discovery = { connect: vi.fn(async (): Promise<string | null> => { if (incompatible) throw new Error("app-update"); return null; }),
+      health: vi.fn(async () => null), compatibilityIssue: () => incompatible ? "app-update" as const : null };
     const page = mount(false, "idle", false, false, discovery, true);
     try {
       await settle();
       expect(page.setState).toHaveBeenLastCalledWith("idle");
       expect(page.showHelp).not.toHaveBeenCalled();
       await page.connect();
-      expect(page.setState).toHaveBeenLastCalledWith(incompatible ? "incompatible" : "unavailable");
+      expect(page.setState).toHaveBeenLastCalledWith(incompatible ? "app-update" : "unavailable");
       expect(page.showHelp).toHaveBeenCalled();
     } finally { page.cleanup(); }
   });
   it("an explicit approval click takes over the automatic attempt's failure feedback", async () => {
-    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => null), isIncompatible: () => false };
+    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => null), compatibilityIssue: () => null };
     const page = mount(false, "idle", false, false, discovery, true);
     try {
       await settle();
@@ -1000,7 +1001,7 @@ it("keeps forwarding settings reachable for main playback with a retained Page s
   } as unknown as ChannelController;
   const render = () => {
     vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([true, vi.fn()]);
-    return renderToStaticMarkup(createElement(ChannelShareControl, { startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
+    return renderToStaticMarkup(createElement(ChannelShareControl, { onStopScreen: async () => {}, startAction: idleStart, onWatch() {}, channel, roomId: "room", disabled: false }));
   };
   expect(render()).toContain('aria-label="Stop forwarding"');
   activity.byteSource = null;

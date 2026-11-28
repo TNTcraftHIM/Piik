@@ -1,9 +1,7 @@
 #![cfg(feature = "sqlite")]
 mod support;
-use piik_channel_core::{
-    host::RoomResult,
-    wire::{Event, RoomAccess, ViewSource},
-};
+use piik_channel_core::wire::ReplyResult;
+use piik_channel_core::wire::{Event, RoomAccess, ViewSource};
 use serde_json::{json, Value};
 use support::RoomNetwork;
 use uuid::Uuid;
@@ -26,10 +24,10 @@ fn start(room: &str, id: Uuid) -> Value {
     json!({"type":"start_watch","roomId":room,"id":id,"source":{"kind":"media","url":"https://example.com/movie.mp4"},"playback":playback(),"requestId":"start"})
 }
 fn ready(effects: piik_channel_core::Effects, time: u64) {
-    assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::RoomReply{result:RoomResult::WatchReady{server_time},..} if *server_time==time)));
+    assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::Reply { room_id: Some(_), result: ReplyResult::WatchReady{server_time}, .. } | Event::Deferred { result: ReplyResult::WatchReady{server_time}, .. } if *server_time==time)));
 }
 fn error(effects: piik_channel_core::Effects, code: &str) {
-    assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::RoomReply{result:RoomResult::Error{code:c},..}|Event::Error{code:c,..} if c==code)));
+    assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::Reply { room_id: Some(_), result: ReplyResult::Error{code:c}, .. }|Event::Error { code:c, .. } | Event::Reply { result: ReplyResult::Error { code:c }, .. } if c==code)));
 }
 #[test]
 fn program_timeline_is_required_and_stays_with_the_activity() {
@@ -155,9 +153,12 @@ fn watch_validation_and_source_retirement_are_bounded() {
     legacy.as_object_mut().unwrap().remove("source");
     legacy["url"] = json!("https://example.com/movie.mp4");
     assert!(piik_channel_core::wire::Request::parse(&legacy.to_string()).is_err());
-    let mut invalid_kind = start(&room, id);
-    invalid_kind["source"]["mediaUrl"] = json!("https://example.com/other.mp4");
-    assert!(piik_channel_core::wire::Request::parse(&invalid_kind.to_string()).is_err());
+    let baseline = start(&room, id);
+    let mut extended = baseline.clone();
+    extended["source"]["mediaUrl"] = json!("https://example.com/other.mp4");
+    extended["playback"]["extension"] = json!(true);
+    let parsed = piik_channel_core::wire::Request::parse(&extended.to_string()).unwrap();
+    assert_eq!(serde_json::to_value(parsed).unwrap(), baseline);
     let webpage = json!({"kind":"website","url":"https://example.com/watch"});
     let source: piik_channel_core::wire::WatchSource =
         serde_json::from_value(webpage.clone()).unwrap();
@@ -517,7 +518,7 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
             !effects
                 .events
                 .iter()
-                .any(|(_, event)| matches!(event, Event::Error { .. })),
+                .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })),
             "projection must validate the connected watch path"
         );
     }
@@ -622,10 +623,10 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
     );
     assert!(delivery.update(vec![], peers(net.state(viewer))).iter().any(|effect|
         matches!(effect, piik_channel_core::watch_delivery::WatchEffect::Failed { request_id, .. } if *request_id == request)));
-    assert!(piik_channel_core::wire::Request::parse(
+    let request = piik_channel_core::wire::Request::parse(
         &json!({"type":"join_watch","roomId":room,"id":activity,"enabled":true}).to_string()
-    )
-    .is_err());
+    ).unwrap();
+    assert!(matches!(request.command, piik_channel_core::wire::Command::JoinWatch { mode: None, .. }));
 }
 
 #[test]
@@ -698,10 +699,7 @@ fn offline_provider_keeps_only_its_previously_admitted_source() {
     );
     assert!(accepted.events.iter().any(|(_, event)| matches!(
         event,
-        Event::RoomReply {
-            result: RoomResult::Done,
-            ..
-        }
+        Event::Reply { room_id: Some(_), result: ReplyResult::Done, .. } | Event::Deferred { result: ReplyResult::Done, .. }
     )));
     assert_eq!(
         serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(),

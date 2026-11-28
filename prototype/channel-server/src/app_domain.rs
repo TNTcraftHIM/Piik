@@ -592,7 +592,7 @@ mod tests {
             socket
                 .send(Message::Text(
                     json!({
-                        "type":"join", "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+                        "type":"join", "major":piik_channel_core::PRODUCT_VERSION.major,"minor":piik_channel_core::PRODUCT_VERSION.minor,
                         "name":"Owner", "ownerKey":owner_key, "signingKey":vec![1u8; 32],
                     })
                     .to_string()

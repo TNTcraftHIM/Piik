@@ -28,6 +28,67 @@ pub struct RoomSummary {
     pub relay_capacity: u8,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewRoom {
+    pub id: String,
+    name: String,
+    icon: crate::wire::RoomIcon,
+    picture: Option<String>,
+    access: RoomAccess,
+    hidden: bool,
+    password: Option<String>,
+    voice_bitrate: Option<u32>,
+    relay_capacity: Option<u8>,
+    allow_service_relay: Option<bool>,
+}
+
+impl NewRoom {
+    pub fn from_summary(
+        room: &RoomSummary,
+        password: Option<String>,
+        picture: Option<String>,
+        allow_service_relay: Option<bool>,
+    ) -> Self {
+        Self {
+            id: room.id.clone(),
+            name: room.name.clone(),
+            icon: room.icon.clone(),
+            access: room.access,
+            hidden: room.hidden,
+            voice_bitrate: Some(room.voice_bitrate),
+            relay_capacity: Some(room.relay_capacity),
+            password,
+            picture,
+            allow_service_relay,
+        }
+    }
+
+    pub fn into_policy(self, creator_id: Uuid) -> Result<RoomState, &'static str> {
+        let mut policy = RoomState::new(
+            self.id,
+            self.name,
+            self.icon,
+            creator_id,
+            self.access,
+            self.hidden,
+            self.password,
+        )?;
+        if let Some(capacity) = self.relay_capacity {
+            policy.relay_capacity = capacity;
+        }
+        if let Some(bitrate) = self.voice_bitrate {
+            policy.voice_bitrate = bitrate;
+        }
+        policy.appearance.picture = self.picture;
+        if let Some(allowed) = self.allow_service_relay {
+            policy.allow_service_relay = allowed;
+        }
+        policy.validate()?;
+        Ok(policy)
+    }
+}
+
 impl RoomSummary {
     pub fn new_policy(
         &self,
@@ -35,23 +96,8 @@ impl RoomSummary {
         picture: Option<String>,
         allow_service_relay: Option<bool>,
     ) -> Result<RoomState, &'static str> {
-        let mut policy = RoomState::new(
-            self.id.clone(),
-            self.name.clone(),
-            self.icon.clone(),
-            self.creator_id,
-            self.access,
-            self.hidden,
-            password,
-        )?;
-        policy.appearance.picture = picture;
-        policy.voice_bitrate = self.voice_bitrate;
-        policy.relay_capacity = self.relay_capacity;
-        if let Some(allowed) = allow_service_relay {
-            policy.allow_service_relay = allowed;
-        }
-        policy.validate()?;
-        Ok(policy)
+        NewRoom::from_summary(self, password, picture, allow_service_relay)
+            .into_policy(self.creator_id)
     }
 
     pub(crate) fn validate(&self) -> Result<(), &'static str> {
@@ -125,6 +171,14 @@ pub enum HostAction {
         peer: Uuid,
         ready: bool,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
+}
+
+impl HostAction {
+    pub fn is_unsupported(&self) -> bool {
+        matches!(self, Self::Unknown | Self::Command { command: Command::Unknown, .. })
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -216,6 +270,8 @@ pub enum RoomResult {
     Error {
         code: String,
     },
+    #[serde(other, rename = "unknown_outcome")]
+    Unknown,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1188,7 +1244,8 @@ mod tests {
                 .replies()
                 .unwrap()
                 .remove(0)
-                .record
+                .content()
+                .clone()
         };
         let target = ReactionTarget::Publication { publication_id: a };
         assert!(matches!(
@@ -1565,7 +1622,7 @@ impl RoomHost {
     ) -> Result<crate::conversation::PreparedConversation, &'static str> {
         use crate::conversation::{
             verify, ConversationAddress, ConversationCommand, ConversationRecord,
-            ConversationRequest, ConversationWork, PreparedConversation, ReactionSnapshot,
+            SignedBody, ConversationWork, PreparedConversation, ReactionSnapshot,
             ReactionTarget, INTERACTION_REACTIONS,
         };
         if self.pending.is_some() {
@@ -1585,18 +1642,26 @@ impl RoomHost {
         {
             return Err("invalid_conversation_scope");
         }
-        let request: ConversationRequest = match serde_json::from_str(&packet.payload) {
-            Ok(request) => request,
+        let body = SignedBody::read(packet, &address, authority.host_session_id)?;
+        if body.role != crate::conversation::ConversationRole::Command {
+            return Err("invalid_conversation_scope");
+        }
+        let command = match serde_json::from_str(body.raw.get()) {
+            Ok(command) => command,
             Err(_) => {
                 return Ok(PreparedConversation {
                     address,
                     work: Err("invalid_conversation"),
-                });
+                })
             }
         };
         let actor = endpoint.member.user_id;
         let moderator = self.room.policy().manages(actor) || actor == authority.channel_owner_id;
-        let work = match request.command {
+        let work = match command {
+            ConversationCommand::Unknown => self
+                .room
+                .authorize(endpoint.member, crate::RoomPermission::Read)
+                .and(Err("unsupported")),
             ConversationCommand::DeleteMessage {
                 message_seq,
                 message_id,
@@ -1716,9 +1781,15 @@ impl RoomHost {
                     now,
                 )
                 .map(ConversationWork::History),
-            ConversationCommand::History { before } => self
+            ConversationCommand::History { before, parts } => self
                 .room
-                .history(endpoint.member, before)
+                .history(
+                    endpoint.member,
+                    before,
+                    parts
+                        .iter()
+                        .any(|part| part == crate::conversation::HISTORY_INLINE_IMAGES),
+                )
                 .map(ConversationWork::History),
             ConversationCommand::HistorySeek { after } => self
                 .room
@@ -1726,7 +1797,7 @@ impl RoomHost {
                 .map(ConversationWork::History),
         };
         Ok(PreparedConversation {
-            address: request.address,
+            address,
             work,
         })
     }
@@ -1831,7 +1902,9 @@ impl RoomHost {
                     recipient,
                     request_id: request_id.clone(),
                 },
-                record: ConversationRecord::RoomMediaCleared { through_seq },
+                body: crate::conversation::WriterBody::Notice(
+                    ConversationRecord::RoomMediaCleared { through_seq },
+                ),
             })
             .collect()
     }
@@ -1862,6 +1935,9 @@ impl RoomHost {
     }
 
     pub fn dispatch(&mut self, input: HostInput) -> Result<HostWork, &'static str> {
+        if input.action.is_unsupported() {
+            return Err("unsupported");
+        }
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
@@ -1936,6 +2012,7 @@ impl RoomHost {
                 .transpose()?;
             match &input.action {
                 // Every dispatch has reconciled, and so expired, each publication above.
+                HostAction::Unknown => unreachable!(),
                 HostAction::Sync | HostAction::RouteWake => {}
                 HostAction::RemoveHostedRoom { .. } => {
                     work.delete = true;

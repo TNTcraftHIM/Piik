@@ -305,7 +305,7 @@ mod shutdown_tests {
             }))
         });
         assert!(rejected.is_err());
-        assert!(matches!(receive.await,Ok(Err(code)) if code=="room_restored_connection_failed"));
+        assert!(matches!(receive.await,Ok(Err(code)) if code.reason()=="room_restored_connection_failed"));
         rooms.stop();
         // The task exited before publishing its accepted request.
         assert!(time::timeout(Duration::from_secs(2), rooms.finished.recv())

@@ -2,8 +2,8 @@
 use crate::hosted_room::HostedRoom;
 use anyhow::{anyhow, ensure, Result};
 use piik_channel_core::{
-    wire::{Command, Event, Request, RoomAccess, CHANNEL_PROTOCOL},
-    Authority, Effects, RoomState,
+    wire::{Command, Event, ReplyResult, Request, RoomAccess},
+    Authority, Effects, RoomState, PRODUCT_VERSION,
 };
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -69,7 +69,8 @@ impl CoreBurst {
                 Request {
                     request_id: None,
                     command: Command::Join {
-                        protocol: CHANNEL_PROTOCOL,
+                        snapshot_form: Default::default(),
+                        version: PRODUCT_VERSION,
                         name: format!("Owned participant {i}"),
                         credential: None,
                         owner_key: None,
@@ -169,6 +170,7 @@ impl CoreBurst {
             if recipient != self.connection {
                 continue;
             }
+            if matches!(event, Event::Deferred { .. }) { continue; }
             seen.push(event.clone());
             match event {
                 Event::HostBound {
@@ -189,7 +191,7 @@ impl CoreBurst {
                     let next = self.command(Command::HostOutput { room_id, output }, None);
                     todo.extend(next.events);
                 }
-                Event::Error { code, .. } => return Err(anyhow!("Core rejected fixture: {code}")),
+                Event::Reply { result: ReplyResult::Error { code }, .. } | Event::Error { code, .. } => return Err(anyhow!("Core rejected fixture: {code}")),
                 _ => {}
             }
         }
@@ -204,7 +206,7 @@ impl CoreBurst {
         let effects = self.authority.handle(
             self.connection,
             Request {
-                request_id: Some("owned-resume".into()),
+                request_id: None,
                 command: join(
                     Some(self.credential.clone()),
                     Some(self.session.to_string()),
@@ -239,7 +241,7 @@ impl CoreBurst {
                 None,
             );
             for (to, event) in effects.events {
-                if to == self.connection {
+                if to == self.connection && !matches!(event, Event::Deferred { .. }) {
                     if let Event::Error { code, .. } = &event {
                         return Err(anyhow!("resume host rejected: {code}"));
                     }
@@ -274,7 +276,8 @@ impl CoreBurst {
 }
 fn join(credential: Option<String>, session_id: Option<String>, owner: bool) -> Command {
     Command::Join {
-        protocol: CHANNEL_PROTOCOL,
+        snapshot_form: Default::default(),
+        version: PRODUCT_VERSION,
         name: "Owned Native host".into(),
         credential,
         owner_key: owner.then(|| "owned-composition-owner".into()),

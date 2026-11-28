@@ -16,12 +16,12 @@ use piik_channel_core::{
     conversation::{self, ConversationReply, SessionSigner, SignedPacket},
 };
 use piik_channel_core::{
-    host::{RoomResult, RoomSummary},
+    host::{NewRoom, RoomResult, RoomSummary},
     wire::{
-        Command, Event, Kind, PublicationInput, Room, RoomAccess, RoomDelivery, Snapshot,
+        Command, Event, Kind, PublicationInput, ReplyResult, Room, RoomAccess, RoomDelivery, Snapshot,
         VideoSettings,
     },
-    RoomState, RECOVERY_MS,
+    RoomState, PRODUCT_VERSION, RECOVERY_MS,
 };
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -162,7 +162,9 @@ impl RoomTurns {
             .ok_or_else(|| anyhow!("session_expired"))?;
         let address =
             conversation::verify_address(packet, sender.signing_key).map_err(anyhow::Error::msg)?;
-        if address.recipient != self.local {
+        let body = conversation::SignedBody::read(packet, &address, self.local)
+            .map_err(anyhow::Error::msg)?;
+        if address.recipient != self.local || body.role != conversation::ConversationRole::Command {
             bail!("invalid_conversation_scope");
         }
         Ok(address)
@@ -201,7 +203,7 @@ impl RoomTurns {
                             recipient,
                             ..broadcast.address.clone()
                         },
-                        record: broadcast.record.clone(),
+                        body: broadcast.body.clone(),
                     }),
             );
         }
@@ -336,8 +338,43 @@ struct Session {
 }
 
 pub struct OpenRoom {
-    pub policy: RoomState,
-    pub result: oneshot::Sender<Result<RoomSummary, String>>,
+    pub room: NewRoom,
+    pub creator_id: Uuid,
+    pub result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
+}
+
+#[derive(Debug)]
+pub enum OpenRoomError {
+    RejectedSettings(&'static str),
+    Operation(String),
+}
+
+impl OpenRoomError {
+    pub fn reason(&self) -> &str {
+        match self {
+            Self::RejectedSettings(reason) => reason,
+            Self::Operation(reason) => reason,
+        }
+    }
+}
+
+impl std::fmt::Display for OpenRoomError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.write_str(self.reason())
+    }
+}
+
+impl std::error::Error for OpenRoomError {}
+
+impl From<&str> for OpenRoomError {
+    fn from(reason: &str) -> Self {
+        Self::Operation(reason.to_owned())
+    }
+}
+
+enum RoomInstall {
+    Create(NewRoom, Uuid),
+    Copy(RoomSnapshot, tokio::sync::OwnedSemaphorePermit),
 }
 
 pub type ServiceAdmission = (
@@ -385,13 +422,13 @@ impl<T> Drop for LocalAnswer<T> {
 }
 struct OpeningReply {
     _local: room_owner::Admission,
-    result: LocalAnswer<Result<RoomSummary, String>>,
+    result: LocalAnswer<Result<RoomSummary, OpenRoomError>>,
     committed_error: Option<&'static str>,
 }
 impl OpeningReply {
     fn new(
         local: room_owner::Admission,
-        result: oneshot::Sender<Result<RoomSummary, String>>,
+        result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
         committed_error: Option<&'static str>,
     ) -> Self {
         Self {
@@ -405,7 +442,7 @@ impl OpeningReply {
     }
     fn finish(self, result: Result<RoomSummary, String>) {
         let result = result.map_err(|code| self.committed_error.map(str::to_owned).unwrap_or(code));
-        let _ = self.result.take().send(result);
+        let _ = self.result.take().send(result.map_err(OpenRoomError::Operation));
     }
 }
 impl OpeningRoom {
@@ -458,7 +495,7 @@ pub struct RestoreRoom {
     /// Holds Server scratch admission through staging and installation.
     pub scratch: Option<tokio::sync::OwnedSemaphorePermit>,
     pub existing: Option<ExistingRoomRestore>,
-    pub result: oneshot::Sender<Result<RoomSummary, String>>,
+    pub result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
 }
 
 #[derive(serde::Serialize)]
@@ -513,14 +550,9 @@ pub struct TransferSource {
     pub to_session_id: Uuid,
     pub result: oneshot::Sender<Result<(), String>>,
 }
-pub struct PauseCapture {
-    pub scope: CaptureScope,
-    pub capture_id: Uuid,
-    pub paused: bool,
-    pub result: oneshot::Sender<Result<(), String>>,
-}
 pub enum CaptureEdit {
     Stop { successor_watch_id: Uuid },
+    Paused(bool),
     Title(Option<String>),
     DirectLimit(Option<u8>),
 }
@@ -622,8 +654,7 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
 #[serde(
     tag = "action",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum RelayCapacityRequest {
     Read {},
@@ -679,7 +710,7 @@ pub enum HostCommand {
     CreateCopy {
         snapshot: RoomSnapshot,
         scratch: tokio::sync::OwnedSemaphorePermit,
-        result: oneshot::Sender<Result<RoomSummary, String>>,
+        result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
     },
     DeleteRetired {
         id: String,
@@ -697,7 +728,6 @@ pub enum HostCommand {
     },
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
-    PauseCapture(PauseCapture),
     EditCapture(EditCapture),
     PublishCaptureSettings(PublishCaptureSettings),
 }
@@ -754,9 +784,6 @@ impl HostCommand {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::EditCapture(request) => {
-                let _ = request.result.send(Err("hosting_unavailable".into()));
-            }
-            Self::PauseCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::PublishCaptureSettings(request) => {
@@ -1019,7 +1046,8 @@ impl Session {
             };
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
-                    protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                    snapshot_form: Default::default(),
+                    version: PRODUCT_VERSION,
                     can_use_peer_transport: true,
                     can_prepare_udp: self.config.server_udp.is_none(),
                     can_receive_video_layers: true,
@@ -1221,10 +1249,11 @@ impl Session {
                                 HostCommand::DeleteRetired { id, creator, result } => {
                                     self.delete_retired_room(id,creator,result)?;
                                 }
-                                HostCommand::Open(request) => self.open_room(request, None, socket).await?,
+                                HostCommand::Open(request) => {
+                                    self.open_room(RoomInstall::Create(request.room, request.creator_id), request.result)?;
+                                }
                                 HostCommand::CreateCopy { snapshot, scratch, result } => {
-                                    let request = OpenRoom { policy: snapshot.room.metadata().policy.clone(), result };
-                                    self.open_room(request, Some((snapshot,scratch)), socket).await?;
+                                    self.open_room(RoomInstall::Copy(snapshot, scratch), result)?;
                                 }
                                 HostCommand::Snapshot(request) => self.snapshot_room(request).await,
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
@@ -1234,7 +1263,6 @@ impl Session {
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
                                 HostCommand::EditCapture(request) => self.edit_capture(request, socket).await?,
-                                HostCommand::PauseCapture(request) => self.pause_capture(request, socket).await?,
                                 HostCommand::PublishCaptureSettings(request) => self.publish_capture_settings(request, socket).await?,
                             } }
                             self.admit(None);
@@ -1249,12 +1277,25 @@ impl Session {
                             match message {
                                 Some(Incoming { text, _budget }) => {
                                     let event = images.decode(&text).map_err(anyhow::Error::msg)?;
-                                    if matches!(event, Event::Welcome { .. }) {
-                                        admitted = true;
-                                        self.recovery = None;
-                                    }
-                                    if let Event::Error { code, .. } = &event {
-                                        if !admitted { bail!("admission failed: {code}"); }
+                                    match &event {
+                                        Event::Welcome { .. } => {
+                                            admitted = true;
+                                            self.recovery = None;
+                                        }
+                                        Event::IncompatibleVersion { version } => {
+                                            let (code, update) = if version.major > PRODUCT_VERSION.major {
+                                                ("app-update", "Update the App")
+                                            } else {
+                                                ("domain_update_required", "Update the Site's Server")
+                                            };
+                                            return Err(anyhow!("{update} (App {}.{}, Server {}.{})",
+                                                PRODUCT_VERSION.major, PRODUCT_VERSION.minor, version.major, version.minor)
+                                                .context(code));
+                                        }
+                                        Event::Error { code, .. } if !admitted => {
+                                            bail!("admission failed: {code}");
+                                        }
+                                        _ => {}
                                     }
                                     pending = Some((event, _budget));
                                 },
@@ -1419,6 +1460,229 @@ impl Session {
     async fn route_event(&mut self, event: Event, socket: &mut Writer<'_>) -> Result<()> {
         self.apply_event(event, socket).await?;
         self.settle_hosting();
+        Ok(())
+    }
+    async fn reply(
+        &mut self,
+        request_id: String,
+        scope: Option<&str>,
+        result: ReplyResult,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
+        if let Some(live) = &mut self.live {
+            live.forwarding_budget.capacity_reply(&request_id);
+        }
+        if let Some(request) = self.pending_captures.get(&request_id) {
+            if scope.is_some_and(|room| room != request.room_id()) {
+                return Ok(());
+            }
+            let request = self.pending_captures.remove(&request_id).unwrap();
+            if scope.is_none() && matches!(result, ReplyResult::Done) {
+                request.fail("invalid_capture_reply".into());
+                return Ok(());
+            }
+            match (request, result) {
+                (PendingCapture::Prepare(request), ReplyResult::Done) => {
+                    self.prepare_source(request, socket).await?
+                }
+                (PendingCapture::External(request), ReplyResult::Done) => {
+                    self.prepare_external_source(request, socket).await?
+                }
+                (
+                    PendingCapture::Authorize {
+                        publication_id,
+                        room_id,
+                        result,
+                    },
+                    ReplyResult::Done,
+                ) => {
+                    let authority =
+                        self.live
+                            .as_ref()
+                            .and_then(|live| {
+                                let binding_id =
+                                    live.room.snapshot.borrow().as_ref().and_then(
+                                        |state| capture_binding(state, &room_id),
+                                    )?;
+                                Some(InputAuthority {
+                                    scope: CaptureScope {
+                                        publication_id,
+                                        room_id,
+                                        binding_id,
+                                    },
+                                    snapshot: live.room.snapshot.subscribe(),
+                                })
+                            })
+                            .ok_or_else(|| "room_unavailable".to_string());
+                    let _ = result.send(authority);
+                }
+                (PendingCapture::Commit(request), ReplyResult::Done) => {
+                    self.finish_capture(request, socket).await?
+                }
+                (PendingCapture::RoomCommand { result, .. }, ReplyResult::Done) => {
+                    let _ = result.send(Ok(()));
+                }
+                (request, ReplyResult::Error { code }) => request.fail(code),
+                (request, ReplyResult::Unknown) => request.fail("unknown_outcome".into()),
+                (request, _) => request.fail("invalid_capture_reply".into()),
+            }
+            return Ok(());
+        }
+        let opening_id = self.opening.iter().find_map(|(room, opening)| {
+            (opening.request_id == request_id).then(|| room.clone())
+        });
+        if scope.is_some_and(|room| room != opening_id.as_ref().unwrap_or(&request_id)) {
+            return Ok(());
+        }
+        if let ReplyResult::Error { code } = result {
+            if let Some(id) = &opening_id {
+                match &self.opening[id].work {
+                    OpeningWork::Register {
+                        unpublished_copy: true,
+                        ..
+                    } => {
+                        let OpeningWork::Register { replies, .. } =
+                            self.opening.remove(id).unwrap().work
+                        else {
+                            unreachable!()
+                        };
+                        let rooms = &mut self.live.as_mut().unwrap().room.rooms;
+                        let rejected = code.clone();
+                        let target = id.clone();
+                        if rooms.contains_key(id) {
+                            rooms.post(id, true, true, move |host| {
+                                let path = host.as_ref().map(|h| h.snapshot_source().0);
+                                if let Some(room) = host.take() {
+                                    if let Err(error) = room.discard_unpublished() {
+                                        eprintln!("Native copy cleanup failed: {error}");
+                                    }
+                                }
+                                Ok(Box::new(move |s, _| {
+                                    if let Some(path) = path {
+                                        s.files.retain(|file| file.path != path);
+                                    }
+                                    for reply in replies {
+                                        let _ = reply.result.take().send(Err(OpenRoomError::Operation(rejected.clone())));
+                                    }
+                                    Ok(vec![])
+                                }))
+                            })?;
+                            rooms.remove(&target);
+                        } else {
+                            for reply in replies {
+                                let _ = reply.result.take().send(Err(OpenRoomError::Operation(rejected.clone())));
+                            }
+                        }
+                        return Ok(());
+                    }
+                    OpeningWork::Register { .. } => {}
+                    _ => {
+                        self.opening.remove(id).unwrap().fail(&code);
+                        return Ok(());
+                    }
+                }
+            }
+            let id = opening_id.as_ref().unwrap_or(&request_id);
+            if self.live.as_ref().is_some_and(|live| live.room.rooms.contains_key(id)) {
+                if self.hosting.is_none()
+                    && !matches!(code.as_str(), "room_not_in_domain" | "room_creation_restricted" | "room_already_hosted")
+                {
+                    bail!("room registration failed: {code}");
+                }
+                eprintln!("Native room registration failed: {id}: {code}");
+                self.live.as_mut().unwrap().room.rooms.remove(id);
+                // A rejected registration leaves the saved copy with this host.
+                self.files.retain(|file| &file.id != id || !file.bootstrap);
+                if let Some(opening) = self.opening.remove(id) {
+                    opening.fail(&code);
+                }
+                return Ok(());
+            }
+            eprintln!("Channel error: {code}");
+            return Ok(());
+        }
+        let Some(room_id) = opening_id else { return Ok(()) };
+        let opening = self.opening.remove(&room_id).unwrap();
+        match (result, opening) {
+            (ReplyResult::RoomCreated { room }, OpeningRoom { work: OpeningWork::Create(mut file), .. }) => {
+                let policy = room
+                    .new_policy(None, None, None)
+                    .map_err(anyhow::Error::msg)?;
+                let Some(live) = self.live.as_mut() else {
+                    return Ok(());
+                };
+                file.id = room.id.clone();
+                live.room.rooms.reserve(&room.id, policy.creator_id);
+                let id = room.id.clone();
+                live.room.rooms.post(&id, true, false, move |host| {
+                    let result = HostedRoom::create(&file.path, policy);
+                    Ok(match result {
+                        Ok(opened) => {
+                            *host = Some(opened);
+                            Box::new(move |s: &mut Session, ctx: room_owner::Delivery| {
+                                s.installed_file(&room.id, file.path, &room, ctx.current);
+                                Ok(vec![(
+                                    Command::HostRegister {
+                                        room: room.clone(),
+                                        resume_binding: None,
+                                    },
+                                    Some(room.id),
+                                )])
+                            }) as Finish
+                        }
+                        Err(error) => {
+                            eprintln!("Native room {} installation failed: {error}", room.id);
+                            Box::new(move |s: &mut Session, ctx: room_owner::Delivery| {
+                                if ctx.current {
+                                    s.live.as_mut().unwrap().room.rooms.remove(&room.id);
+                                }
+                                Ok(vec![])
+                            })
+                        }
+                    })
+                })?;
+            }
+            (ReplyResult::Done, OpeningRoom { work: OpeningWork::Register { replies, .. }, .. }) => {
+                let Some(live) = self
+                    .live
+                    .as_mut()
+                    .filter(|l| l.room.rooms.contains_key(&room_id))
+                else {
+                    return Ok(());
+                };
+                // This reply owns exactly these callers from this point on. A retired or
+                // rejected mailbox drops their LocalAnswers with their original error.
+                live.room.rooms.post(&room_id, true, false, move |host| {
+                    let summary = host
+                        .as_ref()
+                        .filter(|h| h.binding().is_some())
+                        .map(HostedRoom::summary);
+                    Ok(Box::new(move |_, delivery| {
+                        if delivery.current {
+                            for reply in replies {
+                                reply.finish(
+                                    summary
+                                        .clone()
+                                        .ok_or_else(|| "room_unavailable".into()),
+                                );
+                            }
+                        }
+                        Ok(vec![])
+                    }))
+                })?;
+            }
+            (ReplyResult::Done, OpeningRoom { work: OpeningWork::AdmitRestore(request, local), .. }) => {
+                self.install_room_backup(request, local, socket).await?
+            }
+            (unexpected, opening) => {
+                let code = match (&opening.work, unexpected) {
+                    (OpeningWork::Register { .. } | OpeningWork::Create(_), _) => "room_creation_unconfirmed",
+                    (_, ReplyResult::Unknown) => "unknown_outcome",
+                    _ => "invalid_response",
+                };
+                opening.fail(code);
+            }
+        }
         Ok(())
     }
     async fn apply_event(&mut self, event: Event, socket: &mut Writer<'_>) -> Result<()> {
@@ -1782,101 +2046,8 @@ impl Session {
                     })?;
                 }
             }
-            Event::RoomCreated {
-                room,
-                request_id: Some(request_id),
-            } => {
-                let pending = self.opening.iter().find_map(|(id, opening)| {
-                    (opening.request_id == request_id
-                        && matches!(opening.work, OpeningWork::Create(_)))
-                    .then(|| id.clone())
-                });
-                if let Some(pending) = pending {
-                    let OpeningWork::Create(mut file) = self.opening.remove(&pending).unwrap().work
-                    else {
-                        unreachable!()
-                    };
-                    let policy = room
-                        .new_policy(None, None, None)
-                        .map_err(anyhow::Error::msg)?;
-                    let Some(live) = self.live.as_mut() else {
-                        return Ok(());
-                    };
-                    file.id = room.id.clone();
-                    live.room.rooms.reserve(&room.id, policy.creator_id);
-                    let id = room.id.clone();
-                    live.room.rooms.post(&id, true, false, move |host| {
-                        let result = HostedRoom::create(&file.path, policy);
-                        Ok(match result {
-                            Ok(opened) => {
-                                *host = Some(opened);
-                                Box::new(move |s: &mut Session, ctx: room_owner::Delivery| {
-                                    s.installed_file(&room.id, file.path, &room, ctx.current);
-                                    Ok(vec![(
-                                        Command::HostRegister {
-                                            room: room.clone(),
-                                            resume_binding: None,
-                                        },
-                                        Some(room.id),
-                                    )])
-                                }) as Finish
-                            }
-                            Err(error) => {
-                                eprintln!("Native room {} installation failed: {error}", room.id);
-                                Box::new(move |s: &mut Session, ctx: room_owner::Delivery| {
-                                    if ctx.current {
-                                        s.live.as_mut().unwrap().room.rooms.remove(&room.id);
-                                    }
-                                    Ok(vec![])
-                                })
-                            }
-                        })
-                    })?;
-                }
-            }
-            Event::Ack { request_id: id } => {
-                if let Some(live) = &mut self.live { live.forwarding_budget.capacity_reply(&id); }
-                let room_id = self
-                    .opening
-                    .iter()
-                    .find_map(|(room, opening)| (opening.request_id == id).then(|| room.clone()));
-                if let Some(room_id) = room_id {
-                    match self.opening.remove(&room_id).unwrap().work {
-                        OpeningWork::Register { replies, .. } => {
-                            let Some(live) = self
-                                .live
-                                .as_mut()
-                                .filter(|l| l.room.rooms.contains_key(&room_id))
-                            else {
-                                return Ok(());
-                            };
-                            // The Ack owns exactly these callers from this point on. A retired or
-                            // rejected mailbox drops their LocalAnswers with their original error.
-                            live.room.rooms.post(&room_id, true, false, move |host| {
-                                let summary = host
-                                    .as_ref()
-                                    .filter(|h| h.binding().is_some())
-                                    .map(HostedRoom::summary);
-                                Ok(Box::new(move |_, delivery| {
-                                    if delivery.current {
-                                        for reply in replies {
-                                            reply.finish(
-                                                summary
-                                                    .clone()
-                                                    .ok_or_else(|| "room_unavailable".into()),
-                                            );
-                                        }
-                                    }
-                                    Ok(vec![])
-                                }))
-                            })?;
-                        }
-                        OpeningWork::AdmitRestore(request, local) => {
-                            self.install_room_backup(request, local, socket).await?
-                        }
-                        OpeningWork::Create(_) => {}
-                    }
-                }
+            Event::Reply { request_id, room_id, result } => {
+                self.reply(request_id, room_id.as_deref(), result, socket).await?;
             }
             Event::Conversation { packet } => {
                 if let Some(live) = self.live.as_mut() {
@@ -1928,6 +2099,14 @@ impl Session {
                         else {
                             return Ok(Box::new(|_, _| Ok(vec![])));
                         };
+                        if input.action.is_unsupported() {
+                            let command = Command::HostUnsupported {
+                                room_id: id,
+                                binding_id: input.binding_id,
+                                revision: input.revision,
+                            };
+                            return Ok(Box::new(move |_, _| Ok(vec![(command, None)])));
+                        }
                         let path = room.snapshot_source().0;
                         let output = room.dispatch(input).map_err(anyhow::Error::msg)?;
                         let deleted = output.reply.as_ref().is_some_and(|r| {
@@ -1971,146 +2150,7 @@ impl Session {
                     }
                 }
             }
-            Event::RoomReply {
-                room_id,
-                request_id: Some(id),
-                result,
-            } => {
-                if let Some(live) = &mut self.live { live.forwarding_budget.capacity_reply(&id); }
-                if self
-                    .pending_captures
-                    .get(&id)
-                    .is_some_and(|pending| pending.room_id() == room_id)
-                {
-                    let request = self.pending_captures.remove(&id).unwrap();
-                    match (request, result) {
-                        (PendingCapture::Prepare(request), RoomResult::Done) => {
-                            self.prepare_source(request, socket).await?
-                        }
-                        (PendingCapture::External(request), RoomResult::Done) => {
-                            self.prepare_external_source(request, socket).await?
-                        }
-                        (
-                            PendingCapture::Authorize {
-                                publication_id,
-                                room_id,
-                                result,
-                            },
-                            RoomResult::Done,
-                        ) => {
-                            let authority =
-                                self.live
-                                    .as_ref()
-                                    .and_then(|live| {
-                                        let binding_id =
-                                            live.room.snapshot.borrow().as_ref().and_then(
-                                                |state| capture_binding(state, &room_id),
-                                            )?;
-                                        Some(InputAuthority {
-                                            scope: CaptureScope {
-                                                publication_id,
-                                                room_id,
-                                                binding_id,
-                                            },
-                                            snapshot: live.room.snapshot.subscribe(),
-                                        })
-                                    })
-                                    .ok_or_else(|| "room_unavailable".to_string());
-                            let _ = result.send(authority);
-                        }
-                        (PendingCapture::Commit(request), RoomResult::Done) => {
-                            self.finish_capture(request, socket).await?
-                        }
-                        (PendingCapture::RoomCommand { result, .. }, RoomResult::Done) => {
-                            let _ = result.send(Ok(()));
-                        }
-                        (request, RoomResult::Error { code }) => request.fail(code),
-                        (request, _) => request.fail("invalid_capture_reply".into()),
-                    }
-                }
-            }
-            Event::Error { code, request_id } => {
-                if let (Some(live), Some(id)) = (&mut self.live, &request_id) { live.forwarding_budget.capacity_reply(id); }
-                let opening_id = self.opening.iter().find_map(|(room, opening)| {
-                    (request_id.as_ref() == Some(&opening.request_id)).then(|| room.clone())
-                });
-                if let Some(id) = &opening_id {
-                    match &self.opening[id].work {
-                        OpeningWork::Register {
-                            unpublished_copy: true,
-                            ..
-                        } => {
-                            let OpeningWork::Register { replies, .. } =
-                                self.opening.remove(id).unwrap().work
-                            else {
-                                unreachable!()
-                            };
-                            let rooms = &mut self.live.as_mut().unwrap().room.rooms;
-                            let rejected = code.clone();
-                            let target = id.clone();
-                            if rooms.contains_key(id) {
-                                rooms.post(id, true, true, move |host| {
-                                    let path = host.as_ref().map(|h| h.snapshot_source().0);
-                                    if let Some(room) = host.take() {
-                                        if let Err(error) = room.discard_unpublished() {
-                                            eprintln!("Native copy cleanup failed: {error}");
-                                        }
-                                    }
-                                    Ok(Box::new(move |s, _| {
-                                        if let Some(path) = path {
-                                            s.files.retain(|file| file.path != path);
-                                        }
-                                        for reply in replies {
-                                            let _ = reply.result.take().send(Err(rejected.clone()));
-                                        }
-                                        Ok(vec![])
-                                    }))
-                                })?;
-                                rooms.remove(&target);
-                            } else {
-                                for reply in replies {
-                                    let _ = reply.result.take().send(Err(rejected.clone()));
-                                }
-                            }
-                            return Ok(());
-                        }
-                        OpeningWork::Register { .. } => {}
-                        _ => {
-                            self.opening.remove(id).unwrap().fail(&code);
-                            return Ok(());
-                        }
-                    }
-                }
-                if let Some(request) = request_id
-                    .as_ref()
-                    .and_then(|id| self.pending_captures.remove(id))
-                {
-                    request.fail(code);
-                    return Ok(());
-                }
-                let request_id = opening_id.or(request_id);
-                if request_id.as_ref().is_some_and(|id| {
-                    self.live
-                        .as_ref()
-                        .is_some_and(|live| live.room.rooms.contains_key(id))
-                }) {
-                    if self.hosting.is_none()
-                        && !matches!(code.as_str(), "room_not_in_domain" | "room_creation_restricted" | "room_already_hosted")
-                    {
-                        bail!("room registration failed: {code}");
-                    }
-                    let id = request_id.as_ref().unwrap();
-                    eprintln!("Native room registration failed: {id}: {code}");
-                    self.live.as_mut().unwrap().room.rooms.remove(id);
-                    // A rejected registration leaves the saved copy with this host.
-                    self.files.retain(|file| &file.id != id || !file.bootstrap);
-                    if let Some(opening) = self.opening.remove(id) {
-                        opening.fail(&code);
-                    }
-                    return Ok(());
-                }
-                eprintln!("Channel error: {code}");
-            }
+            Event::Error { code, .. } => eprintln!("Channel error: {code}"),
             _ => {}
         }
         Ok(())
@@ -2380,47 +2420,6 @@ impl Session {
             .await
     }
 
-    async fn pause_capture(
-        &mut self,
-        request: PauseCapture,
-        socket: &mut Writer<'_>,
-    ) -> Result<()> {
-        if request.result.is_closed() {
-            return Ok(());
-        }
-        let Some(live) = self.live.as_mut() else {
-            let _ = request.result.send(Err("hosting_unavailable".into()));
-            return Ok(());
-        };
-        let current = await_peer(
-            live.peers.capture_current(request.capture_id, true),
-            &mut live.commands,
-            &live.pairs,
-            &mut live.room,
-            &live.peers,
-            socket,
-        )
-        .await?;
-        if !current
-            || live
-                .room
-                .snapshot
-                .borrow()
-                .as_ref()
-                .and_then(|state| capture_binding(state, &request.scope.room_id))
-                != Some(request.scope.binding_id)
-        {
-            let _ = request.result.send(Err("capture_unavailable".into()));
-            return Ok(());
-        }
-        let command = Command::SetPaused {
-            publication_id: request.scope.publication_id,
-            paused: request.paused,
-        };
-        self.send_capture_command(request.scope, request.result, command, socket)
-            .await
-    }
-
     async fn edit_capture(&mut self, request: EditCapture, socket: &mut Writer<'_>) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -2451,15 +2450,22 @@ impl Session {
             return Ok(());
         }
         let publication_id = request.scope.publication_id;
-        let command = match &request.edit {
-            CaptureEdit::Stop { successor_watch_id } => Command::Unpublish { publication_id, successor_watch_id: Some(*successor_watch_id) },
+        let command = match request.edit {
+            CaptureEdit::Stop { successor_watch_id } => Command::Unpublish {
+                publication_id,
+                successor_watch_id: Some(successor_watch_id),
+            },
+            CaptureEdit::Paused(paused) => Command::SetPaused {
+                publication_id,
+                paused,
+            },
             CaptureEdit::Title(title) => Command::SetTitle {
                 publication_id,
-                title: title.clone(),
+                title,
             },
             CaptureEdit::DirectLimit(limit) => Command::SetScreenDirectLimit {
                 publication_id,
-                limit: *limit,
+                limit,
             },
         };
         self.send_capture_command(request.scope, request.result, command, socket)
@@ -2697,36 +2703,41 @@ impl Session {
             }))
         })
     }
-    async fn open_room(
+    fn open_room(
         &mut self,
-        request: OpenRoom,
-        copy: Option<(RoomSnapshot, tokio::sync::OwnedSemaphorePermit)>,
-        _socket: &mut Writer<'_>,
+        install: RoomInstall,
+        result: oneshot::Sender<Result<RoomSummary, OpenRoomError>>,
     ) -> Result<()> {
-        let id = request.policy.id.clone();
-        let copied = copy.is_some();
+        let (id, creator) = match &install {
+            RoomInstall::Create(room, creator) => (room.id.clone(), *creator),
+            RoomInstall::Copy(snapshot, _) => {
+                let policy = &snapshot.room.metadata().policy;
+                (policy.id.clone(), policy.creator_id)
+            }
+        };
+        let copied = matches!(install, RoomInstall::Copy(..));
         let Some(hosting) = &self.hosting else {
-            let _ = request.result.send(Err("hosting_control_closed".into()));
+            let _ = result.send(Err("hosting_control_closed".into()));
             return Ok(());
         };
         let identity = hosting.identity;
         let directory = hosting.directory.clone();
         let Some(live) = &mut self.live else {
-            let _ = request.result.send(Err("hosting_unavailable".into()));
+            let _ = result.send(Err("hosting_unavailable".into()));
             return Ok(());
         };
-        if self.service_admission.is_none() && request.policy.creator_id != identity.1 {
-            let _ = request.result.send(Err("owner_mismatch".into()));
+        if self.service_admission.is_none() && creator != identity.1 {
+            let _ = result.send(Err("owner_mismatch".into()));
             return Ok(());
         }
         if copied && (live.room.rooms.contains_key(&id) || self.opening.contains_key(&id)) {
-            let _ = request.result.send(Err("room_already_exists".into()));
+            let _ = result.send(Err("room_already_exists".into()));
             return Ok(());
         }
-        live.room.rooms.reserve(&id, request.policy.creator_id);
+        live.room.rooms.reserve(&id, creator);
         let target = id.clone();
         let local = self.turn.clone();
-        let answer = LocalAnswer::new(request.result, Err("room_unavailable".into()));
+        let answer = LocalAnswer::new(result, Err("room_unavailable".into()));
         live.room.rooms.post(&id, true, false, move |host| {
             let opening = (|| -> Result<(RoomSummary, bool, PathBuf)> {
                 if host.is_none() {
@@ -2743,23 +2754,28 @@ impl Session {
                     let path = existing
                         .map(|f| f.path)
                         .unwrap_or_else(|| directory.join(format!("{target}.sqlite")));
-                    *host = Some(if let Some((copy, _scratch)) = copy {
-                        if path.try_exists()? {
-                            bail!("room_already_exists")
+                    *host = Some(match install {
+                        RoomInstall::Copy(copy, _scratch) => {
+                            if path.try_exists()? {
+                                bail!("room_already_exists")
+                            }
+                            let meta = copy.room.metadata();
+                            if meta.own_credential.is_some() || !meta.retained_files.is_empty() {
+                                bail!("backup_room_mismatch")
+                            }
+                            HostedRoom::from_backup(
+                                &path,
+                                &copy.room,
+                                (identity.0, creator),
+                            )?
                         }
-                        let meta = copy.room.metadata();
-                        if meta.own_credential.is_some() || !meta.retained_files.is_empty() {
-                            bail!("backup_room_mismatch")
+                        RoomInstall::Create(_, _) if path.try_exists()? => {
+                            HostedRoom::open(&path, &target, creator)?
                         }
-                        HostedRoom::from_backup(
-                            &path,
-                            &copy.room,
-                            (identity.0, request.policy.creator_id),
-                        )?
-                    } else if path.try_exists()? {
-                        HostedRoom::open(&path, &target, request.policy.creator_id)?
-                    } else {
-                        HostedRoom::create(&path, request.policy)?
+                        RoomInstall::Create(room, _) => {
+                            let policy = room.into_policy(creator).map_err(OpenRoomError::RejectedSettings)?;
+                            HostedRoom::create(&path, policy)?
+                        }
                     });
                 }
                 let host = host.as_ref().unwrap();
@@ -2775,7 +2791,9 @@ impl Session {
                     if empty && ctx.current {
                         s.live.as_mut().unwrap().room.rooms.remove(&target);
                     }
-                    let _ = answer.take().send(Err(e.to_string()));
+                    let error = e.downcast::<OpenRoomError>()
+                        .unwrap_or_else(|error| OpenRoomError::Operation(error.to_string()));
+                    let _ = answer.take().send(Err(error));
                     Ok(vec![])
                 }
                 Ok((summary, bound, path)) => {
@@ -3097,7 +3115,7 @@ impl Session {
             Ok(())
         })();
         if let Err(error) = admission {
-            let _ = request.result.send(Err(error.to_string()));
+            let _ = request.result.send(Err(OpenRoomError::Operation(error.to_string())));
             return Ok(());
         }
         let request_id = Uuid::new_v4().to_string();
@@ -3176,7 +3194,7 @@ impl Session {
         let (directory, identity) = match checked {
             Ok(v) => v,
             Err(e) => {
-                let _ = request.result.send(Err(e.to_string()));
+                let _ = request.result.send(Err(OpenRoomError::Operation(e.to_string())));
                 return Ok(());
             }
         };
@@ -3242,7 +3260,7 @@ impl Session {
                         if empty && ctx.current {
                             s.live.as_mut().unwrap().room.rooms.remove(&target);
                         }
-                        let _ = answer.take().send(Err(e.to_string()));
+                        let _ = answer.take().send(Err(OpenRoomError::Operation(e.to_string())));
                         Ok(vec![])
                     }
                 }
@@ -3767,7 +3785,7 @@ async fn leave(socket: &mut Socket) {
         while let Some(message) = socket.next().await {
             match message? {
                 Message::Text(text) => {
-                    if matches!(serde_json::from_str::<Event>(&text), Ok(Event::Ack { request_id }) if request_id == "native-leave") { break; }
+                    if matches!(serde_json::from_str::<Event>(&text), Ok(Event::Reply { request_id, result: ReplyResult::Done, room_id: None }) if request_id == "native-leave") { break; }
                 },
                 Message::Ping(bytes) => write_frame(socket, Message::Pong(bytes)).await?,
                 Message::Close(_) => break,

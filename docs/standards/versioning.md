@@ -1,9 +1,8 @@
 # Versions And Compatibility
 
-Reviewed 2026-11-09. `v1.0.0` is the declared published compatibility baseline.
-App, Server and the embedded Web build share one product version, plus the full
-Git SHA for source provenance. [Status](../status.md) owns the current publication
-state; automatic publication follows the product-change boundary below.
+A release assigns one product version to its App, Server and bundled Web
+build and records the full source SHA. See the [publication status](../status.md)
+and the [published 2.x contract](#published-2x).
 
 ## Give Each Identifier One Job
 
@@ -13,8 +12,7 @@ state; automatic publication follows the product-change boundary below.
 | Full Git SHA / `REVISION` | Exact source revision | Changes with the source commit; never use SHA inequality as release ordering or compatibility proof |
 | Artifact SHA-256 | Exact packaged bytes in the release descriptor | Each artifact; one source SHA can produce different platform/toolchain binaries |
 | Platform application version fields | Generated package metadata | Product version in the platform's numeric format; source SHA stays separate. XML/desktop-format versions remain specification values |
-| Browser/Server signaling identifier | Owning wire types: Core `wire.rs`/Browser channel protocol for 3.0; published 2.x [Browser wire](https://github.com/TNTcraftHIM/Piik/blob/f2f9d27db66565f9234c16d46ddd10f4d143cc16/src/shared/protocol.ts) and [protocol constants](https://github.com/TNTcraftHIM/Piik/tree/f2f9d27db66565f9234c16d46ddd10f4d143cc16/internal/server/protocol) stay on the maintenance line | Change for an incompatible wire contract, not UI edits or every release |
-| Browser/App control identifier | Current App discovery/approval: Browser `channel/app-link.ts` and Server `app.rs`; published 2.x: [matched App control wire](https://github.com/TNTcraftHIM/Piik/blob/f2f9d27db66565f9234c16d46ddd10f4d143cc16/src/client/native/wire.ts) on the maintenance line | Independent compatibility boundary; installed App and Site can update separately |
+| Product major and minor on 3.0 connections | Derived from the product build version for Domain joins and App discovery | The major controls compatibility. The minor guides which features a client offers. See [Extending Interfaces](#extending-interfaces) |
 | Capture probe and encoded-frame envelope | Rust Native capture/media owners; retained standalone helpers own their matched private formats | Internal matched bundle; change only the affected format |
 | SQLite schema, App config format, Browser storage-key format | Their storage/parser owners | Change with the actual stored representation; preserve accepted authority across a compatible upgrade |
 | Portable backup format | Core backup metadata and the archive adapters | Change when the exported archive representation changes; a new backup format does not imply resetting an unchanged live database |
@@ -22,17 +20,13 @@ state; automatic publication follows the product-change boundary below.
 | Room policy and grants | Persisted room authority | Preserve accepted authority across compatible upgrades |
 | Share/route/publication/media generations, connection IDs and flow leases | Current resource owners | Follow the lifetime of the resource independently of releases |
 
-Current numeric values are in source and [status](../status.md#accepted-release-contract).
-Keep those internal values at the first public release: resetting schema or
-authorization counters for visual consistency can invalidate data or stale-work
-fences. The two 3.0 wire identifiers are the exception: the first 3.0 release
-puts the product's first two numbers in their place
-([Extending Interfaces](#extending-interfaces)). A room number is a user-facing address, not a software version.
+Keep storage and authorization counters at the first public release to
+preserve data and stale-work fences.
 The private tooling-only npm package carries no independent product version.
 Local test candidates may explicitly set `PIIK_BUILD_VERSION=v3.0.0-beta.4`.
 This prerelease build identity does not declare a public release: stable-tag
-selection and publication remain stable-only. Keep the full prerelease string
-and source SHA in product/build metadata; wire and storage generations are unchanged.
+selection and publication remain stable-only. The handshake uses the major and
+minor from the build version. Build metadata keeps the full tag and source SHA.
 Android versionCode and macOS numeric bundle fields use the major/minor/patch
 base. Successive candidates with the same base therefore share an Android code
 and require explicit local replacement (for example, `adb install -r`); keep
@@ -58,13 +52,11 @@ scheduling, resource cleanup, code organization and presentation alone do not
 require new wire or storage identities. Review the actual message and data
 contracts, including nested payloads. Extend an existing operation before
 introducing an incompatible representation.
-Protocol identifiers reject mismatched private builds; they do not require
-compatibility bridges. An incompatible change needs a concrete requirement that
-the existing contract cannot express. Update matched App, Web, Server, previews
-and guides together. Change storage identity only when its representation changes,
-and explain a required data reset instead of maintaining a private legacy format.
-The public promises below apply to published releases, including the separate 2.x
-maintenance line.
+An incompatible change needs a concrete requirement that the existing contract
+cannot express. Update affected runtimes, previews and guides together. Change
+storage identity when its representation changes and explain any required reset.
+The product-version handshake replaces the old private wire shape. Testers on
+older betas use packages from the same candidate when keeping an earlier build.
 
 ## Public Compatibility Promise
 
@@ -107,20 +99,19 @@ avoid a major justifies mislabeling an incompatible release.
 
 ## Extending Interfaces
 
-### From the first 3.0 release
+### 3.0
 
 [ADR-0017](../adr/0017-contracts-fixed-before-release.md), decision 1, records
 the reasons and the sources. The rule:
 
 - **Two numbers.** A party states the first two numbers of its product version
-  once, where it is already described: a session in its join, the Domain in
-  its welcome or, when the first numbers differ, in its refusal, the App in
-  its discovery. The Domain publishes a session's
-  numbers with its other facts, so the numbers of a room's writer are those of
-  its host's session. Parties with equal first numbers work together. When the
-  first numbers differ the connection is refused and each side says which one
-  to update. The second number decides only what a client offers to its
-  person. No result depends on it.
+  in its existing handshake. The session states them in its join, the Domain
+  in its welcome or refusal for an incompatible major, and the App in local
+  discovery. The Domain publishes the numbers with the session's other facts,
+  including those of the room writer's host session. Equal majors pass the
+  version check. A major mismatch blocks the connection and prompts the user
+  to update the older side. The minor guides which features a client offers;
+  operation outcomes do not depend on it.
 - **Unknown kinds.** A request of a kind its receiver does not know is refused
   as unsupported in that request's reply. A reply of a kind its requester does
   not know ends that request as an unknown outcome, never as success. A
@@ -153,6 +144,12 @@ set its readers treat as closed. A set that is meant to grow says from the
 first release what a reader does with a value it does not know, as capture
 descriptions do by skipping it.
 
+Capture preparation requires a supported codec before transferring or committing
+the source. An unsupported codec ends that preparation. Codec names in live
+observations remain descriptions. Page-media observers dispatch the DOM event
+names they understand and ignore additional names; those names cannot become
+internal page-lifecycle events.
+
 No field is added to say that a party supports one feature. What a join says
 about its runtime (peer transport, UDP preparation, video layers) describes a
 machine and stays. Whether something is available now, and whether a person
@@ -171,36 +168,20 @@ Native discovery distinguishes an incompatible Piik App from an absent App. The 
 offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt
 an active share just because an unrelated product/build label changed.
 
-### The private 3.0 code today
-
-On the Domain's wire a reply and a notification are told apart by whether an
-optional request ID is present, in several kinds. On the room's wire a record
-does not say which of the two it is. The rule for unknown kinds needs the role
-to be readable before the kind is.
-Joins and App discovery each require one exact private identifier. Domain and
-App senders use the fields defined for each command, and most command variants
-reject unknown keys. A few parameterless commands, including Domain `leave`
-and App `targets`, ignore extra keys and execute the ordinary operation.
-Native accepts extra Domain-event fields. Browser generally strips them and
-passes room-host payloads through to Core. Nested schemas retain their own
-checks. The [Core wire types](../../prototype/channel-core/src/wire.rs) and
-[Browser decoder](../../src/client/channel/protocol.ts) own these
-distinctions. Closing the distance to the rule above is release work in
-[TODO](../todo.md).
+Domain results use `reply`; the signed room carriers `command`, `record` and
+`notice` mean request, requester reply and observer notification respectively.
+File and Watch controls declare the same roles on their existing business
+address. Unknown replies finish only the matching upstream read, preserving
+other file ranges; relay errors return to the waiting caller.
+The [Core wire types](../../prototype/channel-core/src/wire.rs),
+[Browser decoder](../../src/client/channel/protocol.ts) and
+[App discovery](../../src/client/channel/app-link.ts) own exact fields.
+[TODO](../todo.md) tracks the remaining public baseline checks.
 
 ### Published 2.x
 
-Published 2.x command/event contracts reject unknown keys, with an explicit
-[receive-side exception](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md#room-interactions) for the bounded
-display-only reaction identifier. A 2.x addition advertises an optional
-capability and is exchanged only with sessions that selected it. Those rules
-stay with the [maintenance line's standard](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/versioning.md#extending-interfaces).
-
-In the 2.0 contract, numeric media descriptions and retry progress
-are independent of current implementation limits and retry policy. Extending
-those policies does not require another count-specific capability flag.
-Representation acceptance still requires local operation/resource admission;
-it is not a promise that every same-major peer can produce a new media format.
+The 2.x maintenance line owns its published compatibility baseline, wire
+identifiers and extension rules. See [2.x versioning](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/versioning.md).
 
 ## Release And Recovery
 
@@ -274,8 +255,7 @@ the source; there is no second changelog store. A newer major adds a short, visi
 breaking-change notice. The Server logs the same distinction while preserving its
 checker JSON and exit codes. This is release guidance, not a replacement for wire
 checks. Keep the major warning inline, without a mandatory website detour.
-The manual mirror link opens AtomGit releases directly. Older published binaries
-retain the download provider and warning UI they shipped with.
+The manual mirror link opens AtomGit releases directly.
 
 Older installed Apps cannot acquire new warning UI from release metadata.
 Their historical download behavior is accepted; do not split release feeds or
@@ -403,9 +383,7 @@ their version labels artifacts and never enables publication. The PR body remain
 the review surface until integration preserves it in the squash commit.
 
 Supply multiline PR/release copy through a UTF-8 file and read back the stored
-body before integration. A terminal preview alone does not prove that Chinese
-text survived the shell/API boundary. Do not repair published history by
-rewriting main.
+body before integration. Do not repair published history by rewriting main.
 
 The publisher appends generated build identity and package checksums to the
 reviewed text, passes it through a temporary notes file to GitHub, then removes
@@ -467,10 +445,6 @@ editorial summary from a version number. Keep provenance and the full changelog
 link after the user-facing explanation.
 
 Piik's release scope and upgrade instructions come from its own accepted changes.
-Editorial references reviewed on 2026-10-19: [Discord's update](https://discord.com/blog/discord-update-september-25-2026)
-combines a friendly voice with concrete changes; [VS Code's version notes](https://code.visualstudio.com/updates/v1_95)
-keep feature highlights alongside subsequent patch fixes. These inform the
-presentation, not Piik's version selection or feature claims.
 
 ## Release Sources
 
@@ -511,10 +485,9 @@ establish cross-origin fetch support.
 
 ## Public Release Baseline
 
-The declared `v1.0.0` release starts the compatibility promise above. Its packages,
-reviewed notes and descriptors are immutable. Subsequent releases preserve this
-baseline through compatible upgrades; the remaining physical device/network
-limits stay in [verification status](../verification-status.md).
+The first public 3.0 release establishes the baseline for this major. Its
+packages, reviewed notes and descriptors are immutable. See
+[verification status](../verification-status.md) for device and network limits.
 
 ## References
 

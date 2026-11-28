@@ -792,11 +792,13 @@ impl RoomRuntime {
         &self,
         member: Member,
         before: Option<u64>,
+        inline_images: bool,
     ) -> Result<HistoryRequest, &'static str> {
         self.authorize(member, RoomPermission::Read)?;
         Ok(HistoryRequest::Read {
             room_id: self.policy.id.clone(),
             before,
+            inline_images,
         })
     }
 

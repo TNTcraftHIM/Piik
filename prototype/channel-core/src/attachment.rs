@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct AttachmentDescriptor {
     pub id: Uuid,
     pub name: String,
@@ -14,7 +14,7 @@ pub struct AttachmentDescriptor {
 
 /// Message thumbnail. Historical rows can carry an authenticated inline original.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageRendition {
     pub data: String,
     pub media_type: String,

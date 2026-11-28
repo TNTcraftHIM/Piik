@@ -1,7 +1,7 @@
 import { loadRoomHosting } from "./hosting";
 import type { HostedRoom } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { SessionSigner } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
-import { requireConversationDelivery, type ChannelCommand, type ChannelSnapshot, type ConversationAddress, type ConversationReply, type SignedConversationPacket } from "./protocol";
+import { requireConversationDelivery, type ChannelCommand, type ChannelSnapshot, type ConversationAddress, type ConversationNotice, type ConversationReply, type ReceivedConversation, type ReceivedRecord, type SignedConversationPacket } from "./protocol";
 
 type Runtime = Awaited<ReturnType<typeof loadRoomHosting>>;
 
@@ -10,10 +10,10 @@ interface ConversationOptions {
   context(): Context;
   host(roomId: string): HostedRoom | undefined;
   pending?(requestId: string, bindingId: string): boolean;
-  send(packet: SignedConversationPacket, requestId: string): void;
+  send(packet: SignedConversationPacket, requestId?: string): void;
   file(peer: string, control: string): void;
   watch?(peer: string, control: string): void;
-  reply(reply: ConversationReply): void;
+  reply(reply: ReceivedRecord): void;
   projection?(roomId: string, output: unknown): void;
 }
 
@@ -79,8 +79,9 @@ export class ChannelConversation {
     const rooms = state.channel.rooms.map(({ id, authorized, available, delivery }) => ({ id, authorized, available, delivery }));
     const sessions = state.sessions.map(({ id, signingKey }) => ({ id, signingKey }));
     const view = { channel: { rooms }, sessions };
-    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(view))) as ConversationAddress | ConversationReply;
-    if ("record" in address) {
+    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(view))) as ReceivedConversation;
+    if (address.role === "ignored") return;
+    if (address.role !== "command") {
       this.options.reply(address);
       return;
     }
@@ -100,17 +101,17 @@ export class ChannelConversation {
     }
   }
 
-  private currentWriter(host: HostedRoom, reply: ConversationReply): boolean {
+  private currentWriter(host: HostedRoom, reply: ConversationAddress): boolean {
     const current = this.options.context();
     return this.options.host(reply.roomId) === host && current.connected && current.sessionId === reply.sender
       && current.state?.channel.rooms.find(room => room.id === reply.roomId)?.delivery?.bindingId === reply.bindingId;
   }
 
-  async sendHostReplies(host: HostedRoom, replies: ConversationReply[]): Promise<void> {
+  async sendHostReplies(host: HostedRoom, replies: (ConversationReply | ConversationNotice)[]): Promise<void> {
     const { signer } = await this.ready();
     await Promise.allSettled(replies.map(async reply => {
       if (this.currentWriter(host, reply))
-        this.options.send(JSON.parse(signer.sign(reply.sender, JSON.stringify(reply))), reply.requestId);
+        this.options.send(JSON.parse(signer.sign(reply.sender, JSON.stringify(reply))));
     }));
   }
 

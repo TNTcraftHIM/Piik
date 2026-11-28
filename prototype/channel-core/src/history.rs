@@ -20,7 +20,7 @@ pub const MESSAGE_MENTION_LIMIT: usize = 64;
 pub(crate) const REPLY_TEXT_UTF16_LIMIT: usize = 160;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Mention {
     pub user_id: Uuid,
     pub start: usize,
@@ -28,7 +28,7 @@ pub struct Mention {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplyTarget {
     pub seq: u64,
     pub message_id: Uuid,
@@ -36,7 +36,7 @@ pub struct ReplyTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageReply {
     pub seq: u64,
     pub user_id: Uuid,
@@ -328,13 +328,18 @@ impl MessageDraft {
 )]
 pub enum ConfirmationInput {
     Existing {
+        #[serde(deserialize_with = "crate::backup::stored_message")]
         message: StoredMessage,
     },
     New {
         last_seq: u64,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "stored_reply")]
         reply: Option<ChatMessage>,
     },
+}
+
+fn stored_reply<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<ChatMessage>, D::Error> {
+    Ok(Option::<crate::backup::PersistedMessage>::deserialize(input)?.map(|row| row.0.message))
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -381,6 +386,7 @@ pub enum HistoryRequest {
     Read {
         room_id: String,
         before: Option<u64>,
+        inline_images: bool,
     },
     Seek {
         room_id: String,
@@ -489,6 +495,7 @@ pub enum HistoryResult {
         seq: Option<u64>,
     },
     Page {
+        inline_images: bool,
         messages: Vec<StoredMessage>,
         has_more: bool,
         oldest_seq: Option<u64>,
@@ -499,13 +506,21 @@ pub enum HistoryResult {
 
 /// The storage cursor visits newest first and stops when `push` returns false.
 /// The first message always fits a page; pagination never strands a large row.
-#[derive(Default)]
 pub struct HistoryPage {
+    inline_images: bool,
     messages: Vec<StoredMessage>,
     bytes: usize,
 }
 
 impl HistoryPage {
+    pub fn new(inline_images: bool) -> Self {
+        Self {
+            inline_images,
+            messages: Vec::new(),
+            bytes: 0,
+        }
+    }
+
     pub fn push(&mut self, message: StoredMessage) -> Result<bool, &'static str> {
         let bytes = serde_json::to_vec(&message)
             .map_err(|_| "invalid_history_message")?
@@ -527,6 +542,7 @@ impl HistoryPage {
             .is_some_and(|message| oldest_seq.is_some_and(|oldest| oldest < message.message.seq));
         self.messages.reverse();
         HistoryResult::Page {
+            inline_images: self.inline_images,
             messages: self.messages,
             has_more,
             oldest_seq,

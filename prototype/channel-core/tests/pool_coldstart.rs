@@ -6,11 +6,12 @@ mod assisted;
 mod host_wake;
 mod support;
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     attachment::sha256_hex,
     conversation::{ConversationCommand, ConversationResult},
     history::HistoryResult,
-    host::RoomResult,
+
     wire::{Event, FlowBinding, PairInfo, RoomAccess},
     AttachmentDescriptor,
 };
@@ -21,11 +22,7 @@ use uuid::Uuid;
 fn command(net: &mut RoomNetwork, connection: Uuid, request: Value) {
     let effects = net.command(connection, request);
     let error = effects.events.iter().find_map(|(_, event)| match event {
-        Event::Error { code, .. }
-        | Event::RoomReply {
-            result: RoomResult::Error { code },
-            ..
-        } => Some(code),
+        Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => Some(code),
         _ => None,
     });
     assert!(error.is_none(), "command rejected: {error:?}");

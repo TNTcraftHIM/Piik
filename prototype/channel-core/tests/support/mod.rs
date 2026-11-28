@@ -1,3 +1,4 @@
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     wire::{AudienceState, Event, PublicationAudience, Request, RoomAccess, Snapshot},
     Authority, Effects, RoomState, StoredRoomHost,
@@ -38,8 +39,9 @@ impl RoomNetwork {
     }
 
     pub fn command_at(&mut self, connection: Uuid, mut value: Value, now: u64) -> Effects {
-        if value["type"] == "join" && value.get("protocol").is_none() {
-            value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+        if value["type"] == "join" && value.get("major").is_none() {
+            value["major"] = json!(piik_channel_core::PRODUCT_VERSION.major);
+            value["minor"] = json!(piik_channel_core::PRODUCT_VERSION.minor);
             value.as_object_mut().unwrap().entry("canUsePeerTransport").or_insert(json!(true));
         }
         if value["type"] == "join" && value.get("signingKey").is_none() {
@@ -146,7 +148,7 @@ impl RoomNetwork {
             .events
             .into_iter()
             .find_map(|(_, event)| match event {
-                Event::RoomCreated { room, .. } => Some(room.id),
+                Event::Reply { result: ReplyResult::RoomCreated { room }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { room }, .. } => Some(room.id),
                 _ => None,
             })
             .expect("domain assigned room identity");
@@ -166,7 +168,7 @@ impl RoomNetwork {
         assert!(!registered
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
         assert!(self.states[&connection]
             .channel
             .rooms

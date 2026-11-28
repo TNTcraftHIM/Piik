@@ -1,4 +1,4 @@
-import type { ChannelMessage, ConversationReply, MessageReactionSnapshot } from "./protocol";
+import { HISTORY_INLINE_IMAGES, type ChannelMessage, type ConversationReply, type MessageReactionSnapshot } from "./protocol";
 import { messageRemoved, type ChannelView, type RoomHistoryChanges } from "./types";
 import { mergeMessage, mergeMessages, readingWindow, redactReply } from "./message-history";
 
@@ -128,7 +128,8 @@ export class RoomHistory {
   /** Combines one complete writer page with newer reactions received while it was loading. */
   completePage(requestId: string, end: HistoryPage): CompletedPage | undefined {
     const page = this.pages.get(requestId);
-    if (!page) return undefined;
+    if (!page || end.before !== (page.before ?? null) || !end.parts?.includes(HISTORY_INLINE_IMAGES)
+      || (end.hasMore && !end.messages.length)) return undefined;
     const rows = end.messages.map(message => {
       const snapshot = page.reactions.get(message.seq);
       return snapshot?.messageId === message.id && snapshot.revision > message.reactions.revision

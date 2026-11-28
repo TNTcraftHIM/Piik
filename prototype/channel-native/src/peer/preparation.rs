@@ -19,7 +19,7 @@ use rtc_stun::{
 };
 use sansio::Protocol;
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::VecDeque,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
 };
@@ -375,7 +375,7 @@ impl ProbePlan {
         ensure!(remote.valid(), "unsupported peer mapping address");
         match (local, remote) {
             (Observation::Stable { .. }, Observation::Irregular { address }) => Ok(Self {
-                targets: random_targets(address)?,
+                targets: search_targets(address)?,
                 random: Some(RandomRole::Search),
             }),
             (Observation::Irregular { .. }, Observation::Stable { .. }) => Ok(Self {
@@ -409,25 +409,43 @@ impl ProbePlan {
     }
 }
 
-fn random_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
-    let mut seen = HashSet::with_capacity(RANDOM_TARGETS);
-    let mut targets = Vec::with_capacity(RANDOM_TARGETS);
-    while targets.len() < RANDOM_TARGETS {
-        let mut bytes = [0; RANDOM_TARGETS * 2];
-        getrandom::fill(&mut bytes)
-            .map_err(|error| anyhow::anyhow!("preparation ports: {error}"))?;
-        for value in bytes.chunks_exact(2) {
-            let port = u16::from_ne_bytes([value[0], value[1]]);
-            // Rejection preserves uniform choice over the allowed port range.
-            if port >= 1024 && seen.insert(port) {
-                targets.push(SocketAddrV4::new(address, port));
-                if targets.len() == RANDOM_TARGETS {
-                    break;
-                }
-            }
-        }
-    }
-    Ok(targets)
+fn search_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
+    let fill = |bytes: &mut [u8]| {
+        getrandom::fill(bytes).map_err(|error| anyhow::anyhow!("preparation ports: {error}"))
+    };
+    let mut bytes = [0; (RANDOM_TARGETS + 1) * 2];
+    fill(&mut bytes)?;
+    let mut draws = bytes.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]]));
+    let start = draws.next().unwrap();
+    stratified_targets(address, start, || {
+        if let Some(value) = draws.next() { return Ok(value); }
+        let mut extra = [0; 2];
+        fill(&mut extra)?;
+        Ok(u16::from_le_bytes(extra))
+    })
+}
+
+fn stratified_targets(
+    address: Ipv4Addr,
+    start: u16,
+    mut draw: impl FnMut() -> Result<u16>,
+) -> Result<Vec<SocketAddrV4>> {
+    const FIRST_PORT: usize = 1024;
+    const PORT_COUNT: usize = u16::MAX as usize + 1 - FIRST_PORT;
+    const _: () = assert!(RANDOM_TARGETS.is_power_of_two() && RANDOM_TARGETS <= PORT_COUNT);
+    let shift = usize::BITS - RANDOM_TARGETS.ilog2();
+    (0..RANDOM_TARGETS).map(|index| {
+        // Spread strata first; independent offsets avoid locking guesses to a port residue.
+        let stratum = ((index.reverse_bits() >> shift) + usize::from(start)) % RANDOM_TARGETS;
+        let lower = FIRST_PORT + PORT_COUNT * stratum / RANDOM_TARGETS;
+        let width = PORT_COUNT * (stratum + 1) / RANDOM_TARGETS - (lower - FIRST_PORT);
+        let limit = (usize::from(u16::MAX) + 1) / width * width;
+        let offset = loop {
+            let value = usize::from(draw()?);
+            if value < limit { break value % width; }
+        };
+        Ok(SocketAddrV4::new(address, (lower + offset) as u16))
+    }).collect()
 }
 
 impl Survey {
@@ -702,6 +720,7 @@ async fn binding(socket: &UdpSocket, remote: SocketAddr) -> Result<SocketAddrV4>
 mod tests {
     use super::*;
     use anyhow::Context;
+    use std::collections::HashSet;
 
     #[tokio::test]
     async fn preparation_dns_fallback_does_not_wait_for_failed_or_stalled_authorities() -> Result<()>
@@ -1372,6 +1391,22 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn search_reaches_regular_mapping_pools_without_a_fixed_residue() -> Result<()> {
+        use sha2::Digest;
+        let mut counter = 0u64;
+        let targets = stratified_targets(Ipv4Addr::LOCALHOST, 1, || {
+            let digest = sha2::Sha256::digest(counter.to_le_bytes());
+            counter += 1;
+            Ok(u16::from_le_bytes([digest[0], digest[1]]))
+        })?;
+        for stride in [2, 4, 8, 16, 32, 63, 64] {
+            let pool: HashSet<_> = (0..RANDOM_PORTS).map(|index| 30000 + stride * index).collect();
+            assert!(targets.iter().any(|target| pool.contains(&usize::from(target.port()))), "stride {stride}");
+        }
+        Ok(())
+    }
+
     #[tokio::test]
     async fn random_pool_shares_capacity_adopts_one_socket_and_retires_on_peer_refusal(
     ) -> Result<()> {
@@ -1393,6 +1428,17 @@ mod tests {
             .targets
             .iter()
             .all(|target| *target.ip() == irregular.address() && target.port() >= 1024));
+        // A half-budget prefix cannot leave a contiguous pool-sized gap.
+        let mut prefix: Vec<_> = generated.targets[..RANDOM_TARGETS / 2]
+            .iter()
+            .map(|target| usize::from(target.port()))
+            .collect();
+        prefix.sort_unstable();
+        let wrap_gap = usize::from(u16::MAX) + 1 - prefix.last().unwrap() + prefix[0] - 1024;
+        assert!(wrap_gap < RANDOM_PORTS);
+        assert!(prefix
+            .windows(2)
+            .all(|ports| ports[1] - ports[0] < RANDOM_PORTS));
         assert!(
             ProbePlan::new(irregular, irregular).is_err(),
             "two irregular mappings cannot select birthday search"

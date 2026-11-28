@@ -4,20 +4,22 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 55;
+use crate::{ProductVersion, PRODUCT_VERSION};
+
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum Command {
     Join {
-        #[serde(default)]
-        protocol: u8,
+        #[serde(default, skip_serializing_if = "SnapshotForm::is_full")]
+        snapshot_form: SnapshotForm,
+        #[serde(flatten)]
+        version: ProductVersion,
         name: String,
         credential: Option<String>,
         owner_key: Option<String>,
@@ -117,6 +119,7 @@ pub enum Command {
         room_id: String,
         delete_data: bool,
     },
+    HostUnsupported { room_id: String, binding_id: Uuid, revision: u64 },
     HostOutput {
         room_id: String,
         output: crate::host::HostOutput,
@@ -268,6 +271,8 @@ pub enum Command {
         ready: bool,
     },
     Leave,
+    #[serde(other, skip_serializing)]
+    Unknown,
 }
 
 #[derive(Serialize)]
@@ -281,7 +286,25 @@ pub struct Request {
 
 impl Request {
     pub fn parse(text: &str) -> Result<Self, (Option<String>, &'static str)> {
-        let mut input: Value = serde_json::from_str(text).map_err(|_| (None, "invalid_request"))?;
+        let input = serde_json::from_str(text).map_err(|_| (None, "invalid_request"))?;
+        Self::from_value(input)
+    }
+
+    /// Check the Join header before decoding fields owned by its major version.
+    pub fn parse_first(text: &str) -> Result<Self, Box<Event>> {
+        fn error((id, code): (Option<String>, &'static str)) -> Box<Event> {
+            Box::new(Event::completion(id, None, ReplyResult::Error { code: code.into() }))
+        }
+        let input: Value = serde_json::from_str(text).map_err(|_| error((None, "invalid_request")))?;
+        if input["type"] == "join"
+            && ProductVersion::deserialize(&input).is_ok_and(|version| !version.is_compatible())
+        {
+            return Err(Box::new(Event::IncompatibleVersion { version: PRODUCT_VERSION }));
+        }
+        Self::from_value(input).map_err(error)
+    }
+
+    fn from_value(mut input: Value) -> Result<Self, (Option<String>, &'static str)> {
         let object = input.as_object_mut().ok_or((None, "invalid_request"))?;
         let request_id = match object.remove("requestId") {
             Some(Value::String(id)) if valid_id(&id) => Some(id),
@@ -290,6 +313,9 @@ impl Request {
         };
         let command =
             serde_json::from_value(input).map_err(|_| (request_id.clone(), "invalid_request"))?;
+        if matches!(command, Command::Unknown) {
+            return Err((request_id, "unsupported"));
+        }
         Ok(Self {
             request_id,
             command,
@@ -433,7 +459,7 @@ pub enum Kind {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct PublicationInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<ScreenSource>,
@@ -445,14 +471,14 @@ pub struct PublicationInput {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoResolution {
     pub width: u32,
     pub height: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoCeiling {
     pub resolution: VideoResolution,
     pub max_framerate: f64,
@@ -468,7 +494,7 @@ pub enum DegradationPreference {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoSettings {
     pub ceiling: VideoCeiling,
     pub degradation_preference: DegradationPreference,
@@ -577,7 +603,10 @@ fn video_settings_preserves_fractional_fps_and_rejects_invalid_source_facts() {
         .unwrap()
         .remove("degradationPreference");
     assert!(serde_json::from_value::<VideoSettings>(aggregate).is_err());
-    assert!(serde_json::from_value::<PublicationInput>(serde_json::json!({"id":Uuid::new_v4(),"roomId":"room","kind":"screen","videoCeiling":valid})).is_err());
+    let publication: PublicationInput = serde_json::from_value(serde_json::json!({
+        "id": Uuid::new_v4(), "roomId": "room", "kind": "screen", "videoCeiling": valid
+    })).unwrap();
+    assert!(publication.video_settings.is_none());
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -589,7 +618,7 @@ pub enum LinkState {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Signal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub udp: Option<UdpSignal>,
@@ -665,7 +694,7 @@ pub enum UdpPreparation {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum UdpSignal {
     Offer {
         secret: [u8; 32],
@@ -680,7 +709,7 @@ pub enum UdpSignal {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum UdpObservation {
     Stable {
         address: std::net::Ipv4Addr,
@@ -739,7 +768,6 @@ impl UdpObservation {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct Description {
     #[serde(rename = "type")]
     pub kind: String,
@@ -748,7 +776,7 @@ pub struct Description {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Candidate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<CandidateOrigin>,
@@ -769,7 +797,7 @@ pub enum CandidateOrigin {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Track {
     pub flow_id: Uuid,
     pub stream_id: String,
@@ -958,6 +986,8 @@ pub struct SessionInfo {
     pub user_id: Uuid,
     pub online: bool,
     pub signing_key: [u8; 32],
+    #[serde(flatten)]
+    pub version: ProductVersion,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1044,6 +1074,66 @@ pub struct Snapshot {
     pub ice_servers: Vec<Value>,
 }
 
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", from = "String")]
+pub enum SnapshotForm {
+    Conversation,
+    #[default]
+    Full,
+}
+
+impl From<String> for SnapshotForm {
+    fn from(form: String) -> Self {
+        if form == "conversation" {
+            Self::Conversation
+        } else {
+            Self::Full
+        }
+    }
+}
+impl SnapshotForm {
+    fn is_full(&self) -> bool {
+        matches!(self, Self::Full)
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct ConversationSnapshot {
+    pub channel: ConversationChannelInfo,
+    pub sessions: Vec<SigningSession>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationChannelInfo {
+    pub hosting_mode: HostingMode,
+    pub rooms: Vec<ConversationRoomInfo>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ConversationRoomInfo {
+    pub id: String,
+    pub authorized: bool,
+    pub available: bool,
+    pub reading: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<RoomDelivery>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SigningSession {
+    pub id: Uuid,
+    pub signing_key: [u8; 32],
+    #[serde(flatten)]
+    pub version: ProductVersion,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ProfileId {
+    pub id: Uuid,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
@@ -1073,11 +1163,18 @@ pub enum Event {
     InputState {
         registrations: Vec<crate::input::InputRegistration>,
     },
-    RoomReply {
-        room_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
-        result: crate::host::RoomResult,
+    Reply {
+        #[serde(deserialize_with = "reply_id")]
+        request_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "reply_room")]
+        room_id: Option<String>,
+        result: ReplyResult,
+    },
+    /// An ID-less successful operation may still require a hosted storage commit.
+    #[serde(skip)]
+    Deferred {
+        room_id: Option<String>,
+        result: ReplyResult,
     },
     HostBound {
         room_id: String,
@@ -1087,8 +1184,13 @@ pub enum Event {
         room_id: String,
         input: crate::host::HostInput,
     },
+    IncompatibleVersion {
+        #[serde(flatten)]
+        version: ProductVersion,
+    },
     Welcome {
-        protocol: u8,
+        #[serde(flatten)]
+        version: ProductVersion,
         credential: String,
         self_profile: UserInfo,
         session_id: Uuid,
@@ -1100,33 +1202,92 @@ pub enum Event {
     State {
         state: Snapshot,
     },
-    Profiles {
-        request_id: String,
-        profiles: Vec<UserInfo>,
-        total: usize,
-        next_cursor: Option<Uuid>,
+    #[serde(rename(serialize = "welcome"), skip_deserializing)]
+    ConversationWelcome {
+        #[serde(flatten)]
+        version: ProductVersion,
+        credential: String,
+        self_profile: ProfileId,
+        session_id: Uuid,
+        connection_id: Uuid,
+        state: ConversationSnapshot,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        invitation_origin: Option<String>,
+    },
+    #[serde(rename(serialize = "state"), skip_deserializing)]
+    ConversationState {
+        state: ConversationSnapshot,
     },
     Conversation {
         packet: crate::conversation::SignedPacket,
-    },
-    RoomCreated {
-        room: crate::host::RoomSummary,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
     },
     Signal {
         pair_id: Uuid,
         from_session_id: Uuid,
         payload: Signal,
     },
-    Ack {
-        request_id: String,
-    },
     Error {
         code: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "reply_room")]
+        room_id: Option<String>,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
+}
+
+fn reply_id<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let id = String::deserialize(d)?;
+    if valid_id(&id) {
+        Ok(id)
+    } else {
+        Err(serde::de::Error::custom("invalid_reply_id"))
+    }
+}
+
+fn reply_room<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    reply_id(d).map(Some)
+}
+
+impl Event {
+    pub fn completion(request_id: Option<String>, room_id: Option<String>, result: ReplyResult) -> Self {
+        match (request_id, result) {
+            (Some(request_id), result) => Self::Reply { request_id, room_id, result },
+            (None, ReplyResult::Error { code }) => Self::Error { code, room_id },
+            (None, result) => Self::Deferred { room_id, result },
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum ReplyResult {
+    Profiles { profiles: Vec<UserInfo>, total: usize, next_cursor: Option<Uuid> },
+    RoomCreated { room: crate::host::RoomSummary },
+    WatchReady { server_time: u64 },
+    Done,
+    Deleted { data_removed: bool },
+    Topology { topology: crate::topology::RoomTopology },
+    Invite { key: String },
+    InviteState { invitation: RoomInvitation },
+    Error { code: String },
+    #[serde(other, rename = "unknown_outcome")]
+    Unknown,
+}
+
+impl From<crate::host::RoomResult> for ReplyResult {
+    fn from(result: crate::host::RoomResult) -> Self {
+        use crate::host::RoomResult;
+        match result {
+            RoomResult::WatchReady { server_time } => Self::WatchReady { server_time },
+            RoomResult::Done => Self::Done,
+            RoomResult::Deleted { data_removed } => Self::Deleted { data_removed },
+            RoomResult::Topology { topology } => Self::Topology { topology },
+            RoomResult::Invite { key } => Self::Invite { key },
+            RoomResult::InviteState { invitation } => Self::InviteState { invitation },
+            RoomResult::Error { code } => Self::Error { code },
+            RoomResult::Unknown => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -1147,7 +1308,7 @@ pub struct ScreenInfo {
     pub title: Option<String>,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ScreenSource {
     pub kind: ScreenSourceKind,
     pub name: Option<String>,
@@ -1161,7 +1322,7 @@ pub enum ScreenSourceKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchPlayback {
     pub timeline: WatchTimeline,
     pub position: f64,
@@ -1211,13 +1372,13 @@ pub enum WatchMode {
     Peer,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchSubscription {
     pub id: Uuid,
     pub mode: WatchMode,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase")]
 pub enum ByteBranchTarget {
     File { message_seq: u64, attachment_id: Uuid, source_id: Uuid },
     Watch { activity_id: Uuid, source: WatchByteSource },
@@ -1231,7 +1392,7 @@ pub enum WatchFormat {
     Dash,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchByteSource {
     pub session_id: Uuid,
     pub resource_id: Uuid,
@@ -1263,7 +1424,7 @@ fn watch_formats_keep_the_opaque_source_contract() {
         );
         let mut expanded = wire;
         expanded["url"] = serde_json::json!("https://owned.test/private");
-        assert!(serde_json::from_value::<WatchByteSource>(expanded).is_err());
+        assert_eq!(serde_json::from_value::<WatchByteSource>(expanded).unwrap(), source);
     }
     assert!(serde_json::from_str::<WatchFormat>("\"future\"").is_err());
 }
@@ -1271,8 +1432,7 @@ fn watch_formats_keep_the_opaque_source_contract() {
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum WatchSource {
     Media {

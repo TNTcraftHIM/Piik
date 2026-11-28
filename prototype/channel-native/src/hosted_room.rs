@@ -504,7 +504,7 @@ mod tests {
             .replies()
             .unwrap();
         assert!(
-            matches!(&ready[0].record, ConversationRecord::InteractionReady { server_time: 500, reaction_ids, .. } if reaction_ids.iter().any(|id| id == "wave"))
+            matches!(&ready[0].content(), ConversationRecord::InteractionReady { server_time: 500, reaction_ids, .. } if reaction_ids.iter().any(|id| id == "wave"))
         );
         let action = packet(
             sender,
@@ -525,7 +525,7 @@ mod tests {
         assert_eq!(replies[0].address.sender, local);
         assert_eq!(replies[0].address.recipient, sender);
         assert!(
-            matches!(&replies[0].record, ConversationRecord::Reaction { event: Some(event), .. }
+            matches!(replies[0].content(), ConversationRecord::Reaction { event: Some(event), .. }
                 if event.occurred_at == 1000 && event.sender_user_id == actor.user_id && event.reaction == "tomato"
                 && event.target == (piik_channel_core::conversation::ReactionTarget::Person { user_id: owner.user_id }))
         );
@@ -541,7 +541,7 @@ mod tests {
                 .unwrap()
                 .replies()
                 .unwrap()[0]
-                .record,
+                .content(),
             ConversationRecord::Reaction { event: None, .. }
         ));
         let private_target = packet(
@@ -555,7 +555,7 @@ mod tests {
             },
         );
         assert!(
-            matches!(host.dispatch_peer(&private_target, 1800).unwrap().replies().unwrap()[0].record,
+            matches!(host.dispatch_peer(&private_target, 1800).unwrap().replies().unwrap()[0].content(),
                 ConversationRecord::Error { ref code } if code == "target_unavailable")
         );
         endpoints.get_mut(&local).unwrap().connected = false;
@@ -563,11 +563,11 @@ mod tests {
         assert!(
             matches!(host.dispatch_peer(&packet(sender, ConversationCommand::React {
                 nonce: 2, reaction: "tomato".into(), target: piik_channel_core::conversation::ReactionTarget::Person { user_id: owner.user_id },
-            }), 2600).unwrap().replies().unwrap()[0].record,
+            }), 2600).unwrap().replies().unwrap()[0].content(),
                 ConversationRecord::Error { ref code } if code == "target_unavailable")
         );
         assert!(
-            matches!(host.dispatch_peer(&packet(other, ConversationCommand::InteractionReady), 5000).unwrap().replies().unwrap()[0].record,
+            matches!(host.dispatch_peer(&packet(other, ConversationCommand::InteractionReady), 5000).unwrap().replies().unwrap()[0].content(),
                 ConversationRecord::Error { ref code } if code == "room_access_required")
         );
         let mut store = Storage::open(&path).map_err(|e| anyhow!(e.to_string()))?;
@@ -576,7 +576,7 @@ mod tests {
             original
         );
         assert!(
-            matches!(store.history(&piik_channel_core::history::HistoryRequest::Read { room_id: "room".into(), before: None }).unwrap(),
+            matches!(store.history(&piik_channel_core::history::HistoryRequest::Read { room_id: "room".into(), before: None, inline_images: true }).unwrap(),
                 piik_channel_core::history::HistoryResult::Page { messages, .. } if messages.is_empty())
         );
         let replacement = Uuid::new_v4();

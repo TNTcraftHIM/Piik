@@ -2,8 +2,9 @@
 
 mod support;
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
-    host::RoomResult,
+
     wire::{AudienceState, Event, FlowBinding, PairInfo, RoomAccess},
     Effects,
 };
@@ -17,11 +18,7 @@ fn command(net: &mut RoomNetwork, socket: Uuid, request: Value) {
 
 fn accepted(effects: Effects) {
     let error = effects.events.iter().find_map(|(_, event)| match event {
-        Event::Error { code, .. }
-        | Event::RoomReply {
-            result: RoomResult::Error { code },
-            ..
-        } => Some(code),
+        Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => Some(code),
         _ => None,
     });
     assert!(error.is_none(), "command rejected: {error:?}");
@@ -90,11 +87,11 @@ fn read_room(net: &mut RoomNetwork, socket: Uuid, room: &str, reading: bool) {
 
 fn invite(net: &mut RoomNetwork, owner: Uuid, reader: Uuid, room: &str) {
     let key = net
-        .command(owner, json!({"type":"room_invite","roomId":room}))
+        .command(owner, json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .expect("owner invited a room reader");

@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   });
   try {
     await participant.connect();
-    for (const message of (await participant.history()).messages)
+    for (const message of (await participant.history(undefined, { parts: [] })).messages)
       print(message);
     if (values.message !== undefined) {
       print(await participant.chat(values.message));

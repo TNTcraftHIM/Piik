@@ -809,6 +809,105 @@ fn busy_upstream_range_preserves_a_siblings_download() {
 }
 
 #[test]
+fn future_controls_settle_only_their_authorized_coalesced_range() {
+    use piik_channel_core::conversation::{decode_control, encode_control, ControlFrame};
+    let bytes = content();
+    let mut relay = FileDelivery::new(id(2));
+    let mut source = FileDelivery::new(id(1));
+    relay.update(
+        vec![plan(1, Some(1), &[3, 4, 5], true, &bytes)],
+        room_peers(),
+        0,
+    );
+    source.update(vec![plan(1, None, &[2], false, &bytes)], room_peers(), 0);
+    let future = |role, key, request_id| {
+        let packet = serde_json::json!({
+            "kind":"file","body":{"role":role,"type":"future","key":key,"requestId":request_id}
+        });
+        let decoded = decode_control(&serde_json::to_vec(&packet).unwrap()).unwrap();
+        // WASM sends the decoded JSON body through JS to FileDelivery.
+        let body = serde_json::to_value(decoded).unwrap()["body"].clone();
+        serde_json::from_value::<FileControl>(body).unwrap()
+    };
+    let upstream = |effects: Vec<FileEffect>| {
+        let [FileEffect::SendControl { peer, control }] = effects.as_slice() else {
+            panic!("expected a single pull")
+        };
+        assert_eq!(*peer, id(1));
+        control.clone()
+    };
+    let pull = |offset, request_id| FileControl::Pull {
+        key: key(),
+        offset,
+        request_id,
+    };
+    let first = upstream(relay.start(key())).address().1;
+    assert!(relay.control(id(3), pull(0, id(30)), 0).is_empty());
+    assert!(relay.control(id(4), pull(0, id(40)), 0).is_empty());
+    let sibling = upstream(relay.control(id(5), pull(FILE_RANGE_BYTES as u64, id(50)), 0));
+    assert!(relay
+        .control(id(1), future("notice", key(), first), 0)
+        .is_empty());
+    assert!(relay
+        .control(id(5), future("reply", key(), first), 0)
+        .is_empty());
+    let mut other = key();
+    other.message_seq += 1;
+    assert!(relay
+        .control(id(1), future("reply", other.clone(), first), 0)
+        .is_empty());
+    assert!(relay
+        .control(id(8), future("request", other.clone(), first), 0)
+        .is_empty());
+    assert!(
+        matches!(relay.control(id(3), future("request", other.clone(), first), 0).as_slice(),
+        [FileEffect::SendControl { peer, control: FileControl::Error { key, request_id, code } }]
+        if *peer == id(3) && key == &other && *request_id == first && code == "unsupported")
+    );
+    let failures = relay.control(id(1), future("reply", key(), first), 0);
+    assert_eq!(failures.len(), 3);
+    for (consumer, original) in [(3, 30), (4, 40)] {
+        assert!(failures.iter().any(|effect| matches!(effect,
+            FileEffect::SendControl { peer, control: FileControl::Error { request_id, code, .. } }
+            if *peer == id(consumer) && *request_id == id(original) && code == "unknown_outcome")));
+    }
+    assert!(failures.iter().any(
+        |effect| matches!(effect, FileEffect::Failed { code, .. } if code == "unknown_outcome")
+    ));
+    assert!(relay
+        .control(id(1), future("reply", key(), first), 0)
+        .is_empty());
+    let wire = encode_control(&ControlFrame::File(sibling)).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&wire).unwrap()["body"]["role"],
+        "request"
+    );
+    let ControlFrame::File(sibling) = decode_control(&wire).unwrap() else {
+        unreachable!()
+    };
+    let reads = source.control(id(2), sibling, 0);
+    let [FileEffect::Read {
+        offset,
+        request_id,
+        length,
+        ..
+    }] = reads.as_slice()
+    else {
+        panic!("missing sibling read")
+    };
+    let sibling_bytes = &bytes[*offset as usize..*offset as usize + *length];
+    let mut delivered = Vec::new();
+    for chunk in source.read_result(&key(), *offset, *request_id, sibling_bytes.to_vec()) {
+        let FileEffect::SendChunk { frame, .. } = chunk else {
+            panic!("source must return bytes")
+        };
+        delivered.extend(relay.chunk(id(1), &frame).unwrap());
+    }
+    assert!(!delivered.is_empty());
+    assert!(delivered.iter().all(|effect| matches!(effect, FileEffect::SendChunk {peer,request_id,..} if *peer == id(5) && *request_id == id(50))));
+}
+
+#[test]
 fn retired_holder_leaves_readers_for_their_new_room_plan() {
     let mut network = Network::new();
     network.update(1, 1, None, &[3, 4], false);

@@ -16,7 +16,7 @@ import { channelAppDiscovery } from "../../channel/app-link";
 import { OpenInClient, type AppNavigationIssue } from "./OpenInClient";
 import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
-import { diagnoseChannelFact, type AppConnectionState } from "../../ui/diagnosis";
+import { diagnoseChannelFact, isAppConnectionIssue, type AppConnectionState } from "../../ui/diagnosis";
 import { ChannelDiagnosisHelp } from "../ChannelDiagnosisHelp";
 
 interface AppConnectionProps {
@@ -162,7 +162,8 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       if (!approval || approving || signal.aborted) return;
       approving = true;
       const health = await native?.health({ signal, waitForPermission: Boolean(attempt.popup), port: Number(approval.port) }).catch(error => {
-        if (!signal.aborted && native?.isIncompatible(error)) finish("incompatible");
+        const issue = native?.compatibilityIssue(error);
+        if (!signal.aborted && issue) finish(issue);
         return null;
       });
       if (signal.aborted) return;
@@ -170,7 +171,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       if (health) {
         rememberBuild(health);
         try { await activate(health); }
-        catch (error) { if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable"); }
+        catch (error) { if (!signal.aborted) finish(native?.compatibilityIssue(error) ?? "unavailable"); }
       } else if (reported) finish("unavailable");
       else if (attempt.popup?.closed) finish("idle");
     };
@@ -190,7 +191,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       if (pending.current === attempt) {
         pending.current = null;
         automaticFailed.current = result !== "ready";
-        const failed = result === "unavailable" || result === "incompatible";
+        const failed = isAppConnectionIssue(result);
         setAutomaticHint(false);
         setState(attempt.automatic && failed ? "idle" : result);
         if (!attempt.automatic && failed) showHelp();
@@ -236,7 +237,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         if (!url) { finish("unavailable"); return; }
         // A compatible App was found; health may only see an older, approved App.
         const health = await native.health({ signal, waitForPermission: !attempt.automatic }).catch(error => {
-          if (native?.isIncompatible(error)) return null;
+          if (native?.compatibilityIssue(error)) return null;
           throw error;
         });
         if (signal.aborted) return;
@@ -259,7 +260,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         setAutomaticHint(attempt.automatic);
         setState("approval");
       } catch (error) {
-        if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable");
+        if (!signal.aborted) finish(native?.compatibilityIssue(error) ?? "unavailable");
       }
     };
     if (wake && wakeURL) {
@@ -280,9 +281,9 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   useEffect(() => {
     if (!ready) return;
     // Confirmed App readiness supersedes earlier discovery failures.
-    setNavigationIssue(issue => issue === "unavailable" || issue === "incompatible" ? null : issue);
+    setNavigationIssue(issue => isAppConnectionIssue(issue) ? null : issue);
   }, [ready]);
-  const failed = state === "unavailable" || state === "incompatible";
+  const failed = isAppConnectionIssue(state);
   const diagnosis = diagnoseChannelFact({ area: "app", state });
   const label = t(state === "approval" || failed ? diagnosis!.message : ({
     idle: "client.connect.action",
@@ -291,15 +292,16 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     approving: "client.connect.approving",
     ready: connected === false ? "client.connect.action" : "client.connect.manage",
   } as const)[state]);
-  const navigationDiagnosis = navigationIssue === "unavailable" || navigationIssue === "incompatible"
+  const navigationDiagnosis = isAppConnectionIssue(navigationIssue)
     ? diagnoseChannelFact({ area: "app", state: navigationIssue }) : null;
   const navigationMessage = navigationIssue === "unsupported" ? "client.connect.navigationUnsupported"
     : navigationIssue === "popup-blocked" ? "client.connect.navigationPopupBlocked" : navigationDiagnosis?.message;
-  const helpDiagnosis = state === "incompatible" ? diagnosis : navigationDiagnosis ?? diagnosis;
+  const incompatible = diagnosis?.topic === "appVersion";
+  const helpDiagnosis = incompatible ? diagnosis : navigationDiagnosis ?? diagnosis;
   const update = ready ? release : null;
   const availableUpdate = update?.kind === "update-available" || update?.kind === "major-update";
   const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
-  return <><Tooltip kind={availableUpdate ? "update-available" : ready ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
+  return <><Tooltip kind={availableUpdate ? "update-available" : ready ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : incompatible ? "warning" : "hint-client-site"}
     text={state === "idle" ? t("client.connect.hint") : title} disabled={helpOpen}
     autoOpen={automaticHint} place="below" align="end">
     <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${ready ? " is-ready is-quiet" : ""}`}
@@ -312,7 +314,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         checkRelease();
         void connect();
       }} disabled={!available}>
-      <Glyph name={availableUpdate ? "arrowUp" : ready ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
+      <Glyph name={availableUpdate ? "arrowUp" : ready ? "check" : busy ? "loader" : failed ? "alert" : "window"}
         size={16} className={busy ? "lr-spin" : undefined} />
       <span className="lr-cap">App</span>
     </button>
@@ -333,7 +335,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       <div className="lr-app-connect-head">
         {state === "busy" ? <LoadingStatus label="client.connect.discovering" /> :
           <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (ready ? <HintComic kind="hint-app-ready" /> : state === "approval" || state === "waking" || state === "ready" ? <HintComic kind="hint-client-site" /> :
-            <Comic kind={state === "approving" ? "signal-connecting" : state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />)}</div>}
+            <Comic kind={state === "approving" ? "signal-connecting" : incompatible ? "warning" : "signal-failed"} theme="paper" />)}</div>}
         <button type="button" className="lr-btn is-dense is-quiet lr-app-connect-close" aria-label={t("common.close")}
           popoverTarget={helpId} popoverTargetAction="hide">
           <Glyph name="x" size={16} />

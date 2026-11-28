@@ -343,7 +343,6 @@ impl Drop for Inputs {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Packet {
     id: String,
     epoch: String,
@@ -383,6 +382,7 @@ pub(super) mod tests {
                 user_id: id(3),
                 online: true,
                 signing_key: [0; 32],
+                version: piik_channel_core::PRODUCT_VERSION,
             }],
             publications: vec![PublicationInfo {
                 screen: Some(piik_channel_core::wire::ScreenInfo {
@@ -459,6 +459,25 @@ pub(super) mod tests {
             closed: None,
             ready: None,
         }
+    }
+
+    #[test]
+    fn input_frame_and_source_packet_accept_extra_members() {
+        let mut value = serde_json::to_value(frame()).unwrap();
+        value["extra"] = true.into();
+        value["data"]["extra"] = true.into();
+        let decoded: InputFrame = serde_json::from_value(value.clone()).unwrap();
+        let mut packet = decoded.data.unwrap();
+        assert_eq!(
+            serde_json::from_value::<Packet>(packet.clone())
+                .unwrap()
+                .data,
+            "opaque"
+        );
+        packet["epoch"] = 42.into();
+        assert!(serde_json::from_value::<Packet>(packet).is_err());
+        value["flowId"] = 42.into();
+        assert!(serde_json::from_value::<InputFrame>(value).is_err());
     }
 
     pub(crate) fn share_pause_projection(

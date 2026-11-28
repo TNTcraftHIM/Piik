@@ -247,15 +247,15 @@ pub(super) async fn create_copy(
                 Json(serde_json::json!({ "room": room })),
             )
                 .into_response()),
-            Ok(Err(code)) if code == "room_created_connection_failed" => Err((
+            Ok(Err(code)) if code.reason() == "room_created_connection_failed" => Err((
                 StatusCode::CONFLICT,
-                Json(serde_json::json!({ "error": code, "roomId": room_id })),
+                Json(serde_json::json!({ "error": code.reason(), "roomId": room_id })),
             )),
             Ok(Err(code)) => {
                 let mut hub = domain.hub.lock().unwrap();
                 let effects = hub.authority.cancel_hosted_creation(&creation);
                 hub.apply(effects);
-                Err(creation_error(&code))
+                Err(creation_error(code.reason()))
             }
             Err(_) => Err((
                 StatusCode::SERVICE_UNAVAILABLE,

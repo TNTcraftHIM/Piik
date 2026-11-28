@@ -129,13 +129,11 @@
 .c3-users { display: grid; gap: 4px; }
 .c3-user { min-width: 0; padding: 9px 6px; }
 .c3-people-panel .c3-user { padding-block: 4px; }
-.c3-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
-.c3-people-panel .c3-person { flex-wrap: nowrap; }
+.c3-person { display: flex; align-items: center; gap: 4px 10px; min-width: 0; flex-wrap: wrap; }
 .c3-person-identity > .lr-comic-tip-wrap:has(.c3-avatar-preview) { flex: none; }
 .c3-person-identity > svg, .c3-person .c3-avatar-preview > svg { flex: none; width: 30px; height: 38px; }
 .c3-people-panel .c3-person-identity > svg, .c3-people-panel .c3-avatar-preview > svg { width: 28px; height: 36px; }
-.c3-person-identity { display: flex; align-items: center; gap: inherit; min-width: 0; max-width: 100%; flex: 1 1 max-content; }
-.c3-people-panel .c3-person-identity { flex: 1; }
+.c3-person-identity { display: flex; align-items: center; gap: inherit; min-width: 0; max-width: 100%; flex: 1 1 8rem; }
 .c3-person-copy { min-width: 0; }
 .c3-person strong > .lr-comic-tip-wrap { display: block; min-width: 0; max-width: 100%; }
 .c3-person-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -150,7 +148,7 @@
 /* Collapsing navigation is a layout preference, not a change of activity. */
 @media (any-pointer: coarse) {
   .c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { --button-size: var(--control-compact-size); }
-  .c3-people-panel .c3-participant-status {
+  :is(.c3-people-panel, .c3-room-people) .c3-participant-status {
     min-width: var(--control-compact-size);
     min-height: var(--control-compact-size);
   }
@@ -384,6 +382,9 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) [data-layout="
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) :is(.c3-living-actions, .c3-identity) { align-items: center; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-identity { justify-content: center; padding-inline: 0; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .c3-share-actions { justify-content: center; }
+[data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .c3-voice-entry {
+  > div:has(> small), .lr-btn > .lr-cap { display: none; }
+}
 /* In the rail the split stands on end: the action over its options, one shape with the same chevron. */
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split { flex-direction: column; align-items: stretch; }
 [data-layout="living"][data-sidebars="rail"]:not([data-room-list-open]) .c3-living-actions .lr-btn-split .lr-btn.is-split-main { border-radius: 12px 12px 0 0; }

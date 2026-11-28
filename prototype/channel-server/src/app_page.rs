@@ -89,8 +89,7 @@ pub enum Command {
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum Operation {
     PagePrepare {
@@ -149,13 +148,14 @@ pub enum Operation {
         page_id: Uuid,
         candidate_id: Option<Uuid>,
     },
+    #[serde(other)]
+    Unknown,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(
     tag = "action",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
+    rename_all_fields = "camelCase"
 )]
 pub enum ResourceRequest {
     InspectMpd {
@@ -186,7 +186,6 @@ pub enum ResourceRequest {
     },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct Patch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<f64>,
@@ -1080,7 +1079,7 @@ mod tests {
             .is_err());
     }
     #[test]
-    fn active_resource_operation_rejects_urls_and_accepts_cancel() {
+    fn resource_operations_keep_their_admitted_ids_with_extra_fields() {
         for action in ["read", "read_metadata", "cancel"] {
             let mut value = serde_json::json!({"type":"page_media_resource","action":action,"pageId":Uuid::new_v4(),"readId":Uuid::new_v4()});
             if action == "read" {
@@ -1094,9 +1093,16 @@ mod tests {
                 value["offset"] = serde_json::json!(0);
                 value["length"] = serde_json::json!(1);
             }
-            assert!(serde_json::from_value::<Operation>(value.clone()).is_ok());
+            let page = value["pageId"].as_str().unwrap().parse::<Uuid>().unwrap();
+            let read = value["readId"].as_str().unwrap().parse::<Uuid>().unwrap();
             value["url"] = serde_json::json!("https://not-admitted.test");
-            assert!(serde_json::from_value::<Operation>(value).is_err());
+            let Operation::PageMediaResource(request) = serde_json::from_value(value).unwrap() else { panic!() };
+            match request {
+                ResourceRequest::Read { page_id, read_id, .. }
+                | ResourceRequest::ReadMetadata { page_id, read_id, .. }
+                | ResourceRequest::Cancel { page_id, read_id } => assert_eq!((page_id, read_id), (page, read)),
+                _ => panic!(),
+            }
         }
     }
     #[tokio::test]
@@ -1411,7 +1417,10 @@ mod tests {
             );
         }
         assert!(commands.try_recv().is_err());
-        assert!(serde_json::from_value::<Operation>(serde_json::json!({"type":"page_media_read_metadata","pageId":Uuid::new_v4(),"choiceId":Uuid::new_v4(),"offset":0,"length":1,"url":"https://other.test"})).is_err());
+        assert!(matches!(
+            serde_json::from_value::<Operation>(serde_json::json!({"type":"page_media_read_metadata","pageId":Uuid::new_v4(),"choiceId":Uuid::new_v4(),"offset":0,"length":1,"url":"https://other.test"})),
+            Ok(Operation::Unknown)
+        ));
     }
 
     #[tokio::test]
@@ -1473,10 +1482,9 @@ mod tests {
         assert!(
             matches!(commands.recv().await,Some(Command::Retire {owner: actual}) if owner==actual)
         );
-        assert!(serde_json::from_value::<Operation>(
+        assert!(matches!(serde_json::from_value::<Operation>(
             serde_json::json!({"type":"page_hide","pageId":id,"viewId":Uuid::new_v4()})
-        )
-        .is_err());
+        ), Ok(Operation::PageHide { page_id }) if page_id == id));
     }
 
     #[tokio::test]

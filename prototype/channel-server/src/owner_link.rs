@@ -62,12 +62,16 @@ mod tests {
 
 #[cfg(unix)]
 mod transport {
-    use anyhow::{ensure, Result};
+    use anyhow::{ensure, Context, Result};
     use std::{
         fs,
-        os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt},
+        os::unix::{
+            fs::{symlink, DirBuilderExt, FileTypeExt, MetadataExt, PermissionsExt},
+            net::SocketAddr,
+        },
         path::{Path, PathBuf},
     };
+    use tempfile::TempDir;
     use tokio::net::{UnixListener, UnixStream};
 
     pub struct Listener(UnixListener, PathBuf);
@@ -76,8 +80,24 @@ mod transport {
         directory.join(".operator").join("owner.sock")
     }
 
+    fn call_path(socket: &Path) -> Result<(PathBuf, Option<TempDir>)> {
+        if SocketAddr::from_pathname(socket).is_ok() {
+            return Ok((socket.to_owned(), None));
+        }
+        // Each caller needs its own short spelling only until bind or connect returns.
+        let parent = socket.parent().unwrap().canonicalize()?;
+        let alias = tempfile::Builder::new()
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir()
+            .context("Create a temporary directory for the operator socket address")?;
+        let link = alias.path().join("d");
+        symlink(parent, &link)?;
+        Ok((link.join(socket.file_name().unwrap()), Some(alias)))
+    }
+
     pub async fn connect(directory: &Path) -> Result<UnixStream> {
-        Ok(UnixStream::connect(path(directory)).await?)
+        let (address, _alias) = call_path(&path(directory))?;
+        Ok(UnixStream::connect(address).await?)
     }
 
     impl Listener {
@@ -99,7 +119,8 @@ mod transport {
                 ensure!(meta.file_type().is_socket(), "Unexpected operator endpoint");
                 fs::remove_file(&socket)?;
             }
-            Ok(Self(UnixListener::bind(&socket)?, socket))
+            let (address, _alias) = call_path(&socket)?;
+            Ok(Self(UnixListener::bind(address)?, socket))
         }
 
         pub async fn accept(&mut self) -> Result<UnixStream> {
@@ -115,6 +136,34 @@ mod transport {
     impl Drop for Listener {
         fn drop(&mut self) {
             let _ = fs::remove_file(&self.1);
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        #[tokio::test]
+        async fn operator_socket_follows_the_data_directory() -> Result<()> {
+            let root = tempfile::tempdir_in(".")?;
+            let relative = Path::new(root.path().file_name().unwrap());
+            let long = relative.join("x".repeat(128));
+            fs::create_dir(&long)?;
+            for directory in [relative, long.as_path()] {
+                let marker = directory.join("marker");
+                fs::write(&marker, b"data")?;
+                let mut listener = Listener::bind(directory)?;
+                assert!(fs::metadata(path(directory))?.file_type().is_socket());
+                let mut client = connect(directory).await?;
+                let mut server = listener.accept().await?;
+                client.write_u8(42).await?;
+                assert_eq!(server.read_u8().await?, 42);
+                drop(listener);
+                assert!(!path(directory).try_exists()?);
+                assert_eq!(fs::read(marker)?, b"data");
+            }
+            Ok(())
         }
     }
 }

@@ -26,22 +26,10 @@ requires one exact identifier, and its capability object has grown to
 fifteen entries, one per feature, which its promise to older peers keeps.
 The private 3.0 implementation currently has these boundaries:
 
-- Channel joins and local App discovery each require their current wire
-  identifier (`prototype/channel-core/src/lib.rs`,
-  `src/client/channel/app-link.ts`). Capture descriptions accept additions;
-  selected capture results remain strict. Most Domain commands and the
-  signed room commands and records are decoded closed: one field they do not
-  know fails the whole of it (`prototype/channel-core/src/wire.rs`,
-  `conversation.rs`).
-- A room's writer verifies who asks before it reads what is asked, so a
-  command it cannot read is refused in that request's reply
-  (`prototype/channel-core/src/host.rs`). A reader loses that with a record
-  it cannot read: the request it answers is read first and then dropped with
-  the failure (`conversation.rs`).
-- The Browser's pending request validates its terminal result
-  (`src/client/channel/session.ts`). Unknown or mismatched outcomes reject that
-  operation. The first published reader must retain this boundary when an
-  extension is selected.
+- Domain and signed room replies identify their waiting operation separately
+  from observer notifications. Unknown outcomes end that operation without
+  confirming success. Wire objects accept ordinary extensions; typed store
+  readers reject content they cannot preserve.
 - A room store opens only at one exact `user_version`
   (`prototype/channel-core/src/storage.rs`), and the Browser store aborts any
   upgrade (`prototype/channel-browser/src/room-host.ts`). This protects data;
@@ -51,50 +39,13 @@ The private 3.0 implementation currently has these boundaries:
 
 ### Settled before the first public release
 
-1. **Compatibility.** Two parties work together when the first numbers of
-   their versions are equal; when they differ, each tells its person which
-   side to update. Four rules make any two second numbers work together.
-   None of them is a flag for one feature or a path for one older peer.
-   - *A party states its two numbers once,* where it is already described: a
-     session when it joins, the Domain in its welcome or in the refusal that
-     takes its place, the App in its discovery. The Domain publishes a session's numbers beside its key, so
-     the numbers of a room's writer are those of its host's session. They
-     decide what a client offers to its person. No result depends on them.
-   - *An unknown kind gets an answer where one is waited for.* A request of a
-     kind its receiver does not know is refused as unsupported in that
-     request's reply. A reply of a kind its requester does not know ends that
-     request as an unknown outcome and never as success. A notification of an
-     unknown kind is ignored. A new action an older receiver must decline
-     uses a distinct request. Changes to state older observers already display
-     retain their baseline update semantics.
-   - *An unknown field is ignored by its final recipient at every depth.*
-     Relays forward enclosed signed payloads unchanged. Known bounds, types,
-     required fields and kind values keep their defined contracts. A writer stores
-     the fields it knows, and its confirmation carries the message as stored,
-     so a sender sees what was kept. A new constraint whose omission would
-     widen authority, lifetime, recipients or the target uses a distinct
-     request; baseline requests retain all their defined constraints. A writer
-     keeps nothing it cannot read, because deleting a message, clearing media
-     and copying a room are promises about everything stored. What is written
-     to last is the exception to ignoring, since nobody is there to be told:
-     a store or an archive that holds what its reader does not know is
-     refused before anything is installed.
-   - *A party gets a new form by asking for it.* A request names the optional
-     parts and forms it wants. One that names none gets what the first
-     release gave. A part that was not asked for, or that the answering party
-     does not know, is absent, and absent never means empty or deleted.
-
-   What the four cannot express, which is changing or removing something
-   that exists, waits for the next first number. That number also removes
-   every branch written for an older peer, so such branches live for one
-   first number at most. The first release exercises the rules at each
-   independently implemented wire boundary, including a real mixed-version
-   path. Tests cover unknown fields, requests, replies and notifications and
-   a peer with a higher second number; shared decoders share boundary tests.
-   An extension mechanism that is not used stops working
-   ([RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)). Until the first
-   release the one private number keeps its present job of telling apart
-   builds that were not made for each other.
+1. **Compatibility.** A single product major/minor serves both Domain joins
+   and local App discovery. The room writer may run on an older participant's
+   device, so compatible additions must work with older readers and writers
+   in either role. [Versioning](../standards/versioning.md#extending-interfaces)
+   owns the rules for extensions and their mixed-version acceptance.
+   Extensions must be exercised to stay usable
+   ([RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)).
 2. **Replies.** A request ends in an explicit terminal outcome that tells
    rejected from unknown, and a copy sent to an observer is separate from the
    requester's reply. Idempotency is scoped by operation: chat already has
@@ -166,7 +117,7 @@ their meaning, and a new form reaches only a party that asked for it.
   under the present rule for private experiments.
 - A feature added after release is a new kind, a new field or a new part to
   ask for, and raises the second number. No matrix of pairs is kept, because
-  every pair that shares a first number works by the same four rules.
+  same-major peers use the shared extension rules.
 - Refusing unknown fields goes from the wire. Stores and archives keep
   refusing what they do not know. One wire field per feature is not added
   again. The descriptions a join already carries of what a party's runtime
@@ -176,9 +127,8 @@ their meaning, and a new form reaches only a party that asked for it.
   that newer clients could use them through an older host, was weighed and
   left out: no feature in sight needs it, and it can be added later as one
   more addition under these rules.
-- [Versioning](../standards/versioning.md#extending-interfaces) states the
-  rule for 3.0, whose direction the owner confirmed. The distance of the
-  private code from it is release work.
+- Acceptance requires exercising the first public contract with mixed-version
+  artifacts. [TODO](../todo.md) tracks that work.
 
 ## References
 

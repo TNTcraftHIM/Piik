@@ -136,7 +136,7 @@ pub fn supports_external_input() -> bool {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct SourceAudioSettings {
     pub bitrate: u32,
     pub gain: f32,
@@ -162,7 +162,7 @@ impl SourceAudioSettings {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct SourceMicrophoneSettings {
     pub enabled: bool,
     pub device_id: String,

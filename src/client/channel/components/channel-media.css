@@ -81,9 +81,8 @@
 .c3-watch-timeline input { height: 32px; border-radius: 6px; cursor: pointer; touch-action: pan-y; }
 .c3-watch-timeline input:disabled { cursor: default; }
 .c3-watch-position { display: flex; align-items: center; gap: 6px; min-width: 0; padding-inline: 2px; font-size: 12px; line-height: 1.2; }
-.c3-watch-status { flex: none; white-space: nowrap; font-weight: 650; }
+.c3-watch-status { display: inline-flex; align-items: center; gap: 4px; flex: none; white-space: nowrap; font-weight: 650; }
 .c3-watch-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
-.c3-watch-time[data-live] { white-space: normal; text-overflow: clip; }
 .c3-watch-position[data-seeking] .c3-watch-time { color: var(--action); }
 .c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
 .c3-mini-player[data-thumbnail] .c3-mini-controls:not(.c3-watch-controls) .lr-playback-window { display: none; }
@@ -135,8 +134,8 @@
   .c3-mini-controls { --mini-controls-inset: 2px; width: calc(100% - 2 * var(--mini-controls-inset)); gap: 0; padding: 2px; }
   .c3-mini-controls .c3-mini-space { display: none; }
 }
-@container (max-width: 256px) {
-  /* Keep the direct actions readable in the smallest tiles. */
+@container (max-width: 440px) {
+  /* Keep time and direct actions readable before exposing the volume slider. */
   .c3-watch-inline-volume { display: none; }
   .c3-watch-volume { display: grid; }
 }
@@ -266,6 +265,7 @@
 .c3-watch-page-thumbnail > svg { flex: none; }
 
 .c3-watch-native-slot { flex: 1 0 180px; min-width: 0; aspect-ratio: 16 / 9; }
+.c3-watch-player[data-native-mounted] > .c3-watch-native-slot { flex-shrink: 1; min-height: 0; }
 .c3-watch-player[data-native-page] > .c3-mini-message { position: absolute; inset: 0 0 auto; pointer-events: none; }
 .c3-watch-player[data-native-page] > .c3-mini-message button { pointer-events: auto; }
 .c3-watch-output .lr-capture-device { width: 100%; padding: 0; pointer-events: auto; }

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
+import developmentVersion from "../prototype/channel-core/development-version.json" with { type: "json" };
 
 const git = (root, ...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 export const isReleaseVersion = (value) => typeof value === "string" &&
@@ -52,12 +53,26 @@ export function releaseCommits(root, revision, previous) {
   return commits;
 }
 
+export function productVersion(version = "development") {
+  if (version === "development") return developmentVersion;
+  const parsed = semver.parse(version);
+  if (!parsed || version !== `v${parsed.version}`)
+    throw new Error("Build version must be vMAJOR.MINOR.PATCH with an optional prerelease suffix, or development");
+  const { major, minor } = parsed;
+  if (major > 0xffffffff || minor > 0xffffffff) throw new Error("Product major/minor exceeds u32");
+  return { major, minor };
+}
+
+export const productVersionDefine = (version = "development") => ({
+  "import.meta.env.VITE_PIIK_VERSION": JSON.stringify(version),
+  __PIIK_PRODUCT_VERSION__: JSON.stringify(productVersion(version)),
+});
+
 // Prerelease candidates are explicit build inputs, never inferred stable releases.
 export function buildVersion(root, revision, requested = process.env.PIIK_BUILD_VERSION) {
   const version = requested || stableTags(root, "--points-at", revision)[0] || "development";
   if (version === "development") return version;
-  if (!version.startsWith("v") || semver.valid(version) !== version.slice(1))
-    throw new Error("Build version must be vMAJOR.MINOR.PATCH with an optional prerelease suffix, or development");
+  productVersion(version);
   if (git(root, "tag", "--list", version) &&
       git(root, "rev-parse", `${version}^{commit}`) !== revision) {
     throw new Error("A release version cannot identify two source revisions");

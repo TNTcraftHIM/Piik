@@ -1,5 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
-use piik_channel_core::{conversation::SessionSigner, wire::CHANNEL_PROTOCOL};
+use piik_channel_core::{conversation::SessionSigner, PRODUCT_VERSION};
 use piik_channel_prototype::domain::Domain;
 use serde_json::{json, Value};
 use std::{net::UdpSocket, path::Path, process::Stdio, time::Duration};
@@ -99,7 +99,8 @@ async fn join(origin: &str, owner: bool) -> (Socket, Value) {
         .unwrap();
     let mut join = json!({
         "type": "join",
-        "protocol": CHANNEL_PROTOCOL,
+        "major": PRODUCT_VERSION.major,
+        "minor": PRODUCT_VERSION.minor,
         "canUsePeerTransport": false,
         "name": "Room policy check",
         "signingKey": SessionSigner::from_seed([if owner { 1 } else { 2 }; 32]).signing_key()
@@ -126,7 +127,7 @@ async fn request(socket: &mut Socket, mut command: Value) -> Value {
         .send(Message::Text(command.to_string().into()))
         .await
         .unwrap();
-    next_event(socket, |event| event["requestId"] == id).await
+    next_event(socket, |event| event["type"] == "reply" && event["requestId"] == id).await["result"].clone()
 }
 
 #[tokio::test]
@@ -221,7 +222,7 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
         }),
     )
     .await;
-    assert_eq!(changed["type"], "ack", "{changed}");
+    assert_eq!(changed["type"], "done", "{changed}");
     process.kill().await.unwrap();
 
     let mut command = server(&demo_data, &frontend);

@@ -12,8 +12,7 @@ import { acceptanceServerExecutable } from "./acceptance-server-executable.mjs";
 import { freeUdpPort } from "./acceptance-udp-port.mjs";
 import { nativePreviews } from "./browser-preview-acceptance.mjs";
 
-const { CHANNEL_PROTOCOL } = await tsImport("../../src/client/channel/protocol.ts", import.meta.url);
-const { APP_PROTOCOL } = await tsImport("../../src/client/channel/app-link.ts", import.meta.url);
+const { PRODUCT_VERSION } = await tsImport("../../src/client/channel/product-version.ts", import.meta.url);
 
 // App hosting and Browser participation share a user, not an endpoint or lifetime.
 export async function appRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample,
@@ -84,7 +83,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const browserRoom = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'public',hidden:false})");
     start(); await ready();
     const discovery = await fetch(`${local}/connect-discovery`).then(response => response.json());
-    assert.deepEqual(discovery, { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port, windowNavigation: false, connectURL: `${local}/client` });
+    assert.deepEqual(discovery, { service: "piik-channel-app", ...PRODUCT_VERSION, port, windowNavigation: false, connectURL: `${local}/client` });
     assert.equal((await health(origin)).status, 403, "discovery does not approve its caller");
     await approve(origin);
     const token = (await (await health(origin)).json()).token;

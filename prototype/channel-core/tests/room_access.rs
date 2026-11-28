@@ -1,7 +1,8 @@
 #![cfg(feature = "sqlite")]
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
-    host::RoomResult,
+
     wire::{Event, Snapshot},
     Effects,
 };
@@ -43,7 +44,7 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
     assert!(forbidden
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "forbidden")));
     let requester = Uuid::new_v4();
     admit(
         &mut network,
@@ -78,7 +79,7 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
         !removed
             .events
             .iter()
-            .any(|(target, event)| *target == requester && matches!(event, Event::RoomReply { .. })),
+            .any(|(target, event)| *target == requester && matches!(event, Event::Reply { room_id: Some(_), .. })),
         "a closed requester receives no completion"
     );
     assert!(!network
@@ -108,14 +109,14 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
         assert!(result
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     }
     let created = command(
         &mut reopened,
         returning,
         json!({"type":"create_room","room":summary}),
     );
-    assert!(created.events.iter().any(|(_, event)| matches!(event, Event::RoomCreated { room, .. } if room.id != deleted && room.creator_id == policy.creator_id)));
+    assert!(created.events.iter().any(|(_, event)| matches!(event, Event::Reply { result: ReplyResult::RoomCreated { room }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { room }, .. } if room.id != deleted && room.creator_id == policy.creator_id)));
     let administrator = Uuid::new_v4();
     admit(
         &mut reopened,
@@ -135,7 +136,7 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
     assert!(admitted
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Ack { request_id } if request_id == "restore")));
+        .any(|(_, event)| matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "restore")));
     reopened.restore_room(returning, policy);
 }
 
@@ -178,12 +179,7 @@ fn channel_owner_removal_retires_an_offline_rooms_invite_and_creator_restore() {
     );
     assert!(removal.events.iter().any(|(_, event)| matches!(
         event,
-        Event::RoomReply {
-            result: RoomResult::Deleted {
-                data_removed: false
-            },
-            ..
-        }
+        Event::Reply { room_id: Some(_), result: ReplyResult::Deleted { data_removed: false }, .. } | Event::Deferred { result: ReplyResult::Deleted { data_removed: false }, .. }
     )));
     assert!(network
         .state(reader)
@@ -220,7 +216,7 @@ fn channel_owner_removal_retires_an_offline_rooms_invite_and_creator_restore() {
     ] {
         let denied = command(&mut reopened, returning_creator, request);
         assert!(denied.events.iter().any(|(_, event)| matches!(event,
-            Event::Error { code, .. } if code == "room_not_in_domain"
+            Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "room_not_in_domain"
         )));
         assert!(!denied
             .events
@@ -229,7 +225,7 @@ fn channel_owner_removal_retires_an_offline_rooms_invite_and_creator_restore() {
     }
     let denied = command(&mut reopened, returning_reader, entry);
     assert!(denied.events.iter().any(|(_, event)| matches!(event,
-        Event::Error { code, .. } if code == "room_unavailable"
+        Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "room_unavailable"
     )));
     assert!(reopened
         .state(returning_reader)
@@ -263,12 +259,7 @@ fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     let removal = network.deliver(removal);
     assert!(removal.events.iter().any(|(_, event)| matches!(
         event,
-        Event::RoomReply {
-            result: RoomResult::Deleted {
-                data_removed: false
-            },
-            ..
-        }
+        Event::Reply { room_id: Some(_), result: ReplyResult::Deleted { data_removed: false }, .. } | Event::Deferred { result: ReplyResult::Deleted { data_removed: false }, .. }
     )));
     let binding = network
         .state(owner)
@@ -307,7 +298,7 @@ fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     assert!(wrong
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { .. })));
+        .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     let valid = command(
         &mut network,
         owner,
@@ -315,10 +306,7 @@ fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     );
     assert!(valid.events.iter().any(|(_, event)| matches!(
         event,
-        Event::RoomReply {
-            result: RoomResult::Deleted { data_removed: true },
-            ..
-        }
+        Event::Reply { room_id: Some(_), result: ReplyResult::Deleted { data_removed: true }, .. } | Event::Deferred { result: ReplyResult::Deleted { data_removed: true }, .. }
     )));
     command(
         &mut network,
@@ -332,12 +320,7 @@ fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     );
     assert!(removed.events.iter().any(|(_, event)| matches!(
         event,
-        Event::RoomReply {
-            result: RoomResult::Deleted {
-                data_removed: false
-            },
-            ..
-        }
+        Event::Reply { room_id: Some(_), result: ReplyResult::Deleted { data_removed: false }, .. } | Event::Deferred { result: ReplyResult::Deleted { data_removed: false }, .. }
     )));
     assert!(network.state(owner).channel.rooms.is_empty());
 }
@@ -379,7 +362,7 @@ fn public_discovery_ends_with_host_presence_while_known_sessions_keep_scoped_sta
         json!({"type":"enter_room","roomId":id}),
     );
     assert!(direct.events.iter().any(
-        |(_, event)| matches!(event, Event::Error { code, .. } if code == "room_host_offline")
+        |(_, event)| matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "room_host_offline")
     ));
     let late = Uuid::new_v4();
     let (_, _, state) = admit(&mut network, late, json!({"type":"join","name":"Later"}));
@@ -497,7 +480,7 @@ fn abandoned_reservations_and_stopped_guest_rooms_release_active_slots() {
         assert!(command(&mut network, creator, reserve.clone())
             .events
             .iter()
-            .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+            .any(|(_, e)| matches!(e, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { .. }, .. })));
     }
     assert_eq!(network.state(visitor).channel.rooms.len(), 1);
     assert_eq!(
@@ -510,7 +493,7 @@ fn abandoned_reservations_and_stopped_guest_rooms_release_active_slots() {
     assert!(command(&mut network, visitor, reserve.clone())
         .events
         .iter()
-        .any(|(_, e)| matches!(e, Event::Error { code, .. } if code == "room_limit")));
+        .any(|(_, e)| matches!(e, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "room_limit")));
     let binding = network
         .state(creator)
         .channel
@@ -530,13 +513,13 @@ fn abandoned_reservations_and_stopped_guest_rooms_release_active_slots() {
     assert!(command(&mut network, visitor, reserve.clone())
         .events
         .iter()
-        .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+        .any(|(_, e)| matches!(e, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { .. }, .. })));
     command(&mut network, creator, json!({"type":"leave"}));
     for _ in 1..32 {
         assert!(command(&mut network, visitor, reserve.clone())
             .events
             .iter()
-            .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+            .any(|(_, e)| matches!(e, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { .. }, .. })));
     }
 }
 
@@ -553,7 +536,7 @@ fn connect_pair(core: &mut RoomNetwork, endpoints: [Uuid; 2], pair_id: Uuid) {
         assert!(!effects
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Error { .. })));
+            .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     }
 }
 
@@ -599,10 +582,8 @@ fn invite(core: &mut RoomNetwork, connection: Uuid, room: &str) -> String {
     .events
     .into_iter()
     .find_map(|(_, e)| match e {
-        Event::RoomReply {
-            result: RoomResult::Invite { key }, request_id, ..
-        } => {
-            assert_eq!(request_id.as_deref(), Some("invite"));
+        Event::Reply { room_id: Some(_), request_id, result: ReplyResult::Invite { key } } => {
+            assert_eq!(request_id, "invite");
             Some(key)
         }
         _ => None,
@@ -612,11 +593,7 @@ fn invite(core: &mut RoomNetwork, connection: Uuid, room: &str) -> String {
 fn rejected(effects: Effects) {
     assert!(effects.events.iter().any(|(_, e)| matches!(
         e,
-        Event::Error { .. }
-            | Event::RoomReply {
-                result: RoomResult::Error { .. },
-                ..
-            }
+        Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. }
     )));
 }
 fn core() -> RoomNetwork {
@@ -647,14 +624,10 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
         .events
         .into_iter()
         .find_map(|(recipient, event)| match event {
-            Event::RoomReply {
-                room_id,
-                result: RoomResult::InviteState { invitation },
-                request_id,
-            } => {
+            Event::Reply { room_id: Some(room_id), request_id, result: ReplyResult::InviteState { invitation } } => {
                 assert_eq!(recipient, connection);
                 assert_eq!(room_id, room);
-                assert_eq!(request_id.as_deref(), Some("read-invite"));
+                assert_eq!(request_id, "read-invite");
                 Some(invitation)
             }
             _ => None,
@@ -689,7 +662,7 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
     assert!(!denied
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::RoomReply { result: RoomResult::InviteState { .. }, .. })));
+        .any(|(_, event)| matches!(event, Event::Reply { room_id: Some(_), result: ReplyResult::InviteState { .. }, .. } | Event::Deferred { result: ReplyResult::InviteState { .. }, .. })));
     rejected(denied);
     for connection in [owner, creator, reader] {
         let snapshot = serde_json::to_string(network.state(connection)).unwrap();
@@ -833,10 +806,7 @@ fn topology_read_uses_current_room_admission_and_binding_without_host_turns() {
     let old_binding = match &effects.events[0] {
         (
             connection,
-            Event::RoomReply {
-                result: RoomResult::Topology { topology },
-                ..
-            },
+            Event::Reply { room_id: Some(_), result: ReplyResult::Topology { topology }, .. } | Event::Deferred { result: ReplyResult::Topology { topology }, .. },
         ) if *connection == reader => topology.binding_id,
         _ => panic!("admitted reader receives its scoped reply"),
     };
@@ -880,7 +850,7 @@ fn topology_read_uses_current_room_admission_and_binding_without_host_turns() {
     );
     let effects = command(&mut core, owner, query(&private, None));
     assert!(effects.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { result: RoomResult::Topology { topology }, .. } if topology.binding_id != old_binding)));
+        Event::Reply { room_id: Some(_), result: ReplyResult::Topology { topology }, .. } | Event::Deferred { result: ReplyResult::Topology { topology }, .. } if topology.binding_id != old_binding)));
     rejected(command(&mut core, reader, query(&private, None)));
 }
 
@@ -916,7 +886,7 @@ fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() 
             json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","source":{"kind":"screen","name":null},"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
         );
         assert!(duplicate.events.iter().any(|(_, event)| matches!(event,
-            Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "source_already_published")));
+            Event::Error { room_id: Some(_), code } if code == "source_already_published")));
         assert_eq!(
             core.state(peers[0])
                 .publications
@@ -990,9 +960,9 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     assert!(!browsing
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { .. })));
+        .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     assert!(
-        matches!(core.peer_request(b, &quiet, piik_channel_core::conversation::ConversationCommand::History { before: None }).result,
+        matches!(core.peer_request(b, &quiet, piik_channel_core::conversation::ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] }).result,
         Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Page { messages, .. })) if messages.is_empty())
     );
     let after = state(
@@ -1203,7 +1173,7 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
         .iter()
         .any(|entry| entry.id == room));
     for request in [
-        piik_channel_core::conversation::ConversationCommand::History { before: None },
+        piik_channel_core::conversation::ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
         piik_channel_core::conversation::ConversationCommand::Chat {
             mentions: vec![],
             reply: None,
@@ -1370,15 +1340,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert_eq!(active.publications.len(), 1);
     assert_eq!(active.voice.len(), 1);
     let policy = original.policy(&room);
-    let mut legacy = serde_json::to_value(original.authority.export_backup()).unwrap();
-    for user in legacy["state"]["users"].as_array_mut().unwrap().iter_mut() {
-        user["roles"] = if user["id"] == json!(policy.creator_id) {
-            json!([])
-        } else {
-            json!(["member", "moderator"])
-        };
-    }
-    let checkpoint = serde_json::to_string(&legacy).unwrap();
+    let checkpoint = serde_json::to_string(&original.authority.export_backup()).unwrap();
     assert!(!checkpoint.contains(&credential));
     assert!(!checkpoint.contains(&owner_credential));
     assert!(!checkpoint.contains(&key));
@@ -1389,13 +1351,6 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let backup: piik_channel_core::backup::DomainMetadata =
         serde_json::from_str(&checkpoint).unwrap();
     restored.authority = backup.into_authority(vec![]).unwrap();
-    assert!(
-        serde_json::to_value(restored.authority.export_backup()).unwrap()["state"]["users"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|user| user.get("roles").is_none())
-    );
     let new_page = Uuid::new_v4();
     let (_, _, initial) = admit(
         &mut restored,
@@ -1434,7 +1389,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert!(!browsing
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { .. })));
+        .any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     assert!(restored
         .state(new_page)
         .channel
@@ -1444,7 +1399,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let history = restored.peer_request(
         new_page,
         &room,
-        piik_channel_core::conversation::ConversationCommand::History { before: None },
+        piik_channel_core::conversation::ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
     );
     assert!(
         matches!(history.result, Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Page { messages, .. })) if messages.is_empty())
@@ -1534,15 +1489,11 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
         .events
         .iter()
         .find_map(|(recipient, event)| match event {
-            Event::RoomReply {
-                request_id: Some(id),
-                result,
-                ..
-            } if *recipient == actor && id == "before-revoke" => Some(result),
+            Event::Reply { room_id: Some(_), request_id: id, result } if *recipient == actor && id == "before-revoke" => Some(result),
             _ => None,
         })
         .expect("the original request receives its scoped result");
-    assert!(matches!(result, RoomResult::Done));
+    assert!(matches!(result, ReplyResult::Done));
     for (name, credential, departure) in [
         ("Returning", Some(credential.as_str()), false),
         ("Newcomer", None, true),
@@ -1594,7 +1545,7 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
             .iter()
             .any(|(recipient, event)| *recipient == connection
                 && matches!(event,
-            Event::RoomReply { request_id:Some(id),result:RoomResult::Done,.. } if id=="entry")));
+            Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Done } if id=="entry")));
     }
 }
 
@@ -1661,7 +1612,7 @@ fn resumed_host_can_retire_its_current_binding_before_registering_again() {
         json!({"type":"host_output","roomId":id,"output":late_output}),
     );
     assert!(early_output.events.iter().any(|(to, event)| *to == resumed
-        && matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
+        && matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == "stale_room_host")));
 
     let stop = |binding: Uuid| json!({"type":"host_stop","roomId":id,"bindingId":binding,"requestId":"stop"});
     for (connection, candidate, expected) in [
@@ -1671,11 +1622,11 @@ fn resumed_host_can_retire_its_current_binding_before_registering_again() {
     ] {
         let rejected = network.command(connection, stop(candidate));
         assert!(rejected.events.iter().any(|(to, event)| *to == connection
-            && matches!(event, Event::Error { code, .. } if code == expected)));
+            && matches!(event, Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } if code == expected)));
     }
     let stopped = network.command(resumed, stop(binding));
     assert!(stopped.events.iter().any(|(to, event)| *to == resumed
-        && matches!(event, Event::Ack { request_id } if request_id == "stop")));
+        && matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id == "stop")));
     let room = network
         .state(resumed)
         .channel
@@ -1684,4 +1635,118 @@ fn resumed_host_can_retire_its_current_binding_before_registering_again() {
         .find(|room| room.id == id)
         .unwrap();
     assert!(room.delivery.is_none() && !room.available);
+}
+
+#[test]
+fn conversation_snapshot_follows_current_connection_and_room_authority() {
+    use piik_channel_core::wire_images::{StateImageDecoder, StateImageEncoder};
+
+    let mut network = core();
+    let [writer, disconnected, full, text, restored, final_text] =
+        [(); 6].map(|_| Uuid::new_v4());
+    admit(
+        &mut network,
+        writer,
+        json!({"type":"join","name":"Writer","ownerKey":"owner"}),
+    );
+    let (disconnected_session, _, _) = admit(
+        &mut network,
+        disconnected,
+        json!({"type":"join","name":"Recovering"}),
+    );
+    let effects = network.authority.disconnect(disconnected, 100);
+    network.deliver(effects);
+    let public = room(&mut network, writer, "public", false);
+    let listed = room(&mut network, writer, "private", false);
+    let hidden = room(&mut network, writer, "private", true);
+    let (session, credential, _) = admit(
+        &mut network,
+        full,
+        json!({"type":"join","name":"Reader","canUsePeerTransport":false}),
+    );
+    let effects = command(
+        &mut network,
+        full,
+        json!({"type":"browse","roomId":public,"active":true,"requestId":"browse"}),
+    );
+    let baseline = state(effects, full);
+    assert_eq!(baseline.channel.rooms.len(), 2);
+    assert!(baseline.channel.rooms.iter().any(|room| room.id == public && room.reading));
+    assert!(baseline.channel.rooms.iter().any(|room| room.id == listed && !room.authorized));
+    assert!(!baseline.channel.rooms.iter().any(|room| room.id == hidden));
+
+    let reopen = |form| json!({
+        "type":"join","name":"Reader","credential":credential,"sessionId":session,
+        "snapshotForm":form,"canUsePeerTransport":false,
+    });
+    let project = |state: &Snapshot| json!({
+        "channel":{"hostingMode":state.channel.hosting_mode,
+          "rooms":state.channel.rooms.iter().map(|room| {
+            let mut fields = json!({"id":room.id,"authorized":room.authorized,
+                "available":room.available,"reading":room.reading});
+            if let Some(delivery) = &room.delivery {
+                fields["delivery"] = json!(delivery);
+            }
+            fields
+          }).collect::<Vec<_>>()},
+        "sessions":state.sessions.iter().map(|session| json!({
+            "id":session.id,"signingKey":session.signing_key,"major":session.version.major,"minor":session.version.minor
+        })).collect::<Vec<_>>(),
+    });
+    let effects = command(&mut network, text, reopen("conversation"));
+    assert_eq!(effects.close, [full]);
+    let welcome = effects.events.iter().find_map(|(target, event)| {
+        (*target == text && matches!(event, Event::ConversationWelcome { .. })).then_some(event)
+    }).unwrap();
+    let encoded = StateImageEncoder::default().encode(welcome).unwrap();
+    let welcome: Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(welcome["type"], "welcome");
+    assert_eq!(welcome["sessionId"], json!(session));
+    assert_eq!(welcome["connectionId"], json!(text));
+    assert_eq!(welcome["selfProfile"].as_object().unwrap().len(), 1);
+    assert_eq!(welcome["state"], project(&baseline));
+    assert!(welcome["state"]["sessions"].as_array().unwrap().iter()
+        .any(|value| value["id"] == json!(disconnected_session)));
+    assert!(StateImageDecoder::default().decode(&encoded).is_err());
+
+    let effects = network.authority.disconnect(full, 100);
+    assert!(effects.events.is_empty());
+    let effects = command(
+        &mut network,
+        writer,
+        json!({"type":"update_room","roomId":public,"access":"private","requestId":"private"}),
+    );
+    let revoked = effects.events.iter().rev().find_map(|(target, event)| {
+        (*target == text && matches!(event, Event::ConversationState { .. })).then_some(event)
+    }).unwrap();
+    let revoked: Value = serde_json::to_value(revoked).unwrap();
+    assert_eq!(revoked["type"], "state");
+    assert!(revoked["state"]["channel"]["rooms"].as_array().unwrap().iter()
+        .any(|room| room["id"] == public && room["authorized"] == false && room.get("delivery").is_none()));
+
+    let effects = command(&mut network, restored, reopen("future-form"));
+    assert_eq!(effects.close, [text]);
+    let restored_state = effects.events.iter().find_map(|(target, event)| match event {
+        Event::Welcome { session_id, state, .. } if *target == restored && *session_id == session => Some(state),
+        _ => None,
+    }).unwrap();
+    assert_eq!(revoked["state"], project(restored_state));
+
+    let effects = command(&mut network, final_text, reopen("conversation"));
+    assert_eq!(effects.close, [restored]);
+    let effects = command(
+        &mut network,
+        final_text,
+        json!({"type":"leave","requestId":"leave"}),
+    );
+    assert_eq!(effects.close, [final_text]);
+    let frames: Vec<_> = effects.events.iter().filter(|(target, _)| *target == final_text)
+        .map(|(_, event)| serde_json::to_value(event).unwrap()).collect();
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0]["type"], "state");
+    assert_eq!(frames[0]["state"]["channel"]["rooms"], json!([]));
+    assert!(frames[0]["state"]["sessions"].as_array().unwrap().iter()
+        .all(|value| value["id"] != json!(session)));
+    assert_eq!(frames[1], json!({"type":"reply","requestId":"leave","result":{"type":"done"}}));
+    assert!(effects.events.iter().any(|(target, event)| *target == writer && matches!(event, Event::State { .. })));
 }

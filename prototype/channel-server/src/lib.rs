@@ -135,7 +135,7 @@ pub fn ice_servers_from_environment() -> anyhow::Result<Vec<serde_json::Value>> 
             Ok(servers)
         }
         Err(std::env::VarError::NotPresent) => Ok(vec![serde_json::json!({ "urls": [
-            "stun:stun.cloudflare.com:3478", "stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"
+            "stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302", "stun:stun.nextcloud.com:443"
         ] })]),
         Err(std::env::VarError::NotUnicode(_)) => {
             anyhow::bail!("PIIK_CHANNEL_ICE_SERVERS must be valid Unicode")

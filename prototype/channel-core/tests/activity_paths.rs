@@ -3,10 +3,11 @@
 #[allow(dead_code)]
 mod support;
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     conversation::{ConversationCommand, ConversationResult},
     history::HistoryResult,
-    host::{RoomResult, RoomSummary, ServiceEndpoint},
+    host::{RoomSummary, ServiceEndpoint},
     wire::{Event, FlowBinding, HostingMode, PairInfo, RoomAccess},
     AttachmentDescriptor, RoomState,
 };
@@ -18,11 +19,7 @@ fn command(net: &mut RoomNetwork, socket: Uuid, request: Value) {
     let kind = request["type"].as_str().unwrap().to_owned();
     for (_, event) in net.command(socket, request).events {
         match event {
-            Event::Error { code, .. }
-            | Event::RoomReply {
-                result: RoomResult::Error { code },
-                ..
-            } => {
+            Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => {
                 panic!("{kind} failed: {code}")
             }
             _ => {}
@@ -146,7 +143,7 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
         assert!(bad
             .events
             .iter()
-            .any(|(_, e)| matches!(e, Event::Error { .. })));
+            .any(|(_, e)| matches!(e, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
         for (reporter, state) in [
             (socket, "disconnected"),
             (b, "connected"),

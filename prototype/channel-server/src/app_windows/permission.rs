@@ -231,7 +231,7 @@ impl Prompt {
         theme: &Theme,
         language: Language,
     ) -> Result<Self> {
-        let size = LogicalSize::new(440.0, 240.0);
+        let size = LogicalSize::new(440.0, 280.0);
         let physical = size.to_physical::<i32>(owner.scale_factor());
         let position = owner.outer_position()?;
         let parent_size = owner.outer_size();

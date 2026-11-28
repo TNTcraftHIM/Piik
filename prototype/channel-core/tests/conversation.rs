@@ -1,5 +1,6 @@
 #![cfg(feature = "sqlite")]
 mod support;
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     conversation::{
         verify, verify_delivery, ConversationAddress, ConversationCommand, ConversationRecord,
@@ -37,7 +38,7 @@ fn relay(
         !effects
             .events
             .iter()
-            .any(|(_, event)| matches!(event, Event::Ack { .. })),
+            .any(|(_, event)| matches!(event, Event::Reply { result: ReplyResult::Done, .. })),
         "forwarding is not confirmation"
     );
     effects
@@ -61,9 +62,9 @@ fn refused(network: &mut RoomNetwork, connection: Uuid, target: Uuid, packet: &S
     let [(recipient, event)] = effects.events.as_slice() else { panic!("expected one refusal") };
     assert_eq!(*recipient, target);
     if target == connection {
-        assert!(matches!(event, Event::Error {code: actual, request_id: Some(id)} if actual == code && id == "chat"));
+        assert!(matches!(event, Event::Reply { request_id: id, result: ReplyResult::Error { code: actual }, .. } if actual == code && id == "chat"));
     } else {
-        assert!(matches!(event, Event::RoomReply {result: piik_channel_core::host::RoomResult::Error { code: actual }, request_id: Some(id), ..} if actual == code && id == "chat"));
+        assert!(matches!(event, Event::Reply { room_id: Some(_), request_id: id, result: ReplyResult::Error { code: actual } } if actual == code && id == "chat"));
     }
 }
 
@@ -82,11 +83,11 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     join(&mut network, outsider);
     let room = network.create(owner, RoomAccess::Private, false);
     let key = network
-        .command(owner, json!({"type":"room_invite","roomId":room}))
+        .command(owner, json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -133,6 +134,56 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             },
         )
         .unwrap();
+    let mut future = serde_json::to_value(&address).unwrap();
+    future["command"] = json!(["future_action"]);
+    let array = signer.sign(reader_session, &future).unwrap();
+    rejected(&mut network, reader, &array, "invalid_conversation");
+    future["command"] = json!({"type":"future_action","detail":1});
+    let signed = signer.sign(reader_session, &future).unwrap();
+    let delivered = relay(&mut network, reader, owner, &signed);
+    assert_eq!(delivered.payload, signed.payload);
+    assert_eq!(delivered.signature, signed.signature);
+    let error = network.conversation(&room, &delivered).replies().unwrap().remove(0);
+    assert!(matches!(&error.body, piik_channel_core::conversation::WriterBody::Record(ConversationRecord::Error { code }) if code == "unsupported"));
+    let reader_view: ConversationView = serde_json::from_value(serde_json::to_value(network.state(reader)).unwrap()).unwrap();
+    future["command"] = json!({
+        "type":"react", "nonce":1, "reaction":"heart", "futureCommand":true,
+        "target":{"type":"person","userId":network.policy(&room).creator_id,"futureTarget":true}
+    });
+    let signed = signer.sign(reader_session, &future).unwrap();
+    let delivered = relay(&mut network, reader, owner, &signed);
+    let replies = network.conversation(&room, &delivered).replies().unwrap();
+    assert!(matches!(replies[0].content(), ConversationRecord::Reaction { event: Some(_), .. }));
+    for field in ["record", "notice"] {
+        let mut reply = serde_json::to_value(address.reply()).unwrap();
+        reply[field] = serde_json::to_value(replies[0].content()).unwrap();
+        reply[field]["futureRecord"] = json!(true);
+        reply[field]["event"]["target"]["futureTarget"] = json!(true);
+        let signed = signer.sign(owner_session, &reply).unwrap();
+        let mut envelope = serde_json::to_value(&signed).unwrap();
+        envelope["futurePacket"] = json!(true);
+        let packet = serde_json::from_value(envelope).unwrap();
+        let delivered = relay(&mut network, owner, reader, &packet);
+        assert_eq!(delivered.payload, signed.payload);
+        let result = serde_json::to_value(reader_view.verify(&delivered, reader_session).unwrap()).unwrap();
+        assert_eq!(result["role"], field);
+        assert_eq!(result[field]["event"]["reaction"], "heart");
+    }
+    for field in ["record", "notice"] {
+        let mut reply = serde_json::to_value(address.reply()).unwrap();
+        reply[field] = json!({"type":"future_result","detail":2});
+        let signed = signer.sign(owner_session, &reply).unwrap();
+        let delivered = relay(&mut network, owner, reader, &signed);
+        assert_eq!(delivered.payload, signed.payload);
+        assert_eq!(delivered.signature, signed.signature);
+        let result = serde_json::to_value(reader_view.verify(&delivered, reader_session).unwrap()).unwrap();
+        if field == "record" {
+            assert_eq!(result["role"], "unknown_record");
+            assert_eq!(result["requestId"], address.request_id);
+        } else {
+            assert_eq!(result, json!({"role":"ignored"}));
+        }
+    }
     let mut confirmed = None;
     for retry in [false, true] {
         let forwarded = relay(&mut network, reader, owner, &packet);
@@ -164,8 +215,8 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             let returned = relay(&mut network, owner, reader, &returned);
             verify_delivery(&returned, reader_session, network.state(reader)).unwrap();
             let parsed: ConversationReply = verify(&returned, signer.signing_key()).unwrap();
-            if let ConversationRecord::Confirmed { message, inserted } = parsed.record {
-                assert_eq!(inserted, !retry);
+            if let ConversationRecord::Confirmed { message, inserted } = parsed.content() {
+                assert_eq!(*inserted, !retry);
                 if retry {
                     assert_eq!(confirmed, Some(message.message.id));
                 } else {
@@ -208,15 +259,18 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             reader_session,
             &ConversationRequest {
                 address: address.clone(),
-                command: ConversationCommand::History { before: None },
+                command: ConversationCommand::History {
+                    before: None,
+                    parts: vec!["unknownPart".into(), "inlineImages".into(), "inlineImages".into()],
+                },
             },
         )
         .unwrap();
     let forwarded = relay(&mut network, reader, owner, &history);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
     assert_eq!(replies.len(), 1);
-    assert!(matches!(&replies[0].record, ConversationRecord::HistoryPage { messages, .. }
-        if messages.len() == 1 && messages[0].message.id == confirmed.unwrap()));
+    assert!(matches!(replies[0].content(), ConversationRecord::HistoryPage { parts, messages, .. }
+        if parts == &["inlineImages"] && messages.len() == 1 && messages[0].message.id == confirmed.unwrap()));
     rejected(
         &mut network,
         outsider,
@@ -238,7 +292,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             reader_session,
             &ConversationRequest {
                 address: peer_address,
-                command: ConversationCommand::History { before: None },
+                command: ConversationCommand::History { before: None, parts: vec!["inlineImages".into()] },
             },
         )
         .unwrap();
@@ -271,7 +325,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     let owner_user = network.policy(&room).creator_id;
     let own_revoke = network.command(owner, json!({"type":"revoke_room_access","roomId":room,"userId":owner_user}));
     assert!(own_revoke.events.iter().any(|(_, event)| matches!(event,
-        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "forbidden")));
+        Event::Error { room_id: Some(_), code } if code == "forbidden")));
     relay(&mut network, owner, reader, &private_reply);
     let revoke = piik_channel_core::wire::Request::parse(
         &json!({"type":"revoke_room_access","roomId":room,"userId":reader_user}).to_string(),
@@ -292,7 +346,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         &json!({"type":"host_output","roomId":room,"output":revoked}).to_string(),
     ).unwrap();
     let stale = network.authority.handle(owner, output, 112);
-    assert!(!stale.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
+    assert!(!stale.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::Reply { result: ReplyResult::Error { .. }, .. })));
     refused(&mut network, owner, reader, &private_reply, "room_busy");
     network.deliver(cover);
     refused(&mut network, owner, reader, &private_reply, "room_access_required");
@@ -342,12 +396,12 @@ fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
     }).unwrap();
     let forwarded = relay(&mut network, reader, owner, &packet);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
-    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: true } if message.message.seq == 1));
+    assert!(matches!(replies[0].content(), ConversationRecord::Confirmed { message, inserted: true } if message.message.seq == 1));
     let confirmed = signer.sign(owner_session, &replies[0]).unwrap();
 
     let live = ConversationReply {
         address: ConversationAddress { recipient: observer_session, ..replies[0].address.clone() },
-        record: replies[0].record.broadcast().unwrap(),
+        body: piik_channel_core::conversation::WriterBody::Notice(replies[0].content().broadcast().unwrap()),
     };
     let live = signer.sign(owner_session, &live).unwrap();
 
@@ -365,7 +419,7 @@ fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
     let packet = signer.sign(reader_session, &retry).unwrap();
     let forwarded = relay(&mut network, reader, owner, &packet);
     let replies = network.conversation(&room, &forwarded).replies().unwrap();
-    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: false } if message.message.seq == 1));
+    assert!(matches!(replies[0].content(), ConversationRecord::Confirmed { message, inserted: false } if message.message.seq == 1));
     let confirmed = signer.sign(owner_session, &replies[0]).unwrap();
     // This real permission check will fail. Read remains available after the writer answers.
     let change = json!({"type":"revoke_room_access","roomId":room,"userId":owner_user});
@@ -381,15 +435,13 @@ fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
     stale.address.binding_id = Uuid::new_v4();
     rejected(&mut network, owner, &signer.sign(owner_session, &stale).unwrap(), "invalid_conversation_scope");
     let fanout = network.command(owner, json!({"type":"conversation","packet":live}));
-    assert!(matches!(fanout.events.as_slice(),
-        [(target, Event::RoomReply { room_id, result: piik_channel_core::host::RoomResult::Error { code }, request_id: Some(id) })]
-            if *target == observer && room_id == &room && code == "room_busy" && id == &address.request_id));
+    assert!(fanout.events.is_empty());
     let after = network.deliver(covering);
     assert!(after.events.iter().any(|(connection, event)| *connection == owner && matches!(event,
-        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "forbidden")));
+        Event::Error { room_id: Some(_), code } if code == "forbidden")));
     assert!(network.state(reader).channel.rooms.iter().any(|r| r.id == room && r.authorized && r.available));
     assert!(matches!(blocked.events.as_slice(),
-        [(target, Event::RoomReply { room_id, result: piik_channel_core::host::RoomResult::Error { code }, request_id: Some(id) })]
+        [(target, Event::Reply { room_id: Some(room_id), request_id: id, result: ReplyResult::Error { code } })]
             if *target == reader && room_id == &room && code == "room_busy" && id == &retry.address.request_id));
 }
 
@@ -472,4 +524,85 @@ fn assert_no_payload_grants(network: &RoomNetwork, connection: Uuid) {
         pair.rooms.is_empty() && pair.incoming.is_empty() && pair.outgoing.is_empty()
     }));
     assert!(state.files.is_empty() && state.watch_bytes.is_empty());
+}
+
+#[test]
+fn unsupported_read_policy_recovers_through_one_writer_sync() {
+    use piik_channel_core::{host::{HostAction, HostInput}, wire::Request};
+
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    let writer_session = join(&mut network, owner);
+    let reader_session = join(&mut network, reader);
+    let room = network.create(owner, RoomAccess::Public, false);
+    network.command(reader, json!({"type":"browse","roomId":room,"active":true}));
+    // Keep a decoded screen flow active while the read policy is revalidated.
+    let screen = Uuid::new_v4();
+    network.command(owner, json!({"type":"publish","publication":{
+        "id":screen,"roomId":room,"kind":"screen","source":{"kind":"screen","name":null},
+        "videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":30,
+            "maxBitrate":2500000},"degradationPreference":"balanced"}
+    }}));
+    network.command(reader, json!({"type":"subscribe","publicationId":screen,"enabled":true}));
+    let edge = network.state(reader).pairs.iter().find(|p| p.peer_id == writer_session).unwrap().id;
+    for connection in [reader, owner] {
+        network.command(connection, json!({"type":"link_state","pairId":edge,"state":"connected"}));
+    }
+    let active_flow = |net: &RoomNetwork| net.state(reader).pairs.iter().find(|p| p.id == edge)
+        .unwrap().incoming.iter().find(|f| f.publication_id == screen).unwrap().id;
+    let flow = active_flow(&network);
+    network.command(reader, json!({"type":"flow_state","pairId":edge,"flowId":flow,"state":"decoded"}));
+    let audience = |net: &RoomNetwork| net.state(owner).publications.iter().find(|p| p.id == screen)
+        .unwrap().audience.iter().find(|a| a.session_id == reader_session).unwrap().state;
+    assert_eq!(audience(&network), piik_channel_core::wire::AudienceState::Active);
+    let binding = network.state(reader).channel.rooms.iter().find(|r| r.id == room)
+        .unwrap().delivery.as_ref().unwrap().binding_id;
+    let history = SessionSigner::from_seed([1; 32]).sign(reader_session, &ConversationRequest {
+        address: ConversationAddress {
+            room_id: room.clone(), binding_id: binding, sender: reader_session,
+            recipient: writer_session, request_id: "chat".into(),
+        },
+        command: ConversationCommand::History { before: None, parts: vec![] },
+    }).unwrap();
+    relay(&mut network, reader, owner, &history);
+
+    let handle = |net: &mut RoomNetwork, request: serde_json::Value| {
+        net.authority.handle(owner, Request::parse(&request.to_string()).unwrap(), 101)
+    };
+    let take_input = |net: &mut RoomNetwork, request| {
+        handle(net, request).events.into_iter().find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        }).unwrap()
+    };
+    // Hold a real, earlier writer output while the Domain issues the read barrier.
+    let earlier = take_input(&mut network, json!({"type":"browse","roomId":room,"active":true,"requestId":"earlier"}));
+    let earlier = network.host_turn(&room, earlier);
+    let barrier = take_input(&mut network, json!({"type":"update_room","roomId":room,"access":"private","requestId":"policy"}));
+    let revision = barrier.revision;
+    // Simulate a new read-policy request as decoded by an older writer.
+    let mut wire = serde_json::to_value(barrier).unwrap();
+    wire["action"] = json!({"type":"future_read_policy"});
+    let older: HostInput = serde_json::from_value(wire).unwrap();
+    assert!(older.action.is_unsupported());
+    let unsupported = json!({"type":"host_unsupported","roomId":room,"bindingId":binding,"revision":revision});
+    let answer = handle(&mut network, unsupported.clone());
+    assert!(answer.events.iter().any(|(_, e)| matches!(e, Event::Reply {
+        request_id, result: ReplyResult::Error { code }, ..
+    } if request_id == "policy" && code == "unsupported")));
+    assert!(handle(&mut network, unsupported).events.is_empty());
+    rejected(&mut network, reader, &history, "room_busy");
+    let lower = handle(&mut network, json!({"type":"host_output","roomId":room,"output":earlier}));
+    assert!(lower.events.iter().any(|(_, e)| matches!(e, Event::Reply {
+        request_id, result: ReplyResult::Done, ..
+    } if request_id == "earlier")));
+    rejected(&mut network, reader, &history, "room_busy");
+
+    assert_eq!(answer.events.iter().filter(|(_, e)| matches!(e, Event::HostInput { input, .. }
+        if matches!(input.action, HostAction::Sync) && input.binding_id == binding && input.revision > revision)).count(), 1);
+    network.deliver(answer);
+    relay(&mut network, reader, owner, &history);
+    assert_eq!(active_flow(&network), flow);
+    assert_eq!(audience(&network), piik_channel_core::wire::AudienceState::Active);
 }

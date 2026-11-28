@@ -54,9 +54,8 @@ fixed.
      the message as stored, so its sender sees what was kept. What a writer
      has to act on arrives as a request of its own, which an older writer
      refuses as unsupported in that request's reply
-     ([ADR-0017](./0017-contracts-fixed-before-release.md), decision 1). No
-     capability is announced per feature: a client reads the writer's two
-     numbers to decide what to offer.
+     ([versioning](../standards/versioning.md#extending-interfaces)). A client
+     can use the writer's minor version to decide what to offer.
    - *A program is a participant* (decision 5). It joins and acts through
      the wire a person's client uses, so no second interface has to keep
      step with the first, and joining never comes to depend on something only

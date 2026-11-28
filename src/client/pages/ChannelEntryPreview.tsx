@@ -9,7 +9,8 @@ const cases = [
   { value: "offline", zh: "连接断开", en: "Disconnected", error: "disconnected" },
   { value: "capacity", zh: "连接已满", en: "Connection limit", error: "channel_full" },
   { value: "runtime", zh: "组件加载失败", en: "Components unavailable", error: "room_runtime_unavailable" },
-  { value: "version", zh: "版本不兼容", en: "Incompatible version", error: "incompatible_protocol" },
+  { value: "page-version", zh: "页面需要刷新", en: "Page needs reloading", error: "page_update_required" },
+  { value: "site-version", zh: "站点需要更新", en: "Site needs updating", error: "domain_update_required" },
   { value: "identity", zh: "身份未被接受", en: "Identity rejected", error: "invalid_credential" },
   { value: "browser", zh: "浏览器不支持", en: "Browser unsupported", error: "webassembly_unavailable" },
 ] as const;

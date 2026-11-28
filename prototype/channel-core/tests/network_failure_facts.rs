@@ -2,8 +2,9 @@
 
 mod support;
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
-    host::RoomResult,
+
     wire::{Event, PairInfo, RoomAccess},
     Effects,
 };
@@ -15,11 +16,7 @@ fn command(net: &mut RoomNetwork, connection: Uuid, value: Value, now: u64) -> E
     let result = net.command_at(connection, value, now);
     for (_, event) in &result.events {
         match event {
-            Event::Error { code, .. }
-            | Event::RoomReply {
-                result: RoomResult::Error { code },
-                ..
-            } => {
+            Event::Error { code, .. } | Event::Reply { result: ReplyResult::Error { code }, .. } => {
                 panic!("production request failed: {code}")
             }
             _ => {}
@@ -243,10 +240,7 @@ fn replaced_pair(media_failure_first: bool) {
     .events
     .into_iter()
     .find_map(|(_, event)| match event {
-        Event::RoomReply {
-            result: RoomResult::Topology { topology },
-            ..
-        } => Some(topology),
+        Event::Reply { room_id: Some(_), result: ReplyResult::Topology { topology }, .. } | Event::Deferred { result: ReplyResult::Topology { topology }, .. } => Some(topology),
         _ => None,
     })
     .unwrap();

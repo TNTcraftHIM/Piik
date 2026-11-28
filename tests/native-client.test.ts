@@ -1,8 +1,8 @@
+import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
-import { APP_PROTOCOL, channelAppDiscovery, discoverChannelAppHealth, nativeConnectionMetricsSchema } from "../src/client/channel/app-link";
-import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
+import { channelAppDiscovery, discoverChannelAppHealth, nativeConnectionMetricsSchema } from "../src/client/channel/app-link";
 
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema } from "../src/client/native/wire";
 
@@ -12,7 +12,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("Native metrics retain unknown measurements and reject unscoped response fields", () => {
+it("Native metrics preserve nullable measurements and omit unscoped response fields", () => {
   const id = crypto.randomUUID();
   const value = { sessionId: id, bindingId: id, connections: [{ pairId: id, connectionId: id, peerId: id,
     sampleTimestampMs: null, ageMs: null, rttMs: null, bweBps: null,
@@ -20,7 +20,10 @@ it("Native metrics retain unknown measurements and reject unscoped response fiel
       outputId: null, mid: "sound", rid: null, codec: null, sampleTimestampMs: 500, ageMs: 20, bytes: 100, packets: 2,
       rttMs: null, lossFraction: null, jitterMs: null }] }] };
   expect(nativeConnectionMetricsSchema.parse(value)).toEqual(value);
-  expect(nativeConnectionMetricsSchema.safeParse({ ...value, address: "private" }).success).toBe(false);
+  const connection = value.connections[0];
+  expect(nativeConnectionMetricsSchema.parse({ ...value, address: "private", connections: [{
+    ...connection, address: "private", streams: [{ ...connection.streams[0], address: "private" }],
+  }] })).toEqual(value);
   expect(nativeConnectionMetricsSchema.safeParse({ ...value, connections: [{ ...value.connections[0], streams: [
     { ...value.connections[0].streams[0], sampleTimestampMs: -1 },
   ] }] }).success).toBe(false);
@@ -36,14 +39,14 @@ it("discovers the room App independently of v10 media control and checks health 
     const url = new URL(raw), port = Number(url.port);
     if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port });
     if (port !== NATIVE_CLIENT_PORT_START + 1) throw new TypeError("No listener");
-    const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
+    const identity = { service: "piik-channel-app", ...PRODUCT_VERSION, port };
     if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
     return approved ? Response.json({ ...identity, token: "instance-token" }) : new Response(null, { status: 403 });
   }));
   await expect(channelAppDiscovery.connect()).resolves.toBe(`http://127.0.0.1:${NATIVE_CLIENT_PORT_START + 1}/client?site=https%3A%2F%2Fchannel.example`);
-  await expect(discoverChannelAppHealth().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
+  await expect(discoverChannelAppHealth().catch(channelAppDiscovery.compatibilityIssue)).resolves.toBe("app-update");
   approved = true;
-  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ protocol: APP_PROTOCOL, port: NATIVE_CLIENT_PORT_START + 1, token: "instance-token" });
+  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ ...PRODUCT_VERSION, port: NATIVE_CLIENT_PORT_START + 1, token: "instance-token" });
 });
 
 it("uses an explicit non-secret App port outside the default scan range", async () => {
@@ -53,7 +56,7 @@ it("uses an explicit non-secret App port outside the default scan range", async 
   const bootstrap = await import("../src/client/lib/app-launch");
   bootstrap.takeClientLaunchBootstrap();
   try {
-    const fetcher = vi.fn(async () => Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 48995, token: "instance-token" }));
+    const fetcher = vi.fn(async () => Response.json({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 48995, token: "instance-token" }));
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: 48995 });
     expect(fetcher).toHaveBeenCalledOnce();
@@ -66,7 +69,7 @@ it("uses an explicit non-secret App port outside the default scan range", async 
 });
 
 describe("current App discovery", () => {
-  const health = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: NATIVE_CLIENT_PORT_START, token: "fixture-token" };
+  const health = { service: "piik-channel-app", ...PRODUCT_VERSION, port: NATIVE_CLIENT_PORT_START, token: "fixture-token" };
 
   it("discovers with caller cancellation when AbortSignal.any is unavailable", async () => {
     vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
@@ -203,12 +206,12 @@ describe("current App discovery", () => {
     const fetcher = vi.fn(async (url: string) => {
       const port = Number(new URL(url).port);
       return new Response(JSON.stringify({ ...health, port,
-        protocol: port === health.port ? health.protocol + 1 : health.protocol,
+        major: port === health.port ? health.major + 1 : health.major,
       }));
     });
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverChannelAppHealth()).resolves.toMatchObject({
-      protocol: APP_PROTOCOL, port: NATIVE_CLIENT_PORT_START + 1,
+      ...PRODUCT_VERSION, port: NATIVE_CLIENT_PORT_START + 1,
       managementURL: `http://127.0.0.1:${NATIVE_CLIENT_PORT_START + 1}/client`,
     });
     expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
@@ -337,12 +340,15 @@ describe("current App discovery", () => {
     expect(fetcher.mock.calls.every(call => (call[1] as RequestInit & { targetAddressSpace: string }).targetAddressSpace === "loopback")).toBe(true);
   });
 
-  it.each([APP_PROTOCOL - 1, APP_PROTOCOL + 1])("identifies incompatible App protocol %s before reading its metadata", async protocol => {
+  it.each([[-1, "app-update"], [1, "site-update"]] as const)("reports an App major offset of %s before reading approval data", async (offset, issue) => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
     vi.stubGlobal("fetch", vi.fn(async (input: string) => Response.json({
-      service: "piik-channel-app", protocol, domainProtocol: CHANNEL_PROTOCOL, port: Number(new URL(input).port), token: { format: "different-protocol" },
+      service: "piik-channel-app", major: PRODUCT_VERSION.major + offset, minor: PRODUCT_VERSION.minor,
+      port: Number(new URL(input).port), token: { format: "different-version" },
     })));
-    await expect(discoverChannelAppHealth().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
+    await expect(channelAppDiscovery.health().catch(channelAppDiscovery.compatibilityIssue)).resolves.toBe(issue);
+    await expect(channelAppDiscovery.connect().catch(channelAppDiscovery.compatibilityIssue)).resolves.toBe(issue);
+    await expect(channelAppDiscovery.navigation!().catch(channelAppDiscovery.compatibilityIssue)).resolves.toBe(issue);
   });
 
   it.each(["health", "connect"] as const)("identifies the public 2.x App through %s without using its control protocol", async method => {
@@ -350,17 +356,20 @@ describe("current App discovery", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: string) => Response.json({
       service: "piik-client", protocol: 10, port: Number(new URL(input).port), instanceToken: "fixture-token",
     })));
-    await expect(channelAppDiscovery[method]().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
+    await expect(channelAppDiscovery[method]().catch(channelAppDiscovery.compatibilityIssue)).resolves.toBe("app-update");
   });
 
-  it.each([undefined, CHANNEL_PROTOCOL - 1])("rejects App control with mismatched domain protocol %s before approval", async domainProtocol => {
+  it("accepts newer App minors and ignores additional discovery fields", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
+    const minor = PRODUCT_VERSION.minor + 1;
+    const origin = "http://127.0.0.1:" + health.port;
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
-      const port = Number(new URL(input).port);
-      return Response.json({ ...health, port, domainProtocol, connectURL: `http://127.0.0.1:${port}/client` });
+      if (new URL(input).port !== String(health.port)) throw new TypeError("No fixture App");
+      return Response.json({ ...health, minor, connectURL: origin + "/client", windowNavigation: true, extra: { ignored: true } });
     }));
-    for (const method of ["health", "connect"] as const)
-      await expect(channelAppDiscovery[method]().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
+    await expect(channelAppDiscovery.health()).resolves.toEqual({ ...health, minor, managementURL: origin + "/client" });
+    await expect(channelAppDiscovery.connect()).resolves.toBe(origin + "/client?site=http%3A%2F%2F127.0.0.1");
+    await expect(channelAppDiscovery.navigation!()).resolves.toEqual({ url: origin + "/client", windowNavigation: true });
   });
 
   it("treats denied, absent and malformed endpoints as ordinary Browser-only operation", async () => {
@@ -369,10 +378,11 @@ describe("current App discovery", () => {
       { ...health, service: "another-service" },
       { ...health, service: "piik-client", protocol: "10" },
       { ...health, service: "piik-client", protocol: 10, port: NATIVE_CLIENT_PORT_END },
-      { ...health, protocol: String(APP_PROTOCOL) },
+      { ...health, major: String(PRODUCT_VERSION.major) },
+      { ...health, minor: undefined },
       { ...health, token: 42 },
       { ...health, token: undefined },
-      { ...health, protocol: APP_PROTOCOL, port: NATIVE_CLIENT_PORT_END },
+      { ...health, major: PRODUCT_VERSION.major + 1, port: NATIVE_CLIENT_PORT_END },
     ];
     let responseIndex = 0;
     vi.stubGlobal("fetch", vi.fn(async () => {
@@ -399,7 +409,10 @@ describe("Native capture and input schemas", () => {
     const request = { id: "a".repeat(32), peerId: crypto.randomUUID(), state: "pending" };
     const view = { mode: "ask", platform: "windows", requests: [request], simultaneous: true, gamepad: false };
     expect(remoteControlStateSchema.parse(view)).toEqual(view);
-    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ ...request, endpointId: request.peerId.replaceAll("-", "") }] }).success).toBe(false);
+    const endpointId = request.peerId.replaceAll("-", "");
+    expect(remoteControlStateSchema.parse({ ...view, requests: [{ ...request, endpointId }] })).toEqual(view);
+    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ id: request.id, state: request.state, endpointId }] }).success).toBe(false);
+    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ ...request, peerId: "invalid id" }] }).success).toBe(false);
   });
 
   it("keeps exact positive physical identities and accepts system picker zero", () => {

@@ -2,6 +2,7 @@
 
 mod support;
 
+use piik_channel_core::wire::ReplyResult;
 use piik_channel_core::{
     host::RoomSummary,
     wire::{Event, Request, RoomAccess, RoomCreationPolicy},
@@ -15,7 +16,7 @@ fn denied(effects: Effects, code: &str) {
     assert!(effects
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::Error { code: actual, .. } if actual == code)));
+        .any(|(_, event)| matches!(event, Event::Error { code: actual, .. } | Event::Reply { result: ReplyResult::Error { code: actual }, .. } if actual == code)));
 }
 
 #[test]
@@ -110,11 +111,11 @@ fn guest_policy_applies_at_every_directory_write_and_survives_restart() {
             .all(|room| room.id != private));
     }
     let key = site
-        .command(guest, json!({"type":"room_invite","roomId":private}))
+        .command(guest, json!({"type":"room_invite","roomId":private,"requestId":"invite"}))
         .events
         .into_iter()
         .find_map(|(_, e)| match e {
-            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
+            Event::Reply { room_id: Some(_), result: ReplyResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -149,12 +150,7 @@ fn guest_policy_applies_at_every_directory_write_and_survives_restart() {
     );
     assert!(removed.events.iter().any(|(_, event)| matches!(
         event,
-        Event::RoomReply {
-            result: piik_channel_core::host::RoomResult::Deleted {
-                data_removed: false
-            },
-            ..
-        }
+        Event::Reply { room_id: Some(_), result: ReplyResult::Deleted { data_removed: false }, .. } | Event::Deferred { result: ReplyResult::Deleted { data_removed: false }, .. }
     )));
     let checkpoint = site.authority.export_state();
     let mut restored = RoomNetwork::new();
@@ -216,7 +212,7 @@ fn only_creating_session_can_cancel_an_unbound_room() {
             .events
             .into_iter()
             .find_map(|(_, event)| match event {
-                Event::RoomCreated { room, .. } => Some(room.id),
+                Event::Reply { result: ReplyResult::RoomCreated { room }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { room }, .. } => Some(room.id),
                 _ => None,
             })
             .unwrap();
@@ -227,7 +223,7 @@ fn only_creating_session_can_cancel_an_unbound_room() {
             json!({"type":"cancel_room_creation","roomId":id,"requestId":"cancel"}),
         );
         assert!(effects.events.iter().any(|(to, event)| *to == connection
-            && matches!(event, Event::Ack {request_id} if request_id=="cancel")));
+            && matches!(event, Event::Reply { request_id, result: ReplyResult::Done, .. } if request_id=="cancel")));
     };
     for connection in [sibling, stranger] {
         cancel(&mut site, connection, &pending);
@@ -246,6 +242,6 @@ fn only_creating_session_can_cancel_an_unbound_room() {
         .command(creator, create.clone())
         .events
         .iter()
-        .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+        .any(|(_, e)| matches!(e, Event::Reply { result: ReplyResult::RoomCreated { .. }, .. } | Event::Deferred { result: ReplyResult::RoomCreated { .. }, .. })));
     denied(site.command(creator, create), "room_limit");
 }

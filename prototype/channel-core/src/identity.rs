@@ -1,4 +1,4 @@
-use crate::access::digest;
+use crate::{access::digest, wire::SnapshotForm};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -86,16 +86,23 @@ fn profile_version(name: &str, avatar: &Option<String>) -> String {
         .collect()
 }
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct PeerCapabilities {
+    pub can_use_peer_transport: bool,
+    pub can_prepare_udp: bool,
+    pub can_receive_video_layers: bool,
+}
+
 #[derive(Clone)]
 pub struct Session {
     pub id: Uuid,
     pub user_id: Uuid,
     pub connection: Option<Uuid>,
+    pub snapshot_form: SnapshotForm,
+    pub version: crate::ProductVersion,
     pub disconnected_at: Option<u64>,
     pub signing_key: [u8; 32],
-    pub can_use_peer_transport: bool,
-    pub can_prepare_udp: bool,
-    pub can_receive_video_layers: bool,
+    pub capabilities: PeerCapabilities,
 }
 
 #[derive(Clone)]
@@ -107,10 +114,10 @@ pub struct Identity {
 }
 
 pub struct Admission<'a> {
+    pub snapshot_form: SnapshotForm,
+    pub version: crate::ProductVersion,
     pub signing_key: [u8; 32],
-    pub can_use_peer_transport: bool,
-    pub can_prepare_udp: bool,
-    pub can_receive_video_layers: bool,
+    pub capabilities: PeerCapabilities,
     pub credential: Option<&'a str>,
     pub owner_key: Option<&'a str>,
     pub resume: Option<&'a str>,
@@ -225,7 +232,7 @@ impl Identity {
                         member: self.member(session.user_id).expect("admitted session"),
                         signing_key: session.signing_key,
                         connected: session.connection.is_some(),
-                        can_use_peer_transport: session.can_use_peer_transport,
+                        can_use_peer_transport: session.capabilities.can_use_peer_transport,
                     },
                 )
             })
@@ -330,17 +337,18 @@ impl Identity {
             id: session_id,
             user_id,
             connection: None,
+            snapshot_form: input.snapshot_form,
             disconnected_at: None,
             signing_key: input.signing_key,
-            can_use_peer_transport: input.can_use_peer_transport,
-            can_prepare_udp: input.can_prepare_udp,
-            can_receive_video_layers: input.can_receive_video_layers,
+            version: input.version,
+            capabilities: input.capabilities,
         });
         session.signing_key = input.signing_key;
-        let peer_transport_withdrawn = session.can_use_peer_transport && !input.can_use_peer_transport;
-        session.can_use_peer_transport = input.can_use_peer_transport;
-        session.can_prepare_udp = input.can_prepare_udp;
-        session.can_receive_video_layers = input.can_receive_video_layers;
+        session.version = input.version;
+        let peer_transport_withdrawn = session.capabilities.can_use_peer_transport
+            && !input.capabilities.can_use_peer_transport;
+        session.capabilities = input.capabilities;
+        session.snapshot_form = input.snapshot_form;
         let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
@@ -404,6 +412,7 @@ impl Identity {
         if let Some(session) = self.sessions.get_mut(&session_id) {
             if session.connection == Some(connection) {
                 session.connection = None;
+                session.snapshot_form = SnapshotForm::Full;
                 session.disconnected_at = Some(now);
             }
         }
@@ -423,7 +432,7 @@ impl Identity {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredUser {
     pub id: Uuid,
     pub name: String,
@@ -459,10 +468,13 @@ mod tests {
         resume: Option<&'a str>,
     ) -> Admission<'a> {
         Admission {
+            version: crate::PRODUCT_VERSION,
+            snapshot_form: Default::default(),
             signing_key: [1; 32],
-            can_use_peer_transport: true,
-            can_prepare_udp: false,
-            can_receive_video_layers: false,
+            capabilities: PeerCapabilities {
+                can_use_peer_transport: true,
+                ..PeerCapabilities::default()
+            },
             owner_key: key,
             credential,
             resume,
