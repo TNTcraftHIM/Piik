@@ -1638,6 +1638,82 @@ fn resumed_host_can_retire_its_current_binding_before_registering_again() {
 }
 
 #[test]
+#[deny(unreachable_patterns)]
+fn domain_snapshot_forms_preserve_baseline_authority() {
+    use piik_channel_core::{
+        host::ServiceEndpoint,
+        wire::{HostingMode, RoomAccess, RoomCreationPolicy},
+        wire_images::StateImageEncoder,
+    };
+
+    let hosting_name = |mode| match mode {
+        HostingMode::Lightweight => "lightweight",
+        HostingMode::Hosted => "hosted",
+    };
+    let policy_name = |policy| match policy {
+        RoomCreationPolicy::Ordinary => "ordinary",
+        RoomCreationPolicy::InviteOnly => "invite_only",
+        RoomCreationPolicy::OwnerOnly => "owner_only",
+    };
+    let access_name = |access| match access {
+        RoomAccess::Public => "public",
+        RoomAccess::Private => "private",
+    };
+
+    use RoomCreationPolicy::{InviteOnly, Ordinary, OwnerOnly};
+    for (mode, initial, updated, access) in [
+        (HostingMode::Lightweight, Ordinary, InviteOnly, RoomAccess::Public),
+        (HostingMode::Hosted, InviteOnly, OwnerOnly, RoomAccess::Private),
+        (HostingMode::Lightweight, OwnerOnly, Ordinary, RoomAccess::Private),
+    ] {
+        let mut network = core();
+        network.authority.set_hosting_mode(mode);
+        network.authority.set_room_creation_policy(initial);
+        let writer = Uuid::new_v4();
+        let (session_id, _, _) = admit(
+            &mut network, writer, json!({"type":"join","name":"Owner","ownerKey":"owner"}),
+        );
+        if mode == HostingMode::Hosted {
+            network.authority.set_room_writer(ServiceEndpoint { session_id, connection_id: writer }).unwrap();
+        }
+        let room = network.create(writer, access, false);
+        let full = Uuid::new_v4();
+        let text = Uuid::new_v4();
+        let full_join = network.command(full, json!({"type":"join","name":"Owner","ownerKey":"owner"}));
+        let text_join = network.command(text, json!({
+            "type":"join","name":"Owner","ownerKey":"owner","snapshotForm":"conversation",
+        }));
+        let update = network.command(writer, json!({"type":"set_room_creation_policy","policy":policy_name(updated)}));
+
+        for (target, join) in [(full, &full_join), (text, &text_join)] {
+            let mut encoder = StateImageEncoder::default();
+            for (kind, effects, policy) in [("welcome", join, initial), ("state", &update, updated)] {
+                let event = effects.events.iter().find_map(|(recipient, event)| {
+                    let expected = matches!((kind, target == full, event),
+                        ("welcome", true, Event::Welcome { .. }) | ("welcome", false, Event::ConversationWelcome { .. })
+                        | ("state", true, Event::State { .. }) | ("state", false, Event::ConversationState { .. }));
+                    (*recipient == target && expected).then_some(event)
+                }).expect("snapshot for the selected reader");
+                let frame: Value = serde_json::from_str(&encoder.encode(event).unwrap()).unwrap();
+                assert_eq!(frame["type"], kind);
+                let channel = &frame["state"]["channel"];
+                assert_eq!(channel["hostingMode"], hosting_name(mode));
+                let row = channel["rooms"].as_array().unwrap().iter()
+                    .find(|row| row["id"].as_str() == Some(room.as_str())).expect("creator sees the room");
+                assert_eq!(row["authorized"], true);
+                if target == full {
+                    assert_eq!(channel["roomCreationPolicy"], policy_name(policy));
+                    assert_eq!(row["access"], access_name(access));
+                } else {
+                    assert!(channel.get("roomCreationPolicy").is_none());
+                    assert!(row.get("access").is_none());
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn conversation_snapshot_follows_current_connection_and_room_authority() {
     use piik_channel_core::wire_images::{StateImageDecoder, StateImageEncoder};
 

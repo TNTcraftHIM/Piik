@@ -156,6 +156,16 @@ digits, underscores or hyphens. Readers preserve their spelling. The
 screen and voice publication classes are closed because they determine
 authorization, subscriptions and forwarding budgets.
 
+Baseline Domain snapshots fix hosting mode, room creation policy and room
+access. They describe writer eligibility, permitted room creation and the
+access rule applied with room grants. Same-major additions must preserve
+their effective meaning for baseline readers in welcome and later state.
+
+Watch source kinds and clocks are closed: they choose the player and stay
+with the activity's ID. Its byte format chooses an implemented reader.
+New codecs may use these forms when the receiver supports them. Different
+playback semantics use a distinct request and a requested state form.
+
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
 observations remain descriptions. Page-media observers dispatch the DOM event
