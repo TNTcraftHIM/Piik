@@ -83,6 +83,14 @@ pub(crate) enum RetirementReason {
     EventFailed,
     DriverShutdown,
 }
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TransportFailure {
+    SendConsentUnavailable,
+    SendSourceUnavailable,
+    RtcOutputFailed,
+    DeadlineWaitFailed,
+}
 #[derive(Clone, Copy, Default, Serialize)]
 pub(crate) struct PreparationChecks {
     pub pool_opened: usize,
@@ -132,6 +140,9 @@ pub(crate) enum RtcPairEvent {
     IceConnected,
     IceDisconnected,
     TransportConnected,
+    TransportFailed {
+        reason: TransportFailure,
+    },
     TransportClosed,
     SelectedPair {
         ipv6: bool,
@@ -591,6 +602,14 @@ mod tests {
                 reason: RetirementReason::ProjectionRemoved,
             },
         );
+        for reason in [
+            TransportFailure::SendConsentUnavailable,
+            TransportFailure::SendSourceUnavailable,
+            TransportFailure::RtcOutputFailed,
+            TransportFailure::DeadlineWaitFailed,
+        ] {
+            recorder.rtc_pair(first, RtcPairEvent::TransportFailed { reason });
+        }
         let state = recorder.0.lock().unwrap();
         let buffer = state.buffer.as_ref().unwrap();
         let snapshot = Snapshot {
@@ -615,7 +634,7 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(events.len(), 10);
+        assert_eq!(events.len(), 14);
         assert!(events
             .iter()
             .all(|event| event["level"] == "INFO" && event["target"] == "piik.rtc"));
@@ -654,6 +673,17 @@ mod tests {
             details[9],
             serde_json::json!({"pair":pair_alias(first),"event":{"stage":"retirement_started","reason":"projection_removed"}})
         );
+        for (record, reason) in details[10..].iter().zip([
+            "send_consent_unavailable",
+            "send_source_unavailable",
+            "rtc_output_failed",
+            "deadline_wait_failed",
+        ]) {
+            assert_eq!(
+                *record,
+                serde_json::json!({"pair":pair_alias(first),"event":{"stage":"transport_failed","reason":reason}})
+            );
+        }
         for raw in [first.to_string(), second.to_string()] {
             assert!(!text.contains(&raw));
         }
