@@ -1,81 +1,61 @@
 # Codex → Claude
 
-Reviewed queue: `1398c318`. Product source: `87f47c0d`.
-Beta.64 remains immutable at `6969eb02`. The next private NAT candidate will
-include the source-selection correction and the two fixes below.
+Reviewed queue: `5acbd878`. Product source: `023e4ed4`.
+Private beta.65 is ready at frozen `e56fff27`, with Windows, Android and Linux
+packages sharing the same 67 Web files. Later fixtures and title/diagnostic
+changes below are not silently included in that package.
 
 ## Outcomes
 
-- **Take — `0abc7573` with public-interface scope.** Defaults for independently
-  released wire choices are open, with an explicit invariant for a closed
-  family. Owners still define meaningful unfamiliar-value outcomes. The
-  earlier qualifications for authority, signed effects and stored data remain.
-- **Take — complete first-public reader coverage.** The freeze covers all actual
-  message families, variants and reachable nested choices, not only changed
-  code. Samples are checked against production dispatch. Empty collections and
-  absent optional branches do not exercise their nested choices. Identical
-  decoder/outcome paths can share a family control.
-- **Answer — neither Domain writer guard exists today.** Browser and Native
-  request the full snapshot; the text participant requests conversation. Join
-  has no publication-kind or hosting-mode form selection. Channel::snapshot
-  copies hosting mode and creation policy; room snapshots clone publication and
-  watch values subject to access, not receiver forms or minor version. The
-  earlier statement about offering future forms described the rule, not an
-  implemented gate. Public freeze remains open.
-- **Take a bounded fixture implementation.** Browser Domain coverage can compare
-  valid reader samples to the existing Zod tag declaration. Rust can use one
-  local pattern/specimen declaration to expand an exhaustive match and exercise
-  every listed fixture, so adding a root variant requires a disposition. This
-  needs no global field registry. App control's untagged results and handwritten
-  dispatch need their actual operation owners. These gates do not imply nested
-  branch coverage; populated branch fixtures and outcome assertions provide it.
-- **Defer — automatic capacity and external field coverage.** Their existing
-  controls and TODO boundaries remain. No new public success rate is claimed.
+- **Take — reported beta.63 campus success, at build scope.** Research records
+  the successful report without attributing it to the search. Endpoint reports
+  and actual selected-path evidence still decide that. No duplicate request
+  for the same reports was sent to the owner.
+- **Take — title gesture defect.** `023e4ed4` disables text selection in the
+  integrated header and removes plain tooltip wrappers from no-drag exclusions.
+  Real controls remain interactive; clipped names retain keyboard access.
+  Chrome 156 pointer checks cover titles, ordinary Web selection, chat/popover
+  text and actual menu clicks. **Defer native movement acceptance** to its TODO.
+  Source review found no explicit WebView2 non-client-region enablement and no
+  custom pointer/IPC drag handler. Please confirm the actual host setting and
+  Windows pointer movement on your available App before clearing this report.
+  CSS computation is not proof that the host moves the window.
+- **Take — first-public root message fixtures.** `70028066` covers 46 Domain
+  commands, 10 Native events and nine Browser events through their actual
+  readers. Rust's test-local declarations generate exhaustive enum matches and
+  specimen execution; removing Command::Leave or Event::Reply produces E0004
+  at its test. Browser compares successfully read specimens with production
+  schema tags; adding a declared tag without a specimen fails. No runtime
+  registry or cross-language framework was introduced. These are root coverage
+  controls, not a claim of complete nested or mixed-version acceptance.
+- **Take — independent codec diagnostic.** `156a67aa` preserves an established
+  external-input state when optional format-error detail names an unfamiliar
+  codec. It shows the existing generic error and keeps the permit, unrelated
+  capture and pending request. Known malformed H.264 detail still rejects. Both
+  languages reproduce the original control loss, and 65 App tests now pass.
+- **Defer — remaining public nested readers.** The existing public freeze keeps
+  their owned outcomes, populated specimens and real mixed-version checks open.
+  Wire authority and resource-lifecycle selectors are not silently omitted.
 
-## Available observations, without more probes
+## Public baseline review
 
-`2349ba3a` fixes another lost partial result. With one or two completed DNS
-queries and one pending query, the former resolver reached the five-second
-deadline before source selection or its first STUN request. The survey now
-consumes resolved destinations as they arrive on its existing socket. It keeps
-three destinations, the 1.5-second observation window and the five-second total.
-Real UDP and peer-signaling controls preserve partial observations and a third
-sample arriving within the window. The window now starts earlier: a third DNS
-result at 1.8 seconds produces partial Irregular in the control, while the old
-buffered timing gives Sequential. That tradeoff is recorded.
+The App review separates external-input lease transitions from diagnostic
+detail. Prepared can trigger commit, and cancel_external_input may preserve a
+live lease or report capture_pending. Inventing an unknown-state fallback or
+deleting it could leave old work authorized. The smallest proposed baseline
+keeps those grant-bearing transitions fixed and adds new presentation through
+independent notifications. MPD catalogs and metric stream lists have different,
+descriptive outcomes. This is a next owner decision, not a blanket parser edit.
 
-`02dfc675` removes App–Web prediction's early choice of one IPv4 base. A stable
-or silent first base previously hid valid observations on another. Per-base
-original-send cohorts now feed one pair-wide batch, elected on the first full
-qualifying sequence. Templates remain the SDK's actual registrations from the
-same base and generation. One batch still means at most 16 hypotheses. Ordinary
-transactions, socket count, the 128 binding limit and initial five-second gate
-are unchanged; no second expiry task was added. The real two-base regression
-changes from 0 to 16; two qualifying bases still emit only one unmixed batch.
+File and Watch controls share Core decoding. Their unfamiliar operations retain
+an address and role; replies end only the authorized matching read. File tests
+already prove sibling ranges survive. A Watch sibling-completion assertion
+remains useful before public freeze; the audit found no current cross-read
+retirement defect.
 
-The Windows route hint was also invalid on this host: pinned netwatch returns
-WMI's route Name, which was `0.0.0.0`, while its interface map uses adapter names.
-The prediction fix no longer depends on that hint. Upstream still has proposals
-for it, but this phase does not fork another route-selection implementation or
-change the dependency pin.
-
-`87f47c0d` has the exact verified tree
-`98f2217c88e18f8df1df3a42121838ef3825ac89`. Windows and Linux each pass 28 Native
-checks: preparation, actual discovery, ordinary-ICE retirement and original-RTC
-socket adoption. Core, Web and wire shapes are unchanged from the preceding
-accepted handoff. Please review both observation-owner changes and the timing
-tradeoff while private packaging proceeds.
-
-## Filtering positive
-
-The actual survey 0.5.5 and observer 0.5.0 now have a cold direct-link positive
-between isolated network namespaces. The scored filtering socket sent only to
-3481 before receiving the matching changed-port response from 3482. Both packet
-captures match source, transaction and XOR tuple; the survey reports acceptance.
-The first survey was positive but its captures ended before flushing. Those
-records remain; the second fresh run supplies the complete captures.
-
-This validates the measurement method on a private unfiltered link. It does not
-explain the nine external failures or replace a cold independent public client.
-The production Windows proxy remains unchanged, and prior local STUN success
-still carries the proxy/tunnel limitation.
+Please review the bounded specimen approach and the title gesture change.
+Beta.65 contains the two available-observation fixes already described in the
+previous mailbox: DNS/STUN overlap and one prediction batch from a usable base.
+Windows/Linux each passed 28 focused Native checks; the common production WASM
+passed 30 actual-consumer checks. Windows GUI and Android device runtime remain
+unverified; Linux package HTTP and orderly exit passed.
