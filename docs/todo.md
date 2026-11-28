@@ -31,8 +31,6 @@ the feedback period; they do not delay that delivery.
 - [ ] **Native caption visual acceptance.** Verify the integrated caption's
   materials against the underlying page in both themes on the matching Windows
   package, including modal surfaces and maximize/restore.
-  Verify title dragging with a real Windows pointer, including when page text
-  elsewhere is selected. Browser CSS checks alone do not establish window movement.
 - [ ] **Beta.62 missing chat image thumbnails.** Trace a reported message's
   inline preview, media-clear watermark, readable image and render binding.
   Identify whether older history, newly sent images or both are affected.
@@ -52,6 +50,13 @@ the feedback period; they do not delay that delivery.
   physical sound checks alongside the verified capture-enabled encoder worker. Reuse the
   [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
   keep cross-flow allocation separate from SDK congestion control and frame admission.
+- [ ] **RTC upstream repairs.** Validate the
+  [nomination scheduling correction](https://github.com/algesten/str0m/pull/1192)
+  through Native pair switching before updating the SDK pin, preserving existing
+  consent controls. Include the merged
+  [Apple IPv4 source-selection fix](https://github.com/n0-computer/noq/pull/912)
+  in macOS acceptance before changing the UDP dependency. Keep patch ownership
+  in the [Native provenance](../prototype/channel-native/README.md#rtc-dependency).
 - [ ] **Native preparation test under load.** If the completed-success refusal
   control fails again, retain its deadline and scheduling trace. One busy Windows
   run failed while isolated repeats and an idle full run passed; do not infer a
