@@ -151,6 +151,11 @@ dropped: its request is refused as unsupported, or its record stays unknown.
 Omission preserves baseline state semantics and the action's constraints.
 Known forms with invalid contents retain their validation rules.
 
+Screen source kinds are open capture-origin keys of 1–64 ASCII letters,
+digits, underscores or hyphens. Readers preserve their spelling. The
+screen and voice publication classes are closed because they determine
+authorization, subscriptions and forwarding budgets.
+
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
 observations remain descriptions. Page-media observers dispatch the DOM event

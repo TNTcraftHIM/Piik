@@ -15,7 +15,8 @@ const identityNameSchema = z.string().refine(name => name.length <= 64, "Name ex
 export const IDENTITY_IMAGE_URL_BYTES = 24 * 1024;
 export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
-export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+const shortWireKey = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+export const roomIconSchema = shortWireKey;
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
 export const CHANNEL_SESSION_LIMIT = 128;
@@ -54,7 +55,7 @@ export const roomSchema = z.object({
   delivery: z.object({ hostSessionId: id, bindingId: id }).optional(),
 });
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
-export const screenSourceSchema = z.object({ kind: z.enum(["screen", "camera"]), name: identityNameSchema.nullable() });
+export const screenSourceSchema = z.object({ kind: shortWireKey, name: identityNameSchema.nullable() });
 export type ScreenSource = z.infer<typeof screenSourceSchema>;
 const viewSourceSchema = z.object({ kind: z.enum(["screen", "watch"]), id });
 const publicationBaseSchema = z.object({

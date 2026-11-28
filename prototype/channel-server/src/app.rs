@@ -5240,22 +5240,76 @@ mod page_contract_tests {
 
 #[cfg(test)]
 #[test]
+#[deny(unreachable_patterns)]
 fn actual_browser_mpd_commands_deserialize_at_app_boundary() {
-    let fixtures: Vec<serde_json::Value> =
+    use page::ResourceRequest;
+
+    let fixtures: Vec<Value> =
         serde_json::from_str(include_str!("app_page/mpd_request_fixture.json")).unwrap();
-    for fixture in fixtures {
-        let command = fixture["command"].clone();
-        let parsed = control_request(&command.to_string()).unwrap().unwrap();
-        match command["type"].as_str().unwrap() {
-            "page_media_prepare_mpd" => assert!(matches!(
-                parsed.operation,
-                Operation::Page(page::Operation::PageMediaPrepareMpd { .. })
-            )),
-            "page_media_resource" => assert!(matches!(
-                parsed.operation,
-                Operation::Page(page::Operation::PageMediaResource(_))
-            )),
-            _ => panic!("unexpectedfixture"),
+    for fixture in &fixtures {
+        let command = &fixture["command"];
+        if command["type"] == "page_media_resource" {
+            assert!(matches!(
+                fixture["name"].as_str(),
+                Some("inspect" | "cancel-inspect")
+            ));
+            continue;
         }
+        assert_eq!(command["type"], "page_media_prepare_mpd");
+        let parsed = control_request(&command.to_string()).unwrap().unwrap();
+        assert!(matches!(
+            parsed.operation,
+            Operation::Page(page::Operation::PageMediaPrepareMpd { .. })
+        ));
+    }
+
+    let resource_fixture = |name: &str| {
+        fixtures
+            .iter()
+            .find(|fixture| fixture["name"] == name)
+            .unwrap()["command"]
+            .clone()
+    };
+    let page_id = Uuid::from_u128(1);
+    let read_id = Uuid::from_u128(2);
+    let read = json!({"id":"read","type":"page_media_resource","action":"read",
+        "pageId":page_id,"readId":read_id,"sourceId":Uuid::from_u128(3),
+        "resourceId":Uuid::from_u128(4),"offset":0,"length":1});
+    let metadata = json!({"id":"metadata","type":"page_media_resource","action":"read_metadata",
+        "pageId":page_id,"readId":read_id,"choiceId":Uuid::from_u128(5),"offset":0,"length":1});
+
+    // Keep the exhaustive match and the samples in the same declaration.
+    macro_rules! check_resource_requests {
+        ($($command:expr => $resource:pat),+ $(,)?) => {{
+            let _require_sample_for_each_variant = |request: &ResourceRequest| match request {
+                $($resource => (),)+
+            };
+            $(
+                let command = $command;
+                let parsed = control_request(&command.to_string()).unwrap().unwrap();
+                assert_eq!(parsed.id, command["id"].as_str().unwrap());
+                assert!(
+                    matches!(parsed.operation, Operation::Page(page::Operation::PageMediaResource($resource))),
+                    "unexpected resource variant for {}", command["action"]
+                );
+            )+
+        }};
+    }
+    check_resource_requests! {
+        resource_fixture("inspect") => ResourceRequest::InspectMpd { .. },
+        metadata => ResourceRequest::ReadMetadata { .. },
+        read.clone() => ResourceRequest::Read { .. },
+        resource_fixture("cancel-inspect") => ResourceRequest::Cancel { .. },
+    }
+
+    let mut unknown = read.clone();
+    unknown["action"] = json!("future_resource_action");
+    let mut malformed = read;
+    malformed.as_object_mut().unwrap().remove("resourceId");
+    for invalid in [unknown, malformed] {
+        assert!(matches!(
+            control_request(&invalid.to_string()).unwrap(),
+            Err(reply) if reply == json!({"id":"read","error":"invalid_request"})
+        ));
     }
 }

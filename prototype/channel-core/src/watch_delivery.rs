@@ -878,6 +878,14 @@ mod tests {
             let request = id(20);
             let pull = control(viewer.read(key(), request, 7, 10));
             relay.control(id(3), pull);
+            let sibling = id(21);
+            let mut source = WatchDelivery::new(id(1));
+            source.update(vec![plan(None, vec![id(2)], false)], peers());
+            let pull = control(viewer.read(key(), sibling, 17, 1));
+            let pull = control(relay.control(id(3), pull));
+            assert!(matches!(source.control(id(2), pull).as_slice(),
+                [WatchEffect::Read { request_id, offset: 17, length: 1, .. }] if *request_id == sibling));
+
             let response = if failure == "future_reply" {
                 use crate::conversation::decode_control;
                 let future = |role, key: WatchKey| {
@@ -924,6 +932,27 @@ mod tests {
                 .unwrap();
             assert!(viewer.control(id(2), response).iter().any(|effect|
                 matches!(effect, WatchEffect::Failed { request_id, code } if *request_id == request && code == expected)));
+
+            let response = source.read_result(
+                sibling,
+                Ok(WatchReadResult {
+                    mime_type: "video/mp4".into(),
+                    total_size: Some(18),
+                    bytes: vec![42],
+                    eof: true,
+                }),
+            );
+            let [WatchEffect::SendChunk { peer, frame, .. }] = response.as_slice() else {
+                panic!("source must return the sibling range");
+            };
+            assert_eq!(*peer, id(2));
+            let forwarded = relay.chunk(id(1), frame).unwrap();
+            let [WatchEffect::SendChunk { peer, frame, .. }] = forwarded.as_slice() else {
+                panic!("relay must forward the sibling range");
+            };
+            assert_eq!(*peer, id(3));
+            assert!(matches!(viewer.chunk(id(2), frame).unwrap().as_slice(),
+                [WatchEffect::Received { request_id, result }] if *request_id == sibling && result.bytes == [42]));
             assert!(relay.pending.is_empty() && viewer.pending.is_empty());
         }
     }

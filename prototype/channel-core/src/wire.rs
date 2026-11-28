@@ -399,7 +399,7 @@ pub(crate) fn avatar<'de, D: serde::Deserializer<'de>>(
     Ok(avatar)
 }
 
-fn icon_key(value: &str) -> bool {
+fn short_wire_key(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
         && value
@@ -421,7 +421,7 @@ impl Default for RoomIcon {
 impl TryFrom<String> for RoomIcon {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if icon_key(&value) {
+        if short_wire_key(&value) {
             Ok(Self(value))
         } else {
             Err("invalid_room_icon")
@@ -444,7 +444,7 @@ impl TryFrom<String> for IdentityIcon {
     type Error = &'static str;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if !icon_key(&value) && !identity_image(&value) {
+        if !short_wire_key(&value) && !identity_image(&value) {
             return Err("invalid_identity_icon");
         }
         Ok(Self(value))
@@ -1336,12 +1336,33 @@ pub struct ScreenSource {
     pub kind: ScreenSourceKind,
     pub name: Option<String>,
 }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ScreenSourceKind {
-    #[default]
-    Screen,
-    Camera,
+/// Capture origin carried as descriptive metadata of a screen publication.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "String")]
+pub struct ScreenSourceKind(String);
+
+impl ScreenSourceKind {
+    pub fn screen() -> Self {
+        Self("screen".into())
+    }
+}
+
+impl Default for ScreenSourceKind {
+    fn default() -> Self {
+        Self::screen()
+    }
+}
+
+impl TryFrom<String> for ScreenSourceKind {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if short_wire_key(&value) {
+            Ok(Self(value))
+        } else {
+            Err("invalid_screen_source_kind")
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]

@@ -1,6 +1,96 @@
 use super::*;
 
 #[test]
+fn future_screen_origin_stays_with_the_publication_and_its_selected_route() {
+    use piik_channel_core::wire::Request;
+    use piik_channel_core::wire_images::{StateImageDecoder, StateImageEncoder};
+
+    let mut net = RoomNetwork::new();
+    let [host, viewer, outsider] = [(); 3].map(|_| Uuid::new_v4());
+    let host_session = join(&mut net, host, None).0;
+    let viewer_session = join(&mut net, viewer, None).0;
+    join(&mut net, outsider, None);
+    let room = net.create(host, RoomAccess::Private, false);
+    let invite = net
+        .command(host, json!({"type":"room_invite","roomId":room,"requestId":"invite"}))
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Reply { result: ReplyResult::Invite { key }, .. } => Some(key),
+            _ => None,
+        })
+        .unwrap();
+    command(&mut net, viewer, json!({"type":"enter_room","roomId":room,"inviteKey":invite}));
+    voice(&mut net, host, &room, true);
+    voice(&mut net, viewer, &room, true);
+    let microphone = publish(&mut net, host, &room, "voice");
+    let picture = Uuid::new_v4();
+    let future = "future-Capture_42";
+    let request = |kind, source| json!({
+        "type": "publish", "requestId":"share",
+        "publication": {"id":picture,"roomId":room,"kind":kind,"source":source}
+    });
+
+    for malformed in [
+        request("screen", json!({"kind":"","name":null})),
+        request("screen", json!({"kind":"x".repeat(65),"name":null})),
+        request("screen", json!({"kind":"two words","name":null})),
+        request("screen", json!({"kind":"screen","name":42})),
+        request("future_rtp", json!({"kind":future,"name":null})),
+    ] {
+        assert!(matches!(
+            Request::parse(&malformed.to_string()),
+            Err((Some(id), "invalid_request")) if id == "share"
+        ));
+    }
+    let sharing = request("screen", json!({"kind":future,"name":"Studio feed"}));
+    let denied = net.command(outsider, sharing.clone());
+    assert!(denied.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::Reply { result: ReplyResult::Error { code }, .. } if code == "room_access_required"
+    )));
+    assert!(net.state(viewer).publications.iter().all(|source| source.id != picture));
+    command(&mut net, host, sharing);
+    subscribe_screen(&mut net, viewer, picture);
+    let edge = pair(&net, viewer, host_session).id;
+    connect(&mut net, [host, viewer], edge);
+    let (pair_id, selected) = screen_input(&net, viewer, host_session, picture).unwrap();
+    assert!(selected.selected);
+    command(&mut net, viewer, json!({
+        "type":"flow_state","pairId":pair_id,"flowId":selected.id,"state":"decoded"
+    }));
+    let voice_route = screen_input(&net, viewer, host_session, microphone).unwrap();
+    assert!(voice_route.1.selected);
+
+    let mut encoder = StateImageEncoder::default();
+    let mut decoder = StateImageDecoder::default();
+    for name in [Some("Studio feed"), None] {
+        if name.is_none() {
+            command(&mut net, host, request("screen", json!({"kind":future,"name":null})));
+        }
+        let encoded = encoder.encode(&Event::State { state: net.state(viewer).clone() }).unwrap();
+        let Event::State { state } = decoder.decode(&encoded).unwrap() else {
+            panic!("expected a Domain state event");
+        };
+        let publication = state.publications.iter().find(|p| p.id == picture).unwrap();
+        let origin = &publication.screen.as_ref().unwrap().source;
+        assert_eq!(serde_json::to_value(&origin.kind).unwrap(), future);
+        assert_eq!(origin.name.as_deref(), name);
+        assert_eq!(publication.audience.iter().find(|entry| entry.session_id == viewer_session).unwrap().state, AudienceState::Active);
+        assert!(state.subscriptions.contains(&picture));
+        assert_eq!(screen_input(&net, viewer, host_session, picture), Some((pair_id, selected)));
+    }
+
+    command(&mut net, host, json!({"type":"unpublish","publicationId":picture}));
+    let retired = net.state(viewer);
+    assert!(retired.publications.iter().all(|p| p.id != picture));
+    assert!(!retired.subscriptions.contains(&picture));
+    assert!(screen_input(&net, viewer, host_session, picture).is_none());
+    assert!(retired.subscriptions.contains(&microphone));
+    assert_eq!(screen_input(&net, viewer, host_session, microphone), Some(voice_route));
+}
+
+#[test]
 fn peer_watch_establishes_the_grant_after_both_provider_pair_reports() {
     let mut net = RoomNetwork::new();
     let [page, provider, viewer] = [(); 3].map(|_| Uuid::new_v4());

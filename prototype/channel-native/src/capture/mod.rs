@@ -435,7 +435,7 @@ impl Target {
             || (cfg!(target_os = "windows") && self.kind == TargetKind::Display);
         let name = self.title_for(64);
         piik_channel_core::wire::ScreenSource {
-            kind: piik_channel_core::wire::ScreenSourceKind::Screen,
+            kind: piik_channel_core::wire::ScreenSourceKind::screen(),
             name: (named && !name.is_empty()).then_some(name),
         }
     }

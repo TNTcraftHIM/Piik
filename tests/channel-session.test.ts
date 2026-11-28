@@ -11212,6 +11212,70 @@ test("Browser forwarding preferences persist by identity across rooms", async ()
   } finally { session.close(); }
 });
 
+test("Browser state and the shared forwarding budget retain a future screen origin and retire its flow on removal", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const budget = new core.ForwardingBudget();
+  const apply = vi.spyOn(budget, "apply");
+  vi.spyOn(ChannelConversation.prototype, "forwardingBudget").mockReturnValue(budget);
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const media = vi.spyOn(ChannelMedia.prototype, "update");
+  const outgoing = vi.spyOn(ChannelTransport.prototype, "setOutgoing");
+  try {
+    const userId = crypto.randomUUID(), sessionId = crypto.randomUUID(), publisher = crypto.randomUUID();
+    const viewer = crypto.randomUUID(), picture = crypto.randomUUID(), voice = crypto.randomUUID();
+    const state = structuredClone(session.getSnapshot().state!);
+    const room = state.channel.rooms[0];
+    state.channel.id = crypto.randomUUID();
+    state.channel.ownerId = userId;
+    for (const entry of state.channel.rooms) {
+      entry.creatorId = userId;
+      entry.delivery = { hostSessionId: publisher, bindingId: crypto.randomUUID() };
+    }
+    state.users[0].id = userId;
+    state.sessions[0] = { ...state.sessions[0], id: sessionId, userId };
+    room.participantSessionIds = [sessionId, publisher, viewer];
+    const base = { roomId: room.id, sessionId: publisher, userId, paused: false, audience: [] };
+    const origin = { kind: "future-Capture_42", name: null };
+    const share = { ...base, id: picture, kind: "screen" as const, source: origin, title: null,
+      videoSettings: screenVideoSettings({ ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution" }) };
+    state.publications = [share, { ...base, id: voice, kind: "voice" }];
+    state.subscriptions = [picture, voice];
+    const input = { id: crypto.randomUUID(), publicationId: picture, selected: true, inputFlowId: null };
+    const microphone = { ...input, id: crypto.randomUUID(), publicationId: voice };
+    const forward = { ...input, id: crypto.randomUUID(), inputFlowId: input.id };
+    state.pairs = [
+      { id: crypto.randomUUID(), peerId: publisher, rooms: [room.id], incoming: [input, microphone], outgoing: [], canReceiveVideoLayers: false },
+      { id: crypto.randomUUID(), peerId: viewer, rooms: [room.id], incoming: [], outgoing: [forward], canReceiveVideoLayers: false },
+    ];
+    socket.receive({ type: "welcome", ...PRODUCT_VERSION, credential: "credential", sessionId, state });
+    expect(apply).toHaveReturned();
+    expect(session.getSnapshot().state?.publications[0]).toEqual(share);
+    expect(media.mock.lastCall?.[1].subscriptions).toEqual([picture, voice]);
+    expect(session.getSnapshot().state?.pairs[0].incoming).toEqual([input, microphone]);
+    expect(outgoing.mock.calls.some(([media]) => media.get(forward.id)?.profile?.displaySource === false)).toBe(true);
+
+    for (const source of [{ kind: "", name: null }, { kind: "x".repeat(65), name: null },
+      { kind: "two words", name: null }, { kind: "screen", name: 42 }]) {
+      expect(publicationSchema.safeParse({ ...share, source }).success).toBe(false);
+    }
+    expect(publicationSchema.safeParse({ ...share, kind: "future_rtp" }).success).toBe(false);
+
+    state.publications = state.publications.filter(publication => publication.id !== picture);
+    state.subscriptions = [voice];
+    state.pairs[0].incoming = [microphone];
+    state.pairs[1].outgoing = [];
+    outgoing.mockClear();
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().state?.publications.map(publication => publication.id)).toEqual([voice]);
+    expect(media.mock.lastCall?.[1].subscriptions).toEqual([voice]);
+    expect(session.getSnapshot().state?.pairs[0].incoming).toEqual([microphone]);
+    expect(outgoing).toHaveBeenCalled();
+    expect(outgoing.mock.calls.every(([media]) => !media.has(forward.id))).toBe(true);
+  } finally { session.close(); }
+});
+
 test("Browser applies the shared per-kind budget before dispatching assignments across rooms", async () => {
   const { session, socket } = await setup(1000, false, "");
   const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");

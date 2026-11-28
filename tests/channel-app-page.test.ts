@@ -328,6 +328,30 @@ test("MPD prepare cancellation uses selection stop while closing one page preser
   } finally { app.close(); }
 });
 
+test("App metrics retain measurable streams alongside future media and direction values", async () => {
+  const { app, socket } = await setup();
+  try {
+    const id = crypto.randomUUID();
+    const stream = { flowId: id, publicationId: id, selected: true, direction: "send", media: "video",
+      outputId: id, mid: "picture", rid: null, codec: "fixture", sampleTimestampMs: 10, ageMs: 0,
+      bytes: 42, packets: 1, rttMs: null, lossFraction: null, jitterMs: null };
+    const connection = { pairId: id, connectionId: id, peerId: id, sampleTimestampMs: 10, ageMs: 0, rttMs: null, bweBps: null };
+    const read = (streams: unknown[][]) => {
+      const reading = app.connectionMetrics("room");
+      socket.reply({ sessionId: id, bindingId: id, connections: streams.map(items => ({ ...connection, streams: items })) });
+      return reading;
+    };
+    const nextMedia = { direction: "send", media: "future" }, nextDirection = { direction: "future", media: "audio" };
+    const mixed = await read([[stream, nextMedia], [nextDirection]]);
+    expect(mixed.connections.map(value => value.streams)).toEqual([[stream], []]);
+    expect((await read([[nextDirection, nextMedia]])).connections[0]?.streams).toEqual([]);
+    await expect(read([[stream, { ...stream, lossFraction: 2 }]])).rejects.toThrow();
+    await expect(read([[{ direction: null, media: "future" }]])).rejects.toThrow();
+    expect((await read([[]])).connections[0]?.streams).toEqual([]);
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+
 test("page media listings retain supported choices alongside future formats", async () => {
   const { app, socket } = await setup();
   try {
@@ -349,7 +373,7 @@ test("page media listings retain supported choices alongside future formats", as
   } finally { app.close(); }
 });
 
-test("MPD replies discard extra fields and reject unknown track kinds without retiring control", async () => {
+test("MPD replies keep selectable tracks alongside future kinds and validate known descriptions", async () => {
   const { app, socket } = await setup();
   try {
     const page = await openPage(app, socket), candidate = { id: crypto.randomUUID(), name: "Manifest", hostname: "media.test" };
@@ -359,8 +383,13 @@ test("MPD replies discard extra fields and reject unknown track kinds without re
     const missing = page.mediaSources(); socket.reply({ choices: [], indexedCandidates: [], byteSource: null });
     await expect(missing).rejects.toThrow();
     const catalog = mpdCatalog(), inspecting = page.inspectMpd(candidate.id, new AbortController().signal);
-    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture", tracks: catalog.tracks.map(track => ({ ...track, colorSpace: "bt709" })) });
+    const [video, audio] = catalog.tracks;
+    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture",
+      tracks: [{ ...video, colorSpace: "bt709" }, { kind: "text" }, audio] });
     await expect(inspecting).resolves.toEqual(catalog);
+    const malformed = page.inspectMpd(candidate.id, new AbortController().signal);
+    socket.reply({ ...catalog, tracks: [video, { kind: "audio" }] });
+    await expect(malformed).rejects.toThrow();
     const unknown = page.inspectMpd(candidate.id, new AbortController().signal);
     socket.reply({ ...catalog, tracks: [{ ...catalog.tracks[0], kind: "unknown" }] });
     await expect(unknown).rejects.toThrow();

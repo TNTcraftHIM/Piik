@@ -64,6 +64,10 @@ Piik does not automatically mute either microphone or switch between them.
   room voice require their own explicit activation. A microphone device/processing change keeps the previous input
   on failure and does not replace picture media. Browser processing preferences
   do not bypass device/system effects.
+- The screen publication reports its capture origin. The title and source name
+  take precedence over the capture-origin label. An unfamiliar origin uses
+  the shared-screen fallback. Browser display-detail hints
+  apply only to the screen origin and depend on the clarity preference.
 - Source-audio availability belongs to the Host capture owner. A live source
   input makes source audio available; a retained Native output track alone does
   not. This describes input presence, not measured
