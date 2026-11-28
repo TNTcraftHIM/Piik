@@ -30,7 +30,7 @@ pub fn stun_servers(ice_servers: &[Value]) -> Option<Vec<StunServer>> {
             }
         }
     }
-    (selected.len() >= 3).then_some(selected)
+    (selected.len() >= 2).then_some(selected)
 }
 
 // This feature uses IPv4 sockets. A DNS authority may resolve to IPv4; an IPv6

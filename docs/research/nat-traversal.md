@@ -418,13 +418,16 @@ stable, increasing, decreasing and irregular classifications retained their
 meaning. This establishes the scheduling benefit in that control, not worldwide
 service reachability.
 
-If DNS resolution finishes with fewer than three destinations, or only one or
-two STUN transactions answer, preparation can retain its socket and a measured
-endpoint. This is an observation without a mapping classification. All received
-public addresses must agree; only three complete replies can establish the
-existing sequential hypothesis. A single rejected UDP datagram does not discard
-other replies on the shared socket. The destination, packet and time budgets
-remain unchanged, and ordinary ICE discovery continues independently.
+If DNS resolution finishes with fewer than three destinations or a STUN
+transaction does not answer, preparation still uses the valid observations.
+One response or equal partial replies supply an unclassified measured endpoint.
+Two differing mapped ports on one public IP qualify for the irregular/pool role;
+its peer can search from a retained measured endpoint. Only three complete replies
+can supply a sequential hypothesis. This role selection uses current observations as in
+[RFC 5780 sections 1 and 4.3](https://www.rfc-editor.org/rfc/rfc5780.html#section-4.3),
+not an unconditional property of the network. Public-address conflicts end the
+survey. Single-datagram rejection does not discard other replies, and the
+existing destination, packet, concurrency and time budgets stay in place.
 
 In a matched two-endpoint kernel-NAT control, one side preserved its port and
 the other allocated sequentially, both with destination filtering. The third
@@ -437,6 +440,32 @@ frame in 2.076 and 1.654 seconds. Both versions retained ordinary ICE at about
 allocated sequentially and both lacked the third reply. These controls used
 isolated routing and STUN services; they do not estimate public-network success.
 The private signal change requires matching updated authority and Native builds.
+
+A second fixed control used port-preserving NAT against kernel random SNAT,
+destination filtering on both sides, and a silent third STUN service for each.
+Eight interleaved trials of the unclassified two-response baseline delivered no
+frame within 20 seconds; all eight trials using the two-response roles completed
+authentication, selected the prepared tuple on the original RTC, delivered SCTP
+both ways and decoded the first synthetic VP8 frame in 2.228–3.088 seconds.
+Each successful pool opened 256 sockets; search stopped after 24–316 requests.
+These are repeatability results for that topology, not a public success rate.
+Single companion controls retained ordinary ICE with two port-preserving ends
+and the measured partial-observation/full-sequential path. Two sequential ends with
+only two replies each did not start a random pool and remained unreachable.
+Choosing the irregular role releases the measured survey socket. Against a
+sequential peer it forgoes the former single-target attempt; an unclassified
+peer's measured target can instead support the existing pool. If that peer's
+mapping also varies, the bounded search can fail. Ordinary ICE keeps its
+independently gathered candidates.
+
+The final plan keeps equal partial replies unclassified and searches from the
+measured tuple. Follow-up controls decoded a VP8 frame in 2.734 seconds with two
+replies on that side, and 2.438 seconds with just one, while the random-mapping
+peer had two differing replies. Each ran once. When the named endpoint's mapping
+also varied, the search exhausted 1,024 targets and the pool used 256 sockets
+without completing authentication; ordinary ICE also failed in that control.
+Every used UDP port could be rebound after retirement. A separate authenticated
+control retained the sequential peer's alternate target when its primary failed.
 
 ### External Forwarding And Participant Relays
 

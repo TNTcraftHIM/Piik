@@ -4626,7 +4626,11 @@ fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
         vec![],
         vec![json!({"urls":"stun:192.168.1.2:3478"})],
         vec![
-            json!({"urls":["stun:ONE.example", "stun:one.example.:3478", "stun:two.example", "turn:three.example", "stuns:four.example", "stun:five.example?transport=tcp", "stun:[::1]"]}),
+            json!({"urls":["stun:ONE.example", "stun:one.example.:3478", "turn:three.example", "stuns:four.example", "stun:five.example?transport=tcp", "stun:[::1]"]}),
+        ],
+        vec![
+            json!({"urls":"STUN:ONE.example."}),
+            json!({"urls":"stun:two.example:3479"}),
         ],
         vec![
             json!({"urls":["STUN:ONE.example.", "stun:two.example:3479", "stun:203.0.113.5:3480"]}),
@@ -4636,7 +4640,7 @@ fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
         ],
     ]
     .into_iter()
-    .zip([0, 0, 0, 3, 4])
+    .zip([0, 0, 0, 2, 3, 4])
     {
         let servers = stun_servers(&ice);
         assert_eq!(servers.as_ref().map_or(0, Vec::len), expected_count);
@@ -4645,7 +4649,9 @@ fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
             assert_eq!(servers[0].host, "one.example");
             assert_eq!(servers[0].port, 3478);
             assert_eq!(servers[1].port, 3479);
-            assert_eq!(servers[2].host, "203.0.113.5");
+            if let Some(third) = servers.get(2) {
+                assert_eq!(third.host, "203.0.113.5");
+            }
         }
         let mut network = preparation_network(ice);
         let host = Uuid::new_v4();
