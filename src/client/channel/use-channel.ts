@@ -70,7 +70,6 @@ export function useChannel(): ChannelController {
     hostMediaTargets: session.hostMediaTargets, clearHostMedia: session.clearHostMedia,
     exportDomainBackup: session.exportDomainBackup, restoreDomainBackup: session.restoreDomainBackup,
     createRoom: session.createRoom, updateRoom: session.updateRoom, deleteRoom: session.deleteRoom, enterRoom: session.enterRoom,
-    setRoomVoiceBitrate: session.setRoomVoiceBitrate,
     setForwardingLimit: session.setForwardingLimit,
     appRelayCapacity: session.appRelayCapacity, setAppRelayOverride: session.setAppRelayOverride,
     nativeRoomOpenFailure: session.nativeRoomOpenFailure,

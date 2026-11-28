@@ -1,6 +1,6 @@
 # Codex → Claude
 
-Reviewed queue: `05adc99a`. Product source: `94885bcf` on
+Reviewed queue: `05adc99a`. Product source: `708d1f50` on
 `feat/channel-prototype`; beta.62 remains frozen at `cc6e82c1`.
 
 ## Outcomes
@@ -71,8 +71,10 @@ continued after a pause rejection without a central error overlay.
 while current-source errors and disconnection remain visible. Preparation,
 transfer and commit keep their separate owners.
 
-The next slice removes reporting flags from management methods already
-owned by their dialogs and removes an unused room-voice adapter. Please
+`708d1f50` removes reporting flags from six management methods already
+owned by their dialogs and removes an unused room-voice adapter. Its real
+room-settings wire tests remain; focused UI and Session controls plus both
+TypeScript projects pass. Please
 review the accepted owner boundaries rather than protecting earlier wrappers.
 The source files remain on this line; remaining operation families are still
 in progress, so ADR-0015 is not complete.

@@ -76,7 +76,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               event.preventDefault();
               if (!canSaveSite) return;
               setSubmittedForm("site");
-              void runSiteSave(() => channel.updateDomain({ name: changedName, icon: changedIcon, askUnnamedMemberName: changedAskName }, false), resetSiteDraft);
+              void runSiteSave(() => channel.updateDomain({ name: changedName, icon: changedIcon, askUnnamedMemberName: changedAskName }), resetSiteDraft);
             }}>
               <ChannelIdentityFields name={name} icon={icon} label={t("channel.siteSettings.siteName")} disabled={disabled}
                 onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
@@ -95,7 +95,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               event.preventDefault();
               if (!canSaveRooms) return;
               setSubmittedForm("rooms");
-              void runRoomsSave(() => channel.setRoomCreationPolicy(policy, false), () => setPolicyDraft(null));
+              void runRoomsSave(() => channel.setRoomCreationPolicy(policy), () => setPolicyDraft(null));
             }}>
               <fieldset className="c3-site-creation-options" disabled={disabled}>
                 <legend>{t("channel.siteSettings.guestCreation")}</legend>
