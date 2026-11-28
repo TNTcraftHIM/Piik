@@ -427,7 +427,7 @@ export function ChannelStage({ layoutHome, companion, theaterMode: [theater, set
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
             aria-label={sourceLabel}
             onClick={event => {
-              if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
+              if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover], .lr-media-controls"))) return;
               onFocus(source.id);
             }}>
             {waiting ? <div className="c3-monitor-wait"><Glyph name="tv" size={24} /><span role="status">{t("screen.shareEnded", { name: source.name })}</span></div> : hasPicture(source) ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource} sourcePaused={source.paused}
@@ -527,7 +527,7 @@ function WatchStageTile({ source, thumbnail, compactCaption, focused, focusable,
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={style}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {
-      if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
+      if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover], .lr-media-controls"))) onFocus(source.id);
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
       actionFeedback={source.actionFailure || playbackAction.error || windowAction.error ? <>
