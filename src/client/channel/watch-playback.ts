@@ -241,37 +241,46 @@ export class WatchPlayer {
     if (this.signal.aborted || state.readyState < 1 || !this.playback || this.offset === null) return false;
     const playback = this.playback;
     if (playback.timeline !== (state.live ? "program" : "media")) throw new Error("watch_timeline_changed");
-    const position = watchPosition(playback, performance.now() + this.offset);
-    const target = playback.timeline === "program" ? position : Math.min(position, state.duration ?? Infinity);
+    const clock = now + this.offset;
+    const end = playback.timeline === "program" ? Infinity : state.duration ?? Infinity;
+    const target = Math.min(watchPosition(playback, clock), end);
     const patch: WatchMediaPatch = {};
     if (!explicit && this.media.playbackAvailable?.() === false) return false;
     force = explicit || force && this.alignedPlayback !== playback;
     const buffered = state.buffered?.some(([start, end]) => start <= target && target < end);
     // A paused anchor identifies a fixed position, including one keyboard seek step.
-    const displaced = force && playback.paused ? state.position !== target
-      : Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35));
+    const tolerance = force && playback.paused ? 0 : this.media.seekTolerance ?? (force ? 0.12 : 0.35);
+    const displaced = Math.abs(state.position - target) > tolerance;
+    const prior = this.alignedPlayback;
+    // A new anchor supersedes the issued command even while the provider reports an older sample.
+    const seekChanged = force && prior && Math.abs(Math.min(watchPosition(prior, clock), end) - target) > tolerance;
+    const pauseChanged = force && prior && prior.paused !== playback.paused;
+    if (!displaced && this.blockedReason === "local-seek") {
+      this.blockedReason = null; this.changed();
+    }
     // An iframe can report a shared seek one observation after dispatch.
     if (!force && displaced && this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA && previous.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
       && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {
       this.blockedReason = "local-seek"; this.changed();
     }
-    if (state.live && displaced && !buffered && !state.live.seekable.some(([start, end]) => start <= target && target <= end)) {
+    if (state.live && (displaced || seekChanged) && !buffered && !state.live.seekable.some(([start, end]) => start <= target && target <= end)) {
       await this.apply({ paused: true });
       this.error = "watch_live_position_unavailable"; this.changed();
       return false;
     }
     if (this.error === "watch_live_position_unavailable") { this.error = null; this.changed(); }
     // Unknown buffering permits explicit host commands, not invented periodic drift correction.
-    if ((force || state.readyState >= HAVE_FUTURE_DATA && buffered) && displaced) patch.position = target;
-    if (playback.paused && !state.paused) patch.paused = true;
-    if (state.rate !== playback.rate && this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) {
+    if (seekChanged || displaced && (force || state.readyState >= HAVE_FUTURE_DATA && buffered)) patch.position = target;
+    if (playback.paused && (!state.paused || pauseChanged)) patch.paused = true;
+    const needsRate = state.rate !== playback.rate || force && prior && prior.rate !== playback.rate;
+    if (needsRate && this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) {
       if (this.failure === null) { this.failure = unsupportedRate; this.changed(); }
       if ((force || playback.paused) && Object.keys(patch).length) await this.apply(patch);
       return false;
     }
     if (this.failure === unsupportedRate) { this.failure = null; this.changed(); }
-    if (state.rate !== playback.rate) patch.rate = playback.rate;
-    if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
+    if (needsRate) patch.rate = playback.rate;
+    if (!playback.paused && (state.paused || pauseChanged) && !this.blocked && !state.ended) patch.paused = false;
     // Rejoining while this patch is pending invalidates its clock alignment.
     this.alignedPlayback = playback;
     if (Object.keys(patch).length) await this.apply(patch);

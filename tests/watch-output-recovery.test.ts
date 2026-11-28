@@ -5,6 +5,7 @@ import { AppPage } from "../src/client/channel/app-link";
 import { ChannelWatchVideo } from "../src/client/channel/components/ChannelMedia";
 import * as watchResource from "../src/client/channel/watch-resource";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
+import { HTMLVideoMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { playbackOutput } from "../src/client/media/playback-output";
 import { setCopy, t } from "../src/client/ui/copy";
@@ -59,6 +60,40 @@ it.each([false, true])("offers output recovery for a page-supplied player with a
   } finally {
     player.close();
     open.mockRestore();
+    await playbackOutput.choose("");
+    vi.unstubAllGlobals();
+  }
+});
+
+it("cancels deferred viewer playback when the room pauses before output is ready", async () => {
+  let releaseOutput!: () => void;
+  const output = new Promise<void>(resolve => { releaseOutput = resolve; });
+  const video = Object.assign(new EventTarget(), {
+    readyState: 4, paused: true, ended: false, duration: 60, currentTime: 0, playbackRate: 1, buffered: { length: 0 },
+    setSinkId: vi.fn(() => output), play: vi.fn(async () => {}), pause: vi.fn(),
+    removeAttribute: vi.fn(), load: vi.fn(), remove: vi.fn(),
+  });
+  vi.stubGlobal("document", { createElement: () => video });
+  await playbackOutput.choose("headphones");
+  const media = new HTMLVideoMedia("https://source.test/watch.mp4", "file");
+  const patch = vi.spyOn(media, "patch");
+  const player = new WatchPlayer("fixture", false, media, vi.fn());
+  const playing = { timeline: "media" as const, paused: false, position: 0, rate: 1, anchorTime: 1000 };
+  try {
+    player.calibrate(1000, performance.now());
+    player.update(playing);
+    await player.serialize(async () => {});
+    expect(patch).toHaveBeenCalledWith(expect.objectContaining({ paused: false }));
+    expect(video.play).not.toHaveBeenCalled();
+
+    player.update({ ...playing, paused: true });
+    await player.serialize(async () => {});
+    releaseOutput();
+    await playbackOutput.choose("");
+    expect(video.play).not.toHaveBeenCalled();
+  } finally {
+    releaseOutput();
+    player.close();
     await playbackOutput.choose("");
     vi.unstubAllGlobals();
   }
