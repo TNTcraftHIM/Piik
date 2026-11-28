@@ -347,9 +347,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", pageURL: url, title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => { actionFails("watch-focus"); sample.received(); },
     cancelScreenSelection: async () => { setCapturePendingSample(false); setBrowserSourcePending(null); setPageSample(undefined); },
-    selectWatchPage: async (roomId, candidateId, activityId) => {
+    selectWatchPage: async (roomId, candidateId, activityId, _reportError, mode) => {
       const query = new URLSearchParams(location.search);
-      if (!activityId && (query.has("browser-source") || query.has("indexed-tracks") || query.has("mpd-tracks"))) {
+      if (!activityId && mode === "choose-source") {
         if (query.has("mpd-tracks")) {
           setPageSample({ ...pageSample!, watchSources: { candidateId, choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) } });
           return false;
