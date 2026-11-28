@@ -48,7 +48,7 @@ export function ChannelForwardingSettings({ channel }: { channel: ChannelControl
     <ForwardingLimit label={t("room.relay.webpage")} value={channel.forwardingLimit} onChange={channel.setForwardingLimit} />
     {channel.appConnected && (app ? <ForwardingLimit label={t("room.relay.app")} value={app.relayOverride ?? -1}
       disabled={!connected || channel.pending.has("app-relay")} onChange={value => {
-        void run(() => channel.setAppRelayOverride(app, value < 0 ? null : value, false), setApp);
+        void run(() => channel.setAppRelayOverride(app, value < 0 ? null : value), setApp);
       }} /> : <p role="status">{t(failed || !connected ? "room.relay.appUnavailable" : "common.loading")}</p>)}
     <ChannelSettingsError error={error} />
   </details>;

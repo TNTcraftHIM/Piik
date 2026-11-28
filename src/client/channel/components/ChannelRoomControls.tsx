@@ -210,7 +210,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
           onCancel={onClose} onSave={() => { const settings = roomSettings(draft, inviteOnly); setCreating(true); return run(async () => {
             try {
               if (copy) return await channel.importRoomCopy(copy.file, settings);
-              return { roomId: await channel.createRoom(settings, false), cached: true };
+              return { roomId: await channel.createRoom(settings), cached: true };
             }
             catch (error) {
               const recovery = error instanceof RoomCreationInterrupted ? error : copy && roomRestoreRecovery(error);
@@ -281,7 +281,7 @@ function RoomMemberAccess({ channel, roomId, userId, disabled }: {
       <span>{memberName(userId, userProfile(channel.state, channel.profiles, userId)?.name, true)}</span>
       <ChannelAction icon="x" quiet iconOnly danger label={t("room.settings.revokeAccess")} hint="hint-close"
         busy={channel.pending.has(`revoke:${roomId}:${userId}`)} disabled={disabled}
-        onClick={() => { void run(() => channel.revokeRoomAccess(roomId, userId, false)); }} />
+        onClick={() => { void run(() => channel.revokeRoomAccess(roomId, userId)); }} />
     </div>
     <ChannelSettingsError error={error} />
     {error && <ChannelDiagnosisHelp diagnosis={{ topic: "manageRoom" }} />}
@@ -381,7 +381,7 @@ function RoomSettings({ channel, room, onClose, onDelete, deleteError, deleting 
       return Promise.resolve();
     }
     const changes = roomSettingsPatch(draft, room, inviteOnly);
-    return Object.keys(changes).length ? run(() => channel.updateRoom(room.id, changes, false), onClose) : Promise.resolve(onClose());
+    return Object.keys(changes).length ? run(() => channel.updateRoom(room.id, changes), onClose) : Promise.resolve(onClose());
   } };
   const tasks = [
     ...(room.canManage ? [{ value: "room", label: t("room.settings.roomTab"), icon: "couch" } as const] : []),

@@ -262,7 +262,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     const operation = preparingShare.current = {};
     await quickStart.run(async () => {
       try {
-        const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"), false);
+        const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"));
         rememberSimpleShareRoom(simpleShareKey, id);
         if (preparingShare.current !== operation) return;
         selectRoom(id); setPickerRoom(id);

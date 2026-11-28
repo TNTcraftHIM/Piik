@@ -265,7 +265,6 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     setMicrophoneMode: async (mode: ChannelController["voiceTransmission"]["mode"]) => setVoiceTransmission(previous => ({ ...previous, mode })),
     setActivationThreshold: (activationThreshold: number) => setVoiceTransmission(previous => ({ ...previous, activationThreshold })),
     talk: () => {}, microphoneLevel: () => voiceLevel,
-    setRoomVoiceBitrate: async (roomId: string, voiceBitrate: number) => setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], voiceBitrate } })),
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   return { channel, roomName, sampleMessages, messageReactions, settingsByRoom, notice, received, onSend, voiceLevel, setVoiceLevel };
 }

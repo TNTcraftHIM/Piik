@@ -499,7 +499,7 @@ test("the owner submits room creation policy and reads the authoritative update"
   const { session, socket } = await setup(1000, false);
   try {
     const state = session.getSnapshot().state!;
-    const pending = session.setRoomCreationPolicy("invite_only", false);
+    const pending = session.setRoomCreationPolicy("invite_only");
     const command = socket.sent.findLast(command => command.type === "set_room_creation_policy")!;
     expect(command).toMatchObject({ type: "set_room_creation_policy", policy: "invite_only" });
     expect(session.getSnapshot().state?.channel.roomCreationPolicy).toBe("ordinary");
@@ -6411,19 +6411,19 @@ test("domain settings use a domain-scoped acknowledgement and surface rejected u
     const rejected = expect(denied).rejects.toThrow("forbidden");
     socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "error", code: "forbidden" } });
     await rejected;
-    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: "forbidden" });
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
     expect(session.getSnapshot().pending.has("domain")).toBe(false);
   } finally { session.close(); }
 });
 
-test("local room management failures preserve capture errors while voice settings still report globally", async () => {
+test("room management failures preserve capture errors", async () => {
   const { session, socket } = await setup();
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new Error("capture_failed")) } });
   try {
     await expect(session.startScreen("first", "camera")).rejects.toThrow("capture_failed");
     expect(session.getSnapshot().error).toBe("capture_failed");
 
-    const saving = session.updateRoom("second", { name: "Saved", icon: "couch", access: "public", hidden: false }, false);
+    const saving = session.updateRoom("second", { name: "Saved", icon: "couch", access: "public", hidden: false });
     const rejected = expect(saving).rejects.toThrow("room_host_offline");
     const request = socket.sent.at(-1)!;
     expect(request).toMatchObject({ type: "update_room", roomId: "second", name: "Saved" });
@@ -6435,15 +6435,6 @@ test("local room management failures preserve capture errors while voice setting
     expect(session.getSnapshot().error).toBe("capture_failed");
     expect(session.getSnapshot().pending.has("room:second")).toBe(false);
 
-    const voiceSettings = session.setRoomVoiceBitrate("first", 96_000);
-    const voiceRejected = expect(voiceSettings).rejects.toThrow("forbidden");
-    const voiceRequest = socket.sent.at(-1)!;
-    expect(voiceRequest).toMatchObject({ type: "update_room", roomId: "first", voiceBitrate: 96_000 });
-    expect(session.getSnapshot().error).toBeNull();
-    socket.receive({ type: "reply", requestId: voiceRequest.requestId, result: { type: "error", code: "forbidden" } });
-    await voiceRejected;
-    expect(session.getSnapshot().error).toBe("forbidden");
-    expect(session.getSnapshot().pending.has("room:first")).toBe(false);
   } finally { session.close(); }
 });
 
@@ -6547,7 +6538,7 @@ test("a confirmed service preference survives failed readback without replay or 
   const { session, socket } = await setup();
   const settings = { name: "First", icon: "couch", access: "public" as const, hidden: false };
   try {
-    const saving = session.updateRoom("first", { ...settings, allowServiceRelay: true }, false);
+    const saving = session.updateRoom("first", { ...settings, allowServiceRelay: true });
     expect(session.getSnapshot().pending.has("room:first")).toBe(true);
     const save = socket.sent.at(-1)!;
     socket.receive({ type: "reply", roomId: "first", requestId: save.requestId, result: { type: "done" } });
@@ -6567,7 +6558,7 @@ test("a confirmed service preference survives failed readback without replay or 
     socket.receive({ type: "reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
       result: { type: "topology", topology: observed } });
     expect(await retry).toEqual(observed);
-    const disabling = session.updateRoom("first", { ...settings, allowServiceRelay: false }, false);
+    const disabling = session.updateRoom("first", { ...settings, allowServiceRelay: false });
     const rejected = expect(disabling).rejects.toThrow("storage_failed");
     socket.receive({ type: "reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
       result: { type: "error", code: "storage_failed" } });
@@ -6752,21 +6743,15 @@ test("room voice settings use the managed room update without changing local inp
   const { session, socket } = await setup();
   try {
     const previous = session.getSnapshot();
-    const saving = session.setRoomVoiceBitrate("first", 96_000);
+    const saving = session.updateRoom("first", { voiceBitrate: 96_000 });
     const request = socket.sent.at(-1)!;
     expect(request).toEqual({ type: "update_room", roomId: "first", voiceBitrate: 96_000, requestId: expect.any(String) });
     socket.receive({ type: "reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
     await saving;
     expect(session.getSnapshot().voiceInput).toEqual(previous.voiceInput);
     expect(session.getSnapshot().listeningVolume).toBe(previous.listeningVolume);
-    const sentBeforeInvalid = socket.sent.length;
-    for (const value of [NaN, Infinity, 1.5]) {
-      const result = session.setRoomVoiceBitrate("first", value);
-      expect(socket.sent).toHaveLength(sentBeforeInvalid);
-      await expect(result).rejects.toThrow("invalid_audio_bitrate");
-    }
     // The room authority validates the bitrate; its rejection reaches the caller.
-    const rejected = session.setRoomVoiceBitrate("first", 320_001);
+    const rejected = session.updateRoom("first", { voiceBitrate: 320_001 });
     const invalid = socket.sent.at(-1)!;
     expect(invalid).toEqual({ type: "update_room", roomId: "first", voiceBitrate: 320_001, requestId: expect.any(String) });
     socket.receive({ type: "reply", roomId: "first", requestId: invalid.requestId, result: { type: "error", code: "invalid_audio_bitrate" } });
@@ -11295,14 +11280,14 @@ test("App forwarding settings target the connected endpoint independently of roo
     app.receive({ id: app.sent.at(-1)!.id, result: setting });
     expect(await read).toEqual(setting);
     session.setForwardingLimit(4);
-    const write = session.setAppRelayOverride(setting, 3, false);
+    const write = session.setAppRelayOverride(setting, 3);
     expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "set", sessionId: setting.sessionId, capacity: 3 });
     session.browse("second");
     app.receive({ id: app.sent.at(-1)!.id, result: { ...setting, relayOverride: 3 } });
     expect(await write).toEqual({ ...setting, relayOverride: 3 });
     expect(session.getSnapshot().forwardingLimit).toBe(4);
     expect(socket.sent.some(command => command.type === "relay_capacity")).toBe(false);
-    const wrongEndpoint = session.setAppRelayOverride(setting, 2, false);
+    const wrongEndpoint = session.setAppRelayOverride(setting, 2);
     const rejectedEndpoint = expect(wrongEndpoint).rejects.toThrow("app_disconnected");
     app.receive({ id: app.sent.at(-1)!.id, result: { ...setting, sessionId: crypto.randomUUID(), relayOverride: 2 } });
     await rejectedEndpoint;
@@ -17077,7 +17062,7 @@ test("retired room management failure does not overwrite a fresh identity connec
     const rejectedDenied = expect(denied).rejects.toThrow("forbidden");
     socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId, result: { type: "error", code: "forbidden" } });
     await rejectedDenied;
-    expect(session.getSnapshot().error).toBe("forbidden");
+    expect(session.getSnapshot().error).toBeNull();
     const updating = session.updateRoom("first", { name: "Changed", icon: "couch", access: "public", hidden: false });
     const rejected = expect(updating).rejects.toThrow("closed");
     expect(socket.sent.at(-1)).toMatchObject({ type: "update_room", roomId: "first" });
@@ -18036,7 +18021,7 @@ test("a room completion cannot answer a profile query or preempt a different roo
     socket.autoProfiles = false;
     const reading = session.queryProfiles({ query: "Alice" });
     const query = socket.sent.at(-1)!;
-    const saving = session.updateRoom("second", { name: "Renamed" }, false);
+    const saving = session.updateRoom("second", { name: "Renamed" });
     const update = socket.sent.at(-1)!;
     socket.receive({ type: "reply", roomId: "first", requestId: query.requestId, result: { type: "done" } });
     socket.receive({ type: "reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
@@ -18051,7 +18036,7 @@ test("a room completion cannot answer a profile query or preempt a different roo
 test("terminal candidate rejects unsupported room results only for their caller", async () => {
   const { session, socket } = await setup();
   try {
-    const saving = session.updateRoom("first", { name: "updated" }, false);
+    const saving = session.updateRoom("first", { name: "updated" });
     const requestId = socket.sent.at(-1)!.requestId;
     const received = (roomId: string, id: unknown, type: string) => socket.receive({ type: "reply", roomId, requestId: id, result: { type } });
     received("first", "observer", "unknown");
@@ -18061,7 +18046,7 @@ test("terminal candidate rejects unsupported room results only for their caller"
     await expect(saving).rejects.toThrow("unknown_outcome");
     expect(session.getSnapshot().connection).toBe("connected");
     expect(session.getSnapshot().error).toBeNull();
-    const retry = session.updateRoom("first", { name: "updated" }, false);
+    const retry = session.updateRoom("first", { name: "updated" });
     received("first", socket.sent.at(-1)!.requestId, "done");
     await retry;
   } finally { session.close(); }

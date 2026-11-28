@@ -1554,9 +1554,9 @@ export class ChannelSession {
     await this.request({ type: "set_profile", name, avatar });
     if (name !== undefined) stored(nameKey, name.trim());
   }, false);
-  updateDomain = (settings: Partial<DomainSettings>, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
-  setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"], reportError = true): Promise<void> =>
-    this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), reportError);
+  updateDomain = (settings: Partial<DomainSettings>): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), false);
+  setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"]): Promise<void> =>
+    this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), false);
   private async allocateRoom(settings: RoomSettings) {
     const current = this.sessionContext(), socket = this.socket;
     const serverHosted = this.view.state!.channel.hostingMode === "hosted";
@@ -1579,7 +1579,7 @@ export class ChannelSession {
       if (this.socket === socket) this.write({ type: "cancel_room_creation", roomId });
     } };
   }
-  createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
+  createRoom = (settings: RoomSettings): Promise<string> => this.action("create-room", async () => {
     const app = this.app?.connected ? this.app : undefined;
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     const { room, cancel } = await this.allocateRoom(settings);
@@ -1615,7 +1615,7 @@ export class ChannelSession {
       if (creation === "reserved" || (creation === "dispatched" && error instanceof RoomSettingsRejected)) { cancel(); throw error; }
       throw new RoomCreationInterrupted(room.id, creation === "committed");
     }
-  }, reportError);
+  }, false);
   private sessionContext(): () => void {
     const { sessionId, self, state } = this.view, socket = this.socket;
     if (!sessionId || !self || !state || this.view.connection !== "connected") throw new Error("disconnected");
@@ -2174,7 +2174,7 @@ export class ChannelSession {
     return this.attachments.restoreRetained(roomId, entries);
   }
 
-  updateRoom = (roomId: string, settings: Partial<RoomSettings>, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
+  updateRoom = (roomId: string, settings: Partial<RoomSettings>): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), false);
   setForwardingLimit = (forwardingLimit: number): void => {
     const { self, sessionId, connection } = this.view, state = this.roomSnapshot;
     if (!self || !sessionId || !state || !Number.isInteger(forwardingLimit) || forwardingLimit < -1 || forwardingLimit > MAX_RELAY_CAPACITY) return;
@@ -2192,7 +2192,7 @@ export class ChannelSession {
     if (this.app !== app || !app.connected) throw new Error("app_disconnected");
     return result;
   };
-  setAppRelayOverride = (previous: NativeRelayCapacity, capacity: number | null, reportError = true): Promise<NativeRelayCapacity> =>
+  setAppRelayOverride = (previous: NativeRelayCapacity, capacity: number | null): Promise<NativeRelayCapacity> =>
     this.action("app-relay", async () => {
       const current = this.sessionContext(), app = this.app;
       if (!app?.connected) throw new Error("app_disconnected");
@@ -2200,7 +2200,7 @@ export class ChannelSession {
       current();
       if (this.app !== app || !app.connected || result.sessionId !== previous.sessionId) throw new Error("app_disconnected");
       return result;
-    }, reportError);
+    }, false);
   deleteRoom = (roomId: string, deleteData: boolean, localResult?: AbortSignal): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
     const socket = this.socket;
     const hosted = this.view.state?.channel.hostingMode === "hosted";
@@ -2226,10 +2226,6 @@ export class ChannelSession {
     return { dataRemoved };
   }, false);
 
-  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
-    if (!Number.isInteger(voiceBitrate)) return Promise.reject(new Error("invalid_audio_bitrate"));
-    return this.updateRoom(roomId, { voiceBitrate });
-  };
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }), false);
   private roomInvitationURL(roomId: string, key: string): string {
     const url = new URL(location.pathname, this.invitationOrigin);
@@ -2261,7 +2257,7 @@ export class ChannelSession {
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
   };
-  revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
+  revokeRoomAccess = (roomId: string, userId: string): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), false);
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal, reportError: ReportError = true): Promise<void> => {
     const watch: ScreenWatch = {};
     const operation = this.action(`watch:${publicationId}`, async () => {
