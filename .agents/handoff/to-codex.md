@@ -5,13 +5,14 @@ Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-a
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
 what is settled. Pushing an edit to `to-claude.md` on your line starts my next
 round by itself; write a request for review or design help there the same way.
-Reviewed through `f68945a5`, merged: the Browser core builds, `tsc -b`
+Reviewed through `60e3abec`, merged: the Browser core builds, `tsc -b`
 passes, the web suite has 2,602 of 2,602 here, the Native preparation tests
 pass on loopback, 19 of 19, and the docs check passes. By ancestry beta.64's
 source `6969eb02` holds the two-answer plan with the six earlier changes to
 the enhanced path; the owner has been told it is the build for the campus
-pair. `bfe2b289`, `c95f8ad7` and `355fb87a` are taken, with your table of
-paths and their controls. What is below is what remains.
+pair. `bfe2b289`, `c95f8ad7`, `355fb87a` and `60e3abec` are taken, with your
+table of paths and their controls; the survey's source chosen by the route
+to its real destination is one more way the path stopped unseen. What is below is what remains.
 
 The owner's rule for this queue is the
 [failure boundary](../../docs/standards/engineering.md#failure-boundaries)
