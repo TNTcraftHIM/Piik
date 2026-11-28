@@ -2098,6 +2098,7 @@ test.each(["friend", "self"])("Browser watching stays available while the connec
 
 test.each(["replacement", "resume"])("a retained watch re-associates an App endpoint after its current admission becomes ready (%s)", async mode => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", ...PRODUCT_VERSION, port: 8793, token: "approved" });
+  const diagnostic = vi.spyOn(browserDiagnostics, "debugEvent");
   const previous = crypto.randomUUID(), current = mode === "resume" ? previous : crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: previous, roomIds: [] });
   const { session, socket } = await setup();
@@ -2120,8 +2121,14 @@ test.each(["replacement", "resume"])("a retained watch re-associates an App endp
     // Admission can drop between the local description and the room command.
     socket.receive({ type: "reply", requestId: socket.sent.at(-1)!.requestId,
       result: mode === "resume" ? { type: "error", code: "helper_unavailable" } : { type: "done" } });
-    if (mode === "resume") state.sessions = state.sessions.map(endpoint => endpoint.id === previous ? { ...endpoint, online: false } : endpoint);
-    else state.sessions = state.sessions.filter(endpoint => endpoint.id !== previous);
+    if (mode === "resume") {
+      await vi.waitFor(() => expect(diagnostic).toHaveBeenCalledWith("channel", "watch-helper-request-failed", { publicationId: "screen", reason: "helper_unavailable" }));
+      state.sessions = state.sessions.map(endpoint => endpoint.id === previous ? { ...endpoint, online: false } : endpoint);
+    }
+    else {
+      await vi.waitFor(() => expect(diagnostic).toHaveBeenCalledWith("channel", "watch-helper-accepted", { publicationId: "screen" }));
+      state.sessions = state.sessions.filter(endpoint => endpoint.id !== previous);
+    }
     socket.receive({ type: "state", state });
     let ready!: (value: { sessionId: string; roomIds: string[] }) => void;
     description.mockImplementationOnce(() => new Promise(resolve => { ready = resolve; }));

@@ -45,9 +45,7 @@ The private 3.0 implementation currently has these boundaries:
    in either role. [Versioning](../standards/versioning.md#extending-interfaces)
    owns the rules for extensions and their mixed-version acceptance.
    Extensions must be exercised to stay usable
-   ([RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)), and the
-   exercise is generated from samples: a list of places to test missed a
-   set nested inside a signal, which then grew and broke its older readers.
+   ([RFC 9170](https://www.rfc-editor.org/rfc/rfc9170.html)).
 2. **Replies.** A request ends in an explicit terminal outcome that tells
    rejected from unknown, and a copy sent to an observer is separate from the
    requester's reply. Idempotency is scoped by operation: chat already has

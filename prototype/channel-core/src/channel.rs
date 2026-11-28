@@ -299,10 +299,14 @@ impl Channel {
                             UdpSignal::Answer { .. } => session_id > peer,
                             UdpSignal::Ready {}
                             | UdpSignal::Unavailable {}
-                            | UdpSignal::Complete => true,
+                            | UdpSignal::Complete
+                            | UdpSignal::Unknown => true,
                         }
                     {
                         return Err("invalid_signal");
+                    }
+                    if udp.unsupported() {
+                        payload.udp = Some(UdpSignal::Unavailable {});
                     }
                 }
                 if let Some(tracks) = &mut payload.tracks {

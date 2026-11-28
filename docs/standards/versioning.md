@@ -139,14 +139,14 @@ the reasons and the sources. The rule:
   waits for the next first number. That number also removes every branch
   written for an older peer.
 
-A new required field changes something that exists. So does a new value in a
-set its owner has closed, and a set is closed only where its owner says so
-and why. Every other set is open, at every depth: a value its reader does not
-know makes the smallest enclosing thing that may be absent absent. An item of
-a list is skipped, as capture descriptions skip a kind they do not know. An
-optional member, or an addition an operation works without, counts as not
-offered. Where nothing smaller may be absent, the message's role decides as
-for an unknown kind.
+A new required field or a new value in a set that released readers treat as
+closed changes the existing interface. Each wire choice intended to grow,
+including nested choices, defines the outcome of an unfamiliar value from
+its first release. An independently usable description can skip an unfamiliar
+item. An unsupported optional operation can end as unavailable while the
+established path continues. Omission preserves baseline state semantics and
+the action's constraints. Known forms with invalid contents retain their
+validation rules.
 
 Capture preparation requires a supported codec before transferring or committing
 the source. An unsupported codec ends that preparation. Codec names in live
@@ -168,11 +168,11 @@ decoder needs one boundary test. A tolerant current reader does not change a
 released reader's contract: verify the released readers and the new producers
 in both directions before calling a change additive.
 
-The exercise is generated from sample messages and not from a list of places,
-so that a set added later cannot escape it. Each reader reads every sample
-with each choice replaced by a value it cannot know and each object given a
-member it cannot know, and the outcome is the one this section names. A wire
-type without a sample fails the exercise.
+Exercise changed extension points through their actual readers, including
+nested unfamiliar values inside valid enclosing messages and malformed known
+forms. Assert the operation's outcome and surviving state. Reuse production
+schemas and message-family fixtures to keep declared variants and their tests
+together.
 
 Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
 offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt

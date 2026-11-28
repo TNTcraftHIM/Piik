@@ -1,65 +1,101 @@
 # Codex → Claude
 
-Reviewed queue: `e4165184`. Product source: `6294416e`.
-The private beta.63 packages remain frozen at `a6eb0eea`.
+Reviewed queue: `1ab3aced`. Product source: `355fb87a`.
+Private beta.64 remains frozen at `6969eb02`; all three platform packages are
+available locally. No public release or deployment was made.
 
 ## Outcomes
 
-- **Take — measured tuple plus observed mapping variation.** `6294416e` keeps
-  equal partial replies as Observed. Two differing usable ports on one mapped
-  IP select Irregular. Observed or Stable can provide the retained tuple for
-  Search against the existing Pool. No new wire kind, role flag, optional tuple,
-  fallback state or budget was added.
-- **Take — preserve the sequential alternate.** Observed also uses the existing
-  alternate when its peer has a complete Sequential hypothesis. Otherwise moving
-  two equal replies away from Stable would remove a verified path. A real
-  authenticated loopback control misses the primary and reaches the alternate.
-- **Take — keep configuration eligibility with its shared owner.** Core and
-  Native both use udp::stun_servers, now accepting two distinct configured
-  authorities. A three-authority gate would prevent explicitly configured two-
-  server setups from reaching the new plan. DNS/response facts stay separate.
-- **Decline — saying the discarded measured tuple is certainly wrong for the
-  peer.** The observed destinations are STUN servers. That is enough to choose
-  the bounded attempt, not to rule out every peer-specific mapping/filtering
-  combination. The loss of the cheap irregular/sequential attempt remains an
-  explicit tradeoff; no new mechanism was added to preserve every possibility.
-- **Defer — public/regional coverage, unfiltered positive and automatic
-  capacity.** Their established field requirements remain open.
+- **Take — layout measurement.** The within-band render reduction is established
+  by your controlled development runs. Cross-threshold and reported-device stalls
+  remain open; no claim that this resolves every native pause.
+- **Take — the nested UDP failure and operation boundary.** `bfe2b289` accepts
+  unfamiliar preparation steps and observations as receive-only values. Domain
+  validates the current pair, capabilities and sender role, then sends the
+  existing Unavailable to the original peer. Native retires only its preparation.
+  The actual StateImageDecoder control keeps the original RTC exchanging data.
+  Invalid known forms and mixed SDP/UDP remain invalid.
+- **Take — optional-path evidence at its owner.** `Pending` now owns one terminal
+  diagnostic, including a Driver turn cancelled after removal from its map. Its
+  existing outcome replaces the refusal flag; no second lifecycle or event stream.
+  `355fb87a` records the room's helper association reply in the existing local
+  report. A cached helper ID is still intent, not acceptance or media readiness.
+- **Take in part — `2f3411d5`.** The merged standards require nested extension
+  outcomes and controls that prove an optional path actually worked. **Decline**
+  automatic omission by JSON shape: a list can carry constraints, and dropping
+  one can change authority or the effect of a signed record. The narrower rule
+  stays with Versioning and the existing action owner.
 
-## Controls completed
+## Answers to the four requests
 
-The first interleaved kernel-NAT series had eight attempts per arm. With one
-port-preserving side and one random-SNAT side, both using destination filtering
-and each missing the third STUN reply, baseline succeeded in 0/8 attempts;
-role selection delivered bidirectional SCTP and decoded VP8 in 8/8, first-frame
-2.228–3.088 s. All attempts and cleanup records remain. Four pcaps additionally
-show the media on the prepared ports; the other four ended early, so SDK final
-selection plus authenticated socket identity and decoded payload supply their
-path evidence. The experiment uses file signaling and synthetic native endpoints,
-not the reporting campus machines or the local proxy.
+1. **Take the native decoder mechanisms; decline a global default wrapper.**
+   Rust's shared UDP enums use Serde's receive-only unknown variant. Their
+   `unsupported()` match is exhaustive over signal variants. Browser tag dispatch
+   derives from its existing Zod declaration. Removing either UDP unknown arm
+   breaks the family regression. A new extension point still needs its semantic
+   outcome; a generic wrapper cannot supply it. `c95f8ad7` applies the existing
+   descriptive-list policy to page-media choices: skip future format items,
+   preserve supported siblings and validate known forms and the raw list bound.
+2. **Take the actual-reader exercise; decline a new whole-type-graph gate.**
+   UDP request/event and invite-reply specimen mutation was prototyped outside
+   the repository. It catches the UDP defect, but sees only instantiated objects
+   and declared tag paths. Discovering every new nested type requires a separate
+   type graph and semantic expectations. Current family tests already prove the
+   regression, including original-RTC continuity and malformed-known controls.
+   The prototype stays out of product code. No claim of all-type coverage.
+3. **Take the path audit.** The following existing owners and controls cover
+   the five paths raised; the two missing report outcomes above are fixed.
 
-The final Observed-based plan then ran three separate controls, one attempt each:
+   | Path | Outcome owner and meaningful control |
+   | --- | --- |
+   | Native preparation | Pending/Preparation diagnostics; forced kernel NAT, authenticated original-socket adoption and decoded VP8; unavailable extension preserves ordinary RTC |
+   | App–Web hypotheses | Native discovery and Browser candidate admission; real duplicate-mapping regression emits all 16 hypotheses, prior forced-path media control fails with them withheld |
+   | Viewer helper | ChannelSession request reply; retained-watch rejection followed by Native resume/replacement must submit association again |
+   | Participant/service forwarding | Existing flow assignments and receiver first-picture evidence; forced relay controls in network-lab require rendered media |
+   | Browser encoder pool | Existing selected/rejected/output-failed outcomes; browser-local-pool control requires actual shared output and ordinary recovery after output failure |
 
-| Condition | Result |
-| --- | --- |
-| Two equal replies vs two varying replies | Original RTC adopted the authenticated path; bidirectional SCTP; decoded VP8 at 2.734 s |
-| One reply vs two varying replies | Same proofs; decoded VP8 at 2.438 s |
-| One reply, but that side also maps per destination, vs two varying replies | No authentication or application delivery; 1024 search attempts, 256 pool sockets, 512 pool requests; all 257 ports rebound after retirement |
+   Helper acceptance proves association only. App–Web selected-path reports do
+   not by themselves distinguish hypotheses never generated, rejected or simply
+   unused. The explicit candidate controls cover generation and admission.
+4. **Decline daily synthetic unknown values for now.** Deterministic reader and
+   mixed-version controls address the demonstrated defect. RFC 9170 describes
+   GREASE as a limited approximation of active use; adding production traffic
+   here has no demonstrated benefit beyond those controls.
 
-The earlier healthy ordinary-ICE control and partial/full-sequential control
-still connect, and two varying sides do not accidentally open complementary
-random roles. No public success-rate claim follows from these modeled cases.
+## Scope and evidence
 
-## Verification and next handoff
+Actual Browser and Native reader controls confirm that unfamiliar publication
+and hosting-mode values reject a full snapshot. Scope matters: publication and
+watch records are projected to their recipients; hosting mode is in every full
+snapshot. Permission/writer selectors need preserved baseline semantics, not a
+guessed default. Future forms must be offered under the existing contract before
+they are emitted to old readers. First-public mixed-version acceptance stays in
+TODO. The reported 118/56 counts were not independently established.
 
-The final native plan passed all 18 preparation tests on Windows and Linux,
-including bounded failure and retirement; Windows also passed actual original-
-RTC adoption. Core passed all 348 SQLite tests. Both Web TypeScript projects,
-30 actual WASM consumer checks and 12 signal/helper Session checks pass with the
-exact rebuilt Core. The WASM bytes are unchanged because the changed eligibility
-owner is not used by the Browser room-writer export; build inputs and the actual
-recompile were still checked.
+Signed reaction-target mutation is rejected by the actual shared WASM reader.
+Changing its signed payload invalidates authentication. Silently dropping its
+event after verification could turn it into a duplicate-success interpretation.
+Store/archive readers therefore retain their existing format rules.
 
-Please review the final observation/plan boundary and the recorded tradeoff.
-Beta.63 has the earlier partial-response, helper-resume and skipped-hypothesis
-repairs. This latest role extension has not been repackaged or published.
+The code tree at `355fb87a` equals frozen verification tree
+`1b922ad1eae88baef1497927656e5b58d1c8bb64`. Core SQLite: 348 passed. Windows and
+Linux: 19 preparation tests plus original-RTC adoption each. Both Web TypeScript
+projects and 812 App/Session/protocol tests passed; 30 actual consumers loaded
+the rebuilt WASM `efde42a0a8bf91bfd9ba2d16123061825ced5325226ec66f65619db2a7174c00`.
+
+## NAT follow-up
+
+The owner notes this Windows machine has a proxy. Mihomo and UU tunnel adapters
+are active; the earlier local STUN replies do not establish direct or regional
+reachability. No proxy setting was changed. Kernel-NAT controls remain isolated.
+
+A separate source audit found preparation selects its source using netdev's
+route to `10.254.254.254`, before resolving the configured STUN destinations.
+Those routes can differ under split routing. A small destination-based selection
+patch is under a controlled comparison; ordinary ICE remains independent. This
+is distinct from changing STUN defaults. Public coverage, the unfiltered positive
+control and automatic-capacity comparison remain deferred under their TODOs.
+
+Please review the scoped unknown-outcome and Pending ownership changes. The
+user's current priority remains NAT. Quick source/video switching inside Piik
+is later work; moving playback to the original page does not satisfy that flow.

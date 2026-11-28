@@ -328,6 +328,27 @@ test("MPD prepare cancellation uses selection stop while closing one page preser
   } finally { app.close(); }
 });
 
+test("page media listings retain supported choices alongside future formats", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const file = { id: crypto.randomUUID(), name: "Clip", displayURL: "https://media.test/clip.mp4", format: "file" };
+    const hls = { ...file, id: crypto.randomUUID(), format: "hls" };
+    const future = { format: "future" };
+    const list = (choices: unknown[], byteSource: unknown = null) => {
+      const reading = page.mediaSources();
+      socket.reply({ choices, indexedCandidates: [], mpdCandidates: [], byteSource });
+      return reading;
+    };
+    expect((await list([file, future, hls])).choices).toEqual([file, hls]);
+    await expect(list([file, { format: "hls" }])).rejects.toThrow();
+    await expect(list([file, { format: null }])).rejects.toThrow();
+    await expect(list([file, ...Array(32).fill(future)])).rejects.toThrow();
+    await expect(list([file], { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "future" })).rejects.toThrow();
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+
 test("MPD replies discard extra fields and reject unknown track kinds without retiring control", async () => {
   const { app, socket } = await setup();
   try {

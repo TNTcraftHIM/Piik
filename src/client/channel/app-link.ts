@@ -131,6 +131,13 @@ const nullResultCommands = new Set([
 
 export type AppPageMediaSelection = string | NativePageMpdSelection | NativePageIndexedSelection;
 
+const pageMediaChoicesSchema = z.array(z.union([
+  nativePageMediaChoiceSchema,
+  z.object({
+    format: z.string().refine(format => !Object.hasOwn(nativePageMediaChoiceSchema.shape.format.enum, format)),
+  }).transform(() => null),
+])).max(32).transform(choices => choices.filter(choice => choice !== null));
+
 export class AppPage implements AppPagePort {
   candidates: readonly NativePageCandidate[] = [];
   private lifetime = new AbortController();
@@ -172,7 +179,7 @@ export class AppPage implements AppPagePort {
   async focus(): Promise<void> { await this.command("page_focus"); }
   async hide(): Promise<void> { await this.command("page_hide"); }
   async mediaSources(candidateId?: string, signal?: AbortSignal): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
-    return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
+    return z.object({ choices: pageMediaChoicesSchema, indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
       mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).parse(await this.command("page_media_sources", { candidateId }, signal));
   }
   async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal, candidateId?: string): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {

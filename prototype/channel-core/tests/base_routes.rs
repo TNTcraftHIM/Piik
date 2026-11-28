@@ -4690,12 +4690,26 @@ fn coordinated_udp_signals_use_the_current_pair_and_fixed_endpoint_roles() {
     join_room_interests(&mut network, viewer, &room);
     let original = pair(&network, viewer, host_session);
     let observation = json!({"kind":"sequential","address":"203.0.113.5","port":42000,"step":2});
+    for udp in [
+        json!({"type":"future_step","detail":42}),
+        json!({"type":"offer","secret":vec![7u8;32],"observation":{"kind":"future_mapping","detail":42}}),
+    ] {
+        let effects = network.command(initiator, json!({"type":"signal","pairId":original.id,"payload":{"udp":udp}}));
+        let sender_session = host_session.min(viewer_session);
+        assert!(effects.events.iter().any(|(to, event)| *to == responder && matches!(event,
+            Event::Signal { pair_id, from_session_id, payload } if *pair_id == original.id && *from_session_id == sender_session
+                && matches!(payload.udp, Some(piik_channel_core::wire::UdpSignal::Unavailable {})))));
+    }
+    assert!(piik_channel_core::wire::Request::parse(&json!({"type":"signal","pairId":original.id,
+        "payload":{"udp":{"type":"answer","observation":{"kind":"stable","port":42000}}}}).to_string()).is_err());
     let offer = json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":observation}});
     let answer = json!({"udp":{"type":"answer","observation":observation}});
     for (from, payload, accepted) in [
         (initiator, json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":{"kind":"observed","address":"203.0.113.5","port":1024}}}), true),
         (responder, json!({"udp":{"type":"answer","observation":{"kind":"observed","address":"203.0.113.5","port":65535}}}), true),
         (responder, json!({"udp":{"type":"answer","observation":{"kind":"observed","address":"203.0.113.5","port":1023}}}), false),
+        (responder, json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":{"kind":"future_mapping"}}}), false),
+        (initiator, json!({"udp":{"type":"future_step"},"exchangeId":Uuid::new_v4(),"description":{"type":"offer","sdp":"ordinary"}}), false),
         (initiator, offer.clone(), true),
         (responder, offer, false),
         (responder, answer.clone(), true),
