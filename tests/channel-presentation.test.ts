@@ -149,6 +149,11 @@ describe("screen titles", () => {
     expect(screenTitle({ source: { kind: "screen", name: null }, title: null }, english)).toBe("Shared screen");
     expect(screenTitle({ source: { kind: "camera", name: null }, title: null }, chinese)).toBe("摄像头");
     expect(screenTitle({ source: { kind: "camera", name: null }, title: null }, english)).toBe("Camera");
+    const source = { kind: "future-Capture_42", name: null };
+    expect(screenTitle({ source, title: null }, english)).toBe("Shared screen");
+    expect(screenTitle({ source, title: null }, chinese)).toBe("分享画面");
+    expect(screenTitle({ source: { ...source, name: "Studio feed" }, title: null }, english)).toBe("Studio feed");
+    expect(screenTitle({ source: { ...source, name: "Studio feed" }, title: "Concert" }, english)).toBe("Concert");
     expect(screenTitle({ source: { kind: "screen", name: "<窗口>" }, title: "<Movie>" }, english)).toBe("<Movie>");
   });
 });

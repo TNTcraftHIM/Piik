@@ -24,7 +24,7 @@ import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { ChannelUser } from "./ChannelUser";
 import { participantViewingLabel, screenTitle, viewingAppearance, type ScreenAudiencePerson, type AudiencePerson } from "../presentation";
-import type { MessageReactions } from "../protocol";
+import type { MessageReactions, ScreenSource } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
@@ -96,7 +96,7 @@ export interface ScreenStageSource extends StagePictureSource {
   id: string;
   userId: string;
   name: string;
-  source: { kind: "screen" | "camera"; name: string | null };
+  source: ScreenSource;
   title: string | null;
   onRoom?: () => void;
   avatar?: string;

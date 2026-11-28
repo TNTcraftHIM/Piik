@@ -1,7 +1,7 @@
 import { memberName } from "./member-name";
 import type { Copy, CopyKey } from "../ui/copy";
 import type { GlyphName } from "../ui/icons";
-import type { ChannelMessage, ChannelPublication, ChannelRoom, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
+import type { ChannelMessage, ChannelPublication, ChannelRoom, ChannelSnapshot, ChannelUser, ScreenSource, WatchActivity } from "./protocol";
 import type { WatchPlayer } from "./watch-playback";
 
 export function sameCalendarDay(a: Date, b: Date): boolean {
@@ -47,7 +47,7 @@ export function profileAvatar(summary: Pick<ChannelUser, "version">, profile: Ch
 }
 
 /** Live metadata owns names; generic source labels belong to the viewer's locale. */
-export function screenTitle(screen: { source: { kind: "screen" | "camera"; name: string | null }; title: string | null }, t: Copy["t"]): string {
+export function screenTitle(screen: { source: ScreenSource; title: string | null }, t: Copy["t"]): string {
   return screen.title ?? screen.source.name ?? (screen.source.kind === "camera"
     ? t("host.device.camera")
     : t("channel.screen.shared"));
