@@ -2,7 +2,7 @@ import { PRODUCT_VERSION } from "../src/client/channel/product-version";
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { INPUT_FRAME_BYTES, REMOTE_INPUT_COMMAND_BYTES, REMOTE_TEXT_BYTES } from "../src/client/remote-control/protocol";
-import { CHANNEL_EVENT_BYTES, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, IDENTITY_IMAGE_URL_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder } from "../src/client/channel/protocol";
+import { CHANNEL_EVENT_BYTES, CHANNEL_ROOM_LIMIT, CHANNEL_SESSION_LIMIT, IDENTITY_IMAGE_URL_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, eventSchema } from "../src/client/channel/protocol";
 
 const picture = "data:image/png;base64,YWJj";
 const version = "a".repeat(64);
@@ -27,6 +27,40 @@ const decode = (decoder: ChannelEventDecoder, event: unknown) => {
   const text = JSON.stringify(event);
   return decoder.decode(JSON.parse(text), new TextEncoder().encode(text).byteLength);
 };
+
+it("decodes a wire specimen for every declared Domain event kind", async () => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const host = crypto.randomUUID(), participant = crypto.randomUUID(), bindingId = crypto.randomUUID(), requestId = crypto.randomUUID();
+  using signer = new core.SessionSigner(new Uint8Array(32));
+  const packet = JSON.parse(signer.sign(host, JSON.stringify({
+    roomId: "room", bindingId, sender: host, recipient: participant, requestId,
+    record: { type: "history_cleared", throughSeq: 1 },
+  })));
+  const fixtures = [
+    welcome(),
+    { type: "reply", requestId, roomId: "room", result: { type: "done" } },
+    { type: "conversation", packet },
+    { type: "state", state: snapshot() },
+    { type: "input_state", registrations: [{
+      publicationId: crypto.randomUUID(), controllerSessionId: participant, flowId: crypto.randomUUID(), secret: Array(32).fill(9),
+    }] },
+    { type: "host_bound", roomId: "room", bindingId },
+    { type: "host_input", roomId: "room", input: {
+      hostingMode: "lightweight", channelOwnerId: crypto.randomUUID(), now: 1000, bindingId,
+      hostSessionId: host, revision: 1, endpoints: {}, serviceEndpoint: null, action: { type: "sync" },
+    } },
+    { type: "signal", pairId: crypto.randomUUID(), fromSessionId: host, payload: { resync: true } },
+    { type: "error", roomId: "room", code: "storage_failed" },
+  ];
+
+  const decodedKinds = fixtures.map(fixture => {
+    const event = decode(new ChannelEventDecoder(), fixture);
+    expect(event?.type, fixture.type).toBe(fixture.type);
+    return event?.type;
+  });
+  expect(decodedKinds.sort()).toEqual(eventSchema.options.map(option => option.shape.type.value).sort());
+});
 
 it("matches the compiled Core wire contract for schemas built before WASM initialization", async () => {
   const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");

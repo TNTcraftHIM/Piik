@@ -305,6 +305,11 @@ sixteen ports of one address
 ([runbook](../operations/website.md#nat-survey-observer)). Every run is
 one-sided: no peer took part, and nothing here is a rate of connecting.
 
+The owner subsequently reported that beta.63 connected successfully across a
+campus network. Endpoint reports and the selected path were not supplied with
+that report, so it establishes a result for that build, not attribution to a
+particular prediction or preparation mechanism.
+
 | What a network did | Networks |
 | --- | --- |
 | One mapping per socket whatever the destination, five of them keeping the local port | 8 |

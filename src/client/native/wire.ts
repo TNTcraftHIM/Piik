@@ -12,11 +12,14 @@ export const nativeVoiceShortcutEventSchema = z.object({
   activatedAtMs: z.number().int().positive().safe(),
 });
 
-export const unsupportedVideoFormatSchema = z.object({
+const unsupportedH264FormatSchema = z.object({
   codec: z.literal("h264"), profileIdc: z.number().int().min(0).max(255),
   constraintFlags: z.number().int().min(0).max(255), levelIdc: z.number().int().min(0).max(255),
 });
-export type UnsupportedVideoFormat = z.infer<typeof unsupportedVideoFormatSchema>;
+export type UnsupportedVideoFormat = z.infer<typeof unsupportedH264FormatSchema>;
+export const unsupportedVideoFormatSchema = unsupportedH264FormatSchema.or(
+  z.object({ codec: z.string().refine(codec => codec !== unsupportedH264FormatSchema.shape.codec.value) }).transform(() => undefined),
+);
 
 export const nativePageStateSchema = z.object({
   position: z.number().finite().nonnegative(), paused: z.boolean(), rate: z.number().positive().max(16),
