@@ -72,6 +72,16 @@ Each report cost the window thread a catalog with a `Source` read from every
 view and the room a whole render through `patch({})`. The bridge now keeps
 what it last reported, its address included.
 
+**`ad206e9f`, take as it is.** The conversation's arrival effect read a
+computed style on every run, and for a room without messages it runs on
+every render of the room (`messages ?? []` is a new list each time). A
+profile of the room preview put that one read at a fifth of a render's
+script time, 4.9 of 23.7 ms in a development build. It now returns before
+the read unless a newer message is there. The method is
+`Profiler` over thirty state changes of the preview, self time by function
+with the project's callers of the native reads; nothing else of ours stood
+out, the rest was React itself in its development build.
+
 **Asked of you: make this lateness visible.** Every diagnostic we had looked
 at the page, so a stall of the window thread could not be seen by anyone.
 Accepted when the App's opt-in report carries how late its window loop
