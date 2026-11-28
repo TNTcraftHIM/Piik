@@ -279,11 +279,13 @@ impl Prompt {
                     "ready" => ServiceEvent::PermissionReady(id),
                     "allow" => ServiceEvent::PermissionDecision(id, true),
                     "deny" => ServiceEvent::PermissionDecision(id, false),
+                    "drag" => ServiceEvent::Caption(id, super::WindowAction::Drag),
                     _ => return,
                 };
                 let _ = events.send_event(event);
             })
             .build(&window)?;
+        super::disable_drag_regions(&webview);
         webview.load_html(
             &DOCUMENT
                 .replace("__PIIK_PALETTE__", PALETTE)
@@ -302,6 +304,11 @@ impl Prompt {
 
     pub(super) fn id(&self) -> WindowId {
         self.window.id()
+    }
+    pub(super) fn window_action(&self, action: &super::WindowAction) {
+        if matches!(action, super::WindowAction::Drag) {
+            super::caption::apply(&self.window, action);
+        }
     }
     pub(super) fn owner(&self) -> WindowId {
         self.owner.id()

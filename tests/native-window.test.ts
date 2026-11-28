@@ -99,3 +99,38 @@ test("standalone App captions follow their document's modal material without int
   expect(messages).toHaveLength(count);
   expect(messages.every(message => (message as { kind: string }).kind === "appearance")).toBe(true);
 });
+
+test("a press on the integrated bar asks the host to move the window, and never from a control", async () => {
+  const messages: Array<{ kind: string }> = [];
+  const listeners = new Map<string, (event: unknown) => void>();
+  class FakeElement {
+    constructor(private readonly inside: { bar?: boolean; control?: boolean }) {}
+    closest(selector: string) { return (selector.startsWith(".c3-site-bar") ? this.inside.bar : this.inside.control) ? this : null; }
+  }
+  const page = { documentElement: { lang: "en", dataset: { theme: "light" }, style: { setProperty: vi.fn() } },
+    querySelectorAll: () => [], addEventListener: vi.fn(), fullscreenElement: null as unknown };
+  vi.stubGlobal("Element", FakeElement);
+  vi.stubGlobal("window", { piikNativeWindow: "integrated", addEventListener: vi.fn(), ipc: {
+    postMessage: (message: string) => messages.push(JSON.parse(message)),
+  } });
+  vi.stubGlobal("document", page);
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  vi.stubGlobal("MutationObserver", class { observe() {} });
+  vi.stubGlobal("addEventListener", (type: string, listener: (event: unknown) => void) => listeners.set(type, listener));
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => callback());
+  await import("../src/client/ui/native-window");
+  const press = (inside: { bar?: boolean; control?: boolean }, detail = 1, button = 0) => {
+    const event = { button, detail, target: new FakeElement(inside), preventDefault: vi.fn() };
+    listeners.get("mousedown")!(event);
+    return event.preventDefault.mock.calls.length;
+  };
+  const asked = () => messages.filter(message => message.kind !== "appearance" && message.kind !== "header");
+  expect(press({ bar: true })).toBe(1);
+  expect(press({ bar: true }, 2)).toBe(1);
+  expect(asked()).toEqual([{ kind: "drag" }, { kind: "maximize" }]);
+  // A control in the bar keeps its press, and so do the page below the bar, other buttons and a third click.
+  for (const ignored of [press({ bar: true, control: true }), press({}), press({ bar: true }, 1, 2), press({ bar: true }, 3)]) expect(ignored).toBe(0);
+  page.fullscreenElement = {};
+  expect(press({ bar: true })).toBe(0);
+  expect(asked()).toHaveLength(2);
+});

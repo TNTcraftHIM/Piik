@@ -136,6 +136,10 @@ enum ContentMessage {
     Header {
         slot: Option<[f64; 2]>,
     },
+    /// A press on the page's top bar outside its controls.
+    Drag,
+    /// The second press of a double click there.
+    Maximize,
 }
 
 #[derive(Clone)]
@@ -143,6 +147,23 @@ enum WindowAction {
     Minimize,
     Maximize,
     Close,
+    /// Start the system's own move of the window from the pointer's position.
+    Drag,
+}
+
+/// WebView2 recomputes a page's CSS drag regions on this thread, in the embedding process, after
+/// each layout change and answers each pointer move over one from here. Measured in this App:
+/// the window thread answered up to 200 ms late on maximize and 500 ms late while the pointer
+/// moved along the top bar, and never late without regions. The host moves its windows itself
+/// ([`WindowAction::Drag`]), so no page's style can hold this thread. Wry turns the support on.
+fn disable_drag_regions(view: &WebView) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings9;
+    use windows_core::Interface;
+    unsafe {
+        if let Ok(settings) = view.webview().Settings().and_then(|settings| settings.cast::<ICoreWebView2Settings9>()) {
+            let _ = settings.SetIsNonClientRegionSupportEnabled(false);
+        }
+    }
 }
 #[derive(Clone)]
 enum ServiceEvent {
@@ -506,6 +527,7 @@ impl PopupWindow {
                 }
             })
             .build_as_child(window.as_ref())?;
+        disable_drag_regions(&webview);
         let download_events = events.clone();
         workspace_navigation(&webview, origins)?;
         download::install(&webview, Some(Rc::new(move |url, status| {
@@ -686,6 +708,7 @@ impl MainWindow {
             })
             .with_bounds(wry::Rect { position: LogicalPosition::new(0.0, 0.0).into(), size: window.inner_size().into() })
             .build_as_child(window.as_ref())?;
+        disable_drag_regions(&content);
         let download_events = events.clone();
         workspace_navigation(&content, origins.clone())?;
         download::install(&content, Some(Rc::new(move |url, status| {
@@ -937,6 +960,12 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::PagePopup(id)) => {
                 pages.popup(id, target, page_events.clone())
             }
+            Event::UserEvent(ServiceEvent::Content(ContentMessage::Drag)) => {
+                if let Some(main) = &window { caption::apply(&main.window, &WindowAction::Drag); }
+            }
+            Event::UserEvent(ServiceEvent::Content(ContentMessage::Maximize)) => {
+                if let Some(main) = &window { caption::apply(&main.window, &WindowAction::Maximize); }
+            }
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Header { slot: next })) => {
                 slot = next;
                 if let Some(main) = &window {
@@ -951,6 +980,8 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     caption::apply(&main.window, &action);
                 } else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
                     caption::apply(&child.window, &action);
+                } else if let Some(prompt) = prompt.as_ref().filter(|prompt| prompt.id() == id) {
+                    prompt.window_action(&action);
                 } else { pages.window_action(id, &action); }
             }
             Event::UserEvent(ServiceEvent::ShareWatchPage(id)) => {
