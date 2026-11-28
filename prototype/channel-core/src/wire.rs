@@ -813,10 +813,24 @@ pub struct Candidate {
     pub username_fragment: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "String", rename_all = "snake_case")]
 pub enum CandidateOrigin {
     Linear,
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl TryFrom<String> for CandidateOrigin {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "linear" => Ok(Self::Linear),
+            key if short_wire_key(key) => Ok(Self::Other(value)),
+            _ => Err("invalid_candidate_origin"),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]

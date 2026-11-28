@@ -136,8 +136,13 @@ export const signalSchema = z.object({
   resync: z.boolean().optional(),
   exchangeId: z.string().uuid().optional(),
   description: z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().max(150000).optional() }).optional(),
-  candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional(), origin: z.literal("linear").optional() })
-    .refine(value => value.origin !== "linear" || !!value.candidate?.trim() && !!value.usernameFragment?.trim()).optional(),
+  candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional(), origin: shortWireKey.optional() })
+    .refine(value => value.origin === undefined || !!value.candidate?.trim() && !!value.usernameFragment?.trim())
+    .transform(({ origin, ...candidate }) => {
+      if (origin === undefined || origin === "linear")
+        return { ...candidate, ...(origin && { origin } as const) };
+      return undefined;
+    }).optional(),
   tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
 }).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
 const receivedSignalSchema = z.union([

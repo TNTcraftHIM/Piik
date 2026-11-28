@@ -476,7 +476,7 @@ mod tests {
             .iter()
             .all(|(candidate, _)| candidate.ufrag() == Some(generation.as_str())));
         for (candidate, origin) in emitted.iter().filter(|(_, origin)| origin.is_some()) {
-            let signaled = crate::peer::signal_candidate(candidate.clone(), *origin);
+            let signaled = crate::peer::signal_candidate(candidate.clone(), origin.clone());
             assert!(signaled.sdp_mid.is_none());
             assert_eq!(signaled.sdp_m_line_index, Some(0));
             assert_eq!(

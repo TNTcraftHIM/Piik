@@ -132,27 +132,45 @@ async fn requested_bind_failure_releases_prior_owned_socket() -> Result<()> {
 }
 #[tokio::test]
 async fn invalid_candidates_do_not_retire_an_established_channel() -> Result<()> {
-    let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
-    let left = Runtime::new(Some(fixed));
-    let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
-    let right = Runtime::new(Some(fixed));
-    let (a, _) = endpoint(&left, Uuid::new_v4()).await?;
-    let (b, mut events) = endpoint(&right, Uuid::new_v4()).await?;
-    let (sent, received) = open(&a, &b, &mut events).await?;
-    ensure!(a.add_candidate("not-a-candidate".into()).await.is_err());
-    a.add_signaled_candidate(piik_channel_core::wire::Candidate {
-        candidate: Some("unsupported linear hint".into()),
-        origin: Some(piik_channel_core::wire::CandidateOrigin::Linear),
-        username_fragment: Some("old-generation".into()),
-        sdp_mid: None,
-        sdp_m_line_index: Some(0),
-    })
-    .await?;
+    let (mut driver, _events, _commands, _stop) = driver();
+    driver.transport = Runtime::ipv4_loopback();
+    let id = Uuid::new_v4();
+    let plan = PairInfo {
+        id, peer_id: Uuid::new_v4(), udp_preparation: None, rooms: vec![],
+        outgoing: vec![], incoming: vec![], can_receive_video_layers: false,
+    };
+    driver.create_pair(&plan).await?;
+    let rtc = driver.pairs[&id].pc.clone();
+    let mut decoder = piik_channel_core::wire_images::StateImageDecoder::default();
+    let mut hint = |origin: &str| -> Result<Signal> {
+        let frame = serde_json::json!({
+            "type":"signal", "pairId":id, "fromSessionId":plan.peer_id,
+            "payload":{"candidate":{"origin":origin,"candidate":"candidate:hint 1 udp 100 127.0.0.1 40000 typ srflx","usernameFragment":"current"}}
+        });
+        let event = decoder.decode(&frame.to_string()).map_err(anyhow::Error::msg)?;
+        let piik_channel_core::wire::Event::Signal { payload, .. } = event else {
+            panic!("expected candidate signal");
+        };
+        Ok(payload)
+    };
+    for origin in ["linear", "future_hint"] {
+        driver.signal(id, hint(origin)?).await?;
+    }
+    assert!(driver.pairs[&id].candidates.is_empty());
+
+    let (remote, _) = Runtime::fixed_loopback()?;
+    let (peer, mut events) = endpoint(&remote, id).await?;
+    let (sent, received) = open(&rtc, &peer, &mut events).await?;
+    ensure!(rtc.add_candidate("not-a-candidate".into()).await.is_err());
+    driver.signal(id, hint("future_hint")?).await?;
+    assert_eq!(driver.pairs[&id].pc.instance, rtc.instance);
     exchange(&sent, &received, "after-rejected-candidate").await?;
     exchange(&received, &sent, "reverse-after-rejected-candidate").await?;
-    a.close().await?;
-    b.close().await?;
-    left.close().await;
-    right.close().await;
+    driver.update(vec![], vec![], vec![]).await;
+    peer.close().await?;
+    remote.close().await;
+    driver.files.close().await;
+    driver.watches.close().await;
+    driver.transport.close().await;
     Ok(())
 }

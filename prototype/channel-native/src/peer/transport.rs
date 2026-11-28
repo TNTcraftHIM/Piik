@@ -1466,30 +1466,10 @@ impl Transport {
         ack.await?
     }
 
-    #[cfg(test)]
     pub async fn add_candidate(&self, candidate: String) -> Result<()> {
-        self.add_signaled_candidate(piik_channel_core::wire::Candidate {
-            candidate: Some(candidate),
-            origin: None,
-            sdp_mid: None,
-            sdp_m_line_index: None,
-            username_fragment: None,
-        })
-        .await
-    }
-    pub async fn add_signaled_candidate(
-        &self,
-        signal: piik_channel_core::wire::Candidate,
-    ) -> Result<()> {
-        // This extension targets Browser receivers. Native keeps ordinary ICE;
-        // it does not invent a second remote-generation/budget owner for hints.
-        if signal.origin.is_some() {
-            return Ok(());
-        }
         self.call(move |e| {
             ensure!(!e.events.local(), "local input does not trickle ICE");
-            let candidate =
-                Candidate::from_sdp_string(signal.candidate.as_deref().unwrap_or_default())?;
+            let candidate = Candidate::from_sdp_string(&candidate)?;
             e.rtc.add_remote_candidate(candidate.clone());
             e.nat64_candidate(candidate);
             Ok(())
