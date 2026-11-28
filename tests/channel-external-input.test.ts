@@ -134,14 +134,35 @@ test.each(["zh", "en"] as const)("OBS actual format reaches one %s alert and cle
       expect(html).not.toContain("external_video_format_unsupported");
       expect(app.connected).toBe(true); expect(app.hasCapture(independent)).toBe(true);
     }
+    socket.receive({ type: "external_input_state", publicationId, state: "error", error: "external_video_format_unsupported",
+      unsupportedVideoFormat: { codec: "future", bitDepth: 12 } });
+    const input = app.externalInput(publicationId);
+    expect(input).toMatchObject({ endpoint: permit.endpoint, token: permit.token, state: "error", error: "external_video_format_unsupported" });
+    expect(input?.unsupportedVideoFormat).toBeUndefined();
+    expect(app.hasCapture(publicationId)).toBe(false);
+    expect(app.captureId(independent)).toBe(captureId);
+    const html = renderToStaticMarkup(createElement(ChannelExternalInput, { input: input!, busy: false, onStop() {}, onClose() {} }));
+    expect(html).toContain(t(lang, "channel.error.externalVideoFormatUnsupported"));
     const result = { sessionId: crypto.randomUUID(), relayOverride: 2 };
     socket.reply(result);
     await expect(capacity).resolves.toEqual(result);
     prepared(socket, publicationId);
+    expect(app.externalInput(publicationId)?.state).toBe("prepared");
     expect(app.externalInput(publicationId)?.unsupportedVideoFormat).toBeUndefined();
     expect(app.externalInput(publicationId)?.error).toBeUndefined();
     socket.receive({ type: "external_input_state", publicationId, state: "waiting" });
     expect(app.externalInput(publicationId)?.unsupportedVideoFormat).toBeUndefined();
+  } finally { app.close(); }
+});
+
+test("malformed H.264 diagnostic still retires App control", async () => {
+  const { app, socket } = await setup();
+  try {
+    const publicationId = crypto.randomUUID();
+    await arm(app, socket, publicationId);
+    socket.receive({ type: "external_input_state", publicationId, state: "error", error: "external_video_format_unsupported",
+      unsupportedVideoFormat: { codec: "h264", profileIdc: 256, constraintFlags: 0, levelIdc: 52 } });
+    expect(app.connected).toBe(false);
   } finally { app.close(); }
 });
 
