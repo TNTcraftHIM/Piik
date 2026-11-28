@@ -596,10 +596,12 @@ The guide-image generator uses the same component catalogue.
 
 ## Rooms, conversation and media
 
-A site contains rooms. Anyone opening the site can create and manage their own
-rooms as a room owner (房主). The site operator maintains site metadata and backups;
-that does not grant access to or management of another user's room. These users
-can share independently of maintenance or room ownership. Room admission permits
+A site contains rooms. Users allowed to create rooms manage their own rooms
+as room owners (房主). The site operator maintains site metadata and backups
+and can remove any room from the channel, including private or offline rooms.
+To read or moderate a private room's history in Piik, the operator must first
+be admitted. Users can share independently of maintenance or room ownership.
+Room admission permits
 chatting, voice, sharing and watching without separate role groups. Public rooms
 are open to site users. Private rooms require a room invitation or password, and hidden rooms do
 not appear in an unauthorized user's directory. Changing a password or invitation
