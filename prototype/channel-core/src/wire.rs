@@ -644,9 +644,9 @@ impl Signal {
                 && self.tracks.is_none()
                 && match udp {
                     UdpSignal::Offer { observation, .. } | UdpSignal::Answer { observation } => {
-                        observation.valid()
+                        matches!(observation, UdpObservation::Unknown) || observation.valid()
                     }
-                    UdpSignal::Ready {} | UdpSignal::Unavailable {} | UdpSignal::Complete => true,
+                    UdpSignal::Ready {} | UdpSignal::Unavailable {} | UdpSignal::Complete | UdpSignal::Unknown => true,
                 };
         }
         self.description.is_some() == self.exchange_id.is_some()
@@ -706,6 +706,20 @@ pub enum UdpSignal {
     Ready {},
     Unavailable {},
     Complete,
+    #[serde(other, skip_serializing)]
+    Unknown,
+}
+
+impl UdpSignal {
+    pub fn unsupported(&self) -> bool {
+        match self {
+            Self::Unknown => true,
+            Self::Offer { observation, .. } | Self::Answer { observation } => {
+                matches!(observation, UdpObservation::Unknown)
+            }
+            Self::Ready {} | Self::Unavailable {} | Self::Complete => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -727,18 +741,21 @@ pub enum UdpObservation {
     Irregular {
         address: std::net::Ipv4Addr,
     },
+    #[serde(other, skip_serializing)]
+    Unknown,
 }
 impl UdpObservation {
-    pub fn address(&self) -> std::net::Ipv4Addr {
+    pub fn address(&self) -> Option<std::net::Ipv4Addr> {
         match *self {
             Self::Observed { address, .. }
             | Self::Stable { address, .. }
             | Self::Sequential { address, .. }
-            | Self::Irregular { address } => address,
+            | Self::Irregular { address } => Some(address),
+            Self::Unknown => None,
         }
     }
     pub fn valid(&self) -> bool {
-        let address = self.address();
+        let Some(address) = self.address() else { return false };
         if address.is_private()
             || address.is_loopback()
             || address.is_link_local()
@@ -757,6 +774,7 @@ impl UdpObservation {
                     && (1024..=65535).contains(&(i32::from(port) + 4 * i32::from(step)))
             }
             Self::Irregular { .. } => true,
+            Self::Unknown => false,
         }
     }
     pub fn target(&self) -> Option<std::net::SocketAddrV4> {
@@ -766,9 +784,9 @@ impl UdpObservation {
         let port = match *self {
             Self::Observed { port, .. } | Self::Stable { port, .. } => port,
             Self::Sequential { port, step, .. } => (i32::from(port) + 4 * i32::from(step)) as u16,
-            Self::Irregular { .. } => return None,
+            Self::Irregular { .. } | Self::Unknown => return None,
         };
-        Some(std::net::SocketAddrV4::new(self.address(), port))
+        Some(std::net::SocketAddrV4::new(self.address()?, port))
     }
 }
 

@@ -1,5 +1,5 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
-use crate::diagnostics::RetirementReason;
+use crate::diagnostics::{PreparationOutcome, RetirementReason};
 use crate::{
     capture::CaptureOptions,
     data::{self, DataLink, Lane},
@@ -1224,7 +1224,7 @@ impl Driver {
     async fn close(mut self) -> Result<(), tokio::task::JoinError> {
         self.inputs.close();
         for (_, pending) in self.preparings.drain() {
-            pending.close().await;
+            pending.close(PreparationOutcome::Superseded).await;
         }
         #[cfg(feature = "capture")]
         {
@@ -1998,7 +1998,7 @@ impl Driver {
                         }
                     }
                 } else if plan.udp_preparation.is_none() {
-                    if let Some(pending) = self.preparings.remove(&id) { pending.close().await; }
+                    if let Some(pending) = self.preparings.remove(&id) { pending.close(PreparationOutcome::Superseded).await; }
                 }
                 self.apply_pair(plan).await
             }
@@ -2139,23 +2139,24 @@ impl Driver {
         Ok(())
     }
 
-    async fn stop_preparation(&mut self, id: Uuid) {
+    async fn stop_preparation(&mut self, id: Uuid, outcome: PreparationOutcome) {
         if let Some(pending) = self.preparings.remove(&id) {
-            pending.close().await;
+            pending.close(outcome).await;
             let _ = self.commands.try_send(preparation::signal(id, UdpSignal::Unavailable {}));
         }
     }
 
     async fn prepared(
         &mut self,
-        pending: preparation::Pending,
+        mut pending: preparation::Pending,
         result: std::result::Result<Result<preparation::Prepared>, tokio::task::JoinError>,
     ) {
         let id = pending.pair;
-        let Some(pair) = self.pairs.get(&id).filter(|pair| pair.pc.instance == pending.instance) else { return };
-        use crate::diagnostics::{rtc_pair, PreparationOutcome, RtcPairEvent};
-        let outcome = match result {
-            _ if pending.refused => PreparationOutcome::PeerRefused,
+        let Some(pair) = self.pairs.get(&id).filter(|pair| pair.pc.instance == pending.instance) else {
+            return;
+        };
+        if matches!(pending.outcome, PreparationOutcome::PeerRefused) { return }
+        pending.outcome = match result {
             Err(_) => PreparationOutcome::TaskFailed,
             Ok(Err(error)) if error.is::<tokio::time::error::Elapsed>() => PreparationOutcome::TimedOut,
             Ok(Err(_)) => PreparationOutcome::Failed,
@@ -2165,7 +2166,6 @@ impl Driver {
                 Err(_) => PreparationOutcome::CommitFailed,
             },
         };
-        rtc_pair(id, RtcPairEvent::PreparationFinished { outcome });
     }
 
     fn local_signal(p: &Pair, exchange: Uuid, description: Description) -> Signal {
@@ -2298,8 +2298,8 @@ impl Driver {
     }
     async fn signal(&mut self, id: Uuid, signal: Signal) -> Result<()> {
         if let Some(udp) = signal.udp {
-            if self.preparings.get_mut(&id).is_some_and(|pending| pending.signal(udp).is_err()) {
-                self.stop_preparation(id).await;
+            if udp.unsupported() || self.preparings.get_mut(&id).is_some_and(|pending| pending.signal(udp).is_err()) {
+                self.stop_preparation(id, PreparationOutcome::Failed).await;
             }
             return Ok(());
         }
@@ -2581,7 +2581,7 @@ impl Driver {
     }
     async fn retire_pair(&mut self, id: Uuid, reason: RetirementReason) {
         if let Some(pending) = self.preparings.remove(&id) {
-            pending.close().await;
+            pending.close(PreparationOutcome::Superseded).await;
         }
         let Some(pair) = self.pairs.remove(&id) else {
             return;
@@ -2874,7 +2874,7 @@ impl Driver {
                         })
                         .await;
                         if !self.pairs[&id].pc.turn_possible {
-                            self.stop_preparation(id).await;
+                            self.stop_preparation(id, PreparationOutcome::Superseded).await;
                         }
                         self.report_room_data_ready(id).await;
                     } else if state == PeerState::Disconnected {

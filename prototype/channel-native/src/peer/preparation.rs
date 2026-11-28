@@ -1,6 +1,6 @@
 //! Pair-scoped preparation only. ICE/DTLS/media remain owned by the existing PC.
 use super::NativeEvent;
-use crate::diagnostics::{rtc_pair, MappingKind, PreparationChecks, PreparationStep, RtcPairEvent};
+use crate::diagnostics::{rtc_pair, MappingKind, PreparationChecks, PreparationOutcome, PreparationStep, RtcPairEvent};
 use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use piik_channel_core::wire::UdpObservation as Observation;
@@ -60,7 +60,7 @@ pub(super) struct Pending {
     pub pair: Uuid,
     pub instance: Uuid,
     input: mpsc::Sender<UdpSignal>,
-    pub refused: bool,
+    pub outcome: PreparationOutcome,
     pub task: JoinHandle<Result<Prepared>>,
 }
 
@@ -102,14 +102,14 @@ impl Pending {
             pair,
             instance,
             input,
-            refused: false,
+            outcome: PreparationOutcome::Superseded,
             task,
         }
     }
 
     pub fn signal(&mut self, message: UdpSignal) -> Result<()> {
         if matches!(message, UdpSignal::Unavailable {}) {
-            self.refused = true;
+            self.outcome = PreparationOutcome::PeerRefused;
             self.task.abort();
         } else if matches!(self.input.try_send(message), Err(mpsc::error::TrySendError::Full(_))) {
             bail!("preparation signal queue full");
@@ -117,9 +117,18 @@ impl Pending {
         Ok(())
     }
 
-    pub async fn close(mut self) {
+    pub async fn close(mut self, outcome: PreparationOutcome) {
+        if !matches!(self.outcome, PreparationOutcome::PeerRefused) {
+            self.outcome = outcome;
+        }
         self.task.abort();
         let _ = (&mut self.task).await;
+    }
+}
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        rtc_pair(self.pair, RtcPairEvent::PreparationFinished { outcome: self.outcome });
     }
 }
 
@@ -484,17 +493,18 @@ impl Survey {
         commands: &mpsc::Sender<NativeEvent>,
         incoming: &mut mpsc::Receiver<UdpSignal>,
     ) -> Result<Prepared> {
-        let kind = |observation| match observation {
+        let kind = |observation| Ok::<_, anyhow::Error>(match observation {
             Observation::Observed { .. } => MappingKind::Observed,
             Observation::Stable { .. } => MappingKind::Stable,
             Observation::Sequential { .. } => MappingKind::Sequential,
             Observation::Irregular { .. } => MappingKind::Irregular,
-        };
+            Observation::Unknown => bail!("unsupported UDP observation"),
+        });
         rtc_pair(
             self.preparation.pair,
             RtcPairEvent::Mappings {
-                local: kind(self.observation),
-                remote: kind(remote),
+                local: kind(self.observation)?,
+                remote: kind(remote)?,
             },
         );
         let plan = ProbePlan::new(self.observation, remote)?;
@@ -839,7 +849,7 @@ mod tests {
         let peer = UdpSocket::bind((ip, 0)).await?;
         let target = SocketAddrV4::new(ip, peer.local_addr()?.port());
         let (commands, _events) = mpsc::channel(4);
-        let (_signal, mut incoming) = mpsc::channel(4);
+        let (input, mut incoming) = mpsc::channel(4);
         let (waiting, entered) = tokio::sync::oneshot::channel();
         let task = tokio::spawn(async move {
             let survey = Survey {
@@ -858,8 +868,18 @@ mod tests {
             checks.await
         });
         entered.await?;
-        task.abort();
-        assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+        let pending = Pending { pair, instance: Uuid::new_v4(), input, outcome: PreparationOutcome::Superseded, task };
+        pending.close(PreparationOutcome::Superseded).await;
+
+        // Shutdown can discard a completed driver turn before adoption.
+        let interrupted = Uuid::new_v4();
+        let (input, _) = mpsc::channel(1);
+        let mut completed = Pending {
+            pair: interrupted, instance: Uuid::new_v4(), input,
+            outcome: PreparationOutcome::Superseded, task: tokio::spawn(async { bail!("fixture") }),
+        };
+        let _ = (&mut completed.task).await?;
+        drop(completed);
 
         let mut bytes = Vec::new();
         crate::diagnostics::snapshot().unwrap()
@@ -872,7 +892,7 @@ mod tests {
             let row: serde_json::Value = serde_json::from_str(line)?;
             if row["target"] == "piik.rtc" {
                 let entry: serde_json::Value = serde_json::from_str(row["message"].as_str().unwrap())?;
-                if entry["event"]["stage"] == "preparation_checks_finished" {
+                if matches!(entry["event"]["stage"].as_str(), Some("preparation_checks_finished" | "preparation_finished")) {
                     summaries.push(entry);
                 }
             }
@@ -889,6 +909,12 @@ mod tests {
                 "ready_sent": false,
                 "ready_received": false,
             }
+        }), serde_json::json!({
+            "pair": crate::diagnostics::pair_alias(pair),
+            "event": { "stage": "preparation_finished", "outcome": "superseded" }
+        }), serde_json::json!({
+            "pair": crate::diagnostics::pair_alias(interrupted),
+            "event": { "stage": "preparation_finished", "outcome": "superseded" }
         })]);
         assert!(!text.contains(&target.to_string()));
         assert!(!text.contains(&ip.to_string()));
@@ -1320,7 +1346,7 @@ mod tests {
                 pair,
                 instance: driver.pairs[&pair].pc.instance,
                 input,
-                refused: false,
+                outcome: PreparationOutcome::Superseded,
                 task: tokio::spawn(async move {
                     // Start at failed completion, without unrelated OS interface discovery.
                     drop(incoming);
@@ -1432,7 +1458,7 @@ mod tests {
         let (input, _incoming) = mpsc::channel(1);
         input.try_send(UdpSignal::Ready {})?;
         driver.preparings.insert(id, Pending {
-            pair: id, instance, input, refused: false,
+            pair: id, instance, input, outcome: PreparationOutcome::Superseded,
             task: tokio::spawn(std::future::pending()),
         });
         let NativeEvent::Command(Command::Signal { payload, .. }) = signal(id, UdpSignal::Complete)
@@ -1443,6 +1469,49 @@ mod tests {
         assert_eq!(driver.pairs[&id].deadline.unwrap().expires(), deadline);
         driver.pairs[&id].pc.connection_metrics().await?;
         driver.update(vec![], vec![], vec![]).await;
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unknown_udp_extension_retires_preparation_and_keeps_ordinary_rtc() -> Result<()> {
+        use crate::peer::{tests::support::{endpoint, exchange, open}, transport::Runtime};
+        use serde_json::json;
+        let (mut driver, _events, mut commands, _stop) = super::super::tests::driver();
+        driver.transport = Runtime::ipv4_loopback();
+        let id = Uuid::new_v4();
+        let plan = PairInfo {
+            id, peer_id: Uuid::new_v4(), udp_preparation: None, rooms: vec![],
+            outgoing: vec![], incoming: vec![], can_receive_video_layers: false,
+        };
+        driver.create_pair(&plan).await?;
+        let rtc = driver.pairs[&id].pc.clone();
+        let (remote, _) = Runtime::fixed_loopback()?;
+        let (peer, mut events) = endpoint(&remote, id).await?;
+        let (left, right) = open(&rtc, &peer, &mut events).await?;
+        let mut decoder = piik_channel_core::wire_images::StateImageDecoder::default();
+        for udp in [json!({"type":"future_step"}), json!({"type":"answer","observation":{"kind":"future_mapping"}})] {
+            let (input, _incoming) = mpsc::channel(1);
+            driver.preparings.insert(id, Pending {
+                pair: id, instance: rtc.instance, input, outcome: PreparationOutcome::Superseded,
+                task: tokio::spawn(std::future::pending()),
+            });
+            let event = json!({"type":"signal","pairId":id,"fromSessionId":plan.peer_id,"payload":{"udp":udp}});
+            let piik_channel_core::wire::Event::Signal { pair_id, payload, .. } = decoder.decode(&event.to_string()).map_err(anyhow::Error::msg)?
+                else { unreachable!() };
+            driver.signal(pair_id, payload).await?;
+            assert!(!driver.preparings.contains_key(&id));
+            assert!(std::iter::from_fn(|| commands.try_recv().ok()).any(|event| matches!(event,
+                NativeEvent::Command(Command::Signal { pair_id, payload: Signal { udp: Some(UdpSignal::Unavailable {}), .. } })
+                    if pair_id == id)));
+            assert_eq!(driver.pairs[&id].pc.instance, rtc.instance);
+            exchange(&left, &right, "ordinary").await?;
+        }
+        driver.update(vec![], vec![], vec![]).await;
+        peer.close().await?;
+        remote.close().await;
         driver.files.close().await;
         driver.watches.close().await;
         driver.transport.close().await;
@@ -1558,7 +1627,7 @@ mod tests {
                 pair,
                 instance: driver.pairs[&pair].pc.instance,
                 input,
-                refused: false,
+                outcome: PreparationOutcome::Superseded,
                 task,
             },
         );
@@ -1620,7 +1689,7 @@ mod tests {
         assert!(generated
             .targets
             .iter()
-            .all(|target| *target.ip() == irregular.address() && target.port() >= 1024));
+            .all(|target| Some(*target.ip()) == irregular.address() && target.port() >= 1024));
         // A half-budget prefix cannot leave a contiguous pool-sized gap.
         let mut prefix: Vec<_> = generated.targets[..RANDOM_TARGETS / 2]
             .iter()
@@ -1839,7 +1908,7 @@ mod tests {
             pair,
             instance: Uuid::new_v4(),
             input,
-            refused: false,
+            outcome: PreparationOutcome::Superseded,
             task,
         };
         let NativeEvent::Command(Command::Signal { payload, .. }) =
